@@ -9,7 +9,8 @@ import { activeServiceById, serviceQuery } from '../services/model';
 import { type OfferResult } from '../shared/offers';
 import { formatReceiptNumber, orderTitle } from '../shared/orderMath';
 import { CAMPAIGN_PAGE_SIZE, type CampaignRow, type CouponDetail, type CouponRow, type LinkRow, type RedemptionRow, type SlugCheck } from '../shared/marketingTypes';
-import { campaignStatus, currentRules, enrichCoupon, enrichLink, publishStatus, quote, quoteArgs, slugCheck } from './catalogModel';
+import { campaignStatus, couponRules, currentRules, enrichCoupon, enrichLink, getOrThrow, publishStatus, quote, quoteArgs, slugCheck, validatedCouponCode, validateRuleProperties, validateRules } from './catalogModel';
+import { requireEditableDraft } from './accessPolicy';
 
 // ---------- Admin queries ----------
 
@@ -188,11 +189,32 @@ export const listQuoteServices = marketingQuery({
 	},
 });
 
-/** Admin "test a quote": same engine as the guest, ignores draft/paused status so drafts can be tested. */
+/** Read-only scenario using the live offer engine. Editable proposed rules never reach guest quotes. */
 export const testQuote = marketingQuery({
   permission: 'view',
-	args: { ...quoteArgs, services: v.optional(v.array(v.object({ serviceId: v.id('services'), amount: v.number() }))) },
-	handler: async (ctx, { services, ...args }): Promise<OfferResult> => {
+	args: {
+		code: quoteArgs.code,
+		propertySlug: v.optional(quoteArgs.propertySlug),
+		checkIn: v.optional(quoteArgs.checkIn),
+		checkOut: v.optional(quoteArgs.checkOut),
+		services: v.optional(v.array(v.object({ serviceId: v.id('services'), amount: v.number() }))),
+		proposed: v.optional(v.object({ couponId: v.optional(v.id('coupons')), rules: v.object(couponRules) })),
+	},
+	handler: async (ctx, { services, proposed, ...args }): Promise<OfferResult> => {
+		let draft;
+		if (proposed) {
+			if (!ctx.marketing.capabilities.draft) throw new Error('Not authorized');
+			const coupon = proposed.couponId ? await getOrThrow(ctx, 'coupons', proposed.couponId) : null;
+			requireEditableDraft(ctx.marketing, coupon);
+			if (coupon?.status === 'archived') throw new ConvexError({ code: 'coupon_archived', message: 'Archived coupons can only be tested with saved rules.' });
+			const code = validatedCouponCode(args.code);
+			validateRules(proposed.rules);
+			await validateRuleProperties(ctx, proposed.rules);
+			const existing = await ctx.db.query('coupons').withIndex('by_code', q => q.eq('code', code)).unique();
+			if (existing && existing._id !== coupon?._id) throw new ConvexError({ code: 'coupon_code_taken', message: 'Coupon code taken. Choose a different code.' });
+			if (coupon && coupon.used > 0 && coupon.code !== code) throw new ConvexError({ code: 'coupon_code_locked', message: 'Cannot change a used coupon code.' });
+			draft = { rules: proposed.rules, coupon };
+		}
 		if ((services?.length ?? 0) > 50) throw new ConvexError({ code: 'too_many_services', message: 'Use at most 50 services in a quote.' });
 		const catalog = new Map(await Promise.all([...new Set(services?.map(({ serviceId }) => serviceId))].map(
 			async (id) => [id, await activeServiceById(ctx, id)] as const,
@@ -202,7 +224,7 @@ export const testQuote = marketingQuery({
 			if (!service) throw new ConvexError({ code: 'service_unavailable', message: 'A selected service is no longer available. Choose another service.' });
 			return { label: service.name, amount };
 		});
-		return quote(ctx, { ...args, services: lines }, true);
+		return quote(ctx, { ...args, services: lines }, true, draft);
 	}
 });
 

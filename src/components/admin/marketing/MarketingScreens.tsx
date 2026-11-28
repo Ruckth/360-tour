@@ -188,7 +188,8 @@ export function MarketingCouponsScreen() {
 export function MarketingCouponScreen({ couponId }: { couponId: string }) {
   const router = useRouter();
   const isNew = couponId === "new";
-  const services = usePaginatedQuery(api.marketing.queries.listQuoteServices, isNew ? "skip" : {}, { initialNumItems: 20 });
+  const [quoteOpened, setQuoteOpened] = useState(false);
+  const services = usePaginatedQuery(api.marketing.queries.listQuoteServices, isNew && !quoteOpened ? "skip" : {}, { initialNumItems: 20 });
   // getCoupon takes the raw route param and returns null for ids that don't resolve, so typos show "Coupon not found".
   const detail = useQuery(api.marketing.queries.getCoupon, isNew ? "skip" : { couponId });
   const coupons = useQuery(api.marketing.queries.listCoupons, {});
@@ -198,6 +199,7 @@ export function MarketingCouponScreen({ couponId }: { couponId: string }) {
   return (
     <CouponEditor
       detail={detail}
+      onQuoteOpen={() => setQuoteOpened(true)}
       serviceCatalog={{
         choices: services.results,
         loading: services.isLoading,

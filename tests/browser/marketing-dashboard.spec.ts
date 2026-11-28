@@ -265,7 +265,7 @@ test("the jump, drill back and date inspector move keyboard focus", async ({ pag
   await expect(chart.getByRole("group", { name: /^Net collected by source\./ })).toBeFocused();
 });
 
-for (const width of [360, 390]) {
+for (const width of [360, 390, 430]) {
   test(`phone secondary metrics use one divided list with in-place definitions (${width}px)`, async ({ page }) => {
     await open(page, width, "normal", "light");
     const list = page.locator('[data-slot="secondary-metrics"]');
@@ -292,13 +292,13 @@ for (const width of [360, 390]) {
     await expect(paidDef).toContainText("Of 179 paid stays, 132 came from tracked links");
     await expect(page.getByRole("tooltip")).toHaveCount(0);
 
-    // The definition opens under its own label and above its value, staying beside the number it qualifies.
-    const [btnBox, defBox, itemBox] = await Promise.all([
-      paidButton.boundingBox(),
+    // Expanding a definition keeps the associated number above it.
+    const [amountBox, defBox, itemBox] = await Promise.all([
+      items.nth(1).getByText("132", { exact: true }).boundingBox(),
       paidDef.boundingBox(),
       items.nth(1).boundingBox(),
     ]);
-    expect(defBox!.y).toBeGreaterThanOrEqual(btnBox!.y + btnBox!.height - 2);
+    expect(defBox!.y).toBeGreaterThanOrEqual(amountBox!.y + amountBox!.height);
     expect(defBox!.y + defBox!.height).toBeLessThanOrEqual(itemBox!.y + itemBox!.height + 1);
 
     await expectNoSideScroll(page, width);

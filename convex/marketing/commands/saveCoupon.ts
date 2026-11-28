@@ -1,11 +1,10 @@
 import { ConvexError, v } from 'convex/values';
 import type { Id } from '../../_generated/dataModel';
 import { marketingMutation } from '../../auth/model';
-import { normalizeCouponCode } from '../../shared/offers';
 import { appendRecordHistory } from '../../settings/model';
 import { requireEditableDraft } from '../accessPolicy';
 import type { RuleFields } from '../catalogModel';
-import { auditFields, canonical, couponRules, currentRules, getOrThrow, recordChanges, validateRules } from '../catalogModel';
+import { auditFields, canonical, couponRules, currentRules, getOrThrow, recordChanges, validatedCouponCode, validateRuleProperties, validateRules } from '../catalogModel';
 
 /** Creates the coupon, or writes a new immutable version when any rule changes. Code is fixed after the first redemption. */
 export const saveCoupon = marketingMutation({
@@ -14,13 +13,10 @@ export const saveCoupon = marketingMutation({
 	handler: async (ctx, args): Promise<{ couponId: Id<'coupons'>; version: number }> => {
 		const admin = ctx.marketing;
 		const { couponId, code: rawCode, campaignId, ...rules } = args;
-		const code = normalizeCouponCode(rawCode);
-		if (!/^[A-Z0-9-]{3,32}$/.test(code)) throw new ConvexError({ code: 'invalid_coupon_code', message: 'Invalid coupon code. Use 3 to 32 letters, numbers or hyphens.' });
+		const code = validatedCouponCode(rawCode);
 		validateRules(rules);
 		if (campaignId) await getOrThrow(ctx, 'marketingCampaigns', campaignId);
-		for (const slug of rules.propertySlugs ?? []) {
-			if (!await ctx.db.query('properties').withIndex('by_slug', q => q.eq('slug', slug)).unique()) throw new ConvexError({ code: 'property_not_found', message: 'Property not found. Choose an available villa.' });
-		}
+		await validateRuleProperties(ctx, rules);
 		const existing = await ctx.db.query('coupons').withIndex('by_code', q => q.eq('code', code)).unique();
 		if (existing && existing._id !== couponId) throw new ConvexError({ code: 'coupon_code_taken', message: 'Coupon code taken. Choose a different code.' });
 		const audit = auditFields(admin);

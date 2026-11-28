@@ -393,3 +393,52 @@ it("quotes a selected catalog service by identity and blocks an unavailable sele
   expect(testQuote).toHaveBeenCalledOnce();
   expect(document.body.textContent).toContain("This service is unavailable");
 });
+
+it("previews the edited spa rules without requiring a villa and flags earlier results after another edit", async () => {
+  const offer = {
+    subtotal: 100000, total: 80000, applied: "coupon", couponStatus: "applied",
+    discount: 20000, couponDiscount: 20000, directDiscount: 0, allocation: [], capped: false,
+  };
+  const pending = Promise.withResolvers<typeof offer>();
+  const testQuote = vi.fn().mockReturnValueOnce(pending.promise).mockResolvedValue({
+    ...offer, subtotal: 120000, total: 96000, discount: 24000, couponDiscount: 24000,
+  });
+  const choice = { id: "massage" as Id<"services">, name: "Massage", category: "Spa", durationMin: 60 };
+  const rules = { scope: "services" as const, benefit: { kind: "percent" as const, percent: 2000 } };
+  const validate = vi.fn().mockReturnValue(true);
+  const props = {
+    testQuote, code: "NEW-SPA", scope: rules.scope, today: "2026-11-08",
+    properties: [], serviceCatalog: { choices: [choice] },
+    preview: { key: "20%", rules, validate },
+  };
+  await render(createElement(TestQuotePanel, props));
+  expect(document.body.textContent).toContain("Unsaved rules · preview only");
+  expect(document.body.textContent).not.toContain("Choose a villa");
+  await click(button("Run quote"));
+  expect(document.body.textContent).toContain("Add a service to run this quote.");
+  await click(button("Add a service"));
+  const picker = document.querySelector<HTMLSelectElement>('select[aria-label="Service 1"]')!;
+  await act(async () => {
+    picker.value = choice.id;
+    picker.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  await type(document.querySelector('input[aria-label="Price of service 1"]'), "1000");
+  await click(button("Run quote"));
+  expect(testQuote).toHaveBeenCalledExactlyOnceWith({
+    code: "NEW-SPA",
+    services: [{ serviceId: choice.id, amount: 100000 }],
+    proposed: { couponId: undefined, rules },
+  });
+  await type(document.querySelector('input[aria-label="Price of service 1"]'), "1200");
+  await act(async () => pending.resolve(offer));
+  expect(document.body.textContent).toContain("Coupon wins");
+  const stale = "Run the quote again with the current inputs and rules.";
+  expect(document.body.textContent).toContain(stale);
+  await click(button("Run quote"));
+  expect(testQuote).toHaveBeenLastCalledWith(expect.objectContaining({ services: [{ serviceId: choice.id, amount: 120000 }] }));
+  expect(document.body.textContent).not.toContain(stale);
+  await render(createElement(TestQuotePanel, {
+    ...props, preview: { key: "30%", rules: { ...rules, benefit: { ...rules.benefit, percent: 3000 } }, validate },
+  }));
+  expect(document.body.textContent).toContain(stale);
+});

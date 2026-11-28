@@ -70,6 +70,7 @@ type CouponEditorProps = {
   origin: string;
   brand: string;
   serviceCatalog?: QuoteServiceCatalog;
+  onQuoteOpen?: () => void;
   actions: Pick<MarketingActions, "saveCoupon" | "setCouponStatus" | "testQuote"> & CouponQrActions;
   /** After the first save of a new coupon, e.g. to move to its page. */
   onCreated: (couponId: Id<"coupons">) => void;
@@ -85,7 +86,7 @@ type CouponEditorProps = {
  */
 const savedNotices = new Map<string, Notice & { retryPublish?: boolean }>();
 
-export function CouponEditor({ detail, isNew, coupons, campaigns, properties, today, listHref, origin, brand, actions, onCreated, history, refusals, serviceCatalog }: CouponEditorProps) {
+export function CouponEditor({ detail, isNew, coupons, campaigns, properties, today, listHref, origin, brand, actions, onCreated, history, refusals, serviceCatalog, onQuoteOpen }: CouponEditorProps) {
   const { capabilities } = useMarketingAccess();
   if (isNew && !capabilities.draft) return <div className="mx-auto max-w-3xl p-6"><h2 className="text-xl font-semibold">Creating coupons requires draft access</h2><ButtonLink href={listHref} variant="outline" className="mt-3">Back to coupons</ButtonLink></div>;
   if (!isNew && detail === undefined) return <EditorSkeleton />;
@@ -108,6 +109,7 @@ export function CouponEditor({ detail, isNew, coupons, campaigns, properties, to
       key={detail?._id ?? "new"}
       detail={detail ?? undefined}
       serviceCatalog={serviceCatalog}
+      onQuoteOpen={onQuoteOpen}
       coupons={coupons}
       campaigns={campaigns}
       properties={properties}
@@ -182,6 +184,7 @@ function usesMoreRules(form: CouponForm) {
 
 function CouponBuilder({
   serviceCatalog,
+  onQuoteOpen,
   detail,
   coupons,
   campaigns,
@@ -197,6 +200,7 @@ function CouponBuilder({
 }: {
   detail?: CouponDetail;
   serviceCatalog?: QuoteServiceCatalog;
+  onQuoteOpen?: () => void;
   coupons: CouponRow[];
   campaigns: CampaignOption[];
   properties: MarketingProperty[];
@@ -249,7 +253,8 @@ function CouponBuilder({
   const code = normalizeCouponCode(form.code);
   const changedRules = detail ? rulesChanged(rules, detail.rules) : true;
   // Compared on what would be saved, so formatting ("1500" vs "1,500"), villa order or spaces aren't edits.
-  const dirty = couponFormKey(form) !== couponFormKey(baseline);
+  const formKey = couponFormKey(form);
+  const dirty = formKey !== couponFormKey(baseline);
   const nextVersion = (detail?.currentVersion ?? 0) + 1;
   const villaName = (slug: string) => properties.find((property) => property.slug === slug)?.name ?? slug;
   const state = detail ? couponState(detail, today) : null;
@@ -272,6 +277,30 @@ function CouponBuilder({
     // After the disclosure has opened.
     window.requestAnimationFrame(() => document.getElementById(`${id}-${key}`)?.focus());
   }
+
+  const quotePreview = canEdit && !archived && (dirty || !detail) ? {
+    couponId: detail?._id,
+    rules,
+    key: formKey,
+    validate() {
+      setSubmitted(true);
+      if (firstError) focusError(firstError);
+      return !firstError;
+    },
+  } : undefined;
+  const quoteScope = quotePreview?.rules ?? detail?.rules ?? rules;
+  const quotePanel = (
+    <TestQuotePanel
+      code={quotePreview ? code : detail?.code}
+      savedVersion={detail?.currentVersion}
+      preview={quotePreview}
+      scope={quoteScope.scope}
+      properties={properties}
+      today={today}
+      testQuote={actions.testQuote}
+      serviceCatalog={serviceCatalog}
+    />
+  );
 
   /** Saves the form; with "publish" it confirms first, then publishes only after the save succeeded. */
   async function save(intent: "save" | "publish") {
@@ -778,10 +807,11 @@ function CouponBuilder({
             </SideCard>
           ) : null}
 
-          {/* A quote runs on saved rules, so the test appears once there are some. */}
-          {detail ? (
-            <TestQuotePanel code={detail.code} savedVersion={detail.currentVersion} dirty={dirty} properties={properties} today={today} testQuote={actions.testQuote} serviceCatalog={serviceCatalog} />
-          ) : null}
+          {detail ? quotePanel : (
+            <Disclosure label="Test a quote" lazy="first-open" onOpenChange={(open) => { if (open) onQuoteOpen?.(); }}>
+              {quotePanel}
+            </Disclosure>
+          )}
 
           {detail ? <CouponLedger code={detail.code} redemptions={detail.redemptions} /> : null}
 

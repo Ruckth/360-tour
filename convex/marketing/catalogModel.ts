@@ -4,7 +4,7 @@ import { type MutationCtx, type QueryCtx } from '../auth/model';
 import { isIsoDate, nightsBetween } from '../shared/dates';
 import { resortTodayIso } from '../shared/time';
 import { validateMarketingSlug } from '../shared/marketingSlugs';
-import { MAX_QUOTE_SUBTOTAL, evaluateOffer, normalizeCouponCode, type OfferResult, type QuoteLine } from '../shared/offers';
+import { MAX_QUOTE_SUBTOTAL, evaluateOffer, normalizeCouponCode, type CouponRules, type OfferResult, type QuoteLine } from '../shared/offers';
 import { appendRecordHistory } from '../settings/model';
 import type { CouponRow, LinkRow, SlugCheck } from '../shared/marketingTypes';
 
@@ -52,6 +52,13 @@ export const quoteArgs = {
 export type RuleFields = Pick<Doc<'couponVersions'>, keyof typeof couponRules>;
 
 export type QuoteArgs = ObjectType<typeof quoteArgs>;
+type TestQuoteArgs = Pick<QuoteArgs, 'code' | 'services'> & Partial<Omit<QuoteArgs, 'code' | 'services'>>;
+
+export function validatedCouponCode(raw: string) {
+	const code = normalizeCouponCode(raw);
+	if (!/^[A-Z0-9-]{3,32}$/.test(code)) throw new ConvexError({ code: 'invalid_coupon_code', message: 'Invalid coupon code. Use 3 to 32 letters, numbers or hyphens.' });
+	return code;
+}
 
 export async function getOrThrow<Table extends 'marketingCampaigns' | 'marketingLinks' | 'coupons'>(ctx: QueryCtx, table: Table, id: Id<Table>): Promise<Doc<Table>> {
 	const row = await ctx.db.get(id);
@@ -104,6 +111,13 @@ export function validateRules(rules: RuleFields) {
 	}
 }
 
+export async function validateRuleProperties(ctx: QueryCtx, { propertySlugs }: Pick<RuleFields, 'propertySlugs'>) {
+	for (const slug of new Set(propertySlugs)) {
+		const property = await ctx.db.query('properties').withIndex('by_slug', q => q.eq('slug', slug)).unique();
+		if (!property) throw new ConvexError({ code: 'property_not_found', message: 'Property not found. Choose an available villa.' });
+	}
+}
+
 export async function currentRules(ctx: QueryCtx, coupon: Doc<'coupons'>): Promise<Doc<'couponVersions'>> {
 	const rules = await ctx.db.query('couponVersions').withIndex('by_coupon_and_version', q =>
 		q.eq('couponId', coupon._id).eq('version', coupon.currentVersion)).unique();
@@ -141,18 +155,26 @@ export async function validateLinkDestination(ctx: QueryCtx, destination: Doc<'m
 	if (!property) throw new ConvexError({ code: 'property_not_found', message: 'Property not found. Choose an available villa.' });
 }
 
-export async function quote(ctx: QueryCtx, args: QuoteArgs, adminTest: boolean): Promise<OfferResult> {
-	if (!isIsoDate(args.checkIn) || !isIsoDate(args.checkOut) || args.checkOut <= args.checkIn) throw new ConvexError({ code: 'invalid_stay_dates', message: 'Invalid stay dates. Choose a valid check-out date after check-in.' });
-	const property = await ctx.db.query('properties').withIndex('by_slug', q => q.eq('slug', args.propertySlug)).unique();
-	if (!property || (!adminTest && property.status !== 'active')) throw new ConvexError({ code: 'property_not_found', message: 'Property not found. Choose an available villa.' });
-	const nights = nightsBetween(args.checkIn, args.checkOut);
-	const accommodationAmount = property.pricePerNight * nights;
-	if (!Number.isSafeInteger(accommodationAmount) || accommodationAmount < 0) {
-		throw new ConvexError({ code: 'invalid_accommodation_amount', message: 'The stay price must be non-negative integer satang. Check the villa nightly rate and stay dates.' });
+export async function quote(ctx: QueryCtx, args: TestQuoteArgs, adminTest: boolean, proposed?: { rules: RuleFields; coupon: Doc<'coupons'> | null }): Promise<OfferResult> {
+	const { checkIn, checkOut, propertySlug } = args;
+	const hasStay = !adminTest || checkIn !== undefined || checkOut !== undefined || propertySlug !== undefined;
+	const lines: QuoteLine[] = [];
+	let directDiscountPercent = 0;
+	if (hasStay) {
+		if (!checkIn || !checkOut || !isIsoDate(checkIn) || !isIsoDate(checkOut) || checkOut <= checkIn) {
+			throw new ConvexError({ code: 'invalid_stay_dates', message: 'Invalid stay dates. Choose a valid check-out date after check-in.' });
+		}
+		const property = propertySlug && await ctx.db.query('properties').withIndex('by_slug', q => q.eq('slug', propertySlug)).unique();
+		if (!property || (!adminTest && property.status !== 'active')) throw new ConvexError({ code: 'property_not_found', message: 'Property not found. Choose an available villa.' });
+		const nights = nightsBetween(checkIn, checkOut);
+		const amount = property.pricePerNight * nights;
+		if (!Number.isSafeInteger(amount) || amount < 0) {
+			throw new ConvexError({ code: 'invalid_accommodation_amount', message: 'The stay price must be non-negative integer satang. Check the villa nightly rate and stay dates.' });
+		}
+		lines.push({ id: 'accommodation', kind: 'accommodation', propertySlug: property.slug, checkIn, checkOut, nights, amount });
+		directDiscountPercent = property.directDiscountPercent;
 	}
 	if ((args.services?.length ?? 0) > 50) throw new ConvexError({ code: 'too_many_services', message: 'Use at most 50 services in a quote.' });
-	const lines: QuoteLine[] = [{ id: 'accommodation', kind: 'accommodation', propertySlug: property.slug,
-		checkIn: args.checkIn, checkOut: args.checkOut, nights, amount: accommodationAmount }];
 	for (const [index, service] of (args.services ?? []).entries()) {
 		if (!Number.isSafeInteger(service.amount) || service.amount < 0 || service.amount > 1_000_000_000) throw new ConvexError({ code: 'invalid_service_amount', message: 'Invalid service amount. Enter integer satang from 0 to 1,000,000,000 per service.' });
 		lines.push({ id: `service-${index}`, kind: 'service', ...service });
@@ -161,13 +183,22 @@ export async function quote(ctx: QueryCtx, args: QuoteArgs, adminTest: boolean):
 		throw new ConvexError({ code: 'invalid_quote_total', message: 'The quote total is too large. Reduce the stay length or service amounts.' });
 	}
 	const code = normalizeCouponCode(args.code);
-	const coupon = code ? await ctx.db.query('coupons').withIndex('by_code', q => q.eq('code', code)).unique() : null;
-	const rules = coupon ? await currentRules(ctx, coupon) : null;
-	const result = evaluateOffer({ lines, directDiscountPercent: property.directDiscountPercent, today: resortTodayIso(),
-		...(coupon && rules && { coupon: { ...rules, code: coupon.code, version: coupon.currentVersion,
-			status: adminTest && (coupon.status === 'draft' || coupon.status === 'paused') ? 'active' : coupon.status,
-			used: coupon.used, discountGranted: coupon.discountGranted, held: coupon.held, heldDiscount: coupon.heldDiscount } }) });
-	return code && !coupon ? { ...result, couponStatus: 'invalid', problem: { code: 'not_found' } } : result;
+	const coupon = proposed ? proposed.coupon : code ? await ctx.db.query('coupons').withIndex('by_code', q => q.eq('code', code)).unique() : null;
+	const rules = proposed?.rules ?? (coupon ? await currentRules(ctx, coupon) : null);
+	if (!hasStay && rules && rules.scope !== 'services') {
+		throw new ConvexError({ code: 'stay_required', message: 'Choose a villa and stay dates for this coupon.' });
+	}
+	const status = coupon?.status ?? 'draft';
+	const testedRules: CouponRules | undefined = rules
+		? {
+			...rules, code, version: coupon?.currentVersion ?? 1,
+			status: adminTest && status !== 'archived' ? 'active' : status,
+			used: coupon?.used ?? 0, discountGranted: coupon?.discountGranted ?? 0,
+			held: coupon?.held, heldDiscount: coupon?.heldDiscount,
+		}
+		: undefined;
+	const result = evaluateOffer({ lines, directDiscountPercent, today: resortTodayIso(), coupon: testedRules });
+	return code && !testedRules ? { ...result, couponStatus: 'invalid', problem: { code: 'not_found' } } : result;
 }
 
 export const campaignTransitions: Record<Doc<'marketingCampaigns'>['status'], Doc<'marketingCampaigns'>['status'][]> = {
