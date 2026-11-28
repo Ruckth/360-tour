@@ -65,6 +65,7 @@ test("D19/D20 Spa-origin stay picker attaches an eligible villa stay and recover
 });
 
 test("D23 stale Spa appointment link returns to the calendar", async ({ page }) => {
+  await signedInBackend(page);
   await page.goto("/admin/staff/calendar?appointment=missing-appointment");
   const dismiss = page.getByRole("button", { name: "Dismiss appointment link" });
   await chooseBranchIfPrompted(page, dismiss);
