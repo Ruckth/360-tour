@@ -111,7 +111,7 @@ function QueueRow({ row, onSelect }: { row: OrderRow; onSelect: () => void }) {
     <li data-testid="approval-request" data-approval-selected="false">
       <button type="button" onClick={onSelect} className="grid w-full gap-0.5 rounded-xl border border-border bg-card px-4 py-3 text-left transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         <span className="text-[15px] font-semibold text-balance [overflow-wrap:anywhere]">{personName(row.requesterEmail)} {queueAsk(row)}</span>
-        {"orderTitle" in row && row.orderTitle ? <span className="text-xs">{row.orderTitle}</span> : null}
+        <span className="text-xs">{row.orderTitle ?? `Order reference ${row.orderId}`}</span>
         <span className="text-xs text-muted-foreground">{row.actionable !== false && now < row.expiresAt ? "Action required · " : "Unavailable · "}{now >= row.expiresAt ? "Expired" : `Expires in ${minutesLeft(row.expiresAt, now)} min`}</span>
       </button>
     </li>

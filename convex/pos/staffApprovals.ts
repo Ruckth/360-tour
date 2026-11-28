@@ -66,7 +66,7 @@ export const create = staffMutation({
   const requester = await requesterFingerprint(ctx, actor.tokenIdentifier);
   const createdAt = Date.now();
   const requestId = await ctx.db.insert('staffApprovalRequests', {
-    orderId: order._id, stockBranchId: order.stockBranchId, ...('lineId' in args.payload ? { lineId: args.payload.lineId } : {}), kind: args.payload.kind, payload: args.payload, reason,
+    orderId: order._id, orderNumber: order.orderNumber, stockBranchId: order.stockBranchId, ...('lineId' in args.payload ? { lineId: args.payload.lineId } : {}), kind: args.payload.kind, payload: args.payload, reason,
     requesterEmail: actor.email, requesterTokenIdentifier: actor.tokenIdentifier, requesterAccessFingerprint: requester.fingerprint,
     orderFingerprint: await orderFingerprint(ctx, order._id, args.payload), orderRevision: order.revision, rulesRevision: rules.revision, rulesFingerprint: rulesFingerprint(rules),
     status: 'pending', createdAt, expiresAt: createdAt + APPROVAL_TTL_MS, ...preview,
@@ -212,21 +212,16 @@ function queueRow(request: ApprovalRequest, actionable: boolean) {
   }
   const label = request.payload.kind === 'customPrice' && request.payload.action === 'addCustomItem'
     ? request.payload.name.slice(0, 160) : kind;
-  return { ...common, kind, orderId, lineId, label, summary: { amount, percent } };
+  return { ...common, kind, orderId, lineId, label, orderTitle: request.orderNumber === undefined ? undefined : orderTitle(request.orderNumber), summary: { amount, percent } };
 }
 
-async function queueRows(ctx: QueryCtx, actor: StaffActor, requests: ApprovalRequest[]) {
+async function queueRows(ctx: QueryCtx, requests: ApprovalRequest[]) {
   const rules = requests.some(isCheckoutApproval) ? await readApprovalDocument(ctx, () => cashierRules(ctx)) : null;
   const fingerprint = rules && rulesFingerprint(rules);
   const today = resortTodayIso();
-  return Promise.all(requests.map(async request => {
-    const row = queueRow(request, request.expiresAt > Date.now() && (!isCheckoutApproval(request) || (
-      request.rulesRevision === rules?.revision && request.rulesFingerprint === fingerprint && resortTodayIso(request.createdAt) === today
-    )));
-    if (!isCheckoutApproval(request)) return row;
-    const order = await readApprovalDocument(ctx, () => ctx.db.get(request.orderId));
-    return { ...row, orderTitle: order && canAccessCheckoutOrderBranch(actor, order) ? orderTitle(order.orderNumber) : undefined };
-  }));
+  return requests.map(request => queueRow(request, !isCheckoutApproval(request) || (
+    request.rulesRevision === rules?.revision && request.rulesFingerprint === fingerprint && resortTodayIso(request.createdAt) === today
+  )));
 }
 
 export const pendingPage = staffQuery({
@@ -248,7 +243,7 @@ export const pendingPage = staffQuery({
       canReviewApproval(ctx.staff, request) && canAccessApprovalBranch(ctx.staff, request));
     return {
       ...result,
-      page: await queueRows(ctx, ctx.staff, screened),
+      page: await queueRows(ctx, screened),
       continueCursor: window.wrap(result.continueCursor),
       ...(result.splitCursor ? { splitCursor: window.wrap(result.splitCursor) } : {}),
     };
