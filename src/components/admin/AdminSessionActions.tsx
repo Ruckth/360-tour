@@ -1,5 +1,6 @@
 "use client";
 
+import { resortDateTime, resortLocalParts } from "convex/shared/time";
 import { api } from "convex/_generated/api";
 import { useMutation } from "convex/react";
 import { CheckCheck, CheckCircle2, RotateCcw } from "lucide-react";
@@ -12,7 +13,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from "@/components/ui/input";
 import { useUnsavedGuard } from "@/hooks/use-unsaved-guard";
 
-type ActionSlots = { actions: ReactNode; replyAction: ReactNode; followUp: ReactNode; actionError: ReactNode };
+type ActionSlots = { handoff: ReactNode; actions: ReactNode; replyAction: ReactNode; followUp: ReactNode; actionError: ReactNode };
 
 /**
  * One controller for the header actions and the existing follow-up's direct actions. The header
@@ -20,12 +21,14 @@ type ActionSlots = { actions: ReactNode; replyAction: ReactNode; followUp: React
  */
 export function AdminSessionActions({
   session,
+  now = Date.now(),
   onDeleted,
   onStatusChanged,
   beforeLeave,
   children,
 }: {
   session: AdminSession;
+  now?: number;
   onDeleted: () => void;
   onStatusChanged?: (status: AdminSessionStatus) => void;
   beforeLeave?: () => Promise<boolean>;
@@ -37,10 +40,17 @@ export function AdminSessionActions({
   const deleteArchivedSession = useMutation(api.messaging.adminChat.deleteArchivedSession);
   const setStaffTask = useMutation(api.messaging.adminChat.setStaffTask);
   const setKeepWithStaff = useMutation(api.messaging.adminChat.setKeepWithStaff);
+  const assignSession = useMutation(api.messaging.adminChat.assignSession);
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [assignee, setAssignee] = useState("");
+  const [expectedAssignee, setExpectedAssignee] = useState<string | null>(null);
+  const [dueTime, setDueTime] = useState("");
+  const [openingDueTime, setOpeningDueTime] = useState("");
+  const [taskRevision, setTaskRevision] = useState(0);
   const [taskOpen, setTaskOpen] = useState(false);
   const [task, setTask] = useState("");
   const [openingTask, setOpeningTask] = useState("");
-  const { confirmDiscard } = useUnsavedGuard(taskOpen && task !== openingTask);
+  const { confirmDiscard } = useUnsavedGuard(taskOpen && (task !== openingTask || dueTime !== openingDueTime));
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const busy = useRef(false);
@@ -72,6 +82,11 @@ export function AdminSessionActions({
     const value = session.staffTask ?? "";
     setTask(value);
     setOpeningTask(value);
+    const due = session.staffTaskDueAt === undefined ? null : resortLocalParts(session.staffTaskDueAt);
+    const local = due ? `${due.date}T${due.time}` : "";
+    setDueTime(local);
+    setOpeningDueTime(local);
+    setTaskRevision(session.staffTaskRevision ?? 0);
     setTaskOpen(true);
   }
 
@@ -84,7 +99,7 @@ export function AdminSessionActions({
 
   function completeTask() {
     void run(async () => {
-      await setStaffTask({ sessionId, task: null });
+      await setStaffTask({ sessionId, task: null, expectedRevision: session.staffTaskRevision ?? 0 });
       setTask("");
       requestAnimationFrame(() => menuTrigger()?.focus());
     });
@@ -114,6 +129,12 @@ export function AdminSessionActions({
   const followUp = session.staffTask ? (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border/40 bg-muted/40 px-4 py-2 text-xs sm:px-6">
       <p className="min-w-0 flex-1 basis-48 break-words"><span className="font-medium">Follow-up:</span> {session.staffTask}</p>
+      {session.staffTaskDueAt !== undefined ? (
+        <p className={session.staffTaskDueAt <= now ? "text-destructive" : undefined}>
+          {session.staffTaskDueAt <= now ? "Overdue · " : "Due "}
+          {resortLocalParts(session.staffTaskDueAt).date} {resortLocalParts(session.staffTaskDueAt).time} Bangkok time
+        </p>
+      ) : null}
       <div className="flex min-w-0 flex-wrap gap-1">
         <Button type="button" size="sm" variant="ghost" aria-label="Edit follow-up" disabled={pending} onClick={event => openTask(event.currentTarget)}>Edit</Button>
         <Button type="button" size="sm" variant="ghost" aria-label="Complete follow-up" disabled={pending} onClick={completeTask}>
@@ -130,7 +151,7 @@ export function AdminSessionActions({
           type="button"
           size="sm"
           variant="outline"
-          disabled={pending}
+          disabled={pending || session.inboxReason === "sending"}
           title="No reply needed (e)"
           aria-label="No reply needed"
           className="h-9 whitespace-nowrap px-2 text-[13px] pointer-coarse:text-sm sm:px-3"
@@ -147,6 +168,12 @@ export function AdminSessionActions({
       )}
     </div>
   );
+  const handoff = status === "open" && !session.aiPaused ? (
+    <Button type="button" size="sm" variant="outline" disabled={pending || session.inboxReason === "sending"}
+      onClick={() => void run(() => setAiPaused({ sessionId, paused: true, expectedPaused: false }))}>
+      Take over from AI
+    </Button>
+  ) : null;
   const actions = (
     <span ref={menuWrapper} className="contents">
       <MoreMenu
@@ -157,13 +184,20 @@ export function AdminSessionActions({
           { label: session.staffTask ? "Edit follow-up" : "Add follow-up", onSelect: () => openTask(null) },
           { label: "Complete follow-up", hidden: !session.staffTask, onSelect: completeTask },
           {
-            label: session.aiPaused ? "Resume AI" : "Take over from AI",
-            onSelect: () => void run(() => setAiPaused({ sessionId, paused: !session.aiPaused })),
+            label: "Resume AI",
+            hidden: !session.aiPaused,
+            onSelect: () => void run(() => setAiPaused({ sessionId, paused: false, expectedPaused: true })),
           },
           {
             label: session.keepWithStaff ? "Let AI handle the next issue" : "Keep the next issue with staff",
             onSelect: () => void run(() => setKeepWithStaff({ sessionId, keep: !session.keepWithStaff })),
           },
+          { label: "Assign teammate", hidden: status === "archived", onSelect: () => {
+            setError(null);
+            setAssignee(session.assignedAdminEmail ?? "");
+            setExpectedAssignee(session.assignedAdminEmail ?? null);
+            setAssignOpen(true);
+          } },
           { label: "Archive chat", hidden: status === "archived", onSelect: () => void run(() => changeStatus("archived")) },
           { label: "Delete chat", hidden: status !== "archived", destructive: true, onSelect: () => void deleteChat() },
         ]}
@@ -172,7 +206,28 @@ export function AdminSessionActions({
   );
 
   return <>
-      {children ? children({ actions, replyAction, followUp, actionError: error && !taskOpen ? <p role="alert" className="w-full border-t border-border px-4 py-3 text-sm text-destructive">{error}</p> : null }) : <><div className="flex items-center justify-end gap-1.5">{replyAction}{actions}</div>{error && !taskOpen ? <p role="alert" className="w-full text-sm text-destructive">{error}</p> : null}</>}
+      {children ? children({ handoff, actions, replyAction, followUp, actionError: error && !taskOpen && !assignOpen ? <p role="alert" className="w-full border-t border-border px-4 py-3 text-sm text-destructive">{error}</p> : null }) : <><div className="flex items-center justify-end gap-1.5">{handoff}{replyAction}{actions}</div>{error && !taskOpen && !assignOpen ? <p role="alert" className="w-full text-sm text-destructive">{error}</p> : null}</>}
+      <Dialog open={assignOpen} onOpenChange={open => { if (!busy.current) setAssignOpen(open); }}>
+        <DialogContent showCloseButton={!pending}>
+          <DialogHeader>
+            <DialogTitle>Assign teammate</DialogTitle>
+            <DialogDescription>Enter the email of a teammate with chat desk access.</DialogDescription>
+          </DialogHeader>
+          <form className="space-y-4" onSubmit={event => {
+            event.preventDefault();
+            void run(async () => {
+              await assignSession({ sessionId, email: assignee, expectedEmail: expectedAssignee });
+              setAssignOpen(false);
+            });
+          }}>
+            <label htmlFor={`assignee-${sessionId}`}>Teammate email</label>
+            <Input id={`assignee-${sessionId}`} type="email" value={assignee}
+              onChange={event => setAssignee(event.target.value)} disabled={pending} required maxLength={254} />
+            {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
+            <Button type="submit" disabled={pending}>Assign</Button>
+          </form>
+        </DialogContent>
+      </Dialog>
       <Dialog open={taskOpen} onOpenChange={open => !open && void closeTask()}>
         <DialogContent className="sm:max-w-md" showCloseButton={!pending} onCloseAutoFocus={event => {
           const trigger = taskTrigger.current?.isConnected ? taskTrigger.current : menuTrigger();
@@ -183,10 +238,14 @@ export function AdminSessionActions({
             event.preventDefault();
             const value = task.trim();
             if (!value) return;
-            void run(async () => { await setStaffTask({ sessionId, task: value }); setOpeningTask(value); setTask(value); setTaskOpen(false); });
+            void run(async () => { const [date, time] = dueTime.split("T");
+              await setStaffTask({ sessionId, task: value, dueAt: dueTime ? resortDateTime(date, time) : undefined, expectedRevision: taskRevision }); setOpeningTask(value); setTask(value); setTaskOpen(false); });
           }}>
             <label htmlFor={`follow-up-${sessionId}`} className="text-sm font-medium">What needs to be done?</label>
             <Input id={`follow-up-${sessionId}`} value={task} onChange={event => setTask(event.target.value)} disabled={pending} maxLength={300} placeholder="Check with housekeeping and update the guest" autoFocus required />
+            <label htmlFor={`follow-up-due-${sessionId}`} className="text-sm font-medium">Due at (Bangkok time)</label>
+            <Input id={`follow-up-due-${sessionId}`} type="datetime-local" value={dueTime}
+              onChange={event => setDueTime(event.target.value)} disabled={pending} />
             {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" disabled={pending} onClick={() => void closeTask()}>Cancel</Button>

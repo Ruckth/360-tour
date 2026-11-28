@@ -1,11 +1,11 @@
 "use client";
 import { CHAT_SHORTCUT_KEYS, CHAT_SHORTCUTS, Kbd } from "./chat-shortcuts";
 
-import { CheckCheck, ChevronLeft, ChevronRight, Filter, Keyboard, Search } from "lucide-react";
+import { CheckCheck, ChevronRight, Filter, Keyboard, Search } from "lucide-react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import { isChatSessionActive } from "convex/shared/chatPresence";
-import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
+import { useMutation, usePaginatedQuery, useQueries, useQuery } from "convex/react";
 import { useRouter, useSearchParams } from "@/platform/navigation";
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, type ReactNode } from "react";
 import { RemovableBadge } from "@/components/ui/badge";
@@ -226,7 +226,6 @@ export function ChatsView() {
   const urlSearchQuery = searchParams.get("q") ?? "";
   const [searchQuery, setSearchQuery] = useState(urlSearchQuery);
   const lastWrittenSearchQuery = useRef(urlSearchQuery);
-  const [pageIndex, setPageIndex] = useState(0);
   const [pageCursors, setPageCursors] = useState<Array<string | null>>([null]);
   const selectedSessionId = searchParams.get("session") as Id<"conversations"> | null;
   const [incomingSessionId, setIncomingSessionId] = useState(() =>
@@ -273,34 +272,39 @@ export function ChatsView() {
   const [pagedFilterKey, setPagedFilterKey] = useState(filterResetKey);
   if (pagedFilterKey !== filterResetKey) {
     setPagedFilterKey(filterResetKey);
-    setPageIndex(0);
     setPageCursors([null]);
   }
-  const currentCursor = pageCursors[pageIndex] ?? null;
-  const sessionsResetKey = `${filterResetKey}:${currentCursor ?? "first"}`;
-  const liveSessionsResult = useQuery(
-    api.messaging.adminChat.listSessions,
-    invalidMessageDateRange
-      ? "skip"
-      : {
-          paginationOpts: { numItems: 10, cursor: currentCursor },
-          status,
-          adminStatus,
-          empty: emptyFilter,
-          channel: channelFilter,
-          searchQuery: urlSearchQuery.trim() || undefined,
-          messageStartAt: parsedMessageStartAt,
-          messageEndAt: parsedMessageEndAt,
-          // Only the Live/Inactive filters need the server's clock; a coarse minute keeps the subscription stable.
-          now: status === "active" || status === "inactive" ? presenceMinute : undefined,
-        },
-  ) as SessionListResult | undefined;
-  const sessionsResult = useLatestDefined(liveSessionsResult, sessionsResetKey);
-  const sessions = useMemo(
-    () =>
-      invalidMessageDateRange ? [] : (sessionsResult?.sessions ?? []).map((session) => withLivePresence(session, now)),
-    [invalidMessageDateRange, sessionsResult, now],
+  const queueCounts = useQuery(api.messaging.adminChat.queueCounts, {});
+  const listRequests = Object.fromEntries(
+    (invalidMessageDateRange ? [] : pageCursors).map((cursor, index) => [String(index), {
+      query: api.messaging.adminChat.listSessions,
+      args: {
+        paginationOpts: { numItems: 10, cursor },
+        status,
+        adminStatus,
+        empty: emptyFilter,
+        channel: channelFilter,
+        searchQuery: urlSearchQuery.trim() || undefined,
+        messageStartAt: parsedMessageStartAt,
+        messageEndAt: parsedMessageEndAt,
+        now: status === "active" || status === "inactive" ? presenceMinute : undefined,
+      },
+    }]),
   );
+  const listResults = useQueries(listRequests) as Record<string, SessionListResult | Error | undefined>;
+  const lastPage = listResults[String(pageCursors.length - 1)];
+  if (lastPage instanceof Error) throw lastPage;
+  const firstPage = listResults["0"];
+  const sessions = useMemo(() => {
+    const byId = new Map<Id<"conversations">, AdminSession>();
+    for (const page of Object.values(listResults)) {
+      if (page instanceof Error) throw page;
+      for (const session of page?.sessions ?? []) {
+        if (!byId.has(session._id)) byId.set(session._id, withLivePresence(session, now));
+      }
+    }
+    return [...byId.values()];
+  }, [listResults, now]);
   const liveSessionDetail = useQuery(
     api.messaging.adminChat.getSessionDetail,
     selectedSessionId ? { sessionId: selectedSessionId } : "skip",
@@ -342,15 +346,15 @@ export function ChatsView() {
     () => chronologicalTranscriptMessages(transcriptPagination.results),
     [transcriptPagination.results],
   );
-  const loadingSessions = !invalidMessageDateRange && liveSessionsResult === undefined && sessionsResult === undefined;
+  const loadingSessions = !invalidMessageDateRange && firstPage === undefined;
   const loadingTranscript =
     Boolean(selectedSessionId) &&
     (sessionDetail === undefined || transcriptPagination.status === "LoadingFirstPage") &&
     transcriptMessages.length === 0;
   const selectedSession = useMemo(() => {
     const candidate =
-      sessions.find((session) => session._id === selectedSessionId) ??
-      (sessionDetail?.session ? withLivePresence(sessionDetail.session, now) : null);
+      (sessionDetail?.session && sessionDetail.session._id === selectedSessionId ? withLivePresence(sessionDetail.session, now) : null) ??
+      sessions.find((session) => session._id === selectedSessionId);
     if (!candidate) return null;
     if (unqualifiedDeepLink || candidate.inboxState) return candidate;
     const candidateStatus = candidate.adminStatus ?? "open";
@@ -390,17 +394,9 @@ export function ChatsView() {
   }
 
   function handleNextPage() {
-    const nextCursor = sessionsResult?.continueCursor ?? sessionsResult?.nextCursor ?? null;
-    if (!nextCursor || sessionsResult?.isDone) return;
-    setPageCursors((current) => [...current.slice(0, pageIndex + 1), nextCursor]);
-    setPageIndex((current) => current + 1);
-    selectSession(null);
-  }
-
-  function handlePreviousPage() {
-    if (pageIndex <= 0) return;
-    setPageIndex((current) => Math.max(0, current - 1));
-    selectSession(null);
+    const nextCursor = lastPage?.continueCursor ?? lastPage?.nextCursor ?? null;
+    if (!nextCursor || lastPage?.isDone) return;
+    setPageCursors(current => current.includes(nextCursor) ? current : [...current, nextCursor]);
   }
 
   const detailProps = {
@@ -422,11 +418,12 @@ export function ChatsView() {
     replyError: reply.error,
     replyStatus: reply.status,
     replyWindow: sessionDetail?.replyWindow,
+    linkedStay: sessionDetail?.linkedStay,
     onAddBusinessFact: (message: AdminMessage) => setFactTarget({ fromMessage: { question: message.content, propertySlug: selectedSession?.propertySlug } }),
   };
 
   function renderDetail(compact = false) {
-    const detail = (actions?: ReactNode, followUp?: ReactNode, actionError?: ReactNode, replyAction?: ReactNode) => (
+    const detail = (actions?: ReactNode, followUp?: ReactNode, actionError?: ReactNode, replyAction?: ReactNode, handoff?: ReactNode) => (
       <AdminSessionDetail
         key={selectedSession?._id ?? "none"}
         {...detailProps}
@@ -437,11 +434,13 @@ export function ChatsView() {
         replyAction={replyAction}
         actionError={actionError}
         followUp={followUp}
+        handoff={handoff}
       />
     );
     return selectedSession ? (
       <AdminSessionActions
         key={selectedSession._id}
+        now={now}
         session={{ ...selectedSession, latestGuestMessageId:
           selectedSession.latestGuestMessageId ?? sessionDetail?.session.latestGuestMessageId }}
         beforeLeave={reply.confirmLeave}
@@ -464,15 +463,15 @@ export function ChatsView() {
           } else selectSession(isLargeViewport ? (next?._id ?? null) : null);
         }}
       >
-        {({ actions, followUp, actionError, replyAction }) => detail(actions, followUp, actionError, replyAction)}
+        {({ actions, followUp, actionError, replyAction, handoff }) => detail(actions, followUp, actionError, replyAction, handoff)}
       </AdminSessionActions>
     ) : detail();
   }
 
   useEffect(() => {
-    if (!isLargeViewport || selectedSessionId || !sessionsResult?.sessions.length) return;
-    updateParams({ session: sessionsResult.sessions[0]._id });
-  }, [isLargeViewport, selectedSessionId, sessionsResult, updateParams]);
+    if (!isLargeViewport || selectedSessionId || !sessions.length) return;
+    updateParams({ session: sessions[0]._id });
+  }, [isLargeViewport, selectedSessionId, sessions, updateParams]);
 
   // When ?q changes from outside (back/forward, a link, clearing filters), adopt it instead of
   // writing the old text back. Our own writes are recognised by the last value we sent.
@@ -500,7 +499,7 @@ export function ChatsView() {
     messageEndAt,
   ].filter(Boolean).length;
   const emptyList: { message: string; action?: ReactNode } =
-    sessionsResult && !sessionsResult.isDone && sessions.length === 0
+    lastPage && !lastPage.isDone && sessions.length === 0
       ? {
           message: "No matching chats on this page.",
           action: (
@@ -635,7 +634,10 @@ export function ChatsView() {
                 </Button>
               </div>
               <SegmentedTabs
-                tabs={queueTabs}
+                tabs={queueTabs.map(tab => {
+                  const count = tab.value === "waiting" ? queueCounts?.waiting : tab.value === "open" ? queueCounts?.inProgress : undefined;
+                  return { ...tab, label: count === undefined ? tab.label : `${tab.label} · ${count >= 100 ? "99+" : count}` };
+                })}
                 value={queue}
                 onValueChange={setQueue}
                 label="Chat queue"
@@ -830,9 +832,10 @@ export function ChatsView() {
                 <EmptyState action={emptyList.action}>{emptyList.message}</EmptyState>
               ) : null}
               {sessions.map((session) => {
-                const unansweredMessageId = session.needsReply ? (session.latestGuestMessageId ?? session.latestMessage?._id) : undefined;
+                const unansweredMessageId = session.needsReply && session.inboxReason !== "sending" ? (session.latestGuestMessageId ?? session.latestMessage?._id) : undefined;
                 const selected = selectedSessionId === session._id;
                 const preview = session.latestMessage ? plainText(session.latestMessage.content) : "No messages yet";
+                const overdue = session.staffTask && session.staffTaskDueAt !== undefined && session.staffTaskDueAt <= now;
                 const waiting = session.needsReply && (session.adminStatus ?? "open") === "open";
                 const place = session.propertyName ?? session.propertySlug;
                 return (
@@ -868,6 +871,7 @@ export function ChatsView() {
                           {preview}
                         </span>
                         {/* In the Needs-you queue every row needs you; elsewhere (search, other tabs) say so. */}
+                        {overdue ? <span className="text-xs text-destructive">Follow-up overdue</span> : null}
                         {waiting && queue !== "waiting" ? (
                           <span className={cn("shrink-0 rounded-full px-1.5 text-xs font-medium", TONES.warning.bg, TONES.warning.text)}>
                             Needs you
@@ -879,59 +883,34 @@ export function ChatsView() {
                       <Button
                         type="button"
                         variant="ghost"
-                        size="icon"
+                        size="sm"
                         onClick={() => settleGuestMessage(session._id, unansweredMessageId)}
-                        disabled={settlingMessageIds.has(unansweredMessageId)}
-                        aria-label={`Mark the message from ${visitorLabel(session)} as settled`}
+                        disabled={settlingMessageIds.has(unansweredMessageId) || (selected && reply.pending)}
+                        aria-label={`No reply needed for ${visitorLabel(session)}`}
                         title="No reply needed (e)"
                         className={cn(
-                          "mr-1 size-8 shrink-0 rounded-full opacity-0 focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:hidden",
+                          "mr-1 size-8 shrink-0 rounded-full opacity-0 pointer-coarse:h-11 pointer-coarse:w-auto focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100",
                           TONES.warning.text,
                         )}
                       >
-                        <CheckCheck className="h-4 w-4" aria-hidden="true" />
+                        <CheckCheck className="h-4 w-4 pointer-coarse:hidden" aria-hidden="true" />
+                        <span className="hidden pointer-coarse:inline">No reply needed</span>
                       </Button>
                     ) : null}
                   </div>
                 );
               })}
             </div>
-            {pageIndex > 0 || (!sessionsResult?.isDone && !loadingSessions) ? (
-              <div className="flex items-center justify-between gap-3 border-t border-border/60 p-3">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={handlePreviousPage}
-                  disabled={pageIndex === 0 || loadingSessions}
-                >
-                  <ChevronLeft aria-hidden="true" className="h-4 w-4" />
-                  Previous
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 px-4 py-3 text-xs text-muted-foreground">
+              <span>{loadingSessions ? "Loading chats…" : `${sessions.length} ${sessions.length === 1 ? "chat" : "chats"} loaded`}</span>
+              {!invalidMessageDateRange && !loadingSessions && !lastPage?.isDone ? (
+                <Button type="button" variant="outline" size="sm" onClick={handleNextPage}
+                  disabled={!lastPage || !(lastPage.continueCursor ?? lastPage.nextCursor)}>
+                  {lastPage ? "Load older chats" : "Loading older chats…"}
+                  <ChevronRight aria-hidden="true" className="size-4" />
                 </Button>
-                <p className="text-center text-xs text-muted-foreground">Page {pageIndex + 1}</p>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={handleNextPage}
-                  disabled={
-                    loadingSessions ||
-                    !sessionsResult ||
-                    sessionsResult.isDone ||
-                    !(sessionsResult.continueCursor ?? sessionsResult.nextCursor)
-                  }
-                >
-                  Next
-                  <ChevronRight aria-hidden="true" className="h-4 w-4" />
-                </Button>
-              </div>
-            ) : (
-              <div className="border-t border-border/60 px-4 py-3 text-xs text-muted-foreground">
-                {loadingSessions
-                  ? "Loading chats…"
-                  : `${sessions.length} ${sessions.length === 1 ? "chat" : "chats"} in this view`}
-              </div>
-            )}
+              ) : null}
+            </div>
           </aside>
 
           <section aria-label="Selected chat" className="hidden min-h-0 bg-card lg:block">

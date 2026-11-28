@@ -1,5 +1,8 @@
 "use client";
 
+import { MAX_ADMIN_REPLY_LENGTH } from "convex/shared/adminReply";
+import { buildContactEmailDraftHref } from "@/lib/contact-links";
+import Link from "@/platform/link";
 import { Disclosure } from "@/components/ui/disclosure";
 import type { Id } from "convex/_generated/dataModel";
 import {
@@ -37,6 +40,7 @@ import type {
   AdminSession,
   AdminWhatsAppEvent,
   ChannelReplyWindow,
+  SessionDetailResult,
   LineReplyMode,
   LineWebhookStatus,
 } from "@/components/admin/admin-chat-types";
@@ -193,6 +197,8 @@ export function AdminSessionDetail({
   replyError,
   replyStatus,
   replyWindow,
+  linkedStay,
+  handoff,
   onAddBusinessFact,
   actions,
   replyAction,
@@ -220,6 +226,8 @@ export function AdminSessionDetail({
   replyError: string | null;
   replyStatus: string | null;
   replyWindow?: ChannelReplyWindow;
+  handoff?: ReactNode;
+  linkedStay?: SessionDetailResult["linkedStay"];
   onAddBusinessFact?: (message: AdminMessage) => void;
   /** Occasional-action menu, rendered on the guest-name row. */
   actions?: ReactNode;
@@ -349,13 +357,14 @@ export function AdminSessionDetail({
       delivery.event.eventType)
     : "";
   const replyInputId = compact ? "admin-reply-mobile" : "admin-reply-desktop";
+  const emailDraftHref = buildContactEmailDraftHref(session.visitorEmail);
   const replyHintId = `${replyInputId}-hint`;
   const status = conversationStatus(session);
   // An AI escalation stays flagged (inboxHandoff) even after the guest writes again and the reason becomes staff_reply.
   const escalatedGuestId = session.needsReply && (session.inboxHandoff || session.inboxReason === "handoff") ? session.latestGuestMessageId ?? messages.filter(message => messageAuthor(message) === "guest").at(-1)?._id : undefined;
-  const automationLabel = session.aiPaused ? "AI paused" : session.inboxState === "processing" ? "AI replying" : session.needsReply ? "Waiting for staff" : session.keepWithStaff ? "Waiting for staff" : "AI on";
+  const automationLabel = session.aiPaused ? "AI paused" : "AI on";
 
-  const automationChip = session.aiPaused || session.inboxState === "processing" ? automationLabel : null;
+
 
   return (
     <Sheet>
@@ -374,7 +383,7 @@ export function AdminSessionDetail({
             <div data-testid="chat-header-meta" className="flex min-w-0 flex-wrap items-center gap-2 sm:hidden">
               <div className="flex min-w-20 flex-1 items-center gap-2">
                 <StatusBadge tone={status.tone} label={status.label} className="shrink-0 text-xs" />
-                {automationChip ? <span className="shrink-0 whitespace-nowrap rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{automationChip}</span> : null}
+                <span className="shrink-0 whitespace-nowrap rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{automationLabel}</span>
                 <p className="min-w-0 truncate text-[13px] text-muted-foreground">{sourceLabel(session.channel)} · {propertyLabel}</p>
               </div>
               {replyAction}
@@ -386,8 +395,9 @@ export function AdminSessionDetail({
               <span className="min-w-0 truncate">{propertyLabel}</span>
               <StatusBadge tone={status.tone} label={status.label} className="ml-1 text-xs" />
               {status.reason ? <span className="shrink-0 text-xs">{status.reason}</span> : null}
-              {automationChip ? <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-xs">{automationChip}</span> : null}
+              <span className="shrink-0 rounded-full bg-muted px-2 py-1 text-xs">{automationLabel}</span>
             </div>
+            {handoff ? <div>{handoff}</div> : null}
           </div>
           {actionError}
           {followUp ?? (session.staffTask ? <div className="border-t border-border/40 bg-muted/40 px-4 py-2 text-xs sm:px-6"><span className="font-medium">Follow-up:</span> {session.staffTask}</div> : null)}
@@ -493,6 +503,7 @@ export function AdminSessionDetail({
                     Last guest message {relativeTime(replyWindow.lastGuestMessageAt, now)}.
                   </p>
                 ) : null}
+                {emailDraftHref ? <a className="mt-2 inline-block text-sm underline" href={emailDraftHref}>Open email draft</a> : null}
               </div>
             </div>
             {replyError ? <p role="alert" className="mt-2 text-xs text-destructive">{replyError}</p> : null}
@@ -526,7 +537,7 @@ export function AdminSessionDetail({
                     event.currentTarget.blur();
                   }
                 }}
-                maxLength={1000}
+                maxLength={MAX_ADMIN_REPLY_LENGTH}
                 disabled={replyPending || loadingTranscript || !replyWindow}
                 placeholder={`Reply on ${sourceLabel(session.channel)}…`}
               />
@@ -545,6 +556,9 @@ export function AdminSessionDetail({
               </Button>
             </div>
             <div id={replyHintId}>
+              {replyDraft.length >= MAX_ADMIN_REPLY_LENGTH - 100 ? (
+                <p className="mt-2 text-xs text-muted-foreground">{replyDraft.length} of {MAX_ADMIN_REPLY_LENGTH.toLocaleString("en-US")} characters</p>
+              ) : null}
               {replyWindowClosingSoon && typeof windowClosesAt === "number" ? (
                 <p role="status" className={cn("mt-2 text-xs font-medium", TONES.warning.text)}>
                   The {sourceLabel(session.channel)} reply window closes in {durationLabel(windowClosesAt - now)}.
@@ -573,6 +587,11 @@ export function AdminSessionDetail({
         </SheetHeader>
         <div className="grid gap-3 rounded-xl border border-border bg-card p-4">
           <ContactLine session={session} />
+          {linkedStay ? (
+            <Link className="block text-sm underline" href={`/admin/hotel?booking=${encodeURIComponent(linkedStay.bookingId)}`}>
+              Linked stay · {linkedStay.propertyName} · {linkedStay.checkIn} to {linkedStay.checkOut}
+            </Link>
+          ) : null}
           <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <StatusBadge tone={status.tone} label={status.label} />
             {status.reason ? <span>{status.reason}</span> : null}
