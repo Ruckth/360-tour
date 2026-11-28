@@ -83,6 +83,7 @@ beforeEach(() => {
         _creationTime: 1,
         propertyId: "prop-1" as Id<"properties">,
         authorName: "Suda",
+        authorAvatarUrl: "",
         authorCity: "Bangkok",
         authorCountry: "Thailand",
         rating: 5,
