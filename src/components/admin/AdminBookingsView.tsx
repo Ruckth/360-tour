@@ -7,7 +7,7 @@ import type { AdminBooking } from '../../lib/admin/booking-types';
 import { addDays, endOfMonth, endOfWeek, startOfMonth, startOfWeek } from "date-fns";
 import { Check, CircleDashed, Clock, Ban, PlusIcon, XIcon } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { VillaPicker } from "@/components/admin/VillaPicker";
 import { EventCalendar, useEventCalendarNavigation } from "@/components/reui/event-calendar/event-calendar";
 import { EventCalendarContent } from "@/components/reui/event-calendar/event-calendar-content";
@@ -152,6 +152,7 @@ function HotelBookings() {
     router.replace(params.size ? `/admin/hotel?${params}` : "/admin/hotel", { scroll: false });
   }
   const [managingRates, setManagingRates] = useState(false);
+  const toolsTrigger = useRef<HTMLButtonElement>(null);
   const [cleaningUp, setCleaningUp] = useState(false);
   // Errors and "can't drag that" hints replace the drag hint for a few seconds; successes go to the toast.
   const [notice, setNotice] = useState<{ text: string; error?: boolean } | null>(null);
@@ -407,6 +408,7 @@ function HotelBookings() {
             <div className="ms-auto flex items-center gap-2">
               <MoreMenu
                 label="More calendar tools"
+                buttonRef={toolsTrigger}
                 disabled={!properties}
                 items={[
                   ...(phone
@@ -506,7 +508,15 @@ function HotelBookings() {
       {properties ? (
         <OtaRatesDialog open={managingRates} onClose={() => setManagingRates(false)} properties={properties} />
       ) : null}
-      {properties && cleaningUp ? <BookingCleanupDialog properties={properties} onClose={() => setCleaningUp(false)} /> : null}
+      {properties && cleaningUp ? <BookingCleanupDialog
+        properties={properties}
+        onClose={() => setCleaningUp(false)}
+        onCloseAutoFocus={event => {
+          if (!toolsTrigger.current) return;
+          event.preventDefault();
+          toolsTrigger.current.focus();
+        }}
+      /> : null}
       {properties && moving ? (
         <MoveBookingDialog
           key={`${moving.booking._id}:${moving.propertyId}:${moving.checkIn}:${moving.checkOut}`}

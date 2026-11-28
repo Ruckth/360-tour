@@ -27,7 +27,7 @@ import { sourceLabel } from "./labels";
 const BATCH = 100;
 
 /** Lists deletable test / stale bookings (unpaid pending or cancelled) and deletes the selected ones in batches. */
-export function BookingCleanupDialog({ properties, onClose }: { properties: AdminProperty[]; onClose: () => void }) {
+export function BookingCleanupDialog({ properties, onClose, onCloseAutoFocus }: { properties: AdminProperty[]; onClose: () => void; onCloseAutoFocus?: (event: Event) => void }) {
   // The draft is what is typed; only a whole number of days is applied, so clearing the input never queries 0 days.
   const [days, setDays] = useState("7");
   const [olderThanDays, setOlderThanDays] = useState(7);
@@ -102,7 +102,7 @@ export function BookingCleanupDialog({ properties, onClose }: { properties: Admi
 
   return (
     <Dialog open onOpenChange={(open) => (open ? undefined : onClose())}>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl">
+      <DialogContent onCloseAutoFocus={onCloseAutoFocus} className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Clean up test bookings</DialogTitle>
           <DialogDescription>

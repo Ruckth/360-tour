@@ -2,7 +2,7 @@
 
 import { Menu } from "@base-ui/react/menu";
 import { Check, MoreHorizontal } from "lucide-react";
-import { useCallback, useState } from "react";
+import { useCallback, useState, type RefObject } from "react";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -22,6 +22,7 @@ export type MoreMenuItem = {
 
 export type MoreMenuProps = {
   items: readonly MoreMenuItem[];
+  buttonRef?: RefObject<HTMLButtonElement | null>;
   /** Accessible name of the trigger. */
   label?: string;
   disabled?: boolean;
@@ -33,11 +34,14 @@ const itemClass =
   "flex min-h-11 w-full cursor-default items-center rounded-md px-3 text-left text-sm font-medium outline-none select-none data-highlighted:bg-muted data-disabled:pointer-events-none data-disabled:opacity-45";
 
 /** The "⋯ More" overflow menu for rare actions. Renders nothing when every item is hidden. */
-export function MoreMenu({ items, label = "More actions", disabled = false, align = "end", className }: MoreMenuProps) {
+export function MoreMenu({ items, buttonRef, label = "More actions", disabled = false, align = "end", className }: MoreMenuProps) {
   // Inside a dialog or sheet the menu renders in it, so the dialog's focus trap and outside-click
   // handling treat it as part of the dialog.
   const [container, setContainer] = useState<HTMLElement | null>(null);
-  const triggerRef = useCallback((el: HTMLElement | null) => setContainer(el?.closest<HTMLElement>('[role="dialog"]') ?? null), []);
+  const triggerRef = useCallback((button: HTMLButtonElement | null) => {
+    if (buttonRef) buttonRef.current = button;
+    setContainer(button?.closest<HTMLElement>('[role="dialog"]') ?? null);
+  }, [buttonRef]);
   const visible = items.filter((item) => !item.hidden);
   if (visible.length === 0) return null;
   const regular = visible.filter((item) => !item.destructive);
