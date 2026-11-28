@@ -22,7 +22,7 @@ export function useTourOpener(open: boolean) {
     opener.current = null;
     if (trigger?.isConnected) trigger.focus({ preventScroll: true });
   }, [open]);
-  return opener;
+  return (trigger: HTMLElement) => { opener.current = trigger; };
 }
 
 export function useModalFocusTrap(

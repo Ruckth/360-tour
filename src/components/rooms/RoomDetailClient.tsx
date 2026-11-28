@@ -43,7 +43,7 @@ export function RoomDetailClient({ property, reviews, renderer = "three" }: {
   // The tour follows ?tour=1 whenever the URL changes; openTour/closeTour also set it right away.
   const [directOnMount] = useState(() => searchParams.get("tour") === "1");
   const [showTour, setShowTour] = useState(directOnMount);
-  const tourOpener = useTourOpener(showTour);
+  const rememberTourOpener = useTourOpener(showTour);
   const { begin, cancel, finish } = useTourOpenTiming(directOnMount);
   // Behind a direct tour, start the gallery photo after the current panorama draws or the guest closes.
   // The ordinary room page still advertises the photo immediately.
@@ -85,7 +85,7 @@ export function RoomDetailClient({ property, reviews, renderer = "three" }: {
   const preloadViewer = () => preloadTourRenderer(renderer);
 
   function openTour(event: MouseEvent<HTMLButtonElement>) {
-    tourOpener.current = event.currentTarget;
+    rememberTourOpener(event.currentTarget);
     begin();
     markTourBench("tour_open_requested");
     setShowTour(true);

@@ -285,13 +285,13 @@ describe("Slice 2: Home, rooms, reviews, and 360 tour UX", () => {
     }
     function Harness() {
       const [open, setOpen] = useState(false);
-      const opener = useTourOpener(open);
+      const rememberOpener = useTourOpener(open);
       return React.createElement(
         React.Fragment,
         null,
         React.createElement("button", {
           type: "button", id: "opener", onClick: (event: React.MouseEvent<HTMLButtonElement>) => {
-            opener.current = event.currentTarget;
+            rememberOpener(event.currentTarget);
             setOpen(true);
           },
         }, "Explore 360"),

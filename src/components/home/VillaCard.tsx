@@ -47,7 +47,7 @@ export function VillaCard({
   const [index, setIndex] = useState(0);
   const [dragStart, setDragStart] = useState<SwipePoint | null>(null);
   const [showTour, setShowTour] = useState(false);
-  const tourOpener = useTourOpener(showTour);
+  const rememberTourOpener = useTourOpener(showTour);
   const { begin, cancel, finish } = useTourOpenTiming(false);
   const images = property.images.length ? property.images : [resort.heroImage];
   const hasMultiple = images.length > 1;
@@ -211,7 +211,7 @@ export function VillaCard({
             disabled={!hydrated}
             aria-haspopup="dialog"
             onClick={(event) => {
-              tourOpener.current = event.currentTarget;
+              rememberTourOpener(event.currentTarget);
               begin();
               setShowTour(true);
             }}
