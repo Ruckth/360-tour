@@ -134,13 +134,19 @@ export function AdminStaffTabs({ children }: { children: ReactNode }) {
     const target = (index + TABS.length) % TABS.length;
     const key = TABS[target][0];
     if (key === tab) return;
-    if (
-      hasUnsavedChanges() &&
-      !(await confirm({ title: UNSAVED_CHANGES_MESSAGE, confirmLabel: "Discard", cancelLabel: "Keep editing", destructive: true }))
-    ) {
-      return;
+    if (hasUnsavedChanges()) {
+      const discard = await confirm({
+        title: UNSAVED_CHANGES_MESSAGE,
+        confirmLabel: "Discard",
+        cancelLabel: "Keep editing",
+        destructive: true,
+        // The programmatic dialog has no trigger. Restore focus after its trap closes.
+        returnFocusTo: () => document.getElementById(`staff-tab-${key}`),
+      });
+      if (!discard) return;
+    } else {
+      tabRefs.current[target]?.focus();
     }
-    tabRefs.current[target]?.focus();
     router.push(adminStaffTabPath(key));
   }
 

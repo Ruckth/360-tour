@@ -138,6 +138,7 @@ test("D44 D25 keyboard tabs protect an unsaved assignment before opening therapi
   await expect(confirm).toBeVisible();
   await confirm.getByRole("button", { name: "Keep editing", exact: true }).click();
   await expect(confirm).toBeHidden();
+  await expect(therapists).toBeFocused();
   await expect(page).toHaveURL(/\/admin\/staff\/services$/);
   await expect(assignment).toHaveJSProperty("checked", !originallyAssigned);
 
