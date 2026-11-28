@@ -131,10 +131,12 @@ export function conflictText(conflicts: TimeOffResults[number]["conflicts"]) {
 }
 
 /** Every returned conflict opens its appointment in the calendar; past the first three the rest stay under a disclosure. */
-export function TimeOffConflictLinks({ staffId, conflicts }: { staffId: Id<"staff">; conflicts: TimeOffResults[number]["conflicts"] }) {
+export function TimeOffConflictLinks({ staffId, conflicts, onOpen }: { staffId: Id<"staff">; conflicts: TimeOffResults[number]["conflicts"]; onOpen?: () => void }) {
   const link = (c: TimeOffResults[number]["conflicts"][number]) => (
     <li key={c.appointmentId}>
-      <Link className="underline underline-offset-2" href={staffCalendarHref({ date: resortIsoDate(c.start), staffId, appointmentId: c.appointmentId })}>
+      <Link className="underline underline-offset-2" onClick={(event) => {
+        if (!event.defaultPrevented && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) onOpen?.();
+      }} href={staffCalendarHref({ date: resortIsoDate(c.start), staffId, appointmentId: c.appointmentId })}>
         {staffDate(c.start, { weekday: true })} {staffTime(c.start)}
       </Link>
     </li>
@@ -219,7 +221,7 @@ export function BulkTimeOffDialog({ staff, onClose }: { staff: Doc<"staff">[]; o
                       {result.timeOffId ? (
                         <p className="text-xs text-muted-foreground">Time off saved.</p>
                       ) : (
-                        <TimeOffConflictLinks staffId={result.staffId} conflicts={result.conflicts} />
+                        <TimeOffConflictLinks staffId={result.staffId} conflicts={result.conflicts} onOpen={onClose} />
                       )}
                     </div>
                     {result.timeOffId ? (

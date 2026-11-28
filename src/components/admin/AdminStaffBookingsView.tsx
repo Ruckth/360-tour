@@ -205,6 +205,7 @@ export function AdminStaffBookingsView({ tab }: { tab: AdminStaffTab }) {
 }
 
 function StaffCalendar() {
+  const router = useRouter();
   const branchId = useAdminBranch().current?.id;
   // A deep link (?date=&staff=&appointment=) opens that day, shows that person and the appointment once on arrival.
   const searchParams = useSearchParams();
@@ -271,6 +272,18 @@ function StaffCalendar() {
     () => (data?.staff ?? []).filter((s) => !hiddenStaff.has(s._id)),
     [data?.staff, hiddenStaff],
   );
+
+  function closeAppointment() {
+    setSelectedId(null);
+    if (!link.appointmentId) return;
+    setDismissedLink(link.appointmentId);
+    const remaining = new URLSearchParams(searchParams);
+    remaining.delete("appointment");
+    remaining.delete("date");
+    remaining.delete("staff");
+    const query = remaining.toString();
+    router.replace(query ? `/admin/staff/calendar?${query}` : "/admin/staff/calendar", { scroll: false });
+  }
 
   const appointments = useMemo(
     () =>
@@ -742,11 +755,10 @@ function StaffCalendar() {
         serviceById={serviceById}
         onBookAgain={(appointment) => {
           if (activeServices.length === 0) return;
-          setDismissedLink(link.appointmentId);
-          setSelectedId(null);
+          closeAppointment();
           setDraft({ date: resortIsoDate(Math.max(appointment.start, Date.now())), staffId: appointment.staffId, rebook: appointment });
         }}
-        onClose={() => { setDismissedLink(link.appointmentId); setSelectedId(null); }}
+        onClose={closeAppointment}
       />
       {proposal?.kind === "reschedule" && proposedAppointment ? (
         <RescheduleDialog
