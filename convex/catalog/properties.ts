@@ -88,34 +88,40 @@ export const listOtaRates = adminQuery({
 });
 
 export const upsertOtaRate = adminMutation({
-	// Omitting `url` preserves the stored link (read in this transaction), so a price-only save never
-	// drops a link a teammate set after the form opened. Removing a link needs `clearUrl: true`.
-	args: { propertyId: v.id('properties'), platform: otaPlatform, nightlyRate: v.number(), url: v.optional(v.string()), clearUrl: v.optional(v.boolean()) },
+	args: {
+		propertyId: v.id('properties'), platform: otaPlatform, nightlyRate: v.number(), url: v.optional(v.string()),
+		urlChange: v.optional(v.union(
+			v.object({ kind: v.literal('preserve') }),
+			v.object({ kind: v.literal('set'), url: v.string() }),
+			v.object({ kind: v.literal('clear') })
+		))
+	},
 	handler: async (ctx, args) => {
 		const admin = ctx.admin;
 		if (!(await ctx.db.get(args.propertyId))) throw new Error('Property not found');
 		if (!Number.isSafeInteger(args.nightlyRate) || args.nightlyRate <= 0 || args.nightlyRate > MAX_NIGHTLY_RATE) {
 			throw new Error('Nightly rate must be a positive amount');
 		}
-		const nextUrl = args.url?.trim();
-		if (args.clearUrl && nextUrl) throw new Error('Choose either a new listing URL or Clear link, not both');
+		if (args.urlChange && args.url !== undefined) throw new Error('Choose either URL intent or a legacy URL.');
+		const nextUrl = args.urlChange?.kind === 'set' ? args.urlChange.url : args.url?.trim();
 		const existing = await ctx.db
 			.query('otaRates')
 			.withIndex('by_property_platform', (q) => q.eq('propertyId', args.propertyId).eq('platform', args.platform))
 			.unique();
 		const fields = {
 			nightlyRate: args.nightlyRate,
-			url: nextUrl ? publicHttpsUrl(nextUrl) : args.clearUrl ? undefined : existing?.url,
 			updatedAt: Date.now()
 		};
+		const preserve = args.urlChange?.kind === 'preserve';
+		const url = preserve ? existing?.url : nextUrl || args.urlChange?.kind === 'set' ? publicHttpsUrl(nextUrl ?? '') : undefined;
 		await appendRecordHistory(ctx, { entityType: 'property', entityId: args.propertyId, actor: admin.email, kind: 'ota_rate_updated',
 		 before: existing ? { platform: existing.platform, nightlyRate: existing.nightlyRate, url: existing.url ?? null } : null,
-		 after: { platform: args.platform, nightlyRate: fields.nightlyRate, url: fields.url ?? null } });
+		 after: { platform: args.platform, nightlyRate: fields.nightlyRate, url: url ?? null } });
 		if (existing) {
-			await ctx.db.patch(existing._id, fields);
+			await ctx.db.patch(existing._id, preserve ? fields : { ...fields, url });
 			return existing._id;
 		}
-		return await ctx.db.insert('otaRates', { propertyId: args.propertyId, platform: args.platform, ...fields });
+		return await ctx.db.insert('otaRates', { propertyId: args.propertyId, platform: args.platform, ...fields, url });
 	}
 });
 

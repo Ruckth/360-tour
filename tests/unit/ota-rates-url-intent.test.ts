@@ -47,7 +47,7 @@ it('F01: hydrates the selected platform from its saved row and a price-only save
   expect(input('ota-url').value).toBe('https://www.booking.com/hotel/tideglass');
   await type('ota-rate', '5290');
   await submit();
-  expect(state.upsert).toHaveBeenCalledWith({ propertyId, platform: 'booking_com', nightlyRate: 529000 });
+  expect(state.upsert).toHaveBeenCalledWith({ propertyId, platform: 'booking_com', nightlyRate: 529000, urlChange: { kind: 'preserve' } });
 });
 
 it('F01: clearing a link takes an explicit action, and a new link is sent as set', async () => {
@@ -55,11 +55,11 @@ it('F01: clearing a link takes an explicit action, and a new link is sent as set
   await click(button('Clear link'));
   expect(document.body.textContent).toContain('will be removed when you save');
   await submit();
-  expect(state.upsert).toHaveBeenLastCalledWith({ propertyId, platform: 'booking_com', nightlyRate: 499000, clearUrl: true });
+  expect(state.upsert).toHaveBeenLastCalledWith({ propertyId, platform: 'booking_com', nightlyRate: 499000, urlChange: { kind: 'clear' } });
   await click(button('Edit'));
   await type('ota-url', 'https://www.booking.com/new');
   await submit();
-  expect(state.upsert).toHaveBeenLastCalledWith({ propertyId, platform: 'booking_com', nightlyRate: 499000, url: 'https://www.booking.com/new' });
+  expect(state.upsert).toHaveBeenLastCalledWith({ propertyId, platform: 'booking_com', nightlyRate: 499000, urlChange: { kind: 'set', url: 'https://www.booking.com/new' } });
 });
 
 it('F01: a cancelled platform switch retains the draft', async () => {
