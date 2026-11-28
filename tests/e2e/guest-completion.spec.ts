@@ -218,8 +218,8 @@ test.describe("G30 + G31 pay summary and confirmation states", () => {
     const summaryBox = (await summary.boundingBox())!;
     const payBox = (await page.getByRole("button", { name: th.Booking.pay, exact: true }).boundingBox())!;
     expect(summaryBox.y).toBeLessThan(payBox.y);
-    await page.goto(`/booking/pay?bookingId=${bookingId}&token=wrong`);
-    await expect(page.getByRole("button", { name: en.Booking.pay, exact: true })).toBeDisabled();
+    await page.goto(`/th/booking/pay?bookingId=${bookingId}&token=wrong`);
+    await expect(page.getByRole("button", { name: th.Booking.pay, exact: true })).toBeDisabled();
     await expect(page.getByTestId("pay-stay-summary")).toHaveCount(0);
   });
 
