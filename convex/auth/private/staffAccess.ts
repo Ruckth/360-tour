@@ -8,22 +8,11 @@ import { listAssignedBranches } from '../../branches/model';
 import { resortTodayIso } from '../../shared/time';
 import { isOpenOrder, isSettledOrder } from '../../pos/model';
 import { type PricedLine } from '../../shared/orderMath';
-import { STAFF_INVITATION_TTL_MS, type CashierAction } from '../../shared/staffTypes';
+import { STAFF_INVITATION_TTL_MS, staffCapabilities, type CashierAction, type StaffRole } from '../../shared/staffTypes';
 import { cashierRules } from '../../settings/model';
 import { percentageOf } from '../../shared/money';
 
-export type StaffRole = 'owner' | 'manager' | 'cashier' | null;
-
-export function staffCapabilities(role: StaffRole) {
-  const operations = role === 'owner' || role === 'manager';
-  return {
-    checkout: role !== null, approve: operations, operations,
-    manageTeam: role === 'owner', settings: role === 'owner',
-    bookings: operations, services: operations, customers: operations, orders: operations,
-    chats: operations, properties: operations, roster: operations, reports: operations,
-    // Marketing is resolved separately, through the existing marketing grants.
-  };
-}
+export { staffCapabilities, type StaffRole } from '../../shared/staffTypes';
 
 export type StaffCapability = keyof ReturnType<typeof staffCapabilities>;
 

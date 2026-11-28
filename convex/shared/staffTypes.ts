@@ -27,6 +27,27 @@ export const DEFAULT_CASHIER_RULES: CashierRules = {
   revision: 0, discountLimitPercent: 1000,
   voidPaidSale: 'manager', customPrice: 'manager', paymentFix: 'manager', refund: 'manager', sessionWaive: 'manager', benefitEdit: 'manager',
 };
+export type StaffRole = 'owner' | 'manager' | 'cashier' | null;
+
+/** What a desk role opens. Pure, so Team can show what a role change takes away before saving. */
+export function staffCapabilities(role: StaffRole) {
+  const operations = role === 'owner' || role === 'manager';
+  return {
+    checkout: role !== null, approve: operations, operations,
+    manageTeam: role === 'owner', settings: role === 'owner',
+    bookings: operations, services: operations, customers: operations, orders: operations,
+    chats: operations, properties: operations, roster: operations, reports: operations,
+    // Marketing is resolved separately, through the existing marketing grants.
+  };
+}
+
+/** Capabilities `from` has that `to` lacks: non-empty means the change reduces access. */
+export function lostStaffCapabilities(from: StaffRole, to: StaffRole) {
+  const before = staffCapabilities(from);
+  const after = staffCapabilities(to);
+  return (Object.keys(before) as (keyof typeof before)[]).filter((key) => before[key] && !after[key]);
+}
+
 export const STAFF_INVITATION_TTL_MS = 14 * 86_400_000;
 export const APPROVAL_TTL_MS = 5 * 60_000;
 export const lineDiscountValidator = v.object({ type: v.union(v.literal('amount'), v.literal('percent')), value: v.number() });

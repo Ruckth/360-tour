@@ -34,6 +34,7 @@ import { NumberField } from "./marketing/MarketingBits";
 import { useAdminBranch } from "./branch/branch-context";
 import { BranchMultiSelect, type SelectableBranch } from "./branch/BranchMultiSelect";
 import { BranchPill } from "./branch/branch-pills";
+import { countPeople, deskRoleReduction, matchesPeopleFilter, type PeopleFilter, type PeopleRole } from "./team-people";
 
 type Person = FunctionReturnType<typeof api.auth.staffAccess.listPeople>[number];
 function grantVersion<T extends "staffGrants" | "marketingGrants">(grant: { id: Id<T>; revision: number } | null) {
@@ -247,6 +248,21 @@ function PeoplePanel({
   }
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<{ text: string; error?: boolean; email: string } | null>(null);
+  const [peopleSearch, setPeopleSearch] = useState("");
+  const [peopleFilter, setPeopleFilter] = useState<PeopleFilter>({ kind: "all" });
+  const labelOf = (person: { email: string }) => personLabel(person.email);
+  const chips: { key: string; label: string; filter: PeopleFilter }[] = [
+    { key: "all", label: "All", filter: { kind: "all" } },
+    { key: "pending", label: "Pending invites", filter: { kind: "pending" } },
+    ...assignableBranches.map((branch) => ({ key: `branch:${branch.id}`, label: branch.name, filter: { kind: "branch", id: branch.id } as PeopleFilter })),
+    ...(["owner", "manager", "cashier", "marketing"] as PeopleRole[]).map((role) => ({
+      key: `role:${role}`,
+      label: role === "marketing" ? "Marketing" : ROLE_LABELS[role],
+      filter: { kind: "role", role } as PeopleFilter,
+    })),
+  ];
+  const filterKey = (filter: PeopleFilter) => filter.kind === "branch" ? `branch:${filter.id}` : filter.kind === "role" ? `role:${filter.role}` : filter.kind;
+  const shownPeople = people?.filter((person) => matchesPeopleFilter(person, peopleFilter, peopleSearch, labelOf(person)));
 
   async function save(email: string, task: () => Promise<unknown>, done: string) {
     if (busy) return false;
@@ -288,6 +304,13 @@ function PeoplePanel({
       setMessage({ text: "Select at least one branch.", error: true, email: person.email });
       return false;
     }
+    // A change that takes access away waits for an explicit confirmation; the server still decides.
+    const current = person.staffGrant?.role;
+    const lost = current && current !== role ? deskRoleReduction(current, role) : [];
+    if (lost.length > 0 && current) {
+      const description = `${name} changes from ${ROLE_LABELS[current]} to ${ROLE_LABELS[role]} and loses ${lost.join(", ")} now, on every device. Checkout stays.`;
+      if (!(await confirm({ title: `Make ${name} a ${ROLE_LABELS[role]}?`, description, confirmLabel: `Change to ${ROLE_LABELS[role]}`, cancelLabel: `Keep ${ROLE_LABELS[current]}`, destructive: true }))) return false;
+    }
     const baseDone = person.staffGrant ? `${name} is now ${ROLE_LABELS[role]}.` : `Invited ${name} to the desk as ${ROLE_LABELS[role]}.`;
     const done = `${baseDone}${person.staffGrant ? inviteExpirySuffix(person) : ""}`;
     return save(person.email, () => setStaffGrant({ expectedGrant: grantVersion(person.staffGrant), email: person.email, role, branchIds }), done);
@@ -302,6 +325,12 @@ function PeoplePanel({
       return false;
     }
     const name = personLabel(person.email);
+    const removed = liveBranchIds(person.branchIds, branchById).filter((id) => !unique.includes(id));
+    if (removed.length > 0) {
+      const lostPlaces = branchNamesFor(removed);
+      const description = `${name} loses ${ROLE_LABELS[role]} access at ${lostPlaces} now, on every device. Other branches stay.`;
+      if (!(await confirm({ title: `Remove ${name} from ${lostPlaces}?`, description, confirmLabel: "Remove branch", cancelLabel: "Keep branch", destructive: true }))) return false;
+    }
     const places = branchNamesFor(unique);
     const done = `${name}’s branches are now ${places || "updated"}.${inviteExpirySuffix(person)}`;
     return save(person.email, () => setStaffGrant({ expectedGrant: grantVersion(person.staffGrant), email: person.email, role, branchIds: unique }), done);
@@ -369,8 +398,43 @@ function PeoplePanel({
       {people === undefined ? (
         <div className="grid place-items-center py-8"><Spinner label="Loading people" /></div>
       ) : (
+        <>
+        {/* Filters narrow rows already loaded for this owner; they never change anyone's access. */}
+        <div className="mb-3 grid min-w-0 gap-2">
+          <Input
+            type="search"
+            value={peopleSearch}
+            onChange={(event) => setPeopleSearch(event.target.value)}
+            placeholder="Search people"
+            aria-label="Search people"
+            className="h-9 max-w-72"
+          />
+          <div role="group" aria-label="Filter people" className="flex min-w-0 flex-wrap gap-1.5">
+            {chips.map((chip) => {
+              const count = countPeople(people, chip.filter, peopleSearch, labelOf);
+              const active = filterKey(peopleFilter) === chip.key;
+              if (chip.key !== "all" && count === 0 && !active) return null;
+              return (
+                <Button
+                  key={chip.key}
+                  type="button"
+                  size="sm"
+                  variant={active ? "default" : "outline"}
+                  aria-pressed={active}
+                  className="h-8 rounded-full pointer-coarse:min-h-11"
+                  onClick={() => setPeopleFilter(chip.filter)}
+                >
+                  {chip.label} ({count})
+                </Button>
+              );
+            })}
+          </div>
+        </div>
+        {shownPeople?.length === 0 ? (
+          <p role="status" className="py-4 text-sm text-muted-foreground">No people match. <button type="button" className="underline underline-offset-2" onClick={() => { setPeopleSearch(""); setPeopleFilter({ kind: "all" }); }}>Show everyone</button></p>
+        ) : null}
         <ul ref={peopleList} className="min-w-0 divide-y divide-border" aria-label="People with access">
-          {people.map((person) => (
+          {(shownPeople ?? []).map((person) => (
             <PersonRow
               key={person.email}
               person={person}
@@ -415,6 +479,7 @@ function PeoplePanel({
             />
           ))}
         </ul>
+        </>
       )}
     </Section>
   );
