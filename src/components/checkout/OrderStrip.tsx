@@ -624,7 +624,7 @@ export function OpenOrders({ currentId, onOpen }: { currentId: OrderId | undefin
 
 function OpenOrdersList({ currentId, onOpen }: { currentId: OrderId | undefined; onOpen: (orderId: OrderId) => void }) {
   const { results, status, loadMore } = useCheckoutBackend().useOpenOrders();
-  const currentRow = useCurrentRowInView(results.length > 0);
+  const currentRow = useCurrentRowInView(results.some(row => row._id === currentId));
   if (status === "LoadingFirstPage") return <Spinner label="Loading orders" />;
   if (!results.length && status === "Exhausted") return <p className="text-sm text-muted-foreground">No open orders.</p>;
   return (
@@ -716,21 +716,20 @@ function OrderLookupResult({ number, receipt, cashier, onOpen }: { number: numbe
 }
 
 /**
- * Brings the current order's row into view once its list first loads, so coming back from a
- * receipt or an order lands on the same place. Later updates never move the list.
+ * Brings the current order into view when its page arrives. Later updates never move the list.
  */
-function useCurrentRowInView(loaded: boolean) {
+function useCurrentRowInView(currentRowLoaded: boolean) {
   const list = useRef<HTMLUListElement>(null);
   const done = useRef(false);
   useEffect(() => {
     const row = list.current?.querySelector<HTMLElement>('[aria-current="true"]');
-    if (!loaded || done.current || !list.current) return;
+    if (!currentRowLoaded || done.current || !list.current) return;
     done.current = true;
     if (!row) return;
     const box = list.current.getBoundingClientRect();
     const at = row.getBoundingClientRect();
     if (at.top < box.top || at.bottom > box.bottom) list.current.scrollTop += at.top - box.top - (box.height - at.height) / 2;
-  }, [loaded]);
+  }, [currentRowLoaded]);
   return list;
 }
 
@@ -767,7 +766,7 @@ const PAGE = 20;
 
 function OrdersList({ filter, currentId, onOpen, onRestore }: { filter: OrderFilter; currentId: OrderId | undefined; onOpen: (orderId: OrderId) => void; onRestore: (id: OrderId) => void }) {
   const { results, status, loadMore } = useCheckoutBackend().useOrders(filter);
-  const currentRow = useCurrentRowInView(results.length > 0);
+  const currentRow = useCurrentRowInView(results.some(row => row._id === currentId));
   if (status === "LoadingFirstPage") return <Spinner label="Loading orders" />;
   if (!results.length && status === "Exhausted") return <p className="text-sm text-muted-foreground">{FILTERS.find((f) => f.value === filter)!.empty}</p>;
   return (
