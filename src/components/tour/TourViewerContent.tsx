@@ -82,7 +82,8 @@ function LiveTourViewer({ property, onClose, onFirstSceneDrawn, onReady, standar
 
   useBodyScrollLock(true);
   const emptyState = roomsReady && !activeRooms.length;
-  useModalFocusTrap(dialogRef, true, `${emptyState ? "empty" : phase}:${loadFailed ? "failed" : "ok"}`);
+  const failed = loadFailed || fallback === "failed";
+  useModalFocusTrap(dialogRef, true, emptyState ? "empty" : failed ? "failed" : phase);
 
   useEffect(() => {
     markTourBench("viewer_mounted");
@@ -154,7 +155,6 @@ function LiveTourViewer({ property, onClose, onFirstSceneDrawn, onReady, standar
   }, []);
 
   // Locked while a room is loading, crossfading or failed, and until the live rooms are confirmed.
-  const failed = loadFailed || fallback === "failed";
   const navigationLocked = transitioning || failed || sceneStatus !== "ready" || !fresh;
   // Neighbors may prefetch only after the intro clears and the confirmed scene accepts input.
   const prefetchNeighborsAllowed = phase === "tour" && !navigationLocked && shownRoomId === currentRoomId;
@@ -203,7 +203,6 @@ function LiveTourViewer({ property, onClose, onFirstSceneDrawn, onReady, standar
         ref={dialogRef}
         tabIndex={-1}
         data-testid="tour-viewer"
-        data-tour-dialog="true"
         data-scene-status="empty"
         role="dialog"
         aria-modal="true"
@@ -252,7 +251,6 @@ function LiveTourViewer({ property, onClose, onFirstSceneDrawn, onReady, standar
       ref={dialogRef}
       tabIndex={-1}
       data-testid="tour-viewer"
-      data-tour-dialog="true"
       role="dialog"
       aria-modal="true"
       aria-label={tourT("viewerLabel", { propertyName: property.name })}
@@ -269,6 +267,7 @@ function LiveTourViewer({ property, onClose, onFirstSceneDrawn, onReady, standar
       {/* Keeps the villa identity available to assistive tech once the intro gives way to the tour. */}
       <h2 className="sr-only">{property.name}</h2>
       <div
+        inert={phase !== "tour" || failed}
         className={cn(
           "absolute inset-0 transition-[filter] duration-700",
           phase === "intro" && "pointer-events-none",
@@ -278,7 +277,7 @@ function LiveTourViewer({ property, onClose, onFirstSceneDrawn, onReady, standar
         {canvas}
       </div>
 
-      {phase === "intro" ? (
+      {!failed && phase === "intro" ? (
         <TourIntro
           name={property.name}
           closeLabel={a11y("close")}
@@ -315,7 +314,7 @@ function LiveTourViewer({ property, onClose, onFirstSceneDrawn, onReady, standar
         </div>
       ) : null}
 
-      {phase === "tour" ? (
+      {!failed && phase === "tour" ? (
         <>
           <button
             type="button"
@@ -388,7 +387,7 @@ function LiveTourViewer({ property, onClose, onFirstSceneDrawn, onReady, standar
         </>
       ) : null}
 
-      {phase === "conclusion" ? (
+      {!failed && phase === "conclusion" ? (
         <TourConclusion
           property={property}
           onClose={() => setPhase("tour")}
@@ -396,7 +395,7 @@ function LiveTourViewer({ property, onClose, onFirstSceneDrawn, onReady, standar
         />
       ) : null}
 
-      {phase === "leadCapture" ? (
+      {!failed && phase === "leadCapture" ? (
         <LeadCapture propertySlug={property.id} onClose={() => setPhase("conclusion")} />
       ) : null}
     </div>

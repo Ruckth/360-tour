@@ -4,7 +4,7 @@ import Link from "@/platform/link";
 import { useRouter, useSearchParams } from "@/platform/navigation";
 import { ChevronLeft, ChevronRight, Globe2, Users } from "lucide-react";
 import { useLocale, useTranslations } from "@/platform/intl";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type MouseEvent } from "react";
 import { MobileStickyBar } from "@/components/booking/MobileStickyBar";
 import { useChatPageContext } from "@/components/chat/ChatContext";
 import { PropertyImage } from "@/components/property/PropertyImage";
@@ -20,6 +20,7 @@ import { getLocalizedResort } from "@/lib/i18n/public-content";
 import { usePublicMessages } from "@/lib/i18n/use-public-messages";
 import type { PublicVilla } from "@/lib/villas";
 import { cn } from "@/lib/utils";
+import { useTourOpener } from "@/lib/interaction/use-modal-focus";
 import { markTourBench } from "@/lib/tour/bench";
 import { preloadTourRenderer } from "@/lib/tour/preload";
 import type { TourRenderer } from "@/lib/tour/renderer";
@@ -40,6 +41,7 @@ export function RoomDetailClient({ property, reviews, renderer = "three" }: {
   // The tour follows ?tour=1 whenever the URL changes; openTour/closeTour also set it right away.
   const [directOnMount] = useState(() => searchParams.get("tour") === "1");
   const [showTour, setShowTour] = useState(directOnMount);
+  const tourOpener = useTourOpener(showTour);
   const { begin, cancel, finish } = useTourOpenTiming(directOnMount);
   // Behind a direct tour, start the gallery photo after the current panorama draws or the guest closes.
   // The ordinary room page still advertises the photo immediately.
@@ -80,7 +82,8 @@ export function RoomDetailClient({ property, reviews, renderer = "three" }: {
   const closeHref = localizeHref(isTrial ? `${roomPath}?tourRenderer=pannellum` : roomPath, locale);
   const preloadViewer = () => preloadTourRenderer(renderer);
 
-  function openTour() {
+  function openTour(event: MouseEvent<HTMLButtonElement>) {
+    tourOpener.current = event.currentTarget;
     begin();
     markTourBench("tour_open_requested");
     setShowTour(true);
@@ -143,6 +146,7 @@ export function RoomDetailClient({ property, reviews, renderer = "three" }: {
               ) : null}
               <button
                 type="button"
+                aria-haspopup="dialog"
                 onClick={openTour}
                 onFocus={preloadViewer}
                 onPointerEnter={preloadViewer}
@@ -222,6 +226,7 @@ export function RoomDetailClient({ property, reviews, renderer = "three" }: {
             <Button
               variant="outline"
               className="mt-3 w-full bg-card py-3 md:hidden"
+              aria-haspopup="dialog"
               onClick={openTour}
               onFocus={preloadViewer}
               onPointerEnter={preloadViewer}

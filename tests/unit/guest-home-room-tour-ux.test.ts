@@ -16,6 +16,7 @@ import { RoomDetailClient } from "@/components/rooms/RoomDetailClient";
 import { StarRating } from "@/components/social/StarRating";
 import { LeadCapture } from "@/components/tour/LeadCapture";
 import { TourViewerContent } from "@/components/tour/TourViewerContent";
+import { useTourOpener } from "@/lib/interaction/use-modal-focus";
 
 const mocks = vi.hoisted(() => ({
   push: vi.fn(),
@@ -165,8 +166,7 @@ describe("Slice 2: Home, rooms, reviews, and 360 tour UX", () => {
     expect(container.querySelector('[role="alert"]')).toBeNull();
     const grid = document.querySelector('[role="grid"]');
     expect(grid).not.toBeNull();
-    expect(grid!.contains(document.activeElement)).toBe(true);
-    expect((document.activeElement as HTMLButtonElement).disabled).toBe(false);
+    expect(document.activeElement).toBe(grid!.querySelector("button:not([disabled])"));
     expect(mocks.push).not.toHaveBeenCalled();
   });
 
@@ -188,6 +188,8 @@ describe("Slice 2: Home, rooms, reviews, and 360 tour UX", () => {
     const cardRate = container.querySelector('[data-testid="villa-card-rate"]')!;
     expect(cardRate.textContent).toContain(`฿${expectedDirect.toLocaleString()}`);
     expect(cardRate.querySelector("s")?.textContent).toContain("฿5,500");
+    expect(cardRate.textContent).toContain(en.Pricing.standardRate);
+    expect(cardRate.textContent).toContain(en.Villa.directRate);
 
     const stickyRate = container.querySelector('[data-testid="mobile-sticky-rate"]')!;
     expect(stickyRate.textContent).toContain(`฿${expectedDirect.toLocaleString()}`);
@@ -250,7 +252,7 @@ describe("Slice 2: Home, rooms, reviews, and 360 tour UX", () => {
         React.Fragment,
         null,
         React.createElement("div", { id: "icon-only" }, React.createElement(StarRating, { rating: 5 })),
-        React.createElement("div", { id: "with-value" }, React.createElement(StarRating, { rating: 4.9, showValue: true, reviewCount: 12 })),
+        React.createElement("div", { id: "with-value" }, React.createElement(StarRating, { rating: 4.94, showValue: true, reviewCount: 12 })),
       ),
     );
     const iconOnly = container.querySelector("#icon-only [role='img']")!;
@@ -258,11 +260,15 @@ describe("Slice 2: Home, rooms, reviews, and 360 tour UX", () => {
     expect(iconOnly.querySelectorAll("svg[aria-hidden='true']")).toHaveLength(5);
 
     const withValue = container.querySelector("#with-value")!;
-    expect(withValue.querySelector(".sr-only")?.textContent).toBe("4.9 out of 5 stars");
+    expect(withValue.querySelector(".sr-only")?.textContent).toBe("4.94 out of 5 stars");
+    expect(withValue.querySelector("span[aria-hidden=true]")?.textContent).toBe("4.94");
     expect(withValue.querySelectorAll("svg[aria-hidden='true']")).toHaveLength(5);
   });
 
   it("G16: Active TourViewerContent exposes labeled modal dialog, traps Tab focus, and restores opener on close", async () => {
+    const visible = document.createElement("div").getClientRects();
+    vi.spyOn(HTMLElement.prototype, "getClientRects").mockReturnValue({ ...visible, length: 1 });
+
     function MockCanvas({ onLoaded }: { onLoaded: () => void }) {
       React.useEffect(() => {
         onLoaded();
@@ -271,10 +277,16 @@ describe("Slice 2: Home, rooms, reviews, and 360 tour UX", () => {
     }
     function Harness() {
       const [open, setOpen] = useState(false);
+      const opener = useTourOpener(open);
       return React.createElement(
         React.Fragment,
         null,
-        React.createElement("button", { type: "button", id: "opener", onClick: () => setOpen(true) }, "Explore 360"),
+        React.createElement("button", {
+          type: "button", id: "opener", onClick: (event: React.MouseEvent<HTMLButtonElement>) => {
+            opener.current = event.currentTarget;
+            setOpen(true);
+          },
+        }, "Explore 360"),
         open
           ? React.createElement(TourViewerContent, {
               property: sampleVilla,
@@ -287,7 +299,7 @@ describe("Slice 2: Home, rooms, reviews, and 360 tour UX", () => {
 
     const container = await renderIntl(React.createElement(Harness));
     const opener = container.querySelector<HTMLButtonElement>("#opener")!;
-    opener.focus();
+    expect(document.activeElement).not.toBe(opener);
     await act(async () => opener.click());
 
     const dialog = document.querySelector<HTMLElement>('[data-testid="tour-viewer"]')!;

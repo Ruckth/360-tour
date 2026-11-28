@@ -50,6 +50,16 @@ export function syncGuestBottomClearance() {
   }
 }
 
+export function focusGuestAfterConsent() {
+  for (const entry of controls.values()) {
+    if (computeControlClearance(entry) <= 0) continue;
+    const target = entry.element.querySelector<HTMLElement>("a[href], button") ?? entry.element;
+    target.focus({ preventScroll: true });
+    if (target === document.activeElement) return;
+  }
+  document.querySelector<HTMLElement>("main[tabindex='-1']")?.focus({ preventScroll: true });
+}
+
 export function registerGuestBottomControl(
   id: string,
   element: HTMLElement,

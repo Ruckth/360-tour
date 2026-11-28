@@ -1,5 +1,6 @@
 "use client";
 
+import type { MouseEventHandler } from "react";
 import { satangToBaht } from 'convex/shared/money';
 
 import Link from "@/platform/link";
@@ -19,7 +20,7 @@ export function PriceComparison({
   onPreload360,
 }: {
   property: Pick<PublicVilla, "id" | "pricePerNight" | "directDiscountPercent" | "currency">;
-  onOpen360?: () => void;
+  onOpen360?: MouseEventHandler<HTMLButtonElement>;
   onPreload360?: () => void;
 }) {
   const locale = useLocale();
@@ -95,6 +96,7 @@ export function PriceComparison({
           <Button
             variant="outline"
             size="lg"
+            aria-haspopup="dialog"
             onClick={onOpen360}
             onFocus={onPreload360}
             onPointerEnter={onPreload360}

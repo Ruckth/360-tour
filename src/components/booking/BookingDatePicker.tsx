@@ -236,6 +236,7 @@ export function BookingRangePicker({
       '[role="grid"] button:not([disabled]), table button:not([disabled])',
     );
     dayButton?.focus({ preventScroll: true });
+    return Boolean(dayButton);
   }
 
   useEffect(() => {
@@ -244,11 +245,11 @@ export function BookingRangePicker({
       openCheckIn() {
         const trigger = checkInTrigger.current;
         if (!trigger) return;
-        focusFirstSelectableDay.current = true;
         if (open && activeField === "checkIn") {
           focusFirstEnabledDay();
           return;
         }
+        focusFirstSelectableDay.current = true;
         if (!open) onCalendarOpening?.("checkIn");
         openingTrigger.current = trigger;
         dismissedFromOutside.current = false;
@@ -276,8 +277,7 @@ export function BookingRangePicker({
         onCalendarOpened?.();
         if (focusFirstSelectableDay.current) {
           focusFirstSelectableDay.current = false;
-          event.preventDefault();
-          focusFirstEnabledDay();
+          if (focusFirstEnabledDay()) event.preventDefault();
           window.requestAnimationFrame(focusFirstEnabledDay);
         }
       }}

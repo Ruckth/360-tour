@@ -14,7 +14,7 @@ async function pickFirstAvailableRange(page: Page) {
   await availableDays.nth(1).click();
 }
 
-test("home quick booking renders the solid book button and keeps validation", async ({ page }) => {
+test("home quick booking uses the solid Book button to focus the first available check-in", async ({ page }) => {
   await page.addInitScript(() => {
     window.localStorage.setItem("theme", "light");
   });
@@ -56,7 +56,11 @@ test("home quick booking renders the solid book button and keeps validation", as
   await expect(solidButton).toBeVisible();
 
   await bookButton.click();
-  await expect(form.getByRole("alert")).toContainText("Choose your arrival and checkout dates.");
+  const firstAvailableDay = page.getByRole("grid").locator("button:not(:disabled)").first();
+  await expect(firstAvailableDay).toBeFocused();
+  await expect(form.getByRole("alert")).toHaveCount(0);
+  await expect(form.getByTestId("booking-check-in")).toHaveAttribute("data-selected-date", "");
+  await expect(form.getByTestId("booking-check-out")).toHaveAttribute("data-selected-date", "");
 });
 
 test("home quick booking still routes selected dates into booking", async ({ page }) => {

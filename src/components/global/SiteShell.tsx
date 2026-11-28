@@ -167,7 +167,7 @@ export function PublicSiteShell({ children, hasReviews }: { children: ReactNode;
   if (normalizedPath === "/chat") {
     return (
       <div className="min-h-[100dvh] overflow-hidden bg-background text-foreground">
-        <main className="min-h-[100dvh]">{children}</main>
+        <main tabIndex={-1} className="min-h-[100dvh]">{children}</main>
       </div>
     );
   }
@@ -176,7 +176,7 @@ export function PublicSiteShell({ children, hasReviews }: { children: ReactNode;
     <div className="flex min-h-screen flex-col bg-background text-foreground">
       <SiteHeader hasReviews={hasReviews} />
       <ChatContextProvider>
-        <main className="flex-1">{children}</main>
+        <main tabIndex={-1} className="flex-1">{children}</main>
         <SiteFooter />
         <IntentionalChatWidget />
       </ChatContextProvider>
