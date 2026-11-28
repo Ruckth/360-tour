@@ -722,3 +722,62 @@ describe("international booking phone compatibility", () => {
     expect(suggestions[0].stays).toBe(3);
   });
 });
+
+describe("Desk attendance", () => {
+  it("records legacy exceptions once and rejects stale transitions without changing booking finances", async () => {
+    const { t, admin } = await setup();
+    const bookingId = await admin.mutation(api.bookings.commands.createBooking.createBooking, { ...stay, confirmed: true });
+    const record = api.bookings.commands.updateBooking.recordStayStatus;
+    const detail = () => admin.query(api.bookings.admin.getForAdmin, { bookingId });
+    const before = (await detail())!;
+    expect(before.stayStatus).toBeUndefined();
+    const checkIn = { bookingId, expectedRevision: before.revision, status: "checked_in" as const };
+    await expect(t.mutation(record, checkIn)).rejects.toThrow();
+    await expect(admin.mutation(record, checkIn)).rejects.toThrow(/reason/i);
+    await Promise.all([
+      admin.mutation(record, { ...checkIn, reason: "Guest arrived early" }),
+      admin.mutation(record, { ...checkIn, reason: "Guest arrived early" }),
+    ]);
+    const checkedIn = (await detail())!;
+    expect(checkedIn).toMatchObject({
+      stayStatus: "checked_in", revision: before.revision + 1,
+      paymentStatus: before.paymentStatus, owed: before.owed, checkIn: before.checkIn, checkOut: before.checkOut,
+    });
+    await expect(admin.mutation(record, { ...checkIn, status: "checked_out", reason: "Guest departed early" })).rejects.toThrow(/changed/i);
+    await admin.mutation(record, { bookingId, expectedRevision: checkedIn.revision, status: "checked_out", reason: "Guest departed early" });
+    expect((await detail())?.stayStatus).toBe("checked_out");
+    const history = await t.run(async (ctx) => (await ctx.db.query("recordChanges").collect())
+      .filter((row) => row.entityId === bookingId && row.kind === "stay_status_changed"));
+    expect(history).toHaveLength(2);
+    expect(history.map((row) => row.reason)).toEqual(["Guest arrived early", "Guest departed early"]);
+  });
+});
+
+describe("Desk review", () => {
+  it("prices the retained target at the reviewed revision and refuses a stale quote", async () => {
+    const { admin } = await setup();
+    const bookingId = await admin.mutation(api.bookings.commands.createBooking.createBooking, { ...stay, confirmed: true });
+    const revision = (await admin.query(api.bookings.admin.getForAdmin, { bookingId }))!.revision;
+    const target = {
+      bookingId, propertySlug: stay.propertySlug, checkIn: isoInDays(35), checkOut: isoInDays(37), guests: stay.guests,
+    };
+    const quote = api.bookings.admin.quoteBookingEdit;
+    await expect(admin.query(quote, { ...target, revision })).resolves.toMatchObject({ currency: "THB" });
+    await admin.mutation(api.bookings.commands.updateBooking.recordStayStatus, {
+      bookingId, expectedRevision: revision, status: "checked_in", reason: "Guest arrived early",
+    });
+    await expect(admin.query(quote, { ...target, revision })).rejects.toThrow(/changed/i);
+    await expect(admin.query(quote, { ...target, revision: revision + 1 })).resolves.toMatchObject({ currency: "THB" });
+    await admin.mutation(api.bookings.commands.createBooking.createBooking, { ...stay, checkIn: target.checkIn, checkOut: target.checkOut, confirmed: true });
+    await expect(admin.query(quote, { ...target, revision: revision + 1 })).rejects.toThrow();
+  });
+
+  it("requires operations access before projecting a stay's linked appointments", async () => {
+    const { t, admin } = await setup();
+    const bookingId = await admin.mutation(api.bookings.commands.createBooking.createBooking, { ...stay, confirmed: true });
+    await expect(t.query(api.bookings.admin.stayAppointments, { bookingId })).rejects.toThrow();
+    await expect(admin.query(api.bookings.admin.stayAppointments, { bookingId })).resolves.toEqual({ appointments: [], complete: true });
+    await t.run(async (ctx) => ctx.db.delete(bookingId));
+    await expect(admin.query(api.bookings.admin.stayAppointments, { bookingId })).rejects.toThrow(/not found/i);
+  });
+});

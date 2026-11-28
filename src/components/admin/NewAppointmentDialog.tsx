@@ -1,5 +1,7 @@
 "use client";
 
+import { staffDateTime } from "@/lib/staff-time";
+
 import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
@@ -106,6 +108,7 @@ export function NewAppointmentDialog({
 }) {
   const createAppointment = useMutation(api.services.commands.createAppointment.createAppointment);
   const { rebook, stay } = draft;
+  const linked = useQuery(api.bookings.admin.stayAppointments, stay ? { bookingId: stay.bookingId } : "skip");
   const allServices = useQuery(api.services.admin.listServices, { includeArchived: true });
   const allStaff = useQuery(api.services.admin.listStaff, { includeArchived: true });
   const services = allServices ?? initialServices;
@@ -266,6 +269,17 @@ export function NewAppointmentDialog({
         <form onSubmit={submit} className="flex min-h-0 flex-col gap-4">
           <div className="min-h-0 overflow-y-auto">
             <fieldset disabled={saving} className="grid min-w-0 gap-4">
+              {stay ? (
+                <section aria-label="Linked spa appointments" className="grid gap-1 text-sm">
+                  <h3 className="font-medium">Linked spa appointments</h3>
+                  {!linked ? <p role="status">Loading appointments…</p> : linked.appointments.length ? (
+                    <ul>{linked.appointments.map((appointment) => (
+                      <li key={appointment._id}>{appointment.serviceName} · {staffDateTime(appointment.start)} · {appointment.status.replaceAll("_", " ")}</li>
+                    ))}</ul>
+                  ) : <p>No linked appointments.</p>}
+                  {linked?.complete === false ? <p>Some linked appointments could not be shown.</p> : null}
+                </section>
+              ) : null}
               <div className="grid gap-2">
                 {pickable.length <= SERVICE_CHIPS ? (
                   <fieldset className="grid gap-2">

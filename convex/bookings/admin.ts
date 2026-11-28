@@ -6,7 +6,7 @@ import { v } from 'convex/values';
 import { parsePhoneNumberFromString } from 'libphonenumber-js/min';
 import type { Doc, Id } from '../_generated/dataModel';
 import { adminQuery } from '../auth/model';
-import { isHistoricalStay, resolveNotify } from '../shared/bookingMoney';
+import { assertBookingRevision, isHistoricalStay, resolveNotify } from '../shared/bookingMoney';
 import { stayMoney } from '../shared/stayMoney';
 import { assertCapacity, assertStayDates, assertStayFree } from './private/bookingWrites';
 import { nightsBetween } from '../shared/dates';
@@ -84,7 +84,21 @@ export const listForAdmin = adminQuery({
 			const overlap = await scanOverlappingBookings(ctx, property._id, args.from, args.to);
 			bookings.push(...overlap.bookings);
 			complete &&= overlap.complete;
-			if (args.bookingsOnly) continue;
+			if (args.bookingsOnly) {
+				// Include recorded in-house guests outside the scheduled date window.
+				budget.range();
+				const checkedIn = ctx.db.query('bookings').withIndex('by_property_stayStatus_checkOut',
+					q => q.eq('propertyId', property._id).eq('stayStatus', 'checked_in'));
+				let count = 0;
+				for await (const booking of checkedIn) {
+					if (++count > MAX_ROWS_PER_NIGHT || !budget.document(booking)) {
+						complete = false;
+						break;
+					}
+					if (booking.checkOut <= args.from || booking.checkIn >= args.to) bookings.push(booking);
+				}
+				continue;
+			}
 
 			// Host blocks come from both their start and end indexes, so a long block whose nights
 			// were never mirrored still shows.
@@ -267,11 +281,12 @@ export const findGuests = adminQuery({
 export const quoteBookingEdit = adminQuery({
 	args: {
 		bookingId: v.id('bookings'), propertySlug: v.string(), checkIn: v.string(), checkOut: v.string(), guests: v.number(),
-		clearPriceOverride: v.optional(v.boolean())
+		clearPriceOverride: v.optional(v.boolean()), revision: v.optional(v.number())
 	},
 	handler: async (ctx, args) => {
 		const admin = ctx.admin;
 		const booking = await loadBooking(ctx, args.bookingId);
+		assertBookingRevision(booking, args.revision, false);
 		assertBookingEditable(booking);
 		const property = await ctx.db.query('properties').withIndex('by_slug', q => q.eq('slug', args.propertySlug)).first();
 		if (!property) throw new Error('Property not found');
@@ -346,6 +361,7 @@ export const bookingHistory = adminQuery({
 export const stayAppointments = adminQuery({
 	args: { bookingId: v.id('bookings') },
 	handler: async (ctx, { bookingId }) => {
+		await loadBooking(ctx, bookingId);
 		const rows = await readStayAppointments(ctx, bookingId);
 		const appointments = await Promise.all(rows.slice(0, MAX_STAY_APPOINTMENTS).map(async (appointment) => {
 			const order = await activeOrderFor(ctx, { appointmentId: appointment._id });

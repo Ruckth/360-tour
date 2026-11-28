@@ -203,7 +203,8 @@ export function toAdminBooking(booking: Doc<'bookings'>) {
 		confirmationCode: booking.confirmationCode,
 		createdAt: booking.createdAt,
 		/** Send it back with a correction so a change made meanwhile is not overwritten. */
-		revision: bookingRevision(booking)
+		revision: bookingRevision(booking),
+		...(booking.stayStatus ? { stayStatus: booking.stayStatus } : {})
 	};
 }
 
@@ -339,6 +340,7 @@ export function assertReviewedPrice(expected: { total: number; currency: string 
 
 /** Why a booking can't be deleted, or null. Anything that involved money must be cancelled instead. */
 export function deleteBlocker(booking: Doc<'bookings'>, now: number): string | null {
+	if (booking.stayStatus) return 'This stay has an operational history.';
 	const touchedMoney =
 		booking.paymentStatus === 'paid' ||
 		booking.paymentStatus === 'refunded' ||
