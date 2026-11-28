@@ -7,7 +7,7 @@ import { staffDateTime } from "@/lib/staff-time";
 import { useMutation, useQuery } from 'convex/react';
 import { api } from 'convex/_generated/api';
 import type { Doc, Id } from 'convex/_generated/dataModel';
-import { useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -58,12 +58,21 @@ export function OtaRatesPanel({ propertyId }: { propertyId: Id<'properties'> }) 
   const [url, setUrl] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const rateInputRef = useRef<HTMLInputElement>(null);
   const confirm = useConfirm();
   const [now] = useState(() => Date.now());
   const rates = useQuery(api.catalog.properties.listOtaRates, { propertyId });
   const upsertRate = useMutation(api.catalog.properties.upsertOtaRate);
   const removeRate = useMutation(api.catalog.properties.removeOtaRate);
   const hasRate = rates?.some(rate => rate.platform === platform) ?? false;
+
+  function startRowEdit(rate: Doc<'otaRates'>) {
+    setPlatform(rate.platform);
+    setNightlyRate(String(satangToBaht(rate.nightlyRate)));
+    setUrl(rate.url ?? '');
+    rateInputRef.current?.focus();
+    rateInputRef.current?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+  }
 
   async function save(event: FormEvent) {
     event.preventDefault();
@@ -74,7 +83,10 @@ export function OtaRatesPanel({ propertyId }: { propertyId: Id<'properties'> }) 
   }
 
   return <div className="grid gap-4 text-sm">
-    <form className="grid gap-2" onSubmit={save}>
+    <form className="grid gap-2" onSubmit={save} aria-labelledby="ota-form-heading">
+      <h3 id="ota-form-heading" className="text-sm font-semibold">
+        {hasRate ? `Edit ${sourceLabel(platform)} rate` : `Add ${sourceLabel(platform)} rate`}
+      </h3>
       <Label htmlFor="ota-platform">Platform</Label>
       <Select value={platform} onValueChange={value => setPlatform(value as Platform)}>
         <SelectTrigger id="ota-platform"><SelectValue /></SelectTrigger>
@@ -83,7 +95,7 @@ export function OtaRatesPanel({ propertyId }: { propertyId: Id<'properties'> }) 
         </SelectContent>
       </Select>
       <Label htmlFor="ota-rate">Nightly price (same currency as the villa, incl. the platform&apos;s fees)</Label>
-      <Input id="ota-rate" type="number" min={0.01} step={0.01} required inputMode="decimal" placeholder="10000" value={nightlyRate} onChange={event => setNightlyRate(event.target.value)} />
+      <Input ref={rateInputRef} id="ota-rate" type="number" min={0.01} step={0.01} required inputMode="decimal" placeholder="10000" value={nightlyRate} onChange={event => setNightlyRate(event.target.value)} />
       <Label htmlFor="ota-url">Listing URL (optional)</Label>
       <Input id="ota-url" type="url" placeholder="https://www.booking.com/hotel/..." value={url} onChange={event => setUrl(event.target.value)} />
       <Button type="submit" className="mt-1 justify-self-start" disabled={busy}>{busy ? <Spinner className="text-current" /> : null}{hasRate ? 'Update rate' : 'Save rate'}</Button>
@@ -94,7 +106,7 @@ export function OtaRatesPanel({ propertyId }: { propertyId: Id<'properties'> }) 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <strong>{sourceLabel(rate.platform)} · {formatMoney(rate.nightlyRate, resort.currency)}</strong>
           <div className="flex gap-2">
-            <Button size="sm" variant="outline" disabled={busy} onClick={() => { setPlatform(rate.platform); setNightlyRate(String(satangToBaht(rate.nightlyRate))); setUrl(rate.url ?? ''); }}>Edit</Button>
+            <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => startRowEdit(rate)}>Edit</Button>
             <Button size="sm" variant="outline" disabled={busy} onClick={async () => {
               if (!(await confirm({ title: `Remove the ${sourceLabel(rate.platform)} rate?`, confirmLabel: 'Remove', destructive: true }))) return;
               setBusy(true); setError('');
