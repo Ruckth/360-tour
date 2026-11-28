@@ -394,7 +394,7 @@ test.describe("audit round 1", () => {
     const more = panel.getByRole("button", { name: "One more" });
     await more.click();
     await more.click();
-    await expect(panel.getByRole("group", { name: "Units of Thai massage 60 sessions" }).locator("output")).toHaveText("3");
+    await expect(panel.getByRole("group", { name: "Units of Thai massage 60 sessions" }).getByRole("spinbutton")).toHaveValue("3");
     await expect(more).toBeDisabled();
     // The whole cancellation, then the receipt row has nothing left to return.
     await panel.getByRole("checkbox", { name: "Thai massage 60 sessions" }).uncheck();
