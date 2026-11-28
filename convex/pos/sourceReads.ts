@@ -105,7 +105,7 @@ export const linkCandidates = staffQuery({
 		const amount = lineNet(line);
 		const { bookings, appointments } = await findSources(ctx, order, args.query);
 		const rows: Array<{
-			kind: 'appointment' | 'booking'; id: string; name: string; detail: string; guestName: string; price: number; owed: number;
+			kind: 'appointment' | 'booking'; id: string; name: string; detail: string; reference?: string; guestName: string; price: number; owed: number;
 			currency: string; date: string | null; revision: number; problem: string | null;
 		}> = [];
 		if (LINK_TARGET[line.kind] === 'appointment') {
@@ -114,7 +114,7 @@ export const linkCandidates = staffQuery({
 				const service = await ctx.db.get(appointment.serviceId);
 				const { date, time } = resortLocalParts(appointment.start);
 				rows.push({
-					kind: 'appointment', id: appointment._id, name: service?.name ?? 'Appointment', detail: `${date} ${time} · ${appointment.confirmationCode}`,
+					kind: 'appointment', id: appointment._id, name: service?.name ?? 'Appointment', detail: `${date} ${time} · ${appointment.confirmationCode}`, reference: appointment.confirmationCode,
 					guestName: appointment.guestName, price: appointment.price, owed: appointmentMoney(appointment).owed, currency: appointment.currency,
 					date, revision: appointment.revision ?? 0, problem: await appointmentLinkProblem(ctx, line, appointment)
 				});
@@ -125,7 +125,7 @@ export const linkCandidates = staffQuery({
 				const property = await ctx.db.get(booking.propertyId);
 				rows.push({
 					kind: 'booking', id: booking._id, name: `Stay · ${property?.name ?? 'Villa'}`,
-					detail: `${booking.checkIn} → ${booking.checkOut}${booking.confirmationCode ? ` · ${booking.confirmationCode}` : ''}`,
+					detail: `${booking.checkIn} → ${booking.checkOut}${booking.confirmationCode ? ` · ${booking.confirmationCode}` : ''}`, reference: booking.confirmationCode,
 					guestName: booking.guestName, price: bookingChargeTotal(booking), owed: Math.max(bookingBalance(booking).owed, 0), currency: booking.currency,
 					date: booking.checkIn, revision: bookingRevision(booking), problem: await bookingLinkProblem(ctx, order, line, booking, amount)
 				});

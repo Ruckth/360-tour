@@ -1,7 +1,7 @@
 import { paginationOptsValidator } from 'convex/server';
 import { ConvexError, v } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
-import { adminMutation, adminQuery, internalMutation, staffMutation, staffQuery } from '../auth/model';
+import { adminMutation, adminQuery, canAccessCheckoutOrderBranch, canReadCheckoutOrder, internalMutation, requireStaff, staffMutation, staffQuery } from '../auth/model';
 import { orderState } from './private/orderLinks';
 import { orderTitle, roundMoney } from '../shared/orderMath';
 import { orderRefundTotal } from './private/orderRefunds';
@@ -93,12 +93,13 @@ export const listCustomerOrders = adminQuery({
 	args: { customerId: v.id('customers'), paginationOpts: paginationOptsValidator },
 	handler: async (ctx, args) => {
 		pageSize(args.paginationOpts.numItems);
+		const actor = await requireStaff(ctx, 'operations');
 		const result = await ctx.db.query('orders').withIndex('by_customerId_and_updatedAt', q => q.eq('customerId', args.customerId)).order('desc').paginate(args.paginationOpts);
 		const page = [];
 		for (const order of result.page) {
 			const refundedAmountSatang = await orderRefundTotal(ctx, order._id);
 			const refundAmounts: { refundedAmountSatang?: number } = { refundedAmountSatang };
-			page.push({ _id: order._id, title: orderTitle(order.orderNumber), state: orderState(order), total: Math.max(0, roundMoney(order.total - refundedAmountSatang)), ...refundAmounts, currency: order.currency });
+			page.push({ _id: order._id, canOpen: canAccessCheckoutOrderBranch(actor, order) && canReadCheckoutOrder(actor, order), title: orderTitle(order.orderNumber), state: orderState(order), total: Math.max(0, roundMoney(order.total - refundedAmountSatang)), ...refundAmounts, currency: order.currency });
 		}
 		return { ...result, page };
 	}

@@ -3,6 +3,8 @@ import { parseMoneyInput } from "@/lib/money-input";
 
 
 import { ChevronDown, Plus, Search, X } from "lucide-react";
+import Link from "@/platform/link";
+import { useStaffAccess } from "@/components/admin/staff-access";
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { SegmentedTabs } from "@/components/admin/SegmentedTabs";
 import { formatMoney } from "@/components/admin/labels";
@@ -105,6 +107,7 @@ export function CatalogPane({
   products?: { label: string; content: ReactNode };
   className?: string;
 }) {
+  const canBook = useStaffAccess().capabilities.bookings;
   const [selectedTab, setTab] = useState<Tab>("frequent");
   const tab = selectedTab === "products" && !products ? "frequent" : selectedTab;
   const tabs = products ? [...TABS, { value: "products" as const, label: products.label }] : TABS;
@@ -119,7 +122,15 @@ export function CatalogPane({
   const all = useMemo(() => (catalog ? catalogTiles(catalog) : null), [catalog]);
   const query = search.trim();
   const searching = query.length > 0;
-  const tiles = all && tab !== "products" ? (searching ? searchTiles(all, query) : all[tab]) : [];
+  const tiles = all && tab !== "products" ? (searching ? searchTiles(tab === "frequent" ? all : { services: tab === "services" ? all.services : [], rooms: tab === "rooms" ? all.rooms : [], extras: tab === "extras" ? all.extras : [] }, query) : all[tab]) : [];
+  const [searchStatus, setSearchStatus] = useState("");
+  const count = tiles.length;
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSearchStatus(
+      searching && catalog && tab !== "products" ? `${count} matching ${count === 1 ? "item" : "items"}` : "",
+    ), 250);
+    return () => window.clearTimeout(timer);
+  }, [searching, query, count, catalog, tab]);
   const singleMatch = searching && tiles.length === 1 ? tiles[0] : undefined;
   const flat = searching || tab === "frequent";
   const sections = flat
@@ -166,9 +177,9 @@ export function CatalogPane({
     <section aria-label="Catalog" className={cn("@container flex min-h-0 flex-col", className)}>
       <div className="flex flex-col gap-3 px-4 pt-2 pb-3 sm:px-6 @3xl:flex-row @3xl:items-end @3xl:gap-6">
         <SegmentedTabs
-          tabs={tabs}
+          tabs={searching ? tabs.map((item) => item.value === "frequent" ? { ...item, label: "All results" } : item) : tabs}
           value={tab}
-          onValueChange={(next) => { setTab(next); setSearch(""); }}
+          onValueChange={setTab}
           label="Item type"
           controls="checkout-catalog"
           className="shrink-0 gap-7 border-border/70 [&_[aria-selected=true]]:border-gold-text [&_[role=tab]]:pt-2"
@@ -216,10 +227,12 @@ export function CatalogPane({
 
       {tab === "products" ? <div id="checkout-catalog" className="min-h-[min(16rem,40dvh)] flex-1 overflow-y-auto px-4 pb-28 sm:px-6 lg:pb-6">{products?.content}</div> : (
       <div id="checkout-catalog" className="min-h-[min(16rem,40dvh)] flex-1 scroll-pb-28 overflow-y-auto px-4 pt-1 pb-28 sm:px-6 lg:scroll-pb-6 lg:pb-6">
+        <p role="status" className="sr-only">{searchStatus}</p>
         {singleMatch ? <p id={`${ids}-search-hint`} className="mb-2 text-xs text-muted-foreground">Press Enter {singleMatch.options ? "to choose a duration" : "to add this item"}.</p> : null}
         {(searching ? tiles.some((tile) => tile.kind === "room") : tab === "rooms") ? (
           <p className="mb-4 rounded-xl border border-border/70 bg-card/50 p-3 text-sm text-muted-foreground">
             Room items record charges only. To reserve dates, create a booking and add it to the order.
+            {canBook ? <Link href="/admin/hotel" className="ml-2 font-medium text-foreground underline underline-offset-2">Open Bookings</Link> : null}
           </p>
         ) : null}
         {!catalog ? (
@@ -260,9 +273,9 @@ export function CatalogPane({
                 </div>
               );
             })}
-            {searching && !tiles.length ? (
+            {searching ? (
               <div className="grid justify-items-center gap-3 py-10 text-center text-sm text-muted-foreground">
-                <p>No item matches “{query}”.</p>
+                {!tiles.length ? <p>No item matches “{query}”.</p> : null}
                 <CustomItemDialog key={query} onAdd={onAdd} needsManager={customNeedsManager} initialName={query} label="Add as custom item" />
               </div>
             ) : null}

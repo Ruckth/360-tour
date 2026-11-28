@@ -24,6 +24,7 @@ import { cn } from "@/lib/utils";
 import { MAX_PRICE, MAX_QTY, MERGES_QTY, lineCouponDiscount, roundMoney, type OrderTotals, type TenderMethod } from "convex/shared/orderMath";
 import type { ApprovalPayload } from "convex/shared/staffTypes";
 import { ApprovalInline, ApprovalRequestForm, useSendApproval } from "./ApprovalRequest";
+import { OrderLifecycle } from "./OrderLifecycle";
 import { useCheckoutBackend, useCommerce, type ApprovalRequest, type Catalog, type OrderId, type OrderLine, type OrderView } from "./backend";
 import { TENDER_LABELS, amountInput, couponLabel, scheduleLabel } from "./checkout-ui";
 import { CheckoutDialogContent } from "./CheckoutLayers";
@@ -114,6 +115,8 @@ export function OrderPanel({
   const [confirm, setConfirm] = useState<"clear" | "discard" | null>(null);
   const [expanded, setExpanded] = useCheckoutDraftState<string | null>(`${view?.order._id ?? "new"}:expanded`, null);
   const { discountNotice: pendingDiscount, setDiscountNotice } = useCheckoutDiscountNotice();
+  const [reviewRestore, setReviewRestore] = useState(false);
+  const [restorePending, setRestorePending] = useState(false);
   const [couponOpen, setCouponOpen] = useState(false);
   const { paymentSubmitting, setPaymentSubmitting } = useCheckoutPaymentSubmitting();
   const lines = view?.lines ?? EMPTY_LINES;
@@ -195,10 +198,13 @@ export function OrderPanel({
 
   if (view?.order.state === "discarded") return <div className="grid gap-4 overflow-y-auto p-5">
     <h2 className="font-serif text-2xl">{title} · Discarded</h2>
-    <p className="text-sm">Read only. Restore it from Orders › Discarded to edit or take payment.</p>
+    <p className="text-sm">Read only. Restore it to edit or take payment.</p>
     <ul className="grid gap-3">{lines.map(line => <li key={line._id}><p className="font-medium">{line.name} · {formatMoney(line.net)}</p><p className="text-xs text-muted-foreground">{line.detail} · Quantity {line.qty}</p></li>)}</ul>
+    {access.capabilities.orders && onOpenOrder ? (reviewRestore
+      ? <OrderLifecycle orderId={view.order._id} onPending={setRestorePending} onDone={() => setReviewRestore(false)} onOpen={(id) => { setReviewRestore(false); onOpenOrder(id); }} />
+      : <Button variant="outline" onClick={() => setReviewRestore(true)}>Review restore</Button>) : null}
     <OrderHistory orderId={view.order._id} /><FinancialHistory orderId={view.order._id} view={view} />
-    {onClose ? <Button variant="outline" onClick={onClose}>Close order</Button> : null}
+    {onClose ? <Button variant="outline" disabled={restorePending} onClick={onClose}>Close order</Button> : null}
   </div>;
 
   // With enlarged text the header and footer can outgrow the screen. The rows keep a minimum

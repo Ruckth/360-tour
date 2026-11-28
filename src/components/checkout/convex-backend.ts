@@ -296,7 +296,7 @@ export const convexCheckoutBackend: CheckoutBackend = {
   // One cursor-paged compact list; only the selected request's detail is read (no per-row order or detail reads).
   usePendingApprovals: () => usePaginatedQuery(api.pos.staffApprovals.pendingPage, useStaffAccess().capabilities.approve ? {} : SKIP, { initialNumItems: 20 }),
   useApprovalDetail: (requestId) => useQuery(api.pos.staffApprovals.detail, requestId ? { requestId } : SKIP),
-  useFindOrder: (orderNumber) => useQuery(api.pos.orders.findOrderByNumber, orderNumber === null ? SKIP : { orderNumber }),
+  useFindOrder: (orderNumber, receipt) => useQuery(api.pos.orders.findOrderByNumber, orderNumber === null ? SKIP : { orderNumber, receipt }),
   commerce: convexCommerce,
   returns: returnsDesk,
   useActions: () => {
