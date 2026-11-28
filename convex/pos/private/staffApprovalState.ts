@@ -328,6 +328,7 @@ export function pendingReturnSummary(ctx: ReadCtx, request: ReturnRequest) {
       lineId: part.lineId,
       label: review?.rows.find(row => row.lineId === part.lineId)?.label,
       kind: part.kind,
+      contentKey: 'contentKey' in part ? part.contentKey : undefined,
       units: 'units' in part ? part.units : 1,
     })),
     payouts: request.payoutSummary,

@@ -92,7 +92,7 @@ test("a refund over what is left shows the server's remaining amount", async ({ 
   // Another till returns ฿500 on the same line before this one is sent.
   await page.evaluate(() => window.fixture.refundFromAnotherTill("Thai massage 60", 50_000));
   const recordAll = form.getByRole("button", { name: "Record refund ฿1,200" });
-  if (await recordAll.isEnabled()) await recordAll.click();
+  if (await recordAll.count()) await recordAll.click();
   await expect(form.getByRole("textbox", { name: "Amount (฿)" })).toHaveValue("1200");
   await form.getByRole("button", { name: "Use remaining amount" }).click();
   await expect(form.getByRole("textbox", { name: "Amount (฿)" })).toHaveValue("700");

@@ -100,6 +100,7 @@ function WaitingForManager({ requestId, view, summary, onWithdrawn, onBusyChange
   const actions = useReturnsDesk()!.useActions();
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
+  const parts = summary ? returnableParts(view) : [];
   async function withdraw() {
     setSending(true);
     onBusyChange(true);
@@ -121,7 +122,7 @@ function WaitingForManager({ requestId, view, summary, onWithdrawn, onBusyChange
         <p role="status" data-return-waiting="" className="rounded-lg bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900 dark:bg-amber-400/10 dark:text-amber-200">{t("returns.waiting")}</p>
         {summary ? <section aria-label="Requested return" className="grid gap-2 text-sm">
           <ul className="grid gap-1">{summary.parts.map((part, index) => <li key={index}>
-            {part.label ?? view.lines.find(line => line._id === part.lineId)?.name ?? "Item"} · {part.kind === "restoreSession" ? t("returns.restoreSession") : part.kind === "cancelPackage" ? t("returns.wholePackageShort") : `× ${part.units}`}
+            {parts.find(row => row.lineId === part.lineId && row.contentKey === part.contentKey)?.label ?? part.label ?? view.lines.find(line => line._id === part.lineId)?.name ?? "Item"} · {part.kind === "restoreSession" ? t("returns.restoreSession") : part.kind === "cancelPackage" ? t("returns.wholePackageShort") : `× ${part.units}`}
           </li>)}</ul>
           <h3 className="font-medium">{t("returns.whereItGoes")}</h3>
           {summary.payouts ? <ul className="grid gap-1">
