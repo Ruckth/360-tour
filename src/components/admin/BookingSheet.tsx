@@ -163,6 +163,8 @@ function BookingDetails({
   beforeLeave: () => Promise<boolean>;
   onBookSpa?: () => Promise<void>;
 }) {
+  const recordStayStatus = useMutation(api.bookings.commands.updateBooking.recordStayStatus);
+  const [stayReason, setStayReason] = useState("");
   const updateBooking = useMutation(api.bookings.commands.updateBooking.updateBooking);
   const resendBookingEmails = useMutation(api.bookings.commands.resendBookingEmails.resendBookingEmails);
   const deleteBooking = useMutation(api.bookings.commands.deleteBooking.deleteBooking);
@@ -189,7 +191,7 @@ function BookingDetails({
   const editable = canEditBooking(booking);
   const cancelled = booking.status === "cancelled";
   const deletable =
-    (booking.status === "pending" || booking.status === "cancelled") &&
+    !booking.stayStatus && (booking.status === "pending" || booking.status === "cancelled") &&
     booking.paymentStatus !== "paid" &&
     booking.paymentStatus !== "refunded" &&
     !booking.paidAt &&
@@ -294,6 +296,21 @@ function BookingDetails({
           <SheetClose asChild><Button size="icon" variant="ghost" aria-label="Close"><X aria-hidden className="size-4" /></Button></SheetClose>
         </div>
       </header>
+      <section className="grid gap-2 rounded-lg border p-3" aria-label="Guest stay status">
+        <p className="text-sm font-medium">{booking.stayStatus === "checked_in" ? "Checked in" : booking.stayStatus === "checked_out" ? "Checked out" : "Scheduled · attendance unrecorded"}</p>
+        {booking.status === "confirmed" ? (
+          <>
+            <label className="grid gap-1 text-xs">
+              Reason for early, late or out-of-order changes
+              <input className="rounded-md border bg-background px-2 py-1.5 text-sm" maxLength={500} value={stayReason} onChange={(event) => setStayReason(event.target.value)} />
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {booking.stayStatus !== "checked_in" ? <Button size="sm" variant="outline" disabled={pending !== null} onClick={() => void act("checkin", () => recordStayStatus({ bookingId: booking._id, expectedRevision: booking.revision, status: "checked_in", reason: stayReason }), "Check-in recorded.")}>{booking.stayStatus === "checked_out" ? "Correct to checked in" : "Record check-in"}</Button> : null}
+              {booking.stayStatus !== "checked_out" ? <Button size="sm" variant="outline" disabled={pending !== null} onClick={() => void act("checkout", () => recordStayStatus({ bookingId: booking._id, expectedRevision: booking.revision, status: "checked_out", reason: stayReason }), "Check-out recorded.")}>Record check-out</Button> : null}
+            </div>
+          </>
+        ) : null}
+      </section>
 
       <div className="flex flex-wrap items-center gap-2 empty:hidden">
         {editable && booking.status === "pending" ? (
@@ -682,6 +699,7 @@ type EditQuoteArgs = {
   checkOut: string;
   guests: number;
   clearPriceOverride?: boolean;
+  revision?: number;
 };
 
 /** adminBookings.quoteBookingEdit, live. A refusal (e.g. dates the villa can't take) comes back as an error state, not a throw. */
