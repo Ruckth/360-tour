@@ -167,8 +167,8 @@ describe("start admin route helpers and server logic", () => {
   });
 
   it.each([
-    ["/admin", { to: "/admin/chats", replace: true, statusCode: 307 }],
-    ["/admin/", { to: "/admin/chats", replace: true, statusCode: 307 }],
+    ["/admin", { to: "/admin/today", replace: true, statusCode: 307 }],
+    ["/admin/", { to: "/admin/today", replace: true, statusCode: 307 }],
     ["/admin/chat", { to: "/admin/chats", replace: true, statusCode: 307 }],
     ["/admin/unknown", { to: "/admin/chats", replace: true, statusCode: 307 }],
     ["/admin/staff", { to: "/admin/staff/$tab", params: { tab: "calendar" }, replace: true, statusCode: 307 }],

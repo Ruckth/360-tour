@@ -47,7 +47,14 @@ vi.mock("@/components/reui/event-calendar/event-calendar", () => ({
   useEventCalendarNavigation: () => ({ navigateToDate: vi.fn() }),
 }));
 vi.mock("@/components/admin/BookingSheet", () => ({ BookingSheet: () => null }));
-vi.mock("@/components/admin/IcalSourcesDialog", () => ({ IcalSourcesDialog: () => null }));
+vi.mock("@/components/admin/IcalSourcesDialog", () => ({
+  IcalSourcesDialog: ({ open, onClose }: { open: boolean; onClose: () => void }) => (open ? createElement("button", { "data-testid": "ota-calendars", onClick: onClose }, "OTA calendars open") : null),
+}));
+const nav = vi.hoisted(() => ({ search: "", replace: vi.fn() }));
+vi.mock("@/platform/navigation", () => ({
+  useSearchParams: () => new URLSearchParams(nav.search),
+  useRouter: () => ({ replace: nav.replace, push: vi.fn() }),
+}));
 vi.mock("@/components/admin/OtaRatesDialog", () => ({ OtaRatesDialog: () => null }));
 vi.mock("@/components/admin/NewBookingDialog", () => ({
   NewBookingDialog: (props: ComponentProps<typeof NewBookingDialog>) => { observed.draft = props.prefill; return createElement("span", null, "Booking form opened"); },
@@ -113,4 +120,17 @@ it("applies remembered staff and service IDs only in their branch", async () => 
   await renderStaff();
   expect(observed.calendar?.resources?.map((resource) => resource.id)).toEqual(["staff-1", "staff-2"]);
   expect(observed.calendar?.events?.map((event) => event.id)).toContain("appointment-1");
+});
+
+it("opens OTA calendars from the setup checklist link and clears the panel on close (N04)", async () => {
+  nav.search = "panel=ota-calendars";
+  await act(async () => root.render(createElement(AdminBookingsView)));
+  const dialog = document.querySelector<HTMLButtonElement>('[data-testid="ota-calendars"]');
+  expect(dialog).not.toBeNull();
+  await act(async () => dialog!.click());
+  expect(nav.replace).toHaveBeenCalledWith("/admin/hotel", { scroll: false });
+  nav.search = "panel=bogus";
+  await act(async () => root.render(createElement(AdminBookingsView)));
+  expect(document.querySelector('[data-testid="ota-calendars"]')).toBeNull();
+  nav.search = "";
 });

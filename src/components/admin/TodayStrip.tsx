@@ -8,6 +8,7 @@ import { useMemo, useState } from "react";
 import { addDaysIso } from "@/lib/booking/dates";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import { useSearchParams } from "@/platform/navigation";
 import { formatMoney } from "./labels";
 import { paymentText, serverTodayIso } from "./admin-bookings-shared";
 
@@ -40,7 +41,9 @@ export function TodayStrip({ villaName, onOpen }: { villaName: (id: string) => s
   const data = useQuery(api.bookings.admin.listForAdmin, {
     from: addDaysIso(today, -1), to: addDaysIso(today, 1), bookingsOnly: true,
   });
-  const [open, setOpen] = useState<TodayGroup | null>(null);
+  // `?today=arriving` (from the Today page) opens with that group's guests listed.
+  const linked = useSearchParams().get("today");
+  const [open, setOpen] = useState<TodayGroup | null>(() => GROUPS.find(({ key }) => key === linked)?.key ?? null);
   const bookings = data?.bookings;
   const groups = useMemo(() => bookings ? todayGroups(bookings, today) : null, [bookings, today]);
   const list = open && groups ? groups[open] : [];

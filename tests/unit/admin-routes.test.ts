@@ -45,7 +45,7 @@ describe("admin routes", () => {
   );
 
   it.each([
-    ["/admin", "/admin/chats"],
+    ["/admin", "/admin/today"],
     ["/admin/chat", "/admin/chats"],
     ["/admin/unknown", "/admin/chats"],
     ["/admin/staff", "/admin/staff/calendar"],

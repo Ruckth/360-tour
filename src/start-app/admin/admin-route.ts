@@ -8,6 +8,7 @@ export type AdminLayoutInput = {
 
 export type AdminRedirectTarget =
   | { to: "/admin/chats"; replace: true; statusCode: 307 }
+  | { to: "/admin/today"; replace: true; statusCode: 307 }
   | { to: "/admin/staff/$tab"; params: { tab: AdminStaffTab }; replace: true; statusCode: 307 }
   | { to: "/admin/stock/balances"; replace: true; statusCode: 307 }
   | { to: "/admin/marketing/dashboard"; replace: true; statusCode: 307 }
@@ -35,6 +36,9 @@ export function isServerFnRpcRequest(request: Request): boolean {
 export function toAdminRedirectTarget(target: string): AdminRedirectTarget {
   if (target === "/admin/chats") {
     return { to: "/admin/chats", replace: true, statusCode: 307 };
+  }
+  if (target === "/admin/today") {
+    return { to: "/admin/today", replace: true, statusCode: 307 };
   }
   if (target === "/admin/stock/balances") {
     return { to: "/admin/stock/balances", replace: true, statusCode: 307 };
@@ -67,6 +71,8 @@ export function createAdminRedirect(target: AdminRedirectTarget) {
   switch (target.to) {
     case "/admin/chats":
       return redirect({ to: "/admin/chats", replace: true, statusCode: 307 });
+    case "/admin/today":
+      return redirect({ to: "/admin/today", replace: true, statusCode: 307 });
     case "/admin/stock/balances":
       return redirect({ to: "/admin/stock/balances", replace: true, statusCode: 307 });
     case "/admin/marketing/dashboard":

@@ -85,9 +85,9 @@ describe("redirects by staff role", () => {
     (path) => expect(adminAccessRedirect(path, null, cashier)).toBe("/admin/checkout"),
   );
 
-  it("opens the till for a cashier on /admin, and keeps a manager's landing on Chats", () => {
+  it("opens the till for a cashier on /admin, and lands a manager on Today (D01)", () => {
     const landing = adminRedirectPath("/admin")!;
-    expect(landing).toBe("/admin/chats");
+    expect(landing).toBe("/admin/today");
     expect(adminAccessRedirect(landing, null, cashier)).toBe("/admin/checkout");
     expect(adminAccessRedirect(landing, null, manager)).toBeNull();
   });

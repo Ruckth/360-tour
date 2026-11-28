@@ -29,7 +29,7 @@ it("builds all alternate language links from the public path", async () => {
 
 it("lets Clerk attach headers to admin and locale redirects", async () => {
   const { siteRedirect } = await import("@/start-app/site-redirect.server");
-  for (const [path, destination] of [["/admin", "/admin/chats"], ["/en/services?q=spa", "/services?q=spa"]]) {
+  for (const [path, destination] of [["/admin", "/admin/today"], ["/en/services?q=spa", "/services?q=spa"]]) {
     const response = await siteRedirect(new Request("https://example.test" + path));
     expect(response?.status).toBe(307);
     expect(response?.headers.get("location")).toBe("https://example.test" + destination);

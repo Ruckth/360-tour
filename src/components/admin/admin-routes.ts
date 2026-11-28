@@ -1,4 +1,4 @@
-import { BedDouble, Boxes, Building2, CalendarClock, HelpCircle, Mail, Megaphone, MessageCircle, Settings, ShoppingBag, type LucideIcon } from "lucide-react";
+import { BedDouble, Boxes, Building2, CalendarClock, HelpCircle, House, Mail, Megaphone, MessageCircle, Settings, ShoppingBag, type LucideIcon } from "lucide-react";
 
 /** `keywords` are extra words the sidebar search matches, e.g. the channels a page covers. */
 export type AdminNavLink = { href: string; label: string; keywords?: readonly string[] };
@@ -91,6 +91,7 @@ export function adminMarketingPath(page: AdminMarketingPage): string {
 
 /** Sidebar sections, in order. Add a route `src/start-app/routes/admin.<section>.tsx` and list it here. */
 export const ADMIN_NAV: readonly AdminNavItem[] = [
+  { href: "/admin/today", label: "Today", icon: House, keywords: ["home", "summary", "arrivals", "departures", "dashboard"] },
   { href: "/admin/chats", label: "Chats", icon: MessageCircle, keywords: ["inbox", "messages", "conversations"] },
   { href: "/admin/hotel", label: "Hotel bookings", shortLabel: "Hotel", icon: BedDouble, keywords: ["reservations", "tourScenes"] },
   {
@@ -161,7 +162,9 @@ export function adminStaffTabPath(tab: AdminStaffTab): string {
   return `/admin/staff/${tab}`;
 }
 
+/** Where unknown admin URLs land. `/admin` itself opens Today (people it doesn't open are sent on to their own landing). */
 const ADMIN_HOME = "/admin/chats";
+export const ADMIN_LANDING = "/admin/today";
 
 /**
  * Used by the request middleware (site-redirect.server.ts): where to send an `/admin` URL whose section doesn't exist
@@ -171,6 +174,7 @@ const ADMIN_HOME = "/admin/chats";
  */
 export function adminRedirectPath(pathname: string): string | null {
   const [, , section, subpage] = pathname.split("/");
+  if (!section) return ADMIN_LANDING;
   if (section === "receipt") return subpage ? null : ADMIN_HOME;
   if (section === "staff") {
     return subpage ? null : adminStaffTabPath("calendar");
