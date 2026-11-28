@@ -36,7 +36,10 @@ vi.mock("convex/react", () => ({
     }),
   ),
 }));
-vi.mock("@/platform/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+vi.mock("@/platform/navigation", () => ({
+  useRouter: () => ({ push: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(),
+}));
 // The real phone widget is a country combobox; a plain input keeps these tests about the booking rules.
 vi.mock("@/components/reui/phone-input", () => ({
   PhoneInput: ({ id, value, onChange }: { id: string; value: string; onChange: (value: string) => void }) =>
