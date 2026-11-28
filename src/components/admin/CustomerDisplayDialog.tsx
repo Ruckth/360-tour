@@ -60,7 +60,7 @@ function ReplaceNote({ children }: { children: ReactNode }) {
   return <p className="text-sm font-medium text-amber-800 dark:text-amber-300">{children}</p>;
 }
 
-export type CustomerDisplayControls = {
+type CustomerDisplayControls = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   showTrigger: boolean;

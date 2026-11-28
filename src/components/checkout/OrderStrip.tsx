@@ -2,7 +2,7 @@
 
 import type { Id } from "convex/_generated/dataModel";
 import { CalendarDays, ChevronRight, Link2, ListOrdered, Plus, Search, UserRound, UserRoundPlus, X } from "lucide-react";
-import { useDeferredValue, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useDeferredValue, useEffect, useRef, useState, type FormEvent } from "react";
 import { formatMoney } from "@/components/admin/labels";
 import { useStaffAccess } from "@/components/admin/staff-access";
 import { Badge } from "@/components/ui/badge";
@@ -14,7 +14,7 @@ import { MoreMenu } from "@/components/ui/more-menu";
 import { Spinner } from "@/components/ui/spinner";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useIsMobile } from "@/hooks/use-mobile";
-import type { CustomerDisplayControls } from "@/components/admin/CustomerDisplayDialog";
+import { CustomerDisplayControl } from "@/components/admin/CustomerDisplayDialog";
 import { errorText } from "@/lib/staff-bookings";
 import { customerPhoneError } from "convex/shared/phone";
 import { cn } from "@/lib/utils";
@@ -41,7 +41,7 @@ export function OrderStrip({
   run,
   onOrderChange,
   canStartNew = false,
-  displayControl,
+  customerDisplay,
   ordersFilterScope,
 }: {
   view: OrderView | null | undefined;
@@ -51,7 +51,7 @@ export function OrderStrip({
   /** Invalid/missing source links can be cleared even when there is no loaded order. */
   canStartNew?: boolean;
   /** Display pairing opens from More on phones and from its own button on wider screens. */
-  displayControl?: (controls: CustomerDisplayControls) => ReactNode;
+  customerDisplay?: { orderId: string | null | undefined };
   ordersFilterScope?: string;
 }) {
   const actions = useCheckoutBackend().useActions();
@@ -191,12 +191,12 @@ export function OrderStrip({
       </Dialog>
 
       <div className={cn("flex justify-end gap-2", phone ? "shrink-0" : "ml-auto max-w-full flex-wrap")}>
-        {displayControl?.({
+        {customerDisplay ? <CustomerDisplayControl orderId={customerDisplay.orderId} controls={{
           open: panel === "display",
           onOpenChange: (open) => changePanel(open ? "display" : null),
           showTrigger: !phone,
           onCloseAutoFocus: phone ? focusMore : undefined,
-        })}
+        }} /> : null}
         <Dialog open={panel === "orders"} onOpenChange={(open) => { if (!ordersPending) changePanel(open ? "orders" : null); }}>
           <DialogTrigger asChild>
             {phone ? (
@@ -224,7 +224,7 @@ export function OrderStrip({
             items={[
               { label: "Add booking", disabled: order?.state === "discarded", onSelect: () => changePanel("booking") },
               { label: "New order", hidden: !order && !canStartNew, onSelect: () => onOrderChange(null) },
-              { label: "Customer display", hidden: !displayControl, onSelect: () => changePanel("display") },
+              { label: "Customer display", hidden: !customerDisplay, onSelect: () => changePanel("display") },
             ]}
           />
         ) : order || canStartNew ? (

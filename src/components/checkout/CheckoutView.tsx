@@ -2,7 +2,7 @@
 
 import type { Id } from "convex/_generated/dataModel";
 import { ChevronUp, ReceiptText, X } from "lucide-react";
-import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { formatMoney } from "@/components/admin/labels";
 import { useStaffAccess } from "@/components/admin/staff-access";
 import { Dialog, DialogTitle } from "@/components/ui/dialog";
@@ -18,7 +18,6 @@ import { useLoadablePhoto } from "./CheckoutPhoto";
 import { CheckoutDraftProvider, useCheckoutDraft, useCheckoutDiscountNotice, useCheckoutDraftOrder, useCheckoutPaymentSubmitting } from "./CheckoutDrafts";
 import { OrderPanel, usePayState } from "./OrderPanel";
 import { OrderStrip } from "./OrderStrip";
-import type { CustomerDisplayControls } from "@/components/admin/CustomerDisplayDialog";
 import { errorText } from "@/lib/staff-bookings";
 import { needsApproval, shownRequest } from "./staff-approvals";
 import { useOrderWrites } from "./useOrderWrites";
@@ -45,7 +44,7 @@ type CheckoutViewProps = {
   notice?: string;
   onNoticeRetry?: () => void;
   /** The customer display button; only the admin page has one. */
-  displayControl?: (controls: CustomerDisplayControls) => ReactNode;
+  customerDisplay?: { orderId: string | null | undefined };
   retail?: boolean;
   ordersFilterScope?: string;
   preferredRetailBranchId?: Id<"branches">;
@@ -62,7 +61,7 @@ function CheckoutContent({
   onPaid,
   notice,
   onNoticeRetry,
-  displayControl,
+  customerDisplay,
   retailLabels,
   preferredRetailBranchId,
   ordersFilterScope,
@@ -240,7 +239,7 @@ function CheckoutContent({
     <div inert={sheetOpen && keepHeader} className={cn("relative isolate flex min-h-0 flex-1 flex-col overflow-y-auto bg-background", TOUCH_TARGETS)}>
       {discountNotice && discountNotice.orderId !== orderId ? <DiscountNoticeTarget orderId={discountNotice.orderId} /> : null}
       <Backdrop src={catalog?.rooms.find((room) => room.imageUrl)?.imageUrl} />
-      <OrderStrip key={ordersFilterScope} ordersFilterScope={ordersFilterScope} view={missing ? null : view} title={title} run={run} onOrderChange={changeOrder} canStartNew={orderId !== null || Boolean(notice)} displayControl={displayControl} />
+      <OrderStrip key={ordersFilterScope} ordersFilterScope={ordersFilterScope} view={missing ? null : view} title={title} run={run} onOrderChange={changeOrder} canStartNew={orderId !== null || Boolean(notice)} customerDisplay={customerDisplay} />
       {message ? alert(message) : null}
       {narrow && !sheetOpen ? discountAlert : null}
       <div className="flex min-h-0 flex-1">
