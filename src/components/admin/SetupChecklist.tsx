@@ -6,6 +6,7 @@ import { CheckCircle2, Circle, Copy, X } from "lucide-react";
 import Link from "@/platform/link";
 import { useState } from "react";
 import { Button, ButtonLink } from "@/components/ui/button";
+import { Disclosure } from "@/components/ui/disclosure";
 import { Spinner } from "@/components/ui/spinner";
 import { CHANNEL_WEBHOOK_PATH, type ChannelKey } from "@/lib/admin/channel-config";
 import { errorText } from "@/lib/staff-bookings";
@@ -124,7 +125,7 @@ export function useSetupChecklist(): { items: Item[]; loading: boolean } {
       label: "An OTA calendar synced",
       done: facts.icalSynced,
       detail: "Import your Airbnb, Booking.com or Agoda iCal feed so their bookings block dates here.",
-      href: "/admin/hotel",
+      href: "/admin/hotel?panel=ota-calendars",
       linkLabel: "OTA calendars",
     },
   ];
@@ -232,6 +233,30 @@ export function SetupChecklistCard({ compact = false, className }: { compact?: b
           <span className={cn("block h-full", TONES.success.dot)} style={{ width: `${(done / items.length) * 100}%` }} />
         </span>
       </summary>
+      {/* Work still to do comes first; finished steps (and their copy/test actions) fold away below. */}
+      {complete ? (
+        <ChecklistRows items={items} />
+      ) : (
+        <>
+          <ChecklistRows items={items.filter((item) => !item.done)} />
+          {done > 0 ? (
+            <Disclosure
+              label={`Completed (${done})`}
+              className="border-t border-border [&>summary]:px-4"
+              contentClassName="p-0"
+              data-testid="setup-checklist-completed"
+            >
+              <ChecklistRows items={items.filter((item) => item.done)} />
+            </Disclosure>
+          ) : null}
+        </>
+      )}
+    </details>
+  );
+}
+
+function ChecklistRows({ items }: { items: readonly Item[] }) {
+  return (
       <ul className="min-w-0 divide-y divide-border border-t border-border">
         {items.map((item) => (
           <li key={item.id} className="flex min-w-0 gap-3 px-4 py-3">
@@ -257,7 +282,6 @@ export function SetupChecklistCard({ compact = false, className }: { compact?: b
           </li>
         ))}
       </ul>
-    </details>
   );
 }
 

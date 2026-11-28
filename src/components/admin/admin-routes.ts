@@ -145,6 +145,14 @@ export function adminNavItem(pathname: string): AdminNavItem | undefined {
   return ADMIN_NAV.find((item) => adminSection(item.href) === section);
 }
 
+/** Hotel panels a link may open directly: `/admin/hotel?panel=ota-calendars` opens OTA calendars. */
+export const HOTEL_PANELS = ["ota-calendars"] as const;
+export type HotelPanel = (typeof HOTEL_PANELS)[number];
+
+export function hotelPanel(value: string | null): HotelPanel | null {
+  return HOTEL_PANELS.find((panel) => panel === value) ?? null;
+}
+
 export function isAdminStaffTab(value: string): value is AdminStaffTab {
   return (ADMIN_STAFF_TABS as readonly string[]).includes(value);
 }
@@ -157,24 +165,35 @@ const ADMIN_HOME = "/admin/chats";
 
 /**
  * Used by the request middleware (site-redirect.server.ts): where to send an `/admin` URL whose section doesn't exist
- * (`/admin`, the old `/admin/chat`, typos), or null to render the page.
+ * (`/admin`, the old `/admin/chat`, typos), or null to render the page. An unknown Staff bookings or
+ * Marketing sub-page renders (as not found) inside its own section, which offers that section's
+ * permitted pages instead of dropping the person in Chats (see adminSectionRecovery).
  */
 export function adminRedirectPath(pathname: string): string | null {
   const [, , section, subpage] = pathname.split("/");
   if (section === "receipt") return subpage ? null : ADMIN_HOME;
   if (section === "staff") {
-    if (!subpage) return adminStaffTabPath("calendar");
-    return isAdminStaffTab(subpage) ? null : ADMIN_HOME;
+    return subpage ? null : adminStaffTabPath("calendar");
   }
   if (section === "stock") {
     if (!subpage) return adminStockPath(ADMIN_STOCK_DEFAULT);
     return isAdminStockPage(subpage) ? null : ADMIN_HOME;
   }
   if (section === "marketing") {
-    if (!subpage) return adminMarketingPath(ADMIN_MARKETING_DEFAULT);
-    return isAdminMarketingPage(subpage) ? null : ADMIN_HOME;
+    return subpage ? null : adminMarketingPath(ADMIN_MARKETING_DEFAULT);
   }
   return adminNavItem(pathname) ? null : ADMIN_HOME;
+}
+
+/**
+ * For a not-found admin URL: the section it was meant for and the pages there this person may open
+ * (pass their filtered navigation), or null when the section isn't theirs or has no sub-pages.
+ */
+export function adminSectionRecovery(pathname: string, nav: readonly AdminNavItem[]): { label: string; links: readonly AdminNavLink[] } | null {
+  const section = adminNavItem(pathname);
+  const allowed = section && nav.find((item) => item.href === section.href);
+  if (!allowed?.children?.length) return null;
+  return { label: allowed.label, links: allowed.children };
 }
 
 function navMatchRank(link: AdminNavLink, query: string) {

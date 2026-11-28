@@ -35,6 +35,8 @@ import { errorText } from "@/lib/staff-bookings";
 import { STAFF_CALENDAR_FORMATS, staffDateTime } from "@/lib/staff-time";
 import { Toast, useToast } from "@/components/ui/toast";
 import { useAdminBranch } from "@/components/admin/branch/branch-context";
+import { hotelPanel } from "@/components/admin/admin-routes";
+import { useRouter, useSearchParams } from "@/platform/navigation";
 import { useStoredState } from "@/lib/use-stored-state";
 import { BookingCleanupDialog } from "./BookingCleanupDialog";
 import { NotifyGuestField } from "./BookingMoneyFields";
@@ -127,6 +129,19 @@ function HotelBookings() {
   const [creating, setCreating] = useState<NewBookingPrefill | null>(null);
   const [blockTarget, setBlockTarget] = useState<BlockTarget | null>(null);
   const [managingCalendars, setManagingCalendars] = useState(false);
+  // `?panel=ota-calendars` (the setup checklist's link) opens OTA calendars; closing clears it, so
+  // Back still returns to where the link was followed.
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const linkedPanel = hotelPanel(searchParams.get("panel"));
+  const calendarsOpen = managingCalendars || linkedPanel === "ota-calendars";
+  function closeCalendars() {
+    setManagingCalendars(false);
+    if (!searchParams.has("panel")) return;
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("panel");
+    router.replace(params.size ? `/admin/hotel?${params}` : "/admin/hotel", { scroll: false });
+  }
   const [managingRates, setManagingRates] = useState(false);
   const [cleaningUp, setCleaningUp] = useState(false);
   // Errors and "can't drag that" hints replace the drag hint for a few seconds; successes go to the toast.
@@ -481,7 +496,7 @@ function HotelBookings() {
         <DateBlockDialog target={blockTarget} properties={properties} onClose={() => setBlockTarget(null)} />
       ) : null}
       {properties ? (
-        <IcalSourcesDialog open={managingCalendars} onClose={() => setManagingCalendars(false)} properties={properties} />
+        <IcalSourcesDialog open={calendarsOpen} onClose={closeCalendars} properties={properties} />
       ) : null}
       {properties ? (
         <OtaRatesDialog open={managingRates} onClose={() => setManagingRates(false)} properties={properties} />
