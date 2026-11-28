@@ -355,7 +355,7 @@ it("quotes a selected catalog service by identity and blocks an unavailable sele
   const choice = { id: "first-page" as Id<"services">, name: "First service", category: "Spa", durationMin: 30 };
   const props = {
     testQuote, code: "SPA-10", dirty: false, today: "2026-11-08",
-    properties: [{ _id: "villa" as Id<"properties">, slug: "villa", name: "Villa", status: "active" as const, pricePerNight: 50000, currency: "THB", maxGuests: 2 }],
+    properties: [{ _id: "villa" as Id<"properties">, slug: "villa", name: "Villa", status: "active" as const, pricePerNight: 50000, currency: "THB", maxGuests: 2, directDiscountPercent: 0 }],
   };
   await render(createElement(TestQuotePanel, { ...props, serviceCatalog: { choices: [choice], loadMore } }));
   await click(button("Load more services"));
