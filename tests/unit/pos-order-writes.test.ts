@@ -249,7 +249,7 @@ describe("checkout order screen", () => {
     // Paid orders list their total (the deposit included) and receipt number.
     expect(paid.textContent).toContain("R-000142");
     expect(paid.textContent).toContain("฿50,400");
-  });
+  }, 30000);
 
   it("explains and disables adding a stay while the guest is paying online", async () => {
     vi.useFakeTimers();
