@@ -6,6 +6,7 @@ import { useCouponCopy } from "./coupon-copy";
 import { captureForBooking } from "@/lib/marketing/capture";
 import { api } from "convex/_generated/api";
 import type { FunctionReturnType } from "convex/server";
+import { ConvexError } from "convex/values";
 import Link from "@/platform/link";
 import { useLocale, useTranslations } from "@/platform/intl";
 import { useEffect, useRef, useState } from "react";
@@ -111,7 +112,7 @@ export function ProposalPayClient({ token }: { token: string }) {
     } catch (err) {
       const message = err instanceof Error ? err.message : "";
       // The mutation refuses every unusable link alike; ask why before naming expiry.
-      if (message.includes("summary has expired")) await explainRefusal();
+      if (err instanceof ConvexError && err.data?.code === "PROPOSAL_UNAVAILABLE") await explainRefusal();
       else
         setError(
           t(

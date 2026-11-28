@@ -4,6 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { IntlProvider } from "@/platform/intl";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { getFunctionName } from "convex/server";
+import { ConvexError } from "convex/values";
 import { ProposalPayClient } from "@/components/booking/ProposalPayClient";
 import en from "../../messages/en.json";
 import th from "../../messages/th.json";
@@ -152,7 +153,7 @@ it("G34: when the reason itself cannot be verified, the page stays neutral", asy
 });
 it("a refused confirm on a replaced link shows the neutral state, not expiry", async () => {
   answer(summary, "unavailable");
-  client.mutation.mockRejectedValue(new Error("This summary has expired. Ask in the chat for a new one."));
+  client.mutation.mockRejectedValue(new ConvexError({ code: "PROPOSAL_UNAVAILABLE" }));
   await render();
   await act(async () => document.querySelector("button")!.click());
   expect(document.body.textContent).toContain(en.Booking.proposalUnavailable);
@@ -162,7 +163,7 @@ it("a refused confirm on a replaced link shows the neutral state, not expiry", a
 it("handles a summary expiring between opening and pressing confirm", async () => {
   answer(summary, "summary_expired");
   client.mutation.mockRejectedValue(
-    new Error("This summary has expired. Ask in the chat for a new one."),
+    new ConvexError({ code: "PROPOSAL_UNAVAILABLE" }),
   );
   await render();
   await act(async () => document.querySelector("button")!.click());

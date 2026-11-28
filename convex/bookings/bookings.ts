@@ -473,7 +473,7 @@ export const confirmProposal = publicMutation({
 	},
 	handler: async (ctx, args) => {
 		const result = await loadConfirmProposal(ctx, args.token);
-		if (!result) throw new Error('This summary has expired. Ask in the chat for a new one.');
+		if (!result) throw new ConvexError({ code: 'PROPOSAL_UNAVAILABLE', message: 'This summary has expired. Ask in the chat for a new one.' });
 		return await confirmPreparedBooking(ctx, { sessionId: result.session._id, byGuest: true, marketing: args.marketing });
 	}
 });
