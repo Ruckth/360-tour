@@ -1,6 +1,8 @@
 import { ConvexError } from 'convex/values';
 import { MAX_QTY, MAX_TENDERS } from '../orderMath';
 
+export const MAX_TRANSFER_LINES = 12;
+
 const saleLimits = {
   rows: 100,
   packageRows: 20,

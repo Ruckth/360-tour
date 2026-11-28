@@ -22,6 +22,7 @@ export function StockVariantPickerDialog({
   onOpenChange,
   branchId,
   selectedIds = [],
+  maxLines = STOCK_MAX_LINES,
   title = "Select stock item",
   description = "Search the catalog by product name or SKU.",
   onSelect,
@@ -30,6 +31,7 @@ export function StockVariantPickerDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   branchId: Id<"branches">;
+  maxLines?: number;
   selectedIds?: readonly string[];
   title?: string;
   description?: string;
@@ -47,7 +49,7 @@ export function StockVariantPickerDialog({
   }
   const debounced = useDebounced(search.trim(), 200);
   const selectedSet = new Set(selectedIds);
-  const availableSlots = STOCK_MAX_LINES - selectedSet.size;
+  const availableSlots = maxLines - selectedSet.size;
   const pending = picks.filter((item) => !selectedSet.has(item.variantId)).slice(0, Math.max(0, availableSlots));
   const pendingIds = new Set(pending.map((item) => item.variantId));
   const atCap = pending.length >= availableSlots;

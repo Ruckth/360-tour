@@ -4,6 +4,8 @@ import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
+import { MAX_TRANSFER_LINES } from "convex/shared/commerce/caps";
+import { flushSync } from "react-dom";
 import { ArrowRightLeft, Layers, Plus, Send, ShieldAlert } from "lucide-react";
 import { useMemo, useRef, useState, type FormEvent } from "react";
 import { EmptyState, SkeletonRows, STACKED_TABLE } from "@/components/admin/admin-bulk";
@@ -453,6 +455,7 @@ function CreateTransferSheet({
             lineErrors={lineErrors}
             onAddClick={() => setPickerOpen(true)}
             addLabel="Add item"
+            maxLines={MAX_TRANSFER_LINES}
             idPrefix="transfer-line"
           />
 
@@ -473,6 +476,7 @@ function CreateTransferSheet({
         onOpenChange={setPickerOpen}
         branchId={originId}
         selectedIds={lines.map((line) => line.variantId)}
+        maxLines={MAX_TRANSFER_LINES}
         title="Add items to transfer"
         onSelectMany={(items) => {
           setLines((current) => [
@@ -565,15 +569,14 @@ function TransferDetailSheet({
     event.preventDefault();
     if (!detail) return;
     setError("");
-    setShowLineErrors(true);
     const lines: { lineId: Id<"stockTransferLines">; quantity: number }[] = [];
     for (const line of detail.lines) {
       const remaining = line.quantity - line.received;
-      if (remaining <= 0) continue;
       const raw = (receiveInputs[line._id] ?? "").trim();
       if (!raw) continue;
       const parsed = parseWholeQuantity(raw, { allowZero: false, max: remaining });
       if (!parsed.ok || !parsed.value) {
+        flushSync(() => setShowLineErrors(true));
         document.getElementById(`tr-recv-${line._id}`)?.focus();
         return;
       }
@@ -737,7 +740,7 @@ function TransferDetailSheet({
                           <strong className="text-foreground">{remaining}</strong>
                         </span>
                       </div>
-                      {detail.transfer.state === "inTransit" && detail.permissions.receive && remaining > 0 ? (
+                      {detail.transfer.state === "inTransit" && detail.permissions.receive && (remaining > 0 || raw) ? (
                         <div className="grid gap-1.5 sm:max-w-xs">
                           <Label htmlFor={`tr-recv-${line._id}`}>Receive now (max {remaining})</Label>
                           <NumberField
@@ -751,7 +754,7 @@ function TransferDetailSheet({
                             }
                           />
                           {invalid && <p role="alert" id={`tr-error-${line._id}`} className="text-xs text-destructive">
-                            {line.productName} {line.label} · Enter a whole quantity between 1 and {remaining}.
+                            {line.productName} {line.label} · {remaining > 0 ? `Enter a whole quantity between 1 and ${remaining}.` : "Already fully received. Clear this line or fill the latest remaining quantities."}
                           </p>}
                         </div>
                       ) : null}

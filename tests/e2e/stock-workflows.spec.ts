@@ -55,6 +55,14 @@ test('staff can receive a partial tracked purchase order on a phone and inspect 
     const nav = page.getByRole('navigation', { name: 'Stock pages' });
     await expect(nav.getByRole('link')).toHaveCount(5);
     await expect(nav.getByRole('link', { name: 'Purchasing' })).toHaveAttribute('aria-current', 'page');
+    const pageOverflows = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
+    expect(pageOverflows).toBe(false);
+    const navLinks = nav.getByRole('link');
+    await navLinks.first().focus();
+    for (let index = 1; index < 5; index++) {
+      await page.keyboard.press('Tab');
+      await expect(navLinks.nth(index)).toBeFocused();
+    }
     const links = await nav.getByRole('link').evaluateAll(items => items.map(item => {
       const { x, y, width, height } = item.getBoundingClientRect();
       return { x, y, width, height, tabIndex: (item as HTMLElement).tabIndex };
@@ -204,7 +212,28 @@ test('purchasing searches posted documents and restores filtered queues from det
   const draft = await owner.mutation(purchasing.saveOrder, {
     branchId, supplierId, lines: [{ variantId, quantity: 3, unitCost: 7000 }], operationKey: crypto.randomUUID(),
   });
+  if (!draft.reference || !request.reference || !receipt.reference) throw new Error('Seeded purchasing documents need printable references.');
   const hub = '/admin/stock/purchasing';
+
+  await page.goto(`${hub}?tab=orders&orderFilter=item&variantId=nope`);
+  await expect(page.getByRole('button', { name: 'Pick item…' })).toBeVisible();
+  await expect(page.getByRole('combobox', { name: 'Order filter' })).toContainText('Filter by item');
+  await page.goto(`${hub}?tab=requests&requestFilter=item&requestVariantId=${supplierId}`);
+  await expect(page.getByRole('button', { name: 'Pick item…' })).toBeVisible();
+  await expect(page.getByRole('combobox', { name: 'Request filter' })).toContainText('Filter by item');
+
+  const unusedSupplierName = `Empty queue supplier ${token}`;
+  const unusedSupplier = await owner.mutation(purchasing.addSupplier, {
+    branchId, name: unusedSupplierName, operationKey: crypto.randomUUID(),
+  });
+  await page.goto(`${hub}?tab=orders&orderFilter=supplier&supplierId=${unusedSupplier.id}`);
+  await expect(page.getByRole('button', { name: unusedSupplierName, exact: true })).toBeVisible();
+  await expect(page.getByText('No purchase orders match this view.')).toBeVisible();
+  await page.getByRole('searchbox', { name: 'Purchase reference' }).fill(draft.reference);
+  await page.getByRole('link', { name: draft.reference, exact: true }).click();
+  await page.getByRole('link', { name: 'Orders', exact: true }).click();
+  await page.getByRole('searchbox', { name: 'Purchase reference' }).fill('');
+  await expect(page.getByRole('button', { name: unusedSupplierName, exact: true })).toBeVisible();
 
   await page.goto(`${hub}?tab=requests&requestFilter=mine`);
   await page.getByRole('link', { name: request.reference, exact: true }).click();
