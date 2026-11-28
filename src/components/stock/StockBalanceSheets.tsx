@@ -404,13 +404,13 @@ export function StockAdjustSheet({
   }));
   const [direction, setDirection] = useState<"remove" | "add">("remove");
   const [qtyText, setQtyText] = useState("");
-  const [reasonCode, setReasonCode] = useState<string>("damaged");
+  const [reasonCode, setReasonCode] = useState("");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [operationKey, setOperationKey] = useState(() => createOperationKey("stock-adjust"));
 
-  const dirty = qtyText.trim() !== "" || note.trim() !== "" || direction !== "remove" || reasonCode !== "damaged";
+  const dirty = qtyText.trim() !== "" || note.trim() !== "" || direction !== "remove" || reasonCode !== "";
   const { requestClose } = useStockDirtyGuard(dirty, onClose, saving);
 
   const isLotTracked = liveItem?.lotTracked ?? item.lotTracked;
@@ -420,7 +420,7 @@ export function StockAdjustSheet({
 
   const previewQueries = useMemo(
     (): RequestForQueries =>
-      !isLotTracked && signedDelta !== null
+      !isLotTracked && signedDelta !== null && reasonCode !== ""
         ? {
             preview: {
               query: api.commerce.stock.previewOperation,
@@ -452,6 +452,11 @@ export function StockAdjustSheet({
     if (!parsedQty.ok || !parsedQty.value || signedDelta === null) {
       setError(parsedQty.ok ? "Enter a positive quantity." : parsedQty.error);
       document.getElementById("adjust-qty")?.focus();
+      return;
+    }
+    if (!reasonOptions.some((reason) => reason.code === reasonCode)) {
+      setError("Choose an adjustment reason.");
+      document.querySelector<HTMLInputElement>('input[name="adjust-reason"]')?.focus();
       return;
     }
     if (reasonCode === "other" && !note.trim()) {
@@ -554,7 +559,7 @@ export function StockAdjustSheet({
           value={direction}
           onChange={(next) => {
             setDirection(next);
-            setReasonCode(next === "remove" ? "damaged" : "found");
+            setReasonCode("");
             setOperationKey(createOperationKey("stock-adjust"));
           }}
           options={[
@@ -583,7 +588,7 @@ export function StockAdjustSheet({
 
         <ChoiceGroup
           name="adjust-reason"
-          label="Reason"
+          label="Reason (required)"
           value={reasonCode}
           onChange={(next) => {
             setReasonCode(next);

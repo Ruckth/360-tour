@@ -13,6 +13,8 @@ import { SegmentedTabs, tabPanelProps } from "@/components/admin/SegmentedTabs";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { staffDateTime } from "@/lib/staff-time";
 import { cn } from "@/lib/utils";
@@ -20,18 +22,19 @@ import Link from "@/platform/link";
 import { useRouter, useSearchParams } from "@/platform/navigation";
 import { DeclineHoldSheet, OrderEditorSheet, RequestEditorSheet } from "./PurchasingEditorSheets";
 import { ReceiveDeliverySheet } from "./ReceiveDeliverySheet";
+import { PURCHASING_HUB_PATH, purchasingDetailHref, validatePurchasingSearch } from "./purchasing-location";
 import {
   formatSatang,
   HOLD_STATUS_META,
   ORDER_STATUS_META,
   parseVariantIdsParam,
+  RECEIPT_KIND_META,
   REQUEST_STATUS_META,
-  sanitizeStockReturnTo,
   STOCK_PAGE_SIZE,
   stockReturnLabel,
   stripSearchParams,
 } from "./stock-format";
-import type { PurchaseHoldStatus, StockLineDraft } from "./stock-types";
+import type { StockLineDraft } from "./stock-types";
 import { useResolvedStockVariants } from "./StockFormGuard";
 import { StockVariantPickerDialog } from "./StockVariantPicker";
 import { SupplierPickerField, SuppliersManagementPanel } from "./SupplierPicker";
@@ -39,8 +42,6 @@ import { SupplierPickerField, SuppliersManagementPanel } from "./SupplierPicker"
 export { OrderEditorSheet, RequestEditorSheet } from "./PurchasingEditorSheets";
 
 type HoldRow = FunctionReturnType<typeof api.commerce.purchasing.holds>["page"][number];
-
-type PurchasingTab = "requests" | "orders" | "holds" | "suppliers";
 
 type PendingPurchasingAutoOpen = {
   action: "request" | "order" | "receive";
@@ -66,39 +67,40 @@ export function StockPurchasingHubView() {
   const { current: branch } = useAdminBranch();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const tabParam = searchParams.get("tab");
-  const initialTab = (tabParam as PurchasingTab | null) ?? "orders";
-  const initialVariantId = searchParams.get("variantId") as Id<"productVariants"> | null;
-  const openNewFromParam = searchParams.get("new") === "1";
-  const openReceiveFromParam = searchParams.get("receive") === "1";
-  const variantsParam = searchParams.get("variants");
-  const returnTo = sanitizeStockReturnTo(searchParams.get("returnTo"));
+  const queue = validatePurchasingSearch(Object.fromEntries(searchParams));
+  const tabParam = queue.tab ?? null;
+  const tab = queue.tab ?? "orders";
+  const openNewFromParam = queue.new === "1";
+  const openReceiveFromParam = queue.receive === "1";
+  const variantsParam = queue.variants ?? null;
+  const returnTo = queue.returnTo ?? null;
+  const purchaseReference = queue.reference ?? "";
+  const receiptReference = queue.receiptReference ?? "";
 
-  const [tab, setTab] = useState<PurchasingTab>(
-    ["requests", "orders", "holds", "suppliers"].includes(initialTab) ? initialTab : "orders",
-  );
+  function updateSearch(values: Partial<Record<keyof typeof queue, string | undefined>>) {
+    const next = new URLSearchParams(searchParams);
+    for (const [key, value] of Object.entries(values)) {
+      if (value) next.set(key, value);
+      else next.delete(key);
+    }
+    router.replace(next.size ? `${PURCHASING_HUB_PATH}?${next}` : PURCHASING_HUB_PATH, { scroll: false });
+  }
+  const detailHref = (path: string) => purchasingDetailHref(`${PURCHASING_HUB_PATH}/${path}`, searchParams);
+
   const { notice, show, clear } = useNotice();
-
   const access = useQuery(api.commerce.stock.access, branch ? { branchId: branch.id } : "skip");
+  const branchWideRequests = Boolean(access?.approver || access?.buyer || access?.lead);
 
-  // Requests filter state
-  const [reqFilterMode, setReqFilterMode] = useState<"default" | "mine" | "awaiting_approval" | "approved" | "all" | "item">("default");
-  const [reqItem, setReqItem] = useState<{ id: Id<"productVariants">; label: string } | null>(null);
+  const requestFilter = queue.requestFilter ?? "default";
+  const reqFilterMode = !branchWideRequests && (requestFilter === "approved" || requestFilter === "all" || requestFilter === "awaiting_approval")
+    ? "default" : requestFilter;
+  const orderFilterMode = queue.orderFilter ?? (queue.variantId ? "item" : "open");
+  const orderItemOpenOnly = queue.allItemOrders !== "1";
+  const holdStatusFilter = queue.holdStatus ?? "open";
+
   const [reqItemPickerOpen, setReqItemPickerOpen] = useState(false);
-
-  // Orders filter state (one filter at a time)
-  const [orderFilterMode, setOrderFilterMode] = useState<"open" | "draft" | "closed" | "supplier" | "item">(
-    initialVariantId ? "item" : "open",
-  );
-  const [orderSupplier, setOrderSupplier] = useState<{ id: Id<"suppliers">; name: string } | null>(null);
-  const [rawOrderItem, setOrderItem] = useState<{ id: Id<"productVariants">; label: string } | null>(
-    initialVariantId ? { id: initialVariantId, label: "Selected item" } : null,
-  );
-  const [orderItemOpenOnly, setOrderItemOpenOnly] = useState(true);
   const [orderItemPickerOpen, setOrderItemPickerOpen] = useState(false);
-
-  // Holds state
-  const [holdStatusFilter, setHoldStatusFilter] = useState<PurchaseHoldStatus>("open");
+  const [pickedSupplier, setPickedSupplier] = useState<{ id: Id<"suppliers">; name: string } | null>(null);
   const [decliningHold, setDecliningHold] = useState<HoldRow | null>(null);
 
   // One-shot auto-open intent consumed from URL params (stripped with replace so Back doesn't reopen)
@@ -161,25 +163,15 @@ export function StockPurchasingHubView() {
     enabled: Boolean(branch && access?.read && pendingAutoOpen && prefillIds.length > 0),
   });
 
-  // Resolve filter `variantId` label from authorized backend
-  const filterVariantIds = useMemo(
-    () => (initialVariantId ? [initialVariantId] : []),
-    [initialVariantId],
-  );
+  const filterVariantId = tab === "requests" && reqFilterMode === "item" ? queue.requestVariantId
+    : tab === "orders" && orderFilterMode === "item" ? queue.variantId : undefined;
+  const filterVariantIds = filterVariantId ? [filterVariantId] : [];
   const { items: resolvedFilterVariants } = useResolvedStockVariants(branch?.id ?? null, filterVariantIds, {
-    enabled: Boolean(branch && access?.read && rawOrderItem?.id === initialVariantId && rawOrderItem?.label === "Selected item"),
+    enabled: Boolean(access?.read),
   });
-
-  const orderItem = useMemo(() => {
-    const resolved = resolvedFilterVariants[0];
-    if (rawOrderItem && rawOrderItem.label === "Selected item" && resolved?.variantId === rawOrderItem.id) {
-      return {
-        id: resolved.variantId,
-        label: `${resolved.productName} · ${resolved.label}${resolved.sku ? ` (${resolved.sku})` : ""}`,
-      };
-    }
-    return rawOrderItem;
-  }, [rawOrderItem, resolvedFilterVariants]);
+  const filterVariant = resolvedFilterVariants[0];
+  const filterItemLabel = filterVariant ? `${filterVariant.productName} · ${filterVariant.label}`
+    : filterVariantId ? "Selected item" : "Pick item…";
 
   // Open the requested sheet once access + prefill variants have resolved
   if (pendingAutoOpen && branch && access !== undefined) {
@@ -201,7 +193,6 @@ export function StockPurchasingHubView() {
           );
         }
         if (pendingAutoOpen.action === "request") {
-          setTab("requests");
           setNewRequestPrefill(
             resolvedPrefillItems.map((item) => ({
               variantId: item.variantId,
@@ -215,7 +206,6 @@ export function StockPurchasingHubView() {
           );
           setNewRequestOpen(true);
         } else if (pendingAutoOpen.action === "order") {
-          setTab("orders");
           setNewOrderForHold(null);
           setNewOrderPrefill(
             resolvedPrefillItems.map((item) => ({
@@ -231,7 +221,6 @@ export function StockPurchasingHubView() {
           );
           setNewOrderOpen(true);
         } else {
-          setTab("orders");
           setReceivePrefill({
             lines: resolvedPrefillItems.map((item) => ({
               variantId: item.variantId,
@@ -253,7 +242,7 @@ export function StockPurchasingHubView() {
   }
 
   const resolvedRequestView = (() => {
-    if (reqFilterMode === "item" && reqItem) return { kind: "item" as const, variantId: reqItem.id };
+    if (reqFilterMode === "item" && queue.requestVariantId) return { kind: "item" as const, variantId: queue.requestVariantId };
     if (reqFilterMode === "mine") return { kind: "mine" as const };
     if (reqFilterMode === "awaiting_approval") return { kind: "status" as const, status: "awaiting_approval" as const };
     if (reqFilterMode === "approved") return { kind: "status" as const, status: "approved" as const };
@@ -265,24 +254,25 @@ export function StockPurchasingHubView() {
   })();
 
   const resolvedOrderView = (() => {
-    if (orderFilterMode === "supplier" && orderSupplier) {
-      return { kind: "supplier" as const, supplierId: orderSupplier.id };
+    if (orderFilterMode === "supplier" && queue.supplierId) {
+      return { kind: "supplier" as const, supplierId: queue.supplierId };
     }
-    if (orderFilterMode === "item" && orderItem) {
-      return { kind: "item" as const, variantId: orderItem.id, openOnly: orderItemOpenOnly };
+    if (orderFilterMode === "item" && queue.variantId) {
+      return { kind: "item" as const, variantId: queue.variantId, openOnly: orderItemOpenOnly };
     }
     if (orderFilterMode === "draft") return { kind: "phase" as const, phase: "draft" as const };
     if (orderFilterMode === "closed") return { kind: "phase" as const, phase: "closed" as const };
     return { kind: "phase" as const, phase: "open" as const };
   })();
 
+  const searchingPurchases = (tab === "requests" || tab === "orders") && purchaseReference.trim() !== "";
   const {
     results: requestRows,
     status: reqStatus,
     loadMore: loadMoreRequests,
   } = usePaginatedQuery(
     api.commerce.purchasing.requests,
-    branch && access?.read && tab === "requests" ? { branchId: branch.id, view: resolvedRequestView } : "skip",
+    branch && access?.read && tab === "requests" && !searchingPurchases ? { branchId: branch.id, view: resolvedRequestView } : "skip",
     { initialNumItems: STOCK_PAGE_SIZE },
   );
 
@@ -292,7 +282,7 @@ export function StockPurchasingHubView() {
     loadMore: loadMoreOrders,
   } = usePaginatedQuery(
     api.commerce.purchasing.orders,
-    branch && access?.read && tab === "orders" ? { branchId: branch.id, view: resolvedOrderView } : "skip",
+    branch && access?.read && tab === "orders" && !searchingPurchases ? { branchId: branch.id, view: resolvedOrderView } : "skip",
     { initialNumItems: STOCK_PAGE_SIZE },
   );
 
@@ -305,6 +295,29 @@ export function StockPurchasingHubView() {
     branch && access?.read && tab === "holds" ? { branchId: branch.id, status: holdStatusFilter } : "skip",
     { initialNumItems: STOCK_PAGE_SIZE },
   );
+
+  const purchaseMatch = useQuery(
+    api.commerce.purchasing.purchaseReference,
+    branch && access?.read && searchingPurchases ? { branchId: branch.id, reference: purchaseReference } : "skip",
+  );
+  const receiptSearchArgs = branch && access?.read && tab === "receipts" ? { branchId: branch.id } : null;
+  const searchingReceipts = receiptReference.trim() !== "";
+  const receiptList = usePaginatedQuery(
+    api.commerce.purchasing.receipts,
+    receiptSearchArgs
+      ? { ...receiptSearchArgs, match: searchingReceipts ? { kind: "delivery", reference: receiptReference } : undefined }
+      : "skip",
+    { initialNumItems: STOCK_PAGE_SIZE },
+  );
+  const receiptByReference = usePaginatedQuery(
+    api.commerce.purchasing.receipts,
+    receiptSearchArgs && searchingReceipts
+      ? { ...receiptSearchArgs, match: { kind: "receipt", reference: receiptReference } }
+      : "skip",
+    { initialNumItems: STOCK_PAGE_SIZE },
+  );
+  const receiptRows = [...new Map([...receiptByReference.results, ...receiptList.results].map(row => [row._id, row])).values()];
+  const receiptsLoading = receiptList.status === "LoadingFirstPage" || (searchingReceipts && receiptByReference.status === "LoadingFirstPage");
 
   if (!branch) return null;
   if (access === undefined) return <SkeletonRows label="Loading purchasing" rows={5} />;
@@ -381,21 +394,61 @@ export function StockPurchasingHubView() {
         id="purchasing-hub"
         label="Purchasing sections"
         value={tab}
-        onValueChange={setTab}
+        onValueChange={(next) => updateSearch({ tab: next })}
         tabs={[
           { value: "requests", label: "Requests" },
           { value: "orders", label: "Orders" },
+          { value: "receipts", label: "Receipts" },
           { value: "holds", label: "Held goods" },
           { value: "suppliers", label: "Suppliers" },
         ]}
       />
 
-      {tab === "requests" ? (
+      {(tab === "requests" || tab === "orders") ? (
+        <Label className="grid max-w-sm gap-1.5">
+          Purchase reference
+          <Input type="search" value={purchaseReference} maxLength={64} placeholder="Purchase order or request reference"
+            onChange={(event) => updateSearch({ reference: event.target.value })} />
+        </Label>
+      ) : null}
+
+      {searchingPurchases ? (
+        <div {...tabPanelProps("purchasing-hub", tab)}>
+          <Card className="overflow-hidden">
+            {purchaseMatch === undefined ? (
+              <SkeletonRows label="Looking up purchase reference" rows={1} />
+            ) : !purchaseMatch.request && !purchaseMatch.order ? (
+              <EmptyState>No purchase documents match this reference at {branch.name}.</EmptyState>
+            ) : (
+              <ul className="divide-y divide-border">
+                {purchaseMatch.request ? (
+                  <li className="flex flex-wrap items-center gap-3 p-4">
+                    <Link className="font-mono underline underline-offset-4" href={detailHref(`requests/${purchaseMatch.request._id}`)}>
+                      {purchaseMatch.request.reference}
+                    </Link>
+                    <span className="text-sm">{purchaseMatch.request.requesterLabel}</span>
+                    <StatusBadge {...REQUEST_STATUS_META[purchaseMatch.request.status]} />
+                  </li>
+                ) : null}
+                {purchaseMatch.order ? (
+                  <li className="flex flex-wrap items-center gap-3 p-4">
+                    <Link className="font-mono underline underline-offset-4" href={detailHref(`orders/${purchaseMatch.order._id}`)}>
+                      {purchaseMatch.order.reference}
+                    </Link>
+                    <span className="text-sm">{purchaseMatch.order.supplier.name}</span>
+                    <StatusBadge {...ORDER_STATUS_META[purchaseMatch.order.status]} />
+                  </li>
+                ) : null}
+              </ul>
+            )}
+          </Card>
+        </div>
+      ) : tab === "requests" ? (
         <div {...tabPanelProps("purchasing-hub", "requests")} className="grid gap-4">
           <div className="flex flex-wrap items-center gap-3">
             <Select
               value={reqFilterMode}
-              onValueChange={(v) => setReqFilterMode(v as typeof reqFilterMode)}
+              onValueChange={(v) => updateSearch({ requestFilter: v })}
             >
               <SelectTrigger aria-label="Request filter" className="w-52">
                 <SelectValue />
@@ -420,10 +473,10 @@ export function StockPurchasingHubView() {
               <div className="flex items-center gap-2">
                 <Button type="button" variant="outline" size="sm" onClick={() => setReqItemPickerOpen(true)}>
                   <Filter aria-hidden className="size-4" />
-                  {reqItem?.label ?? "Pick item…"}
+                  {filterItemLabel}
                 </Button>
-                {reqItem ? (
-                  <Button type="button" variant="ghost" size="icon" aria-label="Clear item filter" onClick={() => setReqItem(null)}>
+                {queue.requestVariantId ? (
+                  <Button type="button" variant="ghost" size="icon" aria-label="Clear item filter" onClick={() => updateSearch({ requestVariantId: undefined })}>
                     <X aria-hidden className="size-4" />
                   </Button>
                 ) : null}
@@ -463,7 +516,7 @@ export function StockPurchasingHubView() {
                     <tr key={req._id} className={STACKED_TABLE.row}>
                       <td data-label="Reference" className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled)}>
                         <Link
-                          href={`/admin/stock/purchasing/requests/${req._id}`}
+                          href={detailHref(`requests/${req._id}`)}
                           className="font-mono text-sm font-semibold text-foreground underline-offset-4 hover:underline"
                         >
                           {req.reference}
@@ -483,7 +536,7 @@ export function StockPurchasingHubView() {
                         {req.lineCount}
                       </td>
                       <td className={cn(STACKED_TABLE.cell, "lg:text-right")}>
-                        <ButtonLink href={`/admin/stock/purchasing/requests/${req._id}`} variant="outline" size="sm">
+                        <ButtonLink href={detailHref(`requests/${req._id}`)} variant="outline" size="sm">
                           Open
                         </ButtonLink>
                       </td>
@@ -507,7 +560,7 @@ export function StockPurchasingHubView() {
           <div className="flex flex-wrap items-center gap-3">
             <Select
               value={orderFilterMode}
-              onValueChange={(v) => setOrderFilterMode(v as typeof orderFilterMode)}
+              onValueChange={(v) => updateSearch({ orderFilter: v })}
             >
               <SelectTrigger aria-label="Order filter" className="w-52">
                 <SelectValue />
@@ -525,9 +578,12 @@ export function StockPurchasingHubView() {
               <div className="w-64">
                 <SupplierPickerField
                   branchId={branch.id}
-                  value={orderSupplier?.id ?? null}
-                  selectedName={orderSupplier?.name}
-                  onChange={setOrderSupplier}
+                  value={queue.supplierId ?? null}
+                  selectedName={pickedSupplier?.id === queue.supplierId ? pickedSupplier?.name : orderRows[0]?.supplier.name}
+                  onChange={(supplier) => {
+                    setPickedSupplier(supplier);
+                    updateSearch({ supplierId: supplier?.id });
+                  }}
                 />
               </div>
             ) : null}
@@ -536,13 +592,13 @@ export function StockPurchasingHubView() {
               <div className="flex flex-wrap items-center gap-2">
                 <Button type="button" variant="outline" size="sm" onClick={() => setOrderItemPickerOpen(true)}>
                   <Filter aria-hidden className="size-4" />
-                  {orderItem?.label ?? "Pick item…"}
+                  {filterItemLabel}
                 </Button>
                 <label className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
                   <input
                     type="checkbox"
                     checked={orderItemOpenOnly}
-                    onChange={(event) => setOrderItemOpenOnly(event.target.checked)}
+                    onChange={(event) => updateSearch({ allItemOrders: event.target.checked ? undefined : "1" })}
                     className="size-4 accent-foreground"
                   />
                   Open orders only
@@ -574,7 +630,7 @@ export function StockPurchasingHubView() {
                     <tr key={po._id} className={STACKED_TABLE.row}>
                       <td data-label="Reference" className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled)}>
                         <Link
-                          href={`/admin/stock/purchasing/orders/${po._id}`}
+                          href={detailHref(`orders/${po._id}`)}
                           className="font-mono text-sm font-semibold text-foreground underline-offset-4 hover:underline"
                         >
                           {po.reference}
@@ -597,7 +653,7 @@ export function StockPurchasingHubView() {
                         {po.totalCost > 0 ? formatSatang(po.totalCost) : "—"}
                       </td>
                       <td className={cn(STACKED_TABLE.cell, "lg:text-right")}>
-                        <ButtonLink href={`/admin/stock/purchasing/orders/${po._id}`} variant="outline" size="sm">
+                        <ButtonLink href={detailHref(`orders/${po._id}`)} variant="outline" size="sm">
                           Open
                         </ButtonLink>
                       </td>
@@ -616,13 +672,55 @@ export function StockPurchasingHubView() {
             </div>
           ) : null}
         </div>
+      ) : tab === "receipts" ? (
+        <div {...tabPanelProps("purchasing-hub", "receipts")} className="grid gap-4">
+          <Label className="grid max-w-sm gap-1.5">
+            Receipt or delivery reference
+            <Input type="search" value={receiptReference} maxLength={64}
+              onChange={(event) => updateSearch({ receiptReference: event.target.value })} />
+          </Label>
+          <Card className="overflow-hidden">
+            {receiptsLoading ? (
+              <SkeletonRows label="Loading posted receipts" rows={5} />
+            ) : receiptRows.length === 0 ? (
+              <EmptyState>{searchingReceipts ? "No receipts match this reference." : `No posted receipts at ${branch.name}.`}</EmptyState>
+            ) : (
+              <ul className="divide-y divide-border">
+                {receiptRows.map((receipt) => (
+                  <li key={receipt._id} className="flex flex-wrap items-start justify-between gap-2 p-4">
+                    <div className="grid gap-1">
+                      <Link className="font-mono font-semibold underline-offset-4 hover:underline" href={detailHref(`receipts/${receipt._id}`)}>
+                        {receipt.reference}
+                      </Link>
+                      <span className="text-sm">
+                        {receipt.supplier?.name ?? "No supplier"}{receipt.deliveryReference ? ` · ${receipt.deliveryReference}` : ""}
+                      </span>
+                    </div>
+                    <div className="grid gap-1 text-xs text-muted-foreground">
+                      <StatusBadge {...RECEIPT_KIND_META[receipt.kind]} />
+                      <span>{staffDateTime(receipt.createdAt)}</span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+          {receiptList.status === "CanLoadMore" || receiptList.status === "LoadingMore" ? (
+            <div className="flex justify-center">
+              <Button type="button" variant="outline" disabled={receiptList.status === "LoadingMore"}
+                onClick={() => receiptList.loadMore(STOCK_PAGE_SIZE)}>
+                {receiptList.status === "LoadingMore" ? "Loading receipts…" : "Load more receipts"}
+              </Button>
+            </div>
+          ) : null}
+        </div>
       ) : tab === "holds" ? (
         <div {...tabPanelProps("purchasing-hub", "holds")} className="grid gap-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm text-muted-foreground">
               Excess or substitute deliveries held outside On hand across orders of any status.
             </p>
-            <Select value={holdStatusFilter} onValueChange={(v) => setHoldStatusFilter(v as PurchaseHoldStatus)}>
+            <Select value={holdStatusFilter} onValueChange={(v) => updateSearch({ holdStatus: v })}>
               <SelectTrigger aria-label="Held goods status" className="w-44">
                 <SelectValue />
               </SelectTrigger>
@@ -661,7 +759,7 @@ export function StockPurchasingHubView() {
                       <p className="text-xs text-muted-foreground">
                         Receipt{" "}
                         <Link
-                          href={`/admin/stock/purchasing/receipts/${hold.receiptId}`}
+                          href={detailHref(`receipts/${hold.receiptId}`)}
                           className="font-mono underline underline-offset-4"
                         >
                           {hold.receiptReference}
@@ -670,7 +768,7 @@ export function StockPurchasingHubView() {
                           <>
                             {" · Order "}
                             <Link
-                              href={`/admin/stock/purchasing/orders/${hold.orderId}`}
+                              href={detailHref(`orders/${hold.orderId}`)}
                               className="font-mono underline underline-offset-4"
                             >
                               {hold.orderReference ?? hold.orderId}
@@ -739,10 +837,7 @@ export function StockPurchasingHubView() {
         onOpenChange={setReqItemPickerOpen}
         branchId={branch.id}
         title="Filter requests by item"
-        onSelect={(item) => {
-          setReqItem({ id: item.variantId, label: `${item.productName} · ${item.label}` });
-          setReqFilterMode("item");
-        }}
+        onSelect={(item) => updateSearch({ requestFilter: "item", requestVariantId: item.variantId })}
       />
 
       <StockVariantPickerDialog
@@ -750,10 +845,7 @@ export function StockPurchasingHubView() {
         onOpenChange={setOrderItemPickerOpen}
         branchId={branch.id}
         title="Filter orders by item"
-        onSelect={(item) => {
-          setOrderItem({ id: item.variantId, label: `${item.productName} · ${item.label}` });
-          setOrderFilterMode("item");
-        }}
+        onSelect={(item) => updateSearch({ orderFilter: "item", variantId: item.variantId })}
       />
 
       {newRequestOpen ? (
@@ -768,7 +860,7 @@ export function StockPurchasingHubView() {
           onSaved={(requestId) => {
             setNewRequestOpen(false);
             setNewRequestPrefill([]);
-            router.push(`/admin/stock/purchasing/requests/${requestId}`);
+            router.push(detailHref(`requests/${requestId}`));
           }}
         />
       ) : null}
@@ -789,7 +881,7 @@ export function StockPurchasingHubView() {
             setNewOrderOpen(false);
             setNewOrderForHold(null);
             setNewOrderPrefill([]);
-            router.push(`/admin/stock/purchasing/orders/${orderId}`);
+            router.push(detailHref(`orders/${orderId}`));
           }}
         />
       ) : null}
@@ -809,7 +901,7 @@ export function StockPurchasingHubView() {
           onPosted={(receiptId) => {
             setReceiveOpen(false);
             setReceivePrefill({ lines: [], variantIds: [] });
-            router.push(`/admin/stock/purchasing/receipts/${receiptId}`);
+            router.push(detailHref(`receipts/${receiptId}`));
           }}
         />
       ) : null}

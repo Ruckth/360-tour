@@ -20,7 +20,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { resortDateTime, resortMidnight } from "@/lib/staff-bookings";
 import { staffDateTime } from "@/lib/staff-time";
 import { cn } from "@/lib/utils";
-import { useSearchParams } from "@/platform/navigation";
+import { useRouter, useSearchParams } from "@/platform/navigation";
 import { MovementInspectSheet } from "./MovementInspectSheet";
 import {
   formatSignedDelta,
@@ -43,6 +43,7 @@ const ALL_MOVEMENT_KINDS = Object.keys(MOVEMENT_KIND_META) as StockMovementKind[
 export function StockActivityView() {
   const { current: branch } = useAdminBranch();
   const searchParams = useSearchParams();
+  const router = useRouter();
   const initialVariantId = searchParams.get("variantId") as Id<"productVariants"> | null;
   const initialView = searchParams.get("view") === "needs-review" ? "reports" : "movements";
   const returnTo = sanitizeStockReturnTo(searchParams.get("returnTo"));
@@ -139,9 +140,15 @@ export function StockActivityView() {
     setFromDate("");
     setToDate("");
     setFacetMode("none");
+    setKindFilter("adjust");
     setSelectedVariant(null);
     setActorFilter("");
     setReasonCodeFilter("");
+    if (initialVariantId) {
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete("variantId");
+      router.replace(params.size ? `/admin/stock/activity?${params}` : "/admin/stock/activity");
+    }
   }
 
   const tabs = [
@@ -280,21 +287,13 @@ export function StockActivityView() {
                       placeholder="e.g. damaged, opening_stock"
                     />
                   </>
-                ) : (
-                  <div className="flex items-end">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      disabled={!fromDate && !toDate && facetMode === "none"}
-                      onClick={clearFilters}
-                    >
-                      Reset filters
-                    </Button>
-                  </div>
-                )}
+                ) : null}
               </div>
             </div>
+            <Button type="button" variant="ghost" size="sm" className="mt-2"
+              disabled={!fromDate && !toDate && facetMode === "none"} onClick={clearFilters}>
+              Reset filters
+            </Button>
             {dateRangeInvalid ? (
               <p role="alert" className="mt-2 text-xs font-medium text-destructive">
                 End date must be on or after the start date.

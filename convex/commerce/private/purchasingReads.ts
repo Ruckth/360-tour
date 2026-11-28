@@ -5,9 +5,9 @@ import type { Doc, Id } from '../../_generated/dataModel';
 import type { QueryCtx } from '../../_generated/server';
 import type { StaffActor } from '../../auth/model';
 import { readBudget } from '../../lib/readBudget';
-import { PURCHASING_MAX_LINES, PURCHASING_PAGE_SIZE, type OrderPhase, type OrderStatus, type RequestStatus } from '../purchasingTables';
+import { PURCHASING_MAX_LINES, PURCHASING_PAGE_SIZE, PURCHASING_TEXT_LIMITS, type OrderPhase, type OrderStatus, type RequestStatus } from '../purchasingTables';
 import {
-  actorOf, availableApproval, canSeeBranchRequests, correctionClosesRemainder, fail, ISSUED_OPEN, lineDue, purchasingAccess, quantity, readIncoming,
+  actorOf, availableApproval, canSeeBranchRequests, correctionClosesRemainder, deliveryKey, fail, ISSUED_OPEN, lineDue, purchasingAccess, quantity, readIncoming,
   readOrderLines, readRequestLines, type StockAccess,
 } from './purchasingCore';
 import { assessCorrection, eligibleUnits, openLineReport } from './purchasingReceipts';
@@ -59,6 +59,25 @@ export function receiptLineRow(line: Doc<'supplierReceiptLines'>) { return { ...
 export function supplierRow(supplier: Doc<'suppliers'>, buyer: boolean): Doc<'suppliers'> {
   const { contactName, phone, email, note, ...rest } = supplier;
   return buyer ? { ...rest, contactName, phone, email, note } : rest;
+}
+
+/** A known reference can identify a request or order independently of the active queue. */
+export async function findPurchaseReference(ctx: QueryCtx, staff: StaffActor, branchId: Id<'branches'>, search: string) {
+  const access = await purchasingAccess(ctx, staff, branchId, 'read');
+  const reference = search.trim().toUpperCase();
+  if (!reference || reference.length > PURCHASING_TEXT_LIMITS.reference) return { request: null, order: null };
+  const [request, order] = await Promise.all([
+    stockRead(ctx, () => ctx.db.query('purchaseRequests').withIndex('by_branchId_and_reference', q =>
+      q.eq('branchId', branchId).eq('reference', reference)).first()),
+    stockRead(ctx, () => ctx.db.query('purchaseOrders').withIndex('by_branchId_and_reference', q =>
+      q.eq('branchId', branchId).eq('reference', reference)).first()),
+  ]);
+  const me = actorOf(staff).actorKey;
+  return {
+    request: request && request.status !== 'deleted' && (canSeeBranchRequests(access) || request.requesterKey === me)
+      ? requestRow(request, me) : null,
+    order: order && order.status !== 'deleted' ? orderRow(order, access.buyer) : null,
+  };
 }
 
 // ---------- Requests ----------
@@ -125,11 +144,28 @@ export function permissions(access: StockAccess) {
 
 export type OrderView =
   | { kind: 'phase'; phase: OrderPhase } | { kind: 'status'; status: OrderStatus }
-  | { kind: 'supplier'; supplierId: Id<'suppliers'> } | { kind: 'item'; variantId: Id<'productVariants'>; openOnly: boolean };
+  | { kind: 'supplier'; supplierId: Id<'suppliers'> } | { kind: 'item'; variantId: Id<'productVariants'>; openOnly: boolean }
+  | { kind: 'openSearch'; search: string };
 
 export async function listOrders(ctx: QueryCtx, staff: StaffActor, args: { branchId: Id<'branches'>; view: OrderView; paginationOpts: PaginationOptions }) {
   const { buyer } = await purchasingAccess(ctx, staff, args.branchId, 'read');
   const { view, branchId } = args;
+  if (view.kind === 'openSearch') {
+    const term = view.search.trim().slice(0, PURCHASING_TEXT_LIMITS.name);
+    const supplierTerms = term.match(/[\p{L}\p{N}]+/gu)?.slice(0, 16).join(' ');
+    const matchByReference = /^po(?:-|$)/i.test(term);
+    const headers = matchByReference
+      ? ctx.db.query('purchaseOrders').withIndex('by_branchId_and_phase_and_reference', q => {
+        const reference = term.toUpperCase();
+        return q.eq('branchId', branchId).eq('phase', 'open').gte('reference', reference).lt('reference', reference + '\uffff');
+      })
+      : supplierTerms
+        ? ctx.db.query('purchaseOrders').withSearchIndex('search_supplier_name', q =>
+          q.search('supplier.name', supplierTerms).eq('branchId', branchId).eq('phase', 'open'))
+        : ctx.db.query('purchaseOrders').withIndex('by_branchId_and_phase_and_reference', q =>
+          q.eq('branchId', branchId).eq('phase', 'open').eq('reference', ''));
+    return mapPage(ctx, headers.paginate(page(args.paginationOpts)), order => ({ ...orderRow(order, buyer), line: null }));
+  }
   if (view.kind === 'item') {
     const lines = view.openOnly
       ? ctx.db.query('purchaseOrderLines').withIndex('by_branchId_and_variantId_and_open', q => q.eq('branchId', branchId).eq('variantId', view.variantId).eq('open', true))
@@ -217,6 +253,24 @@ export async function listOrderReceipts(ctx: QueryCtx, staff: StaffActor, orderI
 }
 
 // ---------- Receipts and holds ----------
+
+export async function listReceipts(ctx: QueryCtx, staff: StaffActor, args: {
+  branchId: Id<'branches'>;
+  match?: { kind: 'receipt' | 'delivery'; reference: string };
+  paginationOpts: PaginationOptions;
+}) {
+  const { buyer } = await purchasingAccess(ctx, staff, args.branchId, 'read');
+  const { branchId, match } = args;
+  const reference = match?.reference.trim().slice(0, PURCHASING_TEXT_LIMITS.reference) ?? '';
+  const headers = match?.kind === 'receipt'
+    ? ctx.db.query('supplierReceipts').withIndex('by_branchId_and_reference', q =>
+      q.eq('branchId', branchId).eq('reference', reference.toUpperCase()))
+    : match?.kind === 'delivery'
+      ? ctx.db.query('supplierReceipts').withIndex('by_branchId_and_deliveryKey_and_createdAt', q =>
+        q.eq('branchId', branchId).eq('deliveryKey', deliveryKey(reference) ?? ''))
+      : ctx.db.query('supplierReceipts').withIndex('by_branchId_and_createdAt', q => q.eq('branchId', branchId));
+  return mapPage(ctx, headers.order('desc').paginate(page(args.paginationOpts)), receipt => receiptRow(receipt, buyer));
+}
 
 export async function getReceipt(ctx: QueryCtx, staff: StaffActor, receiptId: Id<'supplierReceipts'>) {
   const receipt = await get(ctx, receiptId);

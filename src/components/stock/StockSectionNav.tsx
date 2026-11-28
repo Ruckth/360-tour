@@ -22,8 +22,8 @@ export function StockSectionShell({ children }: { children: ReactNode }) {
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="border-b border-border bg-card/50">
         <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center justify-between gap-x-6 gap-y-2 px-4 pt-3 sm:px-6">
-          <nav aria-label="Stock pages" className="min-w-0 flex-1">
-            <ul className="flex max-w-full gap-6 overflow-x-auto">
+          <nav aria-label="Stock pages" className="min-w-0 basis-full sm:flex-1">
+            <ul className="flex max-w-full flex-wrap gap-x-3 sm:gap-x-6">
               {ADMIN_STOCK_PAGES.map(({ id, label }) => {
                 const current = segment === id;
                 return (
@@ -32,7 +32,7 @@ export function StockSectionShell({ children }: { children: ReactNode }) {
                       href={adminStockPath(id)}
                       aria-current={current ? "page" : undefined}
                       className={cn(
-                        "inline-flex items-center whitespace-nowrap border-b-2 px-1 pb-2.5 text-sm font-medium transition-colors pointer-coarse:min-h-11 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                        "inline-flex items-center whitespace-nowrap border-b-2 min-h-11 px-1 sm:pb-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                         current
                           ? "border-foreground text-foreground"
                           : "border-transparent text-muted-foreground hover:text-foreground",

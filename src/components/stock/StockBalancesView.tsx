@@ -692,6 +692,7 @@ export function StockBalancesView() {
           branchName={branch.name}
           allowDirectReceipt={access.directReceipt}
           canAddSupplier={access.buyer}
+          initialMode="direct"
           prefillVariantIds={receivePrefillItems.map((item) => item.variantId)}
           initialLines={receivePrefillItems.map((item) => ({
             variantId: item.variantId,

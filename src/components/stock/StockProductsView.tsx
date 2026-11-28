@@ -29,21 +29,13 @@ import {
   STOCK_PAGE_SIZE,
 } from "./stock-format";
 import type { CatalogueStatus } from "./stock-types";
-import { StockStaleBanner, useStockDirtyGuard } from "./StockFormGuard";
+import { reviewProductDraft, type ProductDraft, type VariantDraft } from "./stock-product-draft";
+import { useStockDirtyGuard } from "./StockFormGuard";
 
 type VatProfile = FunctionArgs<typeof api.commerce.stock.saveProduct>["vatProfile"];
 type CategoryRow = FunctionReturnType<typeof api.commerce.stock.listCategories>[number];
 type ProductRow = FunctionReturnType<typeof api.commerce.stock.listProducts>["page"][number];
 type ProductDetail = FunctionReturnType<typeof api.commerce.stock.getProduct>;
-
-type VariantDraft = {
-  key: string;
-  variantId?: Id<"productVariants">;
-  label: string;
-  sku: string;
-  priceBaht: string;
-  status: CatalogueStatus;
-};
 
 let draftKeySeq = 0;
 const nextDraftKey = () => `v-${++draftKeySeq}`;
@@ -78,7 +70,7 @@ export function StockProductsView() {
   );
   const savedDetail = useQuery(
     api.commerce.stock.getProduct,
-    branch && savedProductId ? { branchId: branch.id, productId: savedProductId } : "skip",
+    branch && access?.read && savedProductId ? { branchId: branch.id, productId: savedProductId } : "skip",
   );
   const archiveProduct = useMutation(api.commerce.stock.archiveProduct);
 
@@ -114,8 +106,6 @@ export function StockProductsView() {
     }
   }
 
-  const firstSavedVariant = savedDetail?.variants.find((v) => v.status === "active");
-
   return (
     <div className="grid gap-5">
       <NoticeBar notice={notice} onClose={clear} />
@@ -135,28 +125,14 @@ export function StockProductsView() {
         ) : null}
       </div>
 
-      {savedDetail && firstSavedVariant ? (
-        <Callout
-          tone="success"
-          title={`Saved ${savedDetail.product.name}`}
-          action={
-            <div className="flex flex-wrap gap-2">
-              <ButtonLink
-                href={`/admin/stock/balances?receiveVariantId=${firstSavedVariant._id}`}
-                size="sm"
-              >
-                Open Receive
-                <ArrowRight aria-hidden className="size-4" />
-              </ButtonLink>
-              <Button type="button" variant="ghost" size="sm" onClick={() => setSavedProductId(null)}>
-                Dismiss
-              </Button>
-            </div>
-          }
-        >
-          Ready to stock {firstSavedVariant.label}
-          {firstSavedVariant.sku ? ` (${firstSavedVariant.sku})` : ""} at {branch.name}.
-        </Callout>
+      {savedDetail ? (
+        <SavedProductCard
+          key={`${branch.id}-${savedDetail.product._id}`}
+          detail={savedDetail}
+          canReceive={access.receiver}
+          branchName={branch.name}
+          onDismiss={() => setSavedProductId(null)}
+        />
       ) : null}
 
       <div className="flex flex-wrap items-center gap-3">
@@ -304,6 +280,78 @@ export function StockProductsView() {
   );
 }
 
+function SavedProductCard({
+  detail,
+  canReceive,
+  branchName,
+  onDismiss,
+}: {
+  detail: NonNullable<ProductDetail>;
+  canReceive: boolean;
+  branchName: string;
+  onDismiss: () => void;
+}) {
+  const [selectedId, setSelectedId] = useState<Id<"productVariants"> | null>(null);
+  const active = detail.variants.filter((variant) => variant.status === "active");
+  const receiveAvailable = canReceive && detail.product.status === "active" && active.length > 0;
+  const target = active.length === 1 ? active[0] : active.find((variant) => variant._id === selectedId);
+
+  return (
+    <Callout
+      tone="success"
+      title={`Saved ${detail.product.name}`}
+      action={
+        <div className="flex flex-wrap gap-2">
+          {receiveAvailable ? (
+            target ? (
+              <ButtonLink href={`/admin/stock/balances?receiveVariantId=${target._id}`} size="sm">
+                {active.length > 1 ? "Receive selected variant" : "Open Receive"}
+                <ArrowRight aria-hidden className="size-4" />
+              </ButtonLink>
+            ) : (
+              <Button type="button" size="sm" disabled>Receive selected variant</Button>
+            )
+          ) : null}
+          <Button type="button" variant="ghost" size="sm" onClick={onDismiss}>Dismiss</Button>
+        </div>
+      }
+    >
+      {receiveAvailable && active.length > 1 ? (
+        <fieldset className="mt-2 grid gap-1">
+          <legend className="font-medium">Variant to receive at {branchName}</legend>
+          {active.map((variant) => (
+            <label key={variant._id} className="flex items-center gap-2">
+              <input
+                type="radio"
+                name="saved-receive-variant"
+                checked={target?._id === variant._id}
+                onChange={() => setSelectedId(variant._id)}
+              />
+              {variant.label}{variant.sku ? ` · ${variant.sku}` : ""}
+            </label>
+          ))}
+        </fieldset>
+      ) : null}
+    </Callout>
+  );
+}
+
+function productDraft(detail: NonNullable<ProductDetail>): ProductDraft {
+  return {
+    name: detail.product.name,
+    categoryId: detail.product.categoryId ?? "",
+    vatProfile: detail.product.vatProfile,
+    variants: detail.variants.map((variant) => ({
+      key: variant._id,
+      variantId: variant._id,
+      label: variant.label,
+      sku: variant.sku ?? "",
+      priceBaht: (variant.price / 100).toString(),
+      status: variant.status,
+    })),
+  };
+}
+
 function ProductEditorSheet({
   branchId,
   productId,
@@ -355,61 +403,42 @@ function ProductEditorForm({
   onSaved: (productId: Id<"products">) => void;
 }) {
   const saveProduct = useMutation(api.commerce.stock.saveProduct);
-  const [reviewedRevision, setReviewedRevision] = useState<number | undefined>(() => detail?.product.revision);
-  const [initialName] = useState(detail?.product.name ?? "");
-  const [initialCategoryId] = useState<string>(detail?.product.categoryId ?? categories[0]?._id ?? "");
-  const [initialVatProfile] = useState<VatProfile>(detail?.product.vatProfile ?? "standard");
-  const [initialVariants] = useState<VariantDraft[]>(() =>
-    detail?.variants.length
-      ? detail.variants.map((variant) => ({
-          key: variant._id,
-          variantId: variant._id,
-          label: variant.label,
-          sku: variant.sku ?? "",
-          priceBaht: (variant.price / 100).toString(),
-          status: variant.status,
-        }))
-      : [{ key: nextDraftKey(), label: "Standard", sku: "", priceBaht: "", status: "active" }],
-  );
-
-  const [name, setName] = useState(initialName);
-  const [categoryId, setCategoryId] = useState<string>(initialCategoryId);
-  const [vatProfile, setVatProfile] = useState<VatProfile>(initialVatProfile);
-  const [variants, setVariants] = useState<VariantDraft[]>(initialVariants);
+  const [reviewed, setReviewed] = useState(() => ({
+    revision: detail?.product.revision,
+    draft: detail ? productDraft(detail) : {
+      name: "",
+      categoryId: categories[0]?._id ?? "",
+      vatProfile: "standard" as VatProfile,
+      variants: [{ key: nextDraftKey(), label: "Standard", sku: "", priceBaht: "", status: "active" as const }],
+    },
+  }));
+  const [name, setName] = useState(reviewed.draft.name);
+  const [categoryId, setCategoryId] = useState<string>(reviewed.draft.categoryId);
+  const [vatProfile, setVatProfile] = useState<VatProfile>(reviewed.draft.vatProfile);
+  const [variants, setVariants] = useState<VariantDraft[]>(reviewed.draft.variants);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [variantErrors, setVariantErrors] = useState<Record<string, string>>({});
+  const [latestChoices, setLatestChoices] = useState<{ revision: number; keys: Set<string> }>();
 
-  const isDirty =
-    name !== initialName ||
-    categoryId !== initialCategoryId ||
-    vatProfile !== initialVatProfile ||
-    JSON.stringify(variants) !== JSON.stringify(initialVariants);
+  const currentDraft: ProductDraft = { name, categoryId, vatProfile, variants };
+  const isDirty = JSON.stringify(currentDraft) !== JSON.stringify(reviewed.draft);
   const { requestClose } = useStockDirtyGuard(isDirty, onClose, saving);
 
   const liveRevision = detail?.product.revision;
-  const isStale = Boolean(
-    detail && reviewedRevision !== undefined && liveRevision !== undefined && liveRevision !== reviewedRevision,
-  );
+  const liveDraft = detail && liveRevision !== reviewed.revision ? productDraft(detail) : null;
+  const useLatest = latestChoices && latestChoices.revision === liveRevision ? latestChoices.keys : new Set<string>();
+  const review = liveDraft ? reviewProductDraft(reviewed.draft, liveDraft, currentDraft, useLatest) : null;
 
-  function reloadFromLive() {
-    if (!detail) return;
-    setName(detail.product.name);
-    setCategoryId(detail.product.categoryId ?? categories[0]?._id ?? "");
-    setVatProfile(detail.product.vatProfile);
-    setVariants(
-      detail.variants.length
-        ? detail.variants.map((variant) => ({
-            key: variant._id,
-            variantId: variant._id,
-            label: variant.label,
-            sku: variant.sku ?? "",
-            priceBaht: (variant.price / 100).toString(),
-            status: variant.status,
-          }))
-        : [{ key: nextDraftKey(), label: "Standard", sku: "", priceBaht: "", status: "active" }],
-    );
-    setReviewedRevision(detail.product.revision);
+  function applyReview(next: ProductDraft) {
+    if (!liveDraft || liveRevision === undefined) return;
+    setName(next.name);
+    setCategoryId(next.categoryId);
+    setVatProfile(next.vatProfile);
+    setVariants(next.variants);
+    setReviewed({ revision: liveRevision, draft: liveDraft });
+    setLatestChoices(undefined);
+    setVariantErrors({});
     setError("");
   }
 
@@ -475,11 +504,15 @@ function ProductEditorForm({
       document.getElementById(firstInvalidId)?.focus();
       return;
     }
+    if (payloadVariants.length > STOCK_MAX_LINES) {
+      setError(`Keep at most ${STOCK_MAX_LINES} variants. Remove any extra variants added in this draft.`);
+      return;
+    }
     if (!payloadVariants.some((v) => v.status === "active")) {
       setError("Keep at least one active sellable variant or archive the product.");
       return;
     }
-    if (isStale) {
+    if (liveDraft) {
       setError("This product changed elsewhere while editing. Review the updated revision above before saving.");
       return;
     }
@@ -488,7 +521,7 @@ function ProductEditorForm({
     try {
       const id = await saveProduct({
         branchId,
-        ...(detail ? { productId: detail.product._id, expectedRevision: reviewedRevision ?? detail.product.revision } : {}),
+        ...(detail ? { productId: detail.product._id, expectedRevision: reviewed.revision ?? detail.product.revision } : {}),
         ...(categoryId ? { categoryId: categoryId as Id<"productCategories"> } : {}),
         name: name.trim(),
         vatProfile,
@@ -522,18 +555,44 @@ function ProductEditorForm({
         error={error}
         submitLabel={detail ? "Save product" : "Create product"}
       >
-        {isStale && reviewedRevision !== undefined && liveRevision !== undefined ? (
-          <StockStaleBanner
-            title="Product changed while editing"
-            description={`This product moved from revision ${reviewedRevision} to ${liveRevision}. Your typed edits are preserved — review the latest revision or reload live values before saving.`}
-            actionLabel="Keep edits & review rev"
-            onReview={() => {
-              setReviewedRevision(liveRevision);
-              setError("");
-            }}
-            secondaryActionLabel="Reload live values"
-            onSecondaryAction={reloadFromLive}
-          />
+        {review && liveDraft && liveRevision !== undefined ? (
+          <Callout tone="warning" title="Review changed fields">
+            <p>Revision {reviewed.revision} → {liveRevision}. The review includes new saved values and keeps your draft edits.</p>
+            {review.changes.length ? (
+              <ul className="mt-2 grid gap-2 text-xs">
+                {review.changes.map((change) => {
+                  const formatValue = (value: string) => change.key === "category"
+                    ? categories.find((category) => category._id === value)?.name ?? (value || "Default")
+                    : value || "—";
+                  return (
+                    <li key={change.key}>
+                      <strong>{change.label}</strong>
+                      <p>Opened {formatValue(change.opened)} · Latest {formatValue(change.latest)} · Your draft {formatValue(change.draft)}</p>
+                      {change.conflict ? (
+                        <label className="mt-1 flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={useLatest.has(change.key)}
+                            onChange={(event) => {
+                              const keys = new Set(useLatest);
+                              if (event.target.checked) keys.add(change.key);
+                              else keys.delete(change.key);
+                              setLatestChoices({ revision: liveRevision, keys });
+                            }}
+                          />
+                          Use latest {change.label}
+                        </label>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : null}
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button type="button" size="sm" onClick={() => applyReview(review.merged)}>Apply review</Button>
+              <Button type="button" variant="outline" size="sm" onClick={() => applyReview(liveDraft)}>Reload live values</Button>
+            </div>
+          </Callout>
         ) : null}
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="grid gap-1.5 sm:col-span-2">

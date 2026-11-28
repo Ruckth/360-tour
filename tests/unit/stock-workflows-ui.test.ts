@@ -6,8 +6,11 @@ import { act, createElement, useState, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
+import { PurchaseOrderDetailView } from "@/components/stock/PurchaseOrderDetailView";
 import { RequestEditorSheet } from "@/components/stock/PurchasingEditorSheets";
+import { purchasingDetailHref, validatePurchasingSearch } from "@/components/stock/purchasing-location";
 import { ReceiveDeliverySheet } from "@/components/stock/ReceiveDeliverySheet";
+import { StockActivityView } from "@/components/stock/StockActivityView";
 import { StockAdjustSheet } from "@/components/stock/StockBalanceSheets";
 import { StockBalancesView } from "@/components/stock/StockBalancesView";
 import { StockExpansionView } from "@/components/stock/StockExpansionView";
@@ -18,12 +21,15 @@ import {
   parseOptionalSatang,
   parseStockError,
   parseWholeQuantity,
+  sanitizeStockReturnTo,
   STOCK_MAX_LINES,
   STOCK_PAGE_SIZE,
 } from "@/components/stock/stock-format";
 import { StockLineEditor } from "@/components/stock/StockLineEditor";
+import { StockProductsView } from "@/components/stock/StockProductsView";
 import { StockPurchasingHubView } from "@/components/stock/StockPurchasingHubView";
 import { StockSectionShell } from "@/components/stock/StockSectionNav";
+import { StockVariantPickerDialog } from "@/components/stock/StockVariantPicker";
 import type { StockLineDraft } from "@/components/stock/stock-types";
 import { hasDirtyUnsavedGuard } from "@/hooks/use-unsaved-guard";
 
@@ -108,6 +114,24 @@ function getMutationSpy(ref: FunctionReference<"mutation">) {
 }
 
 describe("stock formatting and validation helpers", () => {
+  it("round-trips filtered purchasing queues and excludes editor flags and unsafe return targets", () => {
+    for (const [search, expected] of [
+      ["tab=requests&requestFilter=approved", { tab: "requests", requestFilter: "approved" }],
+      ["tab=orders&orderFilter=item&variantId=var_1&allItemOrders=1", { tab: "orders", orderFilter: "item", variantId: "var_1", allItemOrders: "1" }],
+      ["tab=receipts&receiptReference=INV-001", { tab: "receipts", receiptReference: "INV-001" }],
+    ] as const) {
+      const params = new URLSearchParams(`${search}&new=1&variants=var_2&returnTo=https://outside.test`);
+      const detail = new URL(purchasingDetailHref("/admin/stock/purchasing/orders/po_1", params), "https://app.test");
+      const back = sanitizeStockReturnTo(detail.searchParams.get("returnTo"));
+      expect(back).toBe(`/admin/stock/purchasing?${search}`);
+      const roundTrip = new URL(back!, detail.origin);
+      expect(validatePurchasingSearch(Object.fromEntries(roundTrip.searchParams))).toMatchObject(expected);
+    }
+    expect(sanitizeStockReturnTo("/admin/stock/%2e%2e/users")).toBeNull();
+    expect(sanitizeStockReturnTo(null)).toBeNull();
+    expect(validatePurchasingSearch({ tab: "unknown", orderFilter: "unknown" })).toMatchObject({ tab: undefined, orderFilter: undefined });
+  });
+
   it("formats satang money and parses optional THB inputs safely", () => {
     expect(formatSatang(0)).toBe("฿0");
     expect(formatSatang(125000)).toBe("฿1,250");
@@ -177,6 +201,119 @@ describe("Stock UI components and workflow regressions", () => {
     document.body.innerHTML = "";
     vi.unstubAllGlobals();
     vi.useRealTimers();
+  });
+
+  it("names approval shortfalls by SKU and focuses the affected draft quantity", async () => {
+    const orderId = "order_1";
+    const line = (id: string, variantId: string, variantLabel: string, sku: string) => ({
+      _id: id, variantId, ordered: 6, accepted: 0, cancelled: 0, corrected: 0, returned: 0, due: 6,
+      item: { productName: "Massage Oil", variantLabel, sku },
+    });
+    mockConvex.query.mockImplementation((name) => name === getFunctionName(api.commerce.purchasing.order) ? {
+      order: { _id: orderId, branchId: mockBranch.current?.id, revision: 1, reference: "PO-1", status: "draft", supplierId: "supplier_1", supplier: { name: "Palm" }, requestId: "request_1", dueUnits: 12 },
+      lines: [line("line_1", "var_1", "250 ml", "OIL-250"), line("line_2", "var_2", "500 ml", "OIL-500")],
+      holds: [],
+      permissions: { buyer: true },
+    } : undefined);
+    const issue = getMutationSpy(api.commerce.purchasing.issuePurchaseOrder).mockRejectedValue({
+      data: { code: "ALLOCATION_CHANGED", lines: [{ orderLineId: "line_2", available: 4 }] },
+    });
+    const button = (label: string) => [...document.querySelectorAll("button")].find((b) => b.textContent === label);
+    await act(async () => root.render(wrap(createElement(PurchaseOrderDetailView, { orderId }))));
+    await act(async () => button("Issue order")?.click());
+    expect(issue).toHaveBeenCalledOnce();
+    expect(document.body.textContent).toContain("Requested on this order 6 · Still available 4");
+    expect(button("Edit quantity for Massage Oil · 250 ml · OIL-250")).toBeUndefined();
+    await act(async () => button("Edit quantity for Massage Oil · 500 ml · OIL-500")?.click());
+    expect(document.activeElement?.id).toBe("po-line-qty-var_2");
+  });
+
+  it("merges a live variant price into the draft and offers the selected active variant only to receivers", async () => {
+    const product = { _id: "prod_1", name: "Massage Oil", status: "active", revision: 5, vatProfile: "standard", variantCount: 2, minPrice: 20000, maxPrice: 40000 };
+    const variants = [
+      { _id: "var_1", label: "250 ml", sku: "OIL-250", price: 20000, status: "active" },
+      { _id: "var_2", label: "500 ml", sku: "OIL-500", price: 40000, status: "active" },
+    ];
+    let receiver = false;
+    mockConvex.query.mockImplementation((name) => {
+      if (name === getFunctionName(api.commerce.stock.access)) return { read: true, canManageProducts: true, receiver, directReceipt: receiver };
+      if (name === getFunctionName(api.commerce.stock.getProduct)) return { product, variants };
+      if (name === getFunctionName(api.commerce.stock.selectedBalances)) {
+        return [{
+          variantId: "var_2", productName: product.name, label: "500 ml", sku: "OIL-500",
+          onHand: 0, onOrder: 0, lotTracked: false,
+        }];
+      }
+      return undefined;
+    });
+    mockConvex.paginated.mockImplementation((name) => ({
+      results: name === getFunctionName(api.commerce.stock.listProducts) ? [product] : [],
+      status: "Exhausted",
+      loadMore: vi.fn(),
+    }));
+    const save = getMutationSpy(api.commerce.stock.saveProduct).mockResolvedValue(product._id);
+    const render = async () => act(async () => root.render(wrap(createElement(StockProductsView))));
+    const button = (label: string) => [...document.querySelectorAll("button")].find((b) => b.textContent === label);
+    await render();
+    await act(async () => button("Edit")?.click());
+    const name = document.querySelector<HTMLInputElement>("#prod-name");
+    expect(name).not.toBeNull();
+    await act(async () => { if (name) setInputValue(name, "Organic Massage Oil"); });
+    product.revision = 6;
+    variants[0].price = 22000;
+    await render();
+    expect(document.body.textContent).toContain("250 ml price (THB)Opened 200 · Latest 220 · Your draft 200");
+    expect(document.body.textContent).toContain("Your draft Organic Massage Oil");
+    await act(async () => button("Apply review")?.click());
+    await act(async () => button("Save product")?.click());
+    expect(save).toHaveBeenCalledWith(expect.objectContaining({
+      expectedRevision: 6, name: "Organic Massage Oil",
+      variants: expect.arrayContaining([expect.objectContaining({ variantId: "var_1", price: 22000 })]),
+    }));
+    expect(document.querySelector('a[href*="receiveVariantId"]')).toBeNull();
+    expect(document.querySelector('input[name="saved-receive-variant"]')).toBeNull();
+    receiver = true;
+    await render();
+    const radios = document.querySelectorAll<HTMLInputElement>('input[name="saved-receive-variant"]');
+    expect(radios).toHaveLength(2);
+    expect(document.querySelector('a[href*="receiveVariantId"]')).toBeNull();
+    await act(async () => radios[1].click());
+    const href = document.querySelector('a[href*="receiveVariantId"]')?.getAttribute("href");
+    expect(href).toBe("/admin/stock/balances?receiveVariantId=var_2");
+    mockNav.searchParams = new URLSearchParams(href?.split("?")[1]);
+    await act(async () => root.render(wrap(createElement(StockBalancesView))));
+    expect(document.querySelector<HTMLInputElement>('input[name="receive-mode"][value="direct"]')?.checked).toBe(true);
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain("OIL-500");
+    expect(document.querySelector('[role="dialog"]')?.textContent).not.toContain("OIL-250");
+  });
+
+  it("adds three request lines in one picker confirmation and keeps filter picks immediate", async () => {
+    const items = ["Oil", "Soap", "Towel"].map((productName, index) => ({
+      variantId: `var_${index + 1}`, productName, label: "Standard", onHand: 0, onOrder: 0,
+    }));
+    mockConvex.paginated.mockImplementation(() => ({ results: items, status: "Exhausted", loadMore: vi.fn() }));
+    const branchId = "branch_1" as Id<"branches">;
+    await act(async () => root.render(wrap(createElement(RequestEditorSheet, {
+      branchId, branchName: "Koh Samui", onClose: vi.fn(), onSaved: vi.fn(),
+    }))));
+    const button = (label: string) => [...document.querySelectorAll("button")].find((b) => b.textContent === label);
+    await act(async () => button("Add item")?.click());
+    for (const row of document.querySelectorAll<HTMLButtonElement>('button[aria-pressed="false"]')) {
+      await act(async () => row.click());
+    }
+    expect(document.body.textContent).toContain(`Items (0/${STOCK_MAX_LINES})`);
+    await act(async () => button("Add 3 items")?.click());
+    expect(document.body.textContent).toContain(`Items (3/${STOCK_MAX_LINES})`);
+    expect(document.querySelectorAll('input[id^="pr-line-qty-"]')).toHaveLength(3);
+
+    const onSelect = vi.fn();
+    const onOpenChange = vi.fn();
+    await act(async () => root.render(createElement(StockVariantPickerDialog, { open: true, branchId, onSelect, onOpenChange })));
+    const item = [...document.querySelectorAll("button")].find((b) => b.textContent?.startsWith("Oil"));
+    expect(item?.getAttribute("aria-pressed")).toBeNull();
+    await act(async () => item?.click());
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith(items[0]);
+    expect(onOpenChange).toHaveBeenCalledExactlyOnceWith(false);
   });
 
   it("StockLineEditor updates quantities/costs, preserves errors, calculates totals, and removes lines", async () => {
@@ -369,6 +506,14 @@ describe("Stock UI components and workflow regressions", () => {
       setInputValue(noteInput, "Broken bottle");
     });
 
+    const reason = document.querySelector<HTMLInputElement>('input[name="adjust-reason"][value="damaged"]')!;
+    expect(reason.checked).toBe(false);
+    await act(async () => {
+      document.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+    expect(postOp).not.toHaveBeenCalled();
+    expect(document.body.textContent).toContain("Choose an adjustment reason.");
+    await act(async () => reason.click());
     expect(hasDirtyUnsavedGuard()).toBe(true);
     expect(document.body.textContent).toContain("Removing 10 exceeds On hand (3).");
     expect(qtyInput.value).toBe("10");
@@ -436,6 +581,62 @@ describe("Stock UI components and workflow regressions", () => {
       }),
     );
     expect(onSuccess).toHaveBeenCalledTimes(1);
+  });
+
+  it("resets a linked activity item in one action and removes the old filter on reload", async () => {
+    mockNav.searchParams = new URLSearchParams("variantId=var_blue&returnTo=%2Fadmin%2Fstock%2Fbalances");
+    mockConvex.query.mockImplementation(name => name === "commerce/stock:access" ? { read: true } : undefined);
+    await act(async () => root.render(wrap(createElement(StockActivityView))));
+    const reset = [...document.querySelectorAll("button")].find(item => item.textContent?.trim() === "Reset filters")!;
+    expect(reset.disabled).toBe(false);
+    await act(async () => reset.click());
+    expect(reset.disabled).toBe(true);
+    expect(mockNav.replace).toHaveBeenCalledWith("/admin/stock/activity?returnTo=%2Fadmin%2Fstock%2Fbalances");
+  });
+
+  it("fills the outstanding transfer quantities and points to a line that exceeds its live cap", async () => {
+    const transfer = { _id: "transfer1", state: "inTransit", createdAt: 1, otherBranch: "Samui" };
+    const lines = [
+      { _id: "robe", productName: "Robe", label: "Blue", quantity: 7, received: 3 },
+      { _id: "soap", productName: "Soap", label: "Small", quantity: 2, received: 0 },
+      { _id: "bag", productName: "Bag", label: "Red", quantity: 1, received: 1 },
+    ];
+    mockConvex.query.mockImplementation(name => {
+      if (name === "commerce/stock:access") return { read: true, receiver: true };
+      if (name === "commerce/stockExpansion:transferDetail") return { transfer, lines, permissions: { receive: true } };
+    });
+    mockConvex.paginated.mockImplementation(name => ({
+      results: name === "commerce/stockExpansion:listTransfers" ? [transfer] : [],
+      status: "Exhausted", loadMore: vi.fn(),
+    }));
+    const click = async (label: string) => {
+      const button = [...document.querySelectorAll("button")].find(item => item.textContent?.trim() === label);
+      expect(button).toBeDefined();
+      await act(async () => button!.click());
+    };
+    const receive = getMutationSpy(api.commerce.stockExpansion.receiveTransfer);
+    await act(async () => root.render(wrap(createElement(StockExpansionView))));
+    await click("Open");
+    await click("Fill all remaining");
+    const robe = document.querySelector<HTMLInputElement>("#tr-recv-robe")!;
+    expect(robe.value).toBe("4");
+    expect(document.querySelector<HTMLInputElement>("#tr-recv-soap")?.value).toBe("2");
+    expect(document.querySelector("#tr-recv-bag")).toBeNull();
+    expect(receive).not.toHaveBeenCalled();
+    await act(async () => setInputValue(robe, "5"));
+    await click("Post transfer receipt");
+    expect(robe.getAttribute("aria-invalid")).toBe("true");
+    expect(document.getElementById(robe.getAttribute("aria-describedby")!)?.textContent).toContain("Robe Blue");
+    expect(document.activeElement).toBe(robe);
+    expect(receive).not.toHaveBeenCalled();
+    await click("Fill all remaining");
+    receive.mockRejectedValueOnce(new Error("Connection interrupted"));
+    await click("Post transfer receipt");
+    await click("Post transfer receipt");
+    expect(receive.mock.calls[0][0].requestId).toBe(receive.mock.calls[1][0].requestId);
+    expect(receive).toHaveBeenCalledWith(expect.objectContaining({ lines: [
+      { lineId: "robe", quantity: 4 }, { lineId: "soap", quantity: 2 },
+    ] }));
   });
 
   it("StockPurchasingHubView consumes new/variants flags via router.replace and prefills real resolved variants", async () => {
@@ -551,6 +752,18 @@ describe("Stock UI components and workflow regressions", () => {
   it("distinguishes loading from an empty order picker and preserves the receipt draft across pages", async () => {
     const first = { _id: "po_1", reference: "PO-0001", supplier: { name: "Island Supply" }, dueUnits: 4 };
     const second = { ...first, _id: "po_2", reference: "PO-0002" };
+    mockConvex.query.mockImplementation((name, args) => {
+      if (name !== getFunctionName(api.commerce.purchasing.order)) return undefined;
+      const order = (args as { orderId: string }).orderId === first._id ? first : second;
+      return {
+        order: { ...order, branchId: "branch_1", status: "ordered", revision: 1, issuedRevision: 1 },
+        lines: [{
+          _id: "pol_1", variantId: "var_1", ordered: 4, due: 4,
+          item: { productName: "Spa Oil", variantLabel: "500 ml" },
+        }],
+        holds: [], acceptableHolds: [],
+      };
+    });
     const loadMore = vi.fn();
     async function renderPage(status: string, results: typeof first[]) {
       mockConvex.paginated.mockReturnValue({ results, status, loadMore });
@@ -604,6 +817,20 @@ describe("Stock UI components and workflow regressions", () => {
     });
     await renderPage("Exhausted", [first, second, { ...first, _id: "po_3", reference: "PO-0003" }]);
     expect(document.activeElement).toBe(referenceInput());
+
+    const search = document.querySelector<HTMLInputElement>('input[type="search"]')!;
+    const quantityInput = () => document.querySelector<HTMLInputElement>("#po-acc-pol_1")!;
+    await act(async () => {
+      setInputValue(quantityInput(), "2");
+      setInputValue(search, "PO-0099");
+    });
+    expect(mockConvex.paginated).toHaveBeenLastCalledWith(getFunctionName(api.commerce.purchasing.orders), {
+      branchId: "branch_1", view: { kind: "openSearch", search: "PO-0099" },
+    });
+    await renderPage("Exhausted", [{ ...first, _id: "po_99", reference: "PO-0099" }]);
+    expect(button("PO-0099")).toBeDefined();
+    expect(referenceInput().value).toBe("DEL-109");
+    expect(quantityInput().value).toBe("2");
   });
 
   it("ReceiveDeliverySheet auto-selects linked replacement holdId and forwards followUp / undercount / OCC retry key", async () => {

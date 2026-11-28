@@ -6,7 +6,7 @@ import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import { SlidersHorizontal } from "lucide-react";
 import { useState } from "react";
-import { EmptyState, SkeletonRows } from "@/components/admin/admin-bulk";
+import { EmptyState, SearchBox, SkeletonRows, useDebounced } from "@/components/admin/admin-bulk";
 import { Callout, EditorSheet } from "@/components/admin/marketing/MarketingBits";
 import { Button } from "@/components/ui/button";
 import { SheetDescription, SheetTitle } from "@/components/ui/sheet";
@@ -34,10 +34,12 @@ export function BranchStockAccessSheet({
   onClose: () => void;
   onSaved: (message: string) => void;
 }) {
+  const [search, setSearch] = useState("");
+  const emailPrefix = useDebounced(search.trim(), 200);
   const policy = useQuery(api.commerce.stock.branchPolicy, { branchId });
   const { results: grants, status, loadMore } = usePaginatedQuery(
     api.commerce.stock.listGrants,
-    { branchId },
+    { branchId, ...(emailPrefix ? { emailPrefix } : {}) },
     { initialNumItems: STOCK_PAGE_SIZE },
   );
   const setBranchPolicy = useMutation(api.commerce.stock.setBranchPolicy);
@@ -151,10 +153,11 @@ export function BranchStockAccessSheet({
 
           <section aria-label="Staff stock grants" className="grid gap-3">
             <h3 className="text-sm font-semibold text-foreground">Staff grants for {branchName}</h3>
+            <SearchBox label="Find staff by email prefix" placeholder="Email starts with…" value={search} onChange={setSearch} />
             {status === "LoadingFirstPage" ? (
               <SkeletonRows label="Loading staff grants" rows={4} />
             ) : grants.length === 0 ? (
-              <EmptyState>No eligible staff members assigned to this branch.</EmptyState>
+              <EmptyState>{status === "CanLoadMore" ? "No eligible staff in these results. Load more staff to continue." : emailPrefix ? "No eligible staff match this email." : "No eligible staff members assigned to this branch."}</EmptyState>
             ) : (
               <ul className="grid gap-3">
                 {grants.map((row) => {
@@ -171,11 +174,12 @@ export function BranchStockAccessSheet({
                         <span className="text-sm font-medium text-foreground">{row.email}</span>
                         <span className="text-xs capitalize text-muted-foreground">{row.role}</span>
                       </div>
-                      <div className="flex flex-wrap gap-3">
+                      <div role="group" aria-label={`Stock roles for ${row.email}`} className="flex flex-wrap gap-3">
                         {ROLE_LABELS.map(({ key, label }) => (
                           <label key={key} className="inline-flex items-center gap-2 text-xs text-foreground">
                             <input
                               type="checkbox"
+                              aria-label={`${label} for ${row.email}`}
                               checked={roles[key]}
                               disabled={busyId !== null}
                               onChange={() => void toggleRole(row, key)}

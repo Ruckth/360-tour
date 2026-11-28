@@ -644,10 +644,16 @@ export const branchPolicy = staffQuery({
 
 export const listGrants = staffQuery({
   capability: 'manageTeam', scope: selected,
-  args: { ...branchIdArg, ...paged },
-  handler: async (ctx, { branchId, paginationOpts }) => {
+  args: { ...branchIdArg, ...paged, emailPrefix: v.optional(v.string()) },
+  handler: async (ctx, { branchId, paginationOpts, emailPrefix }) => {
     await requireBranchAccess(ctx, ctx.staff, branchId);
-    const result = countPage(ctx, await ctx.db.query('staffGrants').paginate(stockPage(paginationOpts)));
+    const prefix = emailPrefix?.trim().toLowerCase();
+    if (prefix && prefix.length > 254) stockError('INVALID_EMAIL', 'Email search is limited to 254 characters.');
+    const grants = ctx.db.query('staffGrants');
+    const candidates = prefix
+      ? grants.withIndex('by_email', q => q.gte('email', prefix).lt('email', prefix + '\u{10ffff}'))
+      : grants;
+    const result = countPage(ctx, await candidates.paginate(stockPage(paginationOpts)));
     const eligible = result.page.filter(grant => grant.role === 'owner' || grant.branchIds.includes(branchId));
     const page = await Promise.all(eligible.map(async staff => {
       const grant = await readStockGrant(ctx, branchId, staff._id);

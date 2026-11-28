@@ -12,6 +12,7 @@ The inventory test compares every source registration with this table and requir
 
 | Public function | Builder | Trust/rationale | Additional record checks |
 | --- | --- | --- | --- |
+| `commerce/purchasing.purchaseReference` | `staffQuery` | checkout | Branch purchasing grant and record visibility. |
 | `commerce/purchasing.requests` | `staffQuery` | checkout | Branch purchasing grant, record state and revision checks. Mutations check access before replay. |
 | `commerce/purchasing.request` | `staffQuery` | checkout | Branch purchasing grant, record state and revision checks. Mutations check access before replay. |
 | `commerce/purchasing.saveRequest` | `staffMutation` | checkout | Branch purchasing grant, record state and revision checks. Mutations check access before replay. |
@@ -26,6 +27,7 @@ The inventory test compares every source registration with this table and requir
 | `commerce/purchasing.order` | `staffQuery` | checkout | Branch purchasing grant, record state and revision checks. Mutations check access before replay. |
 | `commerce/purchasing.orderRevision` | `staffQuery` | checkout | Branch purchasing grant, record state and revision checks. Mutations check access before replay. |
 | `commerce/purchasing.orderRevisions` | `staffQuery` | checkout | Branch purchasing grant, record state and revision checks. Mutations check access before replay. |
+| `commerce/purchasing.receipts` | `staffQuery` | checkout | Branch purchasing grant and record visibility. |
 | `commerce/purchasing.orderReceipts` | `staffQuery` | checkout | Branch purchasing grant, record state and revision checks. Mutations check access before replay. |
 | `commerce/purchasing.saveOrder` | `staffMutation` | checkout | Branch purchasing grant, record state and revision checks. Mutations check access before replay. |
 | `commerce/purchasing.issuePurchaseOrder` | `staffMutation` | checkout | Branch purchasing grant, record state and revision checks. Mutations check access before replay. |

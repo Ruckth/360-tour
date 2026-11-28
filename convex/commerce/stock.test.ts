@@ -39,6 +39,17 @@ async function fixture() {
   return { t, owner, cashier, manager, branchId, otherBranchId, productId, managerId, cashierId, variantId: product!.variants[0]._id };
 }
 
+it('looks up staff beyond the first grant page without returning another branch’s cashier', async () => {
+  const { owner, branchId, otherBranchId, cashier } = await fixture();
+  const first = { numItems: 1, cursor: null };
+  const lookup = (branch: typeof branchId) => owner.query(stock.listGrants, {
+    branchId: branch, emailPrefix: ' CASHIER@ ', paginationOpts: first,
+  });
+  expect((await lookup(branchId)).page.map(row => row.email)).toEqual(['cashier@example.com']);
+  expect((await lookup(otherBranchId)).page).toEqual([]);
+  await expect(cashier.query(stock.listGrants, { branchId, emailPrefix: 'manager', paginationOpts: first })).rejects.toThrow();
+});
+
 it('keeps branch roles and direct permissions off until an owner grants them', async () => {
   const { owner, manager, cashier, cashierId, branchId, otherBranchId } = await fixture();
   await expect(cashier.query(stock.listBalances, { branchId, paginationOpts })).rejects.toMatchObject({ data: { code: 'STOCK_FORBIDDEN' } });
