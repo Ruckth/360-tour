@@ -14,7 +14,7 @@ import { readBudget } from '../lib/readBudget';
 import { stayFinancials } from './private/stayCorrections';
 import { MAX_ROWS_PER_NIGHT, scanOverlappingBookings, scanOverlappingDateBlocks } from './private/stayOverlap';
 import { assertValidIsoDate } from '../shared/validation';
-import { archivedVillaBlocker, archivedVillaPolicy, assertBookingEditable, CLEANUP_SCAN_LIMIT, DAY_MS, deleteBlocker, GuestSuggestion, loadBooking, MAX_CALENDAR_DAYS, MAX_CALENDAR_VILLAS, MAX_GUEST_SUGGESTIONS, planBookingEditPricing, stayAttendanceEnabled, SEARCH_SCAN_LIMIT, toAdminBooking } from './private/stays';
+import { archivedVillaBlocker, archivedVillaPolicy, assertBookingEditable, CLEANUP_SCAN_LIMIT, DAY_MS, deleteBlocker, GuestSuggestion, loadBooking, MAX_CALENDAR_DAYS, MAX_CALENDAR_VILLAS, MAX_GUEST_SUGGESTIONS, planBookingEditPricing, stayAttendanceEnabled, SEARCH_SCAN_LIMIT, toAdminBooking, stayAttachProblem } from './private/stays';
 
 function calendarProperty(property: Doc<'properties'>) {
 	return {
@@ -230,6 +230,53 @@ export const searchBookings = adminQuery({
 		for (const b of [...byPhone, ...byEmail, ...byCode].sort(newestFirst)) merged.set(b._id, b);
 		for (const b of [...byName, ...substring].sort(newestFirst)) merged.set(b._id, b);
 		return [...merged.values()].slice(0, 20).map(toAdminBooking);
+	}
+});
+
+/** Search a bounded date-indexed range for stays that can receive a Spa appointment. */
+export const searchAttachableStays = adminQuery({
+	args: { query: v.string(), date: v.string() },
+	handler: async (ctx, { query, date }) => {
+		const text = query.trim().toLowerCase();
+		if (text.length < 2 || text.length > 100 || !(await canAccessResortDesk(ctx, 'bookings'))) {
+			return { stays: [], limited: false };
+		}
+		assertValidIsoDate(date, 'Appointment date');
+		const digits = text.replace(/\D/g, '');
+		const project = async (booking: Doc<'bookings'>) => ({
+			_id: booking._id,
+			guestName: booking.guestName,
+			villaName: (await ctx.db.get(booking.propertyId))?.name ?? 'Villa unavailable',
+			checkIn: booking.checkIn,
+			checkOut: booking.checkOut,
+			status: booking.stayStatus ?? booking.status,
+			confirmationCode: booking.confirmationCode,
+		});
+		const exact = (await ctx.db.query('bookings')
+			.withIndex('by_confirmationCode', (q) => q.eq('confirmationCode', text.toUpperCase()))
+			.take(5)).filter((booking) => !stayAttachProblem(booking, date));
+		if (exact.length) return { stays: await Promise.all(exact.map(project)), limited: false };
+		const matches: Doc<'bookings'>[] = [];
+		let scanned = 0;
+		let limited = false;
+		for await (const booking of ctx.db.query('bookings').withIndex('by_checkOut', (q) => q.gte('checkOut', date))) {
+			if (++scanned > 512) {
+				limited = true;
+				break;
+			}
+			if (stayAttachProblem(booking, date)) continue;
+			if (!booking.guestName.toLowerCase().includes(text) &&
+				!booking.guestEmail?.toLowerCase().includes(text) &&
+				!booking.confirmationCode?.toLowerCase().includes(text) &&
+				!(digits.length >= 3 && booking.guestPhone.replace(/\D/g, '').includes(digits))) continue;
+			if (matches.length === 20) {
+				limited = true;
+				break;
+			}
+			matches.push(booking);
+		}
+		const stays = await Promise.all(matches.map(project));
+		return { stays, limited };
 	}
 });
 

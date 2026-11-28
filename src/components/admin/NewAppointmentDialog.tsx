@@ -134,7 +134,7 @@ export function NewAppointmentDialog({
   const [staffChoice, setStaffChoice] = useState<string>(draft.staffId ?? "auto");
   const [date, setDate] = useState(draft.date);
   const [start, setStart] = useState<number | null>(draft.start ?? null);
-  const [startChange, setStartChange] = useState<"duration" | "staff" | null>(null);
+  const [startChange, setStartChange] = useState<"duration" | "staff" | "slot" | null>(null);
   const clearStart = () => {
     setStart(null);
     setStartChange(null);
@@ -152,6 +152,7 @@ export function NewAppointmentDialog({
   const [historicalReason, setHistoricalReason] = useState("");
   // D19: an explicit stay attachment, separate from the guest contact fields and from any payment.
   const [attachedStay, setAttachedStay] = useState<AttachableStay | null>(null);
+  const stayOutsideDate = attachedStay !== null && (date < attachedStay.checkIn || date > attachedStay.checkOut);
   const pickable = services.filter(s => historicalDate || s.status === "active").map(s => s.status === "archived" ? { ...s, name: `${s.name} (archived)` } : s);
 
   const slots = useQuery(
@@ -160,7 +161,7 @@ export function NewAppointmentDialog({
   );
   // A time that has already started is past work, never a new booking's default.
   const openSlots = slots?.filter((slot) => slot.start >= now);
-  // Keep the chosen time after a duration change, including subsequent staff changes.
+  // Keep an explicit time selected until staff choose another one.
   const exact = startChange !== null && start !== null && start >= now && !otherTime;
   const selectedSlot = exact ? openSlots?.find((slot) => slot.start === start) : appointmentEntrySlot(openSlots, start, staffId, now);
   const closedStart = exact && openSlots !== undefined && !selectedSlot ? start : null;
@@ -170,7 +171,9 @@ export function NewAppointmentDialog({
   let closedStartMessage = "";
   if (closedStart !== null && option) {
     const time = resortTime24(closedStart);
-    closedStartMessage = startChange === "staff"
+    closedStartMessage = startChange === "slot"
+      ? `${time} is no longer open. Pick another time.`
+      : startChange === "staff"
       ? assigned ? `${assigned.name} isn't available at ${time}. Pick another time.` : `No qualified staff are available at ${time}. Pick another time.`
       : `${time} isn't open for ${option.durationMin} min. Pick another time.`;
   }
@@ -182,7 +185,7 @@ export function NewAppointmentDialog({
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!selectedSlot || !serviceId || submitting.current) return;
+    if (!selectedSlot || !serviceId || stayOutsideDate || submitting.current) return;
     const form = new FormData(event.currentTarget);
     const text = (name: string) => String(form.get(name) ?? "").trim();
     submitting.current = true;
@@ -206,6 +209,10 @@ export function NewAppointmentDialog({
       rememberService(serviceId, option?.durationMin ?? service?.durationMin ?? 0);
       onCreated(result.appointmentId, selectedSlot.start);
     } catch (err) {
+      if (!typedTime) {
+        setStart(selectedSlot.start);
+        setStartChange("slot");
+      }
       setError(errorText(err, "Could not create the appointment."));
     } finally {
       submitting.current = false;
@@ -224,7 +231,7 @@ export function NewAppointmentDialog({
         variant={active ? "default" : "outline"}
         aria-pressed={active}
         className="px-0 tabular-nums"
-        onClick={() => setStart(slot.start)}
+        onClick={() => { setStart(slot.start); setStartChange("slot"); setError(""); }}
       >
         {label}
       </Button>
@@ -447,7 +454,7 @@ export function NewAppointmentDialog({
                           args={{ serviceId, ...durationArg, afterDate: date, staffId }}
                           onChoose={(slot) => {
                             setDate(slot.date);
-                            setStartChange(null);
+                            setStartChange("slot");
                             setStart(slot.start);
                           }}
                         />
@@ -503,7 +510,7 @@ export function NewAppointmentDialog({
             </fieldset>
           </div>
           <DialogFooter className="shrink-0 border-t border-border bg-card pt-3">
-            <Button type="submit" disabled={saving || !selectedSlot || review === undefined || Boolean(review.problem) || Boolean(review.needsReason && !historicalReason.trim())}>
+            <Button type="submit" disabled={saving || stayOutsideDate || !selectedSlot || review === undefined || Boolean(review.problem) || Boolean(review.needsReason && !historicalReason.trim())}>
               {saving ? <Spinner className="text-current" /> : null}
               {service && selectedSlot ? `Book ${service.name}${multiple && option ? ` · ${option.durationMin} min` : ""} · ${resortTime24(selectedSlot.start)}` : rebook ? "Book again" : "Book appointment"}
             </Button>
@@ -530,29 +537,29 @@ export function NextOpenTime({ args, onChoose }: {
   }
   const slot = next.slot;
   return (
-    <Button type="button" size="sm" className="w-full sm:w-auto" onClick={() => onChoose(slot)}>
-      Next open: {staffDate(slot.start, { weekday: true })} · {resortTime24(slot.start)}
-    </Button>
+    <>
+      <span className="w-full text-xs">Search window {staffDate(resortMidnight(next.from), { weekday: true })} through {staffDate(resortMidnight(next.through), { weekday: true })}.</span>
+      <Button type="button" size="sm" className="w-full sm:w-auto" onClick={() => onChoose(slot)}>
+        Next open: {staffDate(slot.start, { weekday: true })} · {resortTime24(slot.start)}
+      </Button>
+    </>
   );
 }
 
-type AttachableStay = FunctionReturnType<typeof api.bookings.admin.searchBookings>[number];
+type AttachableStay = FunctionReturnType<typeof api.bookings.admin.searchAttachableStays>["stays"][number];
 
-/** Stays a Spa appointment on `date` may join: not cancelled and covering that date (the server re-checks). */
-export function attachableStays(stays: readonly AttachableStay[], date: string) {
-  return stays.filter((stay) => stay.status !== "cancelled" && stay.checkIn <= date && date <= stay.checkOut);
-}
-
-/** D19: search hotel stays (admin search) and attach one explicitly; choosing a stay charges nothing. */
 export function StayAttachPicker({ date, value, onChange }: { date: string; value: AttachableStay | null; onChange: (stay: AttachableStay | null) => void }) {
   const [query, setQuery] = useState("");
-  const found = useQuery(api.bookings.admin.searchBookings, query.trim().length >= 2 && !value ? { query: query.trim() } : "skip");
-  const eligible = found ? attachableStays(found, date) : [];
-  const label = (stay: AttachableStay) => `${stay.guestName} · ${staffDate(resortMidnight(stay.checkIn))} → ${staffDate(resortMidnight(stay.checkOut))} · ${stay.confirmationCode}`;
+  const found = useQuery(api.bookings.admin.searchAttachableStays, query.trim().length >= 2 && !value ? { query: query.trim(), date } : "skip");
+  const eligible = found?.stays ?? [];
+  const label = (stay: AttachableStay) => `${stay.guestName} · ${stay.villaName} · ${stay.status.replaceAll("_", " ")} · ${staffDate(resortMidnight(stay.checkIn))} → ${staffDate(resortMidnight(stay.checkOut))}${stay.confirmationCode ? ` · ${stay.confirmationCode}` : ""}`;
   if (value) {
     return (
       <div className="grid gap-1 rounded-lg border border-border px-3 py-2 text-sm">
         <span className="text-xs text-muted-foreground">Attached hotel stay</span>
+        {date < value.checkIn || date > value.checkOut ? (
+          <p role="alert" className="text-destructive">The appointment date is outside this stay. Change the date or remove the stay.</p>
+        ) : null}
         <span className="flex flex-wrap items-center justify-between gap-2">
           <span className="font-medium">{label(value)}</span>
           <Button type="button" size="sm" variant="ghost" onClick={() => onChange(null)}>Remove</Button>
@@ -567,7 +574,8 @@ export function StayAttachPicker({ date, value, onChange }: { date: string; valu
       <div className="mt-2 grid gap-2">
         <Label htmlFor="na-stay">Find the stay by guest name, phone, email or code</Label>
         <Input id="na-stay" value={query} onChange={(event) => setQuery(event.target.value)} autoComplete="off" />
-        {found === undefined ? null : eligible.length === 0 ? (
+        {found?.limited ? <p role="status" className="text-xs">Some stays could not be shown. Try the exact confirmation code or verify the stay in Hotel.</p> : null}
+        {found === undefined || (found.limited && eligible.length === 0) ? null : eligible.length === 0 ? (
           <p className="text-xs text-muted-foreground">No stay that includes {staffDate(resortMidnight(date), { weekday: true })} matches.</p>
         ) : (
           <ul className="grid gap-1">

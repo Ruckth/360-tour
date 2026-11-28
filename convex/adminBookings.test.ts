@@ -78,6 +78,44 @@ it("keeps resort calendar, booking search and destination records out of other b
   expect((await other.query(api.bookings.admin.listForAdmin, args)).bookings).toEqual([]);
   expect(await other.query(api.bookings.admin.searchBookings, query)).toEqual([]);
   expect(await other.query(api.bookings.admin.getForAdmin, { bookingId })).toBeNull();
+  const lookup = api.bookings.admin.searchAttachableStays;
+  const onCheckout = { ...query, date: checkOut };
+  // Same guest, newer rows, and a cancelled stay must not crowd the eligible row out of the results.
+  await t.run(async (ctx) => {
+    const original = (await ctx.db.get(bookingId))!;
+    const { _id, _creationTime, ...row } = original;
+    for (let i = 0; i < 25; i++) {
+      await ctx.db.insert("bookings", { ...row, checkIn: "2099-01-01", checkOut: "2099-01-02" });
+    }
+    await ctx.db.insert("bookings", { ...row, status: "cancelled" });
+    await ctx.db.patch(bookingId, { stayStatus: "checked_out" });
+  });
+  expect(await resort.query(lookup, onCheckout)).toMatchObject({
+    stays: [{ _id: bookingId, villaName: "Pool Villa", status: "checked_out" }],
+    limited: false,
+  });
+  expect(await other.query(lookup, onCheckout)).toEqual({ stays: [], limited: false });
+
+});
+
+it("finds an eligible stay by exact code beyond the bounded date scan", async () => {
+  const { t, admin } = await setup();
+  const bookingId = await admin.mutation(api.bookings.commands.createBooking.createBooking, { ...stay, confirmed: true });
+  const code = await t.run(async (ctx) => {
+    const { _id, _creationTime, ...row } = (await ctx.db.get(bookingId))!;
+    for (let i = 0; i < 513; i++) {
+      await ctx.db.insert("bookings", { ...row, guestName: "Other guest", confirmationCode: undefined });
+    }
+    await ctx.db.patch(bookingId, { checkOut: "2099-02-01" });
+    return row.confirmationCode!;
+  });
+  const lookup = api.bookings.admin.searchAttachableStays;
+  expect(await admin.query(lookup, { date: checkOut, query: stay.guestName })).toEqual({ stays: [], limited: true });
+  expect(await admin.query(lookup, { date: checkOut, query: code.toLowerCase() })).toMatchObject({
+    stays: [{ _id: bookingId }],
+    limited: false,
+  });
+  expect(await admin.query(lookup, { date: "2099-02-02", query: code })).toEqual({ stays: [], limited: false });
 });
 
 async function bookedDates(t: ReturnType<typeof convexTest>) {

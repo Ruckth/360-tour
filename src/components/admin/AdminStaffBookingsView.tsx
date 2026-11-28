@@ -553,6 +553,12 @@ function StaffCalendar() {
 
   return (
     <>
+      {link.appointmentId && linked === null && (
+        <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 text-sm">
+          <p role="status">This linked appointment is no longer available. You can continue in the calendar or return to Therapists.</p>
+          <Button size="sm" variant="outline" onClick={closeAppointment}>Dismiss appointment link</Button>
+        </div>
+      )}
       {scopedDay && (
         <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 text-sm">
           <p role="status">Open appointments · {staffDate(resortMidnight(scopedDay))}{data ? ` · ${appointments.length}` : ""}</p>

@@ -28,6 +28,7 @@ it('D20: a later matching slot is shown with its date and selecting it applies d
   await act(async () => root.render(createElement(NextOpenTime, { args, onChoose })));
   expect(state.args).toContainEqual(args);
   const button = document.querySelector('button')!;
+  expect(document.body.textContent).toMatch(/Search window .*2 Dec through .*15 Dec/);
   expect(button.textContent).toMatch(/Next open: .*4 Dec · 09:00/);
   await act(async () => button.click());
   expect(onChoose).toHaveBeenCalledWith({ date: '2026-12-04', start });
@@ -41,14 +42,11 @@ it('D20: with no match the searched range is named and nothing is offered', asyn
 });
 
 it('D19: the stay picker lists only stays covering the appointment date, and attaching is explicit and removable', async () => {
-  const { StayAttachPicker, attachableStays } = await import('@/components/admin/NewAppointmentDialog');
+  const { StayAttachPicker } = await import('@/components/admin/NewAppointmentDialog');
   const stays = [
-    { _id: 'b1', guestName: 'Mia', checkIn: '2026-12-01', checkOut: '2026-12-03', status: 'confirmed', confirmationCode: 'VIL-2026-AAAAAA' },
-    { _id: 'b2', guestName: 'Mia', checkIn: '2026-12-10', checkOut: '2026-12-12', status: 'confirmed', confirmationCode: 'VIL-2026-BBBBBB' },
-    { _id: 'b3', guestName: 'Mia', checkIn: '2026-12-01', checkOut: '2026-12-04', status: 'cancelled', confirmationCode: 'VIL-2026-CCCCCC' },
+    { _id: 'b1', guestName: 'Mia', villaName: 'Pool Villa', checkIn: '2026-12-01', checkOut: '2026-12-03', status: 'checked_in', confirmationCode: 'VIL-2026-AAAAAA' },
   ] as never[];
-  expect(attachableStays(stays, '2026-12-02').map((s: { _id: string }) => s._id)).toEqual(['b1']);
-  state.result = stays;
+  state.result = { stays, limited: false };
   const onChange = vi.fn();
   await act(async () => root.render(createElement(StayAttachPicker, { date: '2026-12-02', value: null, onChange })));
   const input = document.getElementById('na-stay') as HTMLInputElement;
@@ -56,13 +54,16 @@ it('D19: the stay picker lists only stays covering the appointment date, and att
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, 'Mia');
     input.dispatchEvent(new Event('input', { bubbles: true }));
   });
-  expect(state.args).toContainEqual({ query: 'Mia' });
+  expect(state.args).toContainEqual({ query: 'Mia', date: '2026-12-02' });
   const options = [...document.querySelectorAll('li button')];
   expect(options.map(o => o.textContent)).toEqual([expect.stringContaining('VIL-2026-AAAAAA')]);
+  expect(options[0].textContent).toContain('Pool Villa · checked in');
   await act(async () => (options[0] as HTMLButtonElement).click());
   expect(onChange).toHaveBeenCalledWith(stays[0]);
   await act(async () => root.render(createElement(StayAttachPicker, { date: '2026-12-02', value: stays[0], onChange })));
   expect(document.body.textContent).toContain('Nothing is charged until staff take payment');
+  await act(async () => root.render(createElement(StayAttachPicker, { date: '2026-12-04', value: stays[0], onChange })));
+  expect(document.querySelector('[role=alert]')?.textContent).toContain('outside this stay');
   await act(async () => [...document.querySelectorAll('button')].find(b => b.textContent === 'Remove')!.click());
   expect(onChange).toHaveBeenLastCalledWith(null);
 }, 30_000);

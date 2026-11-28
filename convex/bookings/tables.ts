@@ -128,6 +128,7 @@ export const bookingsTables = {
 		.index('by_property_checkIn', ['propertyId', 'checkIn'])
 		.index('by_property_checkOut', ['propertyId', 'checkOut'])
 		.index('by_checkIn', ['checkIn'])
+		.index('by_checkOut', ['checkOut'])
 		.index('by_status', ['status'])
 		.index('by_status_createdAt', ['status', 'createdAt'])
 		.index('by_createdAt', ['createdAt'])
