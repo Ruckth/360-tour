@@ -43,7 +43,7 @@ test("invalid order numbers never open a different order", async ({ page }) => {
     await expect(dialog.getByRole("alert")).toHaveText("Enter a positive whole order number.");
     await expect(dialog).toBeVisible();
   }
-  await lookup.fill("R-987654321");
+  await lookup.fill("R-001042");
   await dialog.getByRole("button", { name: "Go", exact: true }).click();
   await expect(dialog.getByRole("status")).toContainText("Not available");
   await lookup.fill("Order #1042");
