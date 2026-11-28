@@ -102,7 +102,7 @@ export const upsertOtaRate = adminMutation({
 		if (!Number.isSafeInteger(args.nightlyRate) || args.nightlyRate <= 0 || args.nightlyRate > MAX_NIGHTLY_RATE) {
 			throw new Error('Nightly rate must be a positive amount');
 		}
-		if (args.urlChange && args.url !== undefined) throw new Error('Choose either URL intent or a legacy URL.');
+		if (args.urlChange && args.url !== undefined) throw new Error('Provide either urlChange or url, but not both.');
 		const nextUrl = args.urlChange?.kind === 'set' ? args.urlChange.url : args.url?.trim();
 		const existing = await ctx.db
 			.query('otaRates')

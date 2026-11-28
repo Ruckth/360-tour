@@ -1,7 +1,7 @@
 "use client";
 
+import { CustomShiftDialog, type Plan } from "./CustomShiftDialog";
 import { addDays } from 'convex/shared/dates';
-
 import { RecordHistoryPanel } from "./RecordHistoryPanel";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
@@ -23,14 +23,13 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type PointerEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { adminStaffTabPath } from "@/components/admin/admin-routes";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { StaffAvatar } from "@/components/admin/StaffAvatar";
 import { TONES } from "@/components/admin/status-tones";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
-import { TimePicker } from "@/components/ui/time-picker";
 import {
   Dialog,
   DialogContent,
@@ -40,7 +39,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Toast, useToast } from "@/components/ui/toast";
@@ -54,7 +52,6 @@ type Week = FunctionReturnType<typeof api.services.roster.getWeek>;
 type Cell = Week["cells"][number];
 type Conflict = Extract<FunctionReturnType<typeof api.services.roster.applyCells>, { ok: false }>["conflicts"][number];
 type CopyResult = FunctionReturnType<typeof api.services.roster.copyWeek>;
-type Plan = { shifts: Array<{ start: string; end: string }>; breaks: Array<{ start: string; end: string; label: string }> };
 type Pos = { row: number; col: number };
 type ConflictState = { title: string; conflicts: Conflict[]; retry?: () => void };
 
@@ -722,7 +719,7 @@ export function StaffRosterView() {
       </div> : null}
       {customOpen ? (
         <CustomShiftDialog
-          count={selectedKeys.length}
+          selectionLabel={plural(selectedKeys.length, "selected cell")}
           onClose={() => setCustomOpen(false)}
           onApply={(plan) => {
             setCustomOpen(false);
@@ -789,75 +786,6 @@ function CellContent({ cell }: { cell: Cell }) {
           </span>
         ) : null}
       </span>
-    </div>
-  );
-}
-
-function CustomShiftDialog({ count, onClose, onApply }: { count: number; onClose: () => void; onApply: (plan: Plan) => void }) {
-  const [error, setError] = useState("");
-
-  function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const text = (name: string) => String(form.get(name) ?? "").trim();
-    const [start, end, breakStart, breakEnd] = ["start", "end", "breakStart", "breakEnd"].map(text);
-    if (!start || !end || start >= end) return setError("Start must be before end.");
-    if (Boolean(breakStart) !== Boolean(breakEnd)) return setError("Give the break a start and an end, or leave both empty.");
-    if (breakStart && (breakStart >= breakEnd || breakStart < start || breakEnd > end)) {
-      return setError("The break must fit inside the shift.");
-    }
-    onApply({
-      shifts: [{ start, end }],
-      breaks: breakStart ? [{ start: breakStart, end: breakEnd, label: text("breakLabel") || "Break" }] : [],
-    });
-  }
-
-  return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-md">
-        <form onSubmit={submit} className="space-y-4">
-          <DialogHeader>
-            <DialogTitle>Custom hours</DialogTitle>
-            <DialogDescription>Applies to {plural(count, "selected cell")}. Times are resort time.</DialogDescription>
-          </DialogHeader>
-          <div className="grid grid-cols-2 gap-3">
-            <TimeField name="start" label="Start" defaultValue="10:00" required />
-            <TimeField name="end" label="End" defaultValue="18:00" required />
-          </div>
-          <fieldset className="space-y-2">
-            <legend className="text-sm font-medium">Break (optional)</legend>
-            <div className="grid grid-cols-3 gap-3">
-              <TimeField name="breakStart" label="From" />
-              <TimeField name="breakEnd" label="To" />
-              <div className="space-y-1.5">
-                <Label htmlFor="roster-break-label">Label</Label>
-                <Input id="roster-break-label" name="breakLabel" placeholder="Lunch" />
-              </div>
-            </div>
-          </fieldset>
-          {error ? (
-            <p role="alert" className="text-sm text-destructive">
-              {error}
-            </p>
-          ) : null}
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button type="submit">Apply</Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function TimeField({ name, label, defaultValue, required }: { name: string; label: string; defaultValue?: string; required?: boolean }) {
-  const id = `roster-${name}`;
-  return (
-    <div className="space-y-1.5">
-      <Label htmlFor={id}>{label}</Label>
-      <TimePicker id={id} label={label} name={name} minuteStep={15} allowEmpty={!required} defaultValue={defaultValue} required={required} />
     </div>
   );
 }

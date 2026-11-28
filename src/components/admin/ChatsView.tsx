@@ -1,6 +1,27 @@
 "use client";
-import { CHAT_SHORTCUT_KEYS, CHAT_SHORTCUTS, Kbd } from "./chat-shortcuts";
 
+import {
+  type SessionStatus,
+  type EmptyChatFilter,
+  statusTabs,
+  statusOptions,
+  type InboxStateFilter,
+  type InboxQueue,
+  queueTabs,
+  queueParams,
+  adminStatusOptions,
+  adminStatusTabs,
+  emptyFilterOptions,
+  channelFilterOptions,
+  FILTER_DEFAULTS,
+  type FilterParam,
+  readOption,
+  dateTimeInputToMillis,
+  dateTimeBadgeLabel,
+  emptyFilterLabel,
+  channelFilterLabel,
+} from "./admin-chat-filters";
+import { CHAT_SHORTCUT_KEYS, CHAT_SHORTCUTS, Kbd } from "./chat-shortcuts";
 import { CheckCheck, ChevronRight, Filter, Keyboard, Search } from "lucide-react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
@@ -21,12 +42,11 @@ import { BusinessFactFormDialog, type FactFormTarget } from "@/components/admin/
 import { SegmentedTabs } from "@/components/admin/SegmentedTabs";
 import { EmptyState, SkeletonRows } from "@/components/admin/admin-bulk";
 import { sourceLabel } from "@/components/admin/labels";
-import { TONES, statusMeta } from "@/components/admin/status-tones";
+import { TONES } from "@/components/admin/status-tones";
 import { useAdminReplyComposer } from "@/components/admin/useAdminReplyComposer";
 import type { AdminFactProperty } from "@/components/admin/business-facts-form";
 import {
   ChannelIcon,
-  formatDateTime,
   plainText,
   relativeTime,
   truncate,
@@ -35,7 +55,6 @@ import {
 import type {
   AdminMessage,
   AdminSession,
-  AdminSessionStatus,
   SessionChannelFilter,
   SessionDetailResult,
   SessionListResult,
@@ -44,54 +63,6 @@ import type {
 import { shortcutKey } from "@/lib/keyboard";
 import { cn } from "@/lib/utils";
 
-type SessionStatus = "needs_reply" | "in_progress" | "active" | "all" | "inactive";
-type EmptyChatFilter = "non_empty" | "empty";
-
-const statusTabs = [
-  { value: "active", label: "Live" },
-  { value: "all", label: "All" },
-  { value: "inactive", label: "Inactive" },
-] satisfies { value: SessionStatus; label: string }[];
-const statusOptions: SessionStatus[] = ["needs_reply", "in_progress", "active", "all", "inactive"];
-type InboxStateFilter = AdminSessionStatus | "done";
-type InboxQueue = "waiting" | "open" | "done";
-const queueTabs = [
-  { value: "waiting", label: "Needs you" },
-  { value: "open", label: "In progress" },
-  { value: "done", label: "Done" },
-] satisfies { value: InboxQueue; label: string }[];
-function queueParams(queue: InboxQueue): { view: SessionStatus; state: InboxStateFilter } {
-  return { view: queue === "waiting" ? "needs_reply" : queue === "open" ? "in_progress" : "all", state: queue === "done" ? "done" : "open" };
-}
-const adminStatusOptions: InboxStateFilter[] = ["open", "done", "resolved", "archived"];
-const adminStatusTabs = adminStatusOptions.map((value) => ({
-  value,
-  label: value === "done" ? "All done" : statusMeta("chatSession", value).label,
-}));
-const emptyFilterOptions = ["non_empty", "empty"] satisfies EmptyChatFilter[];
-const channelFilterOptions = [
-  "all",
-  "web",
-  "line",
-  "facebook",
-  "whatsapp",
-  "instagram",
-] satisfies SessionChannelFilter[];
-// URL param defaults; a param equal to its default is left out of the URL.
-const FILTER_DEFAULTS = {
-  view: "needs_reply",
-  state: "open",
-  empty: "non_empty",
-  channel: "all",
-  q: "",
-  from: "",
-  to: "",
-} as const;
-type FilterParam = keyof typeof FILTER_DEFAULTS;
-
-function readOption<T extends string>(value: string | null, options: readonly T[], fallback: T): T {
-  return options.includes(value as T) ? (value as T) : fallback;
-}
 const PRESENCE_CLOCK_MS = 10_000;
 
 function usePresenceClock(intervalMs = PRESENCE_CLOCK_MS) {
@@ -143,27 +114,6 @@ function useLatestDefined<T>(value: T | undefined, resetKey: string) {
   const next = value !== undefined ? value : latest.resetKey === resetKey ? latest.value : undefined;
   if (latest.resetKey !== resetKey || latest.value !== next) setLatest({ resetKey, value: next });
   return next;
-}
-
-function dateTimeInputToMillis(value: string, boundary: "start" | "end" = "start") {
-  if (!value) return undefined;
-  const timestamp = new Date(value).getTime();
-  if (!Number.isFinite(timestamp)) return undefined;
-  return boundary === "end" ? timestamp + 59_999 : timestamp;
-}
-
-function dateTimeBadgeLabel(value: string) {
-  const timestamp = dateTimeInputToMillis(value);
-  return typeof timestamp === "number" ? formatDateTime(timestamp) : value;
-}
-
-function emptyFilterLabel(value: EmptyChatFilter) {
-  if (value === "empty") return "Without messages";
-  return "Not empty";
-}
-
-function channelFilterLabel(channel: SessionChannelFilter) {
-  return channel === "all" ? "All" : sourceLabel(channel);
 }
 
 export function ChatsView() {
