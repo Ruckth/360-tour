@@ -248,6 +248,7 @@ registerFixtureFunctions({
   mutations: {
     "pos/commands/openStayCheckout:openStayCheckout": async ({ bookingId }: { bookingId: Id<"bookings"> }) => {
       write("openStayCheckout", { bookingId });
+      if (!checkout) throw new Error("Checkout is unavailable in the linked-resort fixture");
       const actions = checkout.useActions();
       const { orderId } = await actions.openOrderFor({ bookingId });
       const added: Id<"appointments">[] = [];
