@@ -84,7 +84,7 @@ it("shares direct and menu editing, initializes from the current task and cancel
   await type("  Ask about checkout  ");
   await submit();
   await settleFocus();
-  expect(mocks.mutation).toHaveBeenCalledExactlyOnceWith("messaging/adminChat:setStaffTask", { sessionId: "session-a", task: "Ask about checkout" });
+  expect(mocks.mutation).toHaveBeenCalledExactlyOnceWith("messaging/adminChat:setStaffTask", { sessionId: "session-a", task: "Ask about checkout", dueAt: null, expectedRevision: 0 });
   expect(document.querySelector('[role="dialog"]')).toBeNull();
   expect(document.querySelector("textarea")?.value).toBe("Draft stays here");
   expect(statusChanged).not.toHaveBeenCalled();
@@ -105,7 +105,7 @@ it("guards blank saves independently of the disabled button and leaves the curre
 
 it("completes independently and starts Add empty after the current task is removed", async () => {
   await render(); await click(byLabel("Complete follow-up"));
-  expect(mocks.mutation).toHaveBeenCalledExactlyOnceWith("messaging/adminChat:setStaffTask", { sessionId: "session-a", task: null });
+  expect(mocks.mutation).toHaveBeenCalledExactlyOnceWith("messaging/adminChat:setStaffTask", { sessionId: "session-a", task: null, expectedRevision: 0 });
   await render({ ...initial, staffTask: undefined });
   await settleFocus();
   expect(document.activeElement).toBe(byLabel("More chat actions"));
@@ -132,14 +132,14 @@ it("retains a failed edit for retry, blocks closing and double submission while 
   expect(document.querySelector('[role="alert"]')?.textContent).toBe("Could not save follow-up");
   expect(input().value).toBe("Check the late checkout");
   await submit();
-  expect(mocks.mutation).toHaveBeenLastCalledWith("messaging/adminChat:setStaffTask", { sessionId: "session-a", task: "Check the late checkout" });
+  expect(mocks.mutation).toHaveBeenLastCalledWith("messaging/adminChat:setStaffTask", { sessionId: "session-a", task: "Check the late checkout", dueAt: null, expectedRevision: 0 });
   expect(document.querySelector('[role="dialog"]')).toBeNull();
 });
 
 it("shows No reply needed in the header, rare actions in ⋯, and retains the exact latest guest-message guard", async () => {
   await render(); await press(byLabel("More chat actions"));
   expect(menuItems().map(el => el.textContent)).toEqual([
-    "Edit follow-up", "Complete follow-up", "Resume AI", "Let AI handle the next issue", "Archive chat",
+    "Edit follow-up", "Complete follow-up", "Resume AI", "Let AI handle the next issue", "Assign teammate", "Archive chat",
   ]);
   await act(async () => document.activeElement?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
   await click(button("No reply needed"));
@@ -150,7 +150,7 @@ it("shows No reply needed in the header, rare actions in ⋯, and retains the ex
   await menu("Let AI handle the next issue");
   expect(mocks.mutation).toHaveBeenLastCalledWith("messaging/adminChat:setKeepWithStaff", { sessionId: "session-a", keep: false });
   await menu("Complete follow-up");
-  expect(mocks.mutation).toHaveBeenLastCalledWith("messaging/adminChat:setStaffTask", { sessionId: "session-a", task: null });
+  expect(mocks.mutation).toHaveBeenLastCalledWith("messaging/adminChat:setStaffTask", { sessionId: "session-a", task: null, expectedRevision: 0 });
 });
 
 it("keeps failed actions visible without firing success callbacks and preserves reopen/delete", async () => {
