@@ -81,7 +81,8 @@ type Stay = {
   confirmationCode: string; revision: number; payments: Payment[]; source: "admin" | "web";
 };
 const stay = (n: number, fields: Omit<Stay, "_id" | "revision" | "payments" | "source"> & { paid?: Payment[] }): Stay => ({
-  _id: fid<"bookings">("bkg", n) as Id<"bookings">, revision: 1, source: "web", payments: fields.paid ?? [], ...fields,
+  _id: directResortLink && n === 1 ? "fxbkg000000000000000000000000001" as Id<"bookings"> : fid<"bookings">("bkg", n),
+  revision: 1, source: "web", payments: fields.paid ?? [], ...fields,
 });
 const deposit = (id: string, amount: number, method: string, daysAgo: number): Payment => ({ _id: id, amount: bahtToSatang(amount), method, origin: method === "stripe" ? "online" : "manual", effectiveAt: now - daysAgo * DAY_MS });
 const desk = {

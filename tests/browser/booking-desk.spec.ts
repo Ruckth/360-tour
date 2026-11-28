@@ -574,7 +574,7 @@ test("a phone opens a linked resort stay with a secondary working branch, and de
     sessionStorage.setItem("admin:branch:ploy@auraliscove.co", "phuket");
     localStorage.setItem("admin.hotel.villa:resort", "fxvilla000002");
   });
-  const link = "/tests/browser/booking-desk.html?path=/admin/hotel&directResortLink=1&booking=fxbkg000001";
+  const link = "/tests/browser/booking-desk.html?path=/admin/hotel&directResortLink=1&booking=fxbkg000000000000000000000000001";
   await page.goto(link);
   await expect(page.getByRole("dialog", { name: "Anna Schmidt", exact: true })).toBeVisible({ timeout: 15_000 });
   await page.goto(link + "&denyResort=1");
