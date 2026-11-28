@@ -1,7 +1,7 @@
 import type { Id } from "convex/_generated/dataModel";
 import { describe, expect, it } from "vitest";
 import { BRANCH_STATE_META } from "@/components/admin/branch/branch-pills";
-import { branchReadOnlyRoute, branchRouteScope, branchStorageKeys, branchSwitchHref, resolveWorkingBranch } from "@/components/admin/branch/branch-selection";
+import { branchReadOnlyRoute, branchReturnHref, branchRouteScope, branchStorageKeys, branchSwitchHref, resolveWorkingBranch } from "@/components/admin/branch/branch-selection";
 
 const branch = (id: string) => ({ id: id as Id<"branches"> });
 const samui = branch("samui");
@@ -76,5 +76,17 @@ describe("working branch selection", () => {
     expect(branchSwitchHref("/admin/marketing/coupons/coupon-1", new URLSearchParams("draft=1"))).toBeNull();
     expect(branchSwitchHref("/admin/checkout", new URLSearchParams("order=o1"))).toBeNull();
     expect(branchSwitchHref("/admin/receipt/o1", new URLSearchParams("print=1"))).toBeNull();
+  });
+});
+
+describe("branchReturnHref (D04)", () => {
+  it("keeps the path, tab and open record, and drops filters and search", () => {
+    expect(branchReturnHref("/admin/chats", new URLSearchParams("session=s1&q=maya&state=open"))).toBe("/admin/chats?session=s1");
+    expect(branchReturnHref("/admin/properties/p1", new URLSearchParams("tab=rooms"))).toBe("/admin/properties/p1?tab=rooms");
+  });
+  it("offers nothing when the switch drops nothing, or on company and till pages", () => {
+    expect(branchReturnHref("/admin/hotel", new URLSearchParams())).toBeNull();
+    expect(branchReturnHref("/admin/settings", new URLSearchParams("tab=team&x=1"))).toBeNull();
+    expect(branchReturnHref("/admin/checkout", new URLSearchParams("q=1"))).toBeNull();
   });
 });

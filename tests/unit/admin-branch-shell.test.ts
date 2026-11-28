@@ -129,6 +129,59 @@ describe('branch switcher', () => {
     expect(page()?.dataset.mount).toBe('2');
   });
 
+  describe('return after a switch (D04)', () => {
+    async function switchFromOpenChat() {
+      manager();
+      sessionStorage.setItem(`admin:branch:${EMAIL}`, KOH_SAMUI.id);
+      state.pathname = '/admin/chats';
+      state.search = 'session=s1&q=maya&state=open';
+      await render();
+      await click(headerPill());
+      await click(sheetRow('Phuket'));
+      state.search = '';
+      state.replace.mockClear();
+      await render();
+    }
+
+    it('offers one action that restores the previous branch and the record it had open', async () => {
+      await switchFromOpenChat();
+      expect(page()?.textContent).toBe('Phuket');
+      await click(button('Back to Koh Samui'));
+      // Filters and search are not restored; the open chat is.
+      expect(state.replace).toHaveBeenLastCalledWith('/admin/chats?session=s1');
+      expect(page()?.textContent).toBe('Koh Samui');
+      expect(button('Back to Koh Samui')).toBeUndefined();
+    });
+
+    it('keeps the normal unsaved-changes guard on the way back', async () => {
+      await switchFromOpenChat();
+      state.dirty = true;
+      await render();
+      await click(button('Back to Koh Samui'));
+      expect(document.querySelector('[role="alertdialog"]')?.textContent).toContain('Discard unsaved changes and switch to Koh Samui?');
+      await click(button('Stay here'));
+      expect(page()?.textContent).toBe('Phuket');
+      expect(state.replace).not.toHaveBeenCalledWith('/admin/chats?session=s1');
+    });
+
+    it('is withdrawn when access to the previous branch has ended', async () => {
+      await switchFromOpenChat();
+      manager([PHUKET]);
+      await render();
+      expect(button('Back to Koh Samui')).toBeUndefined();
+    });
+
+    it('is not offered when the switch closed nothing', async () => {
+      manager();
+      sessionStorage.setItem(`admin:branch:${EMAIL}`, KOH_SAMUI.id);
+      state.pathname = '/admin/hotel';
+      await render();
+      await click(headerPill());
+      await click(sheetRow('Phuket'));
+      expect(button('Back to Koh Samui')).toBeUndefined();
+    });
+  });
+
   it('returns from the property editor to the list on a manual switch', async () => {
     manager();
     sessionStorage.setItem(`admin:branch:${EMAIL}`, KOH_SAMUI.id);

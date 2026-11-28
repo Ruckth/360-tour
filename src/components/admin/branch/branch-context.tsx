@@ -10,6 +10,7 @@ import { usePathname, useRouter, useSearchParams } from "@/platform/navigation";
 import {
   branchReadOnlyRoute,
   branchRouteScope,
+  branchReturnHref,
   branchStorageKeys,
   branchSwitchHref,
   resolveWorkingBranch,
@@ -42,6 +43,11 @@ export type AdminBranch = {
    */
   revoked: { from: string | null; to: string | null; discarded: boolean } | null;
   dismissRevoked: () => void;
+  /** After a switch closed a record: the branch to go back to (offered on the page it landed on). */
+  returnTo: { name: string } | null;
+  /** Switches back and reopens the record, through the same unsaved-changes and access checks. */
+  returnToPrevious: () => Promise<boolean>;
+  dismissReturn: () => void;
 };
 
 const Context = createContext<AdminBranch | null>(null);
@@ -135,6 +141,9 @@ export function AdminBranchProvider({ children }: { children: ReactNode }) {
     return () => { latest.current = null; };
   }, [selectionContext]);
 
+  // The record a switch closed, kept only while the person stays on the page the switch opened.
+  const [previous, setPrevious] = useState<{ id: AdminBranchId; href: string; landedOn: string } | null>(null);
+
   const select = useCallback(
     async (id: AdminBranchId) => {
       const target = branches.find((branch) => branch.id === id);
@@ -156,6 +165,8 @@ export function AdminBranchProvider({ children }: { children: ReactNode }) {
         ) return false;
       }
       const href = branchSwitchHref(pathname, search);
+      const back = currentId ? branchReturnHref(pathname, search) : null;
+      setPrevious(back && href && currentId ? { id: currentId, href: back, landedOn: href.split("?")[0] } : null);
       if (href) router.replace(href);
       setRevoked(null);
       setCurrentId(id);
@@ -168,6 +179,20 @@ export function AdminBranchProvider({ children }: { children: ReactNode }) {
   );
 
   const dismissRevoked = useCallback(() => setRevoked(null), []);
+  const returnBranch = previous && pathname === previous.landedOn ? branches.find((branch) => branch.id === previous.id) ?? null : null;
+  const returnToPrevious = useCallback(async () => {
+    const target = previous;
+    // Access is re-read from myAccess: a branch removed since the switch can't be restored.
+    if (!target || !branches.some((branch) => branch.id === target.id)) {
+      setPrevious(null);
+      return false;
+    }
+    if (!(await select(target.id))) return false;
+    setPrevious(null);
+    router.replace(target.href);
+    return true;
+  }, [previous, branches, select, router]);
+  const dismissReturn = useCallback(() => setPrevious(null), []);
   const value = useMemo<AdminBranch>(
     () => ({
       branches,
@@ -179,8 +204,11 @@ export function AdminBranchProvider({ children }: { children: ReactNode }) {
       needsChoice: working.kind === "choose" && !readOnly && scope === "branch",
       revoked,
       dismissRevoked,
+      returnTo: returnBranch && switchable ? { name: returnBranch.name } : null,
+      returnToPrevious,
+      dismissReturn,
     }),
-    [branches, currentBranch, select, readOnly, scope, switchable, working.kind, revoked, dismissRevoked],
+    [branches, currentBranch, select, readOnly, scope, switchable, working.kind, revoked, dismissRevoked, returnBranch, returnToPrevious, dismissReturn],
   );
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }
@@ -195,6 +223,9 @@ const NO_BRANCH: AdminBranch = {
   needsChoice: false,
   revoked: null,
   dismissRevoked: () => {},
+  returnTo: null,
+  returnToPrevious: async () => false,
+  dismissReturn: () => {},
 };
 
 /**
