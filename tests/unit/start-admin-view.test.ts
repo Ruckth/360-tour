@@ -267,7 +267,7 @@ describe("Start admin route components wiring", () => {
     const propertyMod = await import("@/start-app/routes/admin.properties.$id");
     const { ConfirmProvider } = await import("@/components/admin/ConfirmDialog");
     const Property = (propertyMod.Route as unknown as { options: { component: React.ComponentType } }).options.component;
-    const renderProperty = () => renderToStaticMarkup(React.createElement(ConfirmProvider, { children: React.createElement(Property) }));
+    const renderProperty = () => renderToStaticMarkup(React.createElement(ConfirmProvider, null, React.createElement(Property)));
     state.params = { id: "villa-42" };
     state.search = { tab: "reviews" };
     const propertyHtml = renderProperty();
