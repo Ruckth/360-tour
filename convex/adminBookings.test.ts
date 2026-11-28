@@ -530,6 +530,13 @@ describe("block dates across villas", () => {
     const garden = await addVilla(t, "garden-villa", 500000);
     await admin.mutation(api.bookings.commands.createBooking.createBooking, { ...stay, confirmed: true });
 
+    // F3: the preview names the conflicting villa before any write, and is staff-only.
+    expect(await admin.query(api.bookings.calendar.addDateBlocks.previewDateBlocks, { propertyIds: [pool, garden, garden], start: checkIn, end: checkOut })).toEqual([
+      { propertyId: pool, error: "These dates are no longer available. Please choose different dates." },
+      { propertyId: garden, error: null },
+    ]);
+    expect(await t.run((ctx) => ctx.db.query("dateBlocks").collect())).toEqual([]);
+    await expect(t.query(api.bookings.calendar.addDateBlocks.previewDateBlocks, { propertyIds: [garden], start: checkIn, end: checkOut })).rejects.toThrow();
     const results = await admin.mutation(api.bookings.calendar.addDateBlocks.addDateBlocks, { propertyIds: [pool, garden], start: checkIn, end: checkOut, reason: " Festival " });
     expect(results).toEqual([
       { propertyId: pool, blockId: null, error: "These dates are no longer available. Please choose different dates." },
