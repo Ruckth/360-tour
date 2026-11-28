@@ -24,6 +24,7 @@ import {
   parseStockError,
   parseWholeQuantity,
   PROBLEM_STATUS_META,
+  stockLotHref,
 } from "./stock-format";
 import { StockStaleBanner, useStockDirtyGuard } from "./StockFormGuard";
 
@@ -36,6 +37,7 @@ export function MovementInspectSheet({
   movementId,
   access,
   reportContext,
+  returnTo,
   onClose,
   onSuccess,
 }: {
@@ -43,6 +45,7 @@ export function MovementInspectSheet({
   movementId: Id<"stockMovements">;
   access: StockAccessResult;
   reportContext: ProblemReportRow | null;
+  returnTo?: string;
   onClose: () => void;
   onSuccess: (message: string) => void;
 }) {
@@ -633,9 +636,9 @@ export function MovementInspectSheet({
                 <ul className="divide-y divide-border rounded-lg border border-border">
                   {lotEvidence.allocations.map((alloc) => (
                     <li key={alloc.lotId} className="flex items-center justify-between gap-2 p-3 text-xs">
-                      <span className="font-mono font-medium text-foreground">
+                      <ButtonLink href={stockLotHref(detail.variantId, returnTo, alloc.lotId)} variant="ghost" size="sm" className="min-h-11 max-w-full justify-start px-0 font-mono text-xs whitespace-normal wrap-anywhere hover:underline sm:min-h-8">
                         {alloc.code ?? alloc.lotId}
-                      </span>
+                      </ButtonLink>
                       <span className="tabular-nums text-muted-foreground">
                         Qty {alloc.quantity}
                         {alloc.expiresAt ? ` · Exp ${staffDateTime(alloc.expiresAt)}` : ""}

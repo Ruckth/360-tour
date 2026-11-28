@@ -136,6 +136,25 @@ it('supplies branch reorder points to both request lookups without changing stoc
   expect(await t.run(ctx => ctx.db.query('stockMovements').first())).toBeNull();
 });
 
+it('keeps configured low balances within the selected branch and separate from out-of-stock items', async () => {
+  const { t, owner, manager, managerId, branchId, otherBranchId, variantId } = await fixture();
+  await owner.mutation(stock.setGrant, {
+    branchId: otherBranchId, staffGrantId: managerId, roles: { ...emptyStockRoles, lead: true }, expectedRevision: 0,
+  });
+  const point = { variantId, expectedRevision: 0, quantity: 8 };
+  await manager.mutation(stock.setReorderPoint, { ...point, branchId });
+  await manager.mutation(stock.setReorderPoint, { ...point, branchId: otherBranchId });
+  const low = (id: typeof branchId) => manager.query(stock.listBalances, { branchId: id, lowOnly: true, paginationOpts });
+  await expect(low(branchId)).resolves.toMatchObject({ page: [] });
+  await t.run(ctx => writeStockMovement(ctx, { branchId, variantId, kind: 'opening', delta: 8, sourceKey: 'low-stock-opening', actor: 'manager' }));
+  await expect(low(branchId)).resolves.toMatchObject({ page: [{ variantId, onHand: 8, reorderPoint: 8 }] });
+  await expect(low(otherBranchId)).resolves.toMatchObject({ page: [] });
+  await t.run(ctx => writeStockMovement(ctx, { branchId, variantId, kind: 'adjust', delta: -8, sourceKey: 'low-stock-empty', actor: 'manager' }));
+  await expect(low(branchId)).resolves.toMatchObject({ page: [] });
+  await expect(manager.query(stock.listBalances, { branchId, lowOnly: true, recountOnly: true, paginationOpts }))
+    .rejects.toMatchObject({ data: { code: 'STOCK_FILTER_CONFLICT' } });
+});
+
 it('finds legacy variant SKUs, reports archive impact, and restores the same product with merged audit history', async () => {
   const { t, manager, cashier, branchId, productId, variantId } = await fixture();
   await t.run(async ctx => {

@@ -24,11 +24,13 @@ type ReceiptCorrectionPreviewResult = FunctionReturnType<typeof api.commerce.pur
 export function CorrectReceiptLineSheet({
   line,
   onClose,
+  onCloseAutoFocus,
   onDone,
   onSwitchToReturn,
 }: {
   line: ReceiptLineRow;
   onClose: () => void;
+  onCloseAutoFocus?: (event: Event) => void;
   onDone: (resolvedReport: boolean) => void;
   /** Damaged goods leave through a supplier return, not a correction. */
   onSwitchToReturn?: () => void;
@@ -155,6 +157,7 @@ export function CorrectReceiptLineSheet({
     <EditorSheet
       open
       onClose={requestClose}
+      onCloseAutoFocus={onCloseAutoFocus}
       header={
         <>
           <SheetTitle>Correct quantity</SheetTitle>
@@ -293,10 +296,12 @@ export function CorrectReceiptLineSheet({
 export function ReturnToSupplierSheet({
   line,
   onClose,
+  onCloseAutoFocus,
   onDone,
 }: {
   line: ReceiptLineRow;
   onClose: () => void;
+  onCloseAutoFocus?: (event: Event) => void;
   onDone: (result: { adjustmentId: Id<"supplierReceiptAdjustments">; outcome: ReturnOutcomeValue; quantity: number }) => void;
 }) {
   const submitReturn = useMutation(api.commerce.purchasing.supplierReturn);
@@ -352,6 +357,7 @@ export function ReturnToSupplierSheet({
     <EditorSheet
       open
       onClose={requestClose}
+      onCloseAutoFocus={onCloseAutoFocus}
       header={
         <>
           <SheetTitle>Return to supplier</SheetTitle>
@@ -408,10 +414,12 @@ export function ReturnToSupplierSheet({
 export function ReverseReturnSheet({
   adjustment,
   onClose,
+  onCloseAutoFocus,
   onDone,
 }: {
   adjustment: AdjustmentRow;
   onClose: () => void;
+  onCloseAutoFocus?: (event: Event) => void;
   onDone: () => void;
 }) {
   const reverseReturn = useMutation(api.commerce.purchasing.reverseReturn);
@@ -459,6 +467,7 @@ export function ReverseReturnSheet({
     <EditorSheet
       open
       onClose={requestClose}
+      onCloseAutoFocus={onCloseAutoFocus}
       header={
         <>
           <SheetTitle>Reverse supplier return</SheetTitle>

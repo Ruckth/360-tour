@@ -26,11 +26,13 @@ export function LotDetailPanel({
   branchId,
   branchName,
   variant,
+  requestedLotId,
   onSuccess,
 }: {
   branchId: Id<"branches">;
   branchName?: string;
   variant: BalancePickerRow;
+  requestedLotId?: string | null;
   onSuccess: (msg: string) => void;
 }) {
   const balances = useQuery(api.commerce.stockExpansion.lotBalances, { branchId, variantId: variant.variantId });
@@ -43,7 +45,7 @@ export function LotDetailPanel({
   const session = useQuery(api.commerce.stockExpansion.readLotCountSession, balances?.canAdjust && balances.tracking ? scope : "skip");
 
   const [conversionOpen, setConversionOpen] = useState(false);
-  const [mode, setMode] = useState<"add" | "remove" | "count">("add");
+  const [mode, setMode] = useState<"add" | "remove" | "count">(requestedLotId ? "count" : "add");
   const [lotCode, setLotCode] = useState("");
   const [lotExpiry, setLotExpiry] = useState("");
   const [selectedLotId, setSelectedLotId] = useState<string>("");
@@ -58,6 +60,7 @@ export function LotDetailPanel({
   const [requestId, setRequestId] = useState(() => createOperationKey("lot-op"));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [linkedLotSettled, setLinkedLotSettled] = useState(false);
 
   const isLotDirty = qtyText.trim() !== "" || reason.trim() !== "" || lotCode.trim() !== "" || lotExpiry !== "";
   useUnsavedGuard(isLotDirty);
@@ -71,6 +74,14 @@ export function LotDetailPanel({
   }
   for (const lot of balances.lots) selectableLots.set(lot.lotId, lot);
   const lotChoices = [...selectableLots.values()];
+  const linkedLot = requestedLotId ? selectableLots.get(requestedLotId) : undefined;
+  if (requestedLotId && !linkedLotSettled && balances.canAdjust && balances.tracking && session !== undefined) {
+    setLinkedLotSettled(true);
+    if (linkedLot) {
+      setSelectedLotId(linkedLot.lotId);
+      setReviewedLot({ lotId: linkedLot.lotId, onHand: linkedLot.onHand, revision: linkedLot.revision });
+    }
+  }
   const liveSelectedLot = selectedLotId ? lotChoices.find((row) => row.lotId === selectedLotId) : undefined;
   const preview = parseWholeQuantity(qtyText, { allowZero: true });
   const isLotCountStale = Boolean(
@@ -275,7 +286,7 @@ export function LotDetailPanel({
                 </thead>
                 <tbody>
                   {balances.lots.map((lot) => (
-                    <tr key={lot.lotId}>
+                    <tr key={lot.lotId} className={lot.lotId === requestedLotId ? "bg-muted/50" : undefined}>
                       <td data-label="Lot code" className="font-mono font-medium">
                         {lot.code ?? lot.lotId}
                       </td>
@@ -303,7 +314,7 @@ export function LotDetailPanel({
 
           {balances.canAdjust ? (
             <Card className="px-3">
-              <details open={session ? true : undefined}>
+              <details open={session || requestedLotId ? true : undefined}>
                 <summary className="cursor-pointer py-2.5 text-sm font-semibold">
                   {session ? "Count session in progress" : "Count or adjust lots"}
                 </summary>
@@ -322,6 +333,9 @@ export function LotDetailPanel({
                       onClick={() => void manageSession("start")}>Start count session</Button>
                   ) : null}
                   <form onSubmit={handleAdjustLot} className="grid gap-4">
+                    {requestedLotId && linkedLotSettled && !linkedLot ? (
+                      <p role="status" className="text-sm text-muted-foreground">This lot is outside the current list. Find it by its exact code before counting.</p>
+                    ) : null}
                     {isLotCountStale && reviewedLot && liveSelectedLot ? (
                       <StockStaleBanner
                         title="Lot balance changed while counting"

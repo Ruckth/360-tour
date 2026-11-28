@@ -9,6 +9,7 @@ import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { canReadCheckoutOrder, internalMutation, staffMutation, staffQuery, type StaffActor } from '../auth/model';
 import { requireBranchAccess } from '../branches/model';
 import { readBudget } from '../lib/readBudget';
+import { isLowStock } from '../shared/commerce/stock';
 import { MAX_MONEY } from '../shared/money';
 import { catalogueFields, recordCatalogueEdit } from './private/adjustments';
 import { listBranchStockGrants, purchasingPolicyPatch, readStockAccess, readStockGrant, readStockPolicy, requireStockAccess, type StockPermission } from './private/stockAccess';
@@ -106,14 +107,16 @@ export const setReorderPoint = staffMutation({
 });
 
 async function stockBalanceRow(ctx: QueryCtx, branchId: Id<'branches'>, variant: Doc<'productVariants'>,
-  { balance: loaded, includeReorderPoint }: { balance?: Doc<'stockLevels'>; includeReorderPoint?: boolean } = {},
+  { balance: loaded, includeReorderPoint, reorderPoint: loadedPoint }: {
+    balance?: Doc<'stockLevels'>; includeReorderPoint?: boolean; reorderPoint?: Doc<'stockReorderPoints'>;
+  } = {},
 ) {
   const [balance, incoming, product, reorderPoint] = await Promise.all([
     loaded ?? readStockLevel(ctx, branchId, variant._id),
     stockRead(ctx, () => ctx.db.query('stockIncoming').withIndex('by_branch_variant', q =>
       q.eq('branchId', branchId).eq('variantId', variant._id)).unique()),
     variant.productName ? null : stockRead(ctx, () => ctx.db.get(variant.productId)),
-    includeReorderPoint ? readReorderPoint(ctx, branchId, variant._id) : null,
+    loadedPoint ?? (includeReorderPoint ? readReorderPoint(ctx, branchId, variant._id) : null),
   ]);
   const productStatus = variant.productStatus ?? product?.status ?? 'archived';
   return {
@@ -140,12 +143,28 @@ function countPage<T>(ctx: QueryCtx, result: PaginationResult<T>) {
 
 export const listBalances = staffQuery({
   capability: 'checkout', scope: selected,
-  args: { ...branchIdArg, ...paged, search: v.optional(v.string()), recountOnly: v.optional(v.boolean()), includeReorderPoint: v.optional(v.boolean()) },
-  handler: async (ctx, { branchId, search, recountOnly, includeReorderPoint, paginationOpts }) => {
+  args: { ...branchIdArg, ...paged, search: v.optional(v.string()), recountOnly: v.optional(v.boolean()), lowOnly: v.optional(v.boolean()), includeReorderPoint: v.optional(v.boolean()) },
+  handler: async (ctx, { branchId, search, recountOnly, lowOnly, includeReorderPoint, paginationOpts }) => {
     await requireStockAccess(ctx, ctx.staff, branchId, 'read');
     const options = stockPage(paginationOpts);
     const term = stockSearchTerm(search);
-    if (term && recountOnly) stockError('STOCK_FILTER_CONFLICT', 'Choose item search or Needs recount.');
+    if ((term && (recountOnly || lowOnly)) || (recountOnly && lowOnly)) {
+      stockError('STOCK_FILTER_CONFLICT', 'Choose item search, Low stock or Needs recount.');
+    }
+    if (lowOnly) {
+      const result = countPage(ctx, await ctx.db.query('stockReorderPoints').withIndex('by_branchId_and_variantId', q =>
+        q.eq('branchId', branchId)).paginate(options));
+      const page = await Promise.all(result.page.map(async reorderPoint => {
+        if (reorderPoint.quantity === undefined) return null;
+        const balance = await readStockLevel(ctx, branchId, reorderPoint.variantId);
+        if (!balance || !isLowStock(balance.onHand, reorderPoint.quantity)) return null;
+        const variant = await stockRead(ctx, () => ctx.db.get(reorderPoint.variantId));
+        if (!variant) return null;
+        const row = await stockBalanceRow(ctx, branchId, variant, { balance, reorderPoint });
+        return row.status === 'active' ? row : null;
+      }));
+      return { ...result, page: page.filter(row => row !== null) };
+    }
     if (recountOnly) {
       const result = countPage(ctx, await ctx.db.query('stockLevels').withIndex('by_branchId_and_needsRecount', q =>
         q.eq('branchId', branchId).eq('needsRecount', true)).paginate(options));

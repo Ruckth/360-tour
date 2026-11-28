@@ -220,6 +220,9 @@ describe("Balances, counts, adjustments, opening & access improvements (S01-S24)
 
     // S07: Empty recount view shows positive branch confirmation and no false last-count time
     await act(async () => (recountTab as HTMLButtonElement).click());
+    expect(mockNav.replace).toHaveBeenCalledWith("/admin/stock/balances?view=recount", { scroll: false });
+    mockNav.searchParams = new URLSearchParams("view=recount");
+    await act(async () => root.render(wrap(createElement(StockBalancesView))));
     expect(document.body.textContent).toContain("0 items need a recount at Koh Samui");
     expect(document.body.textContent).not.toContain("Last verified count");
     expect(document.body.textContent).not.toContain("Post a verified count to clear the flag");

@@ -534,16 +534,16 @@ export function OpeningStockSheet({
         ) : null}
 
         <div className="overflow-hidden rounded-lg border border-border">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b border-border bg-muted/40 text-xs font-medium text-muted-foreground">
+          <table role="table" className="block w-full text-left text-sm sm:table">
+            <thead className="hidden border-b border-border bg-muted/40 text-xs font-medium text-muted-foreground sm:table-header-group">
               <tr>
                 <th scope="col" className="px-3 py-2">Item</th>
                 <th scope="col" className="w-28 px-2 py-2">Opening qty</th>
-                <th scope="col" className="hidden w-32 px-2 py-2 sm:table-cell">Ref. unit cost</th>
+                <th scope="col" className="w-32 px-2 py-2">Ref. unit cost</th>
                 <th scope="col" className="w-28 px-3 py-2 text-right">Preview</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border">
+            <tbody role="rowgroup" className="block divide-y divide-border sm:table-row-group">
               {targetItems.map((row, idx) => {
                 const draft = drafts[row.variantId] ?? { qtyText: "", unitCostText: "", lotCode: "", lotExpiry: "" };
                 const rowErr = lineErrors[row.variantId] ?? {};
@@ -557,15 +557,17 @@ export function OpeningStockSheet({
                 return (
                   <tr
                     key={row.variantId}
+                    role="row"
                     className={cn(
+                      "grid grid-cols-2 gap-x-3 gap-y-2.5 p-3 sm:table-row sm:p-0",
                       isIneligible
                         ? "bg-amber-500/10"
                         : (rowErr.qty || rowErr.unitCost || rowErr.lotCode || rowErr.lotExpiry) && "bg-destructive/5",
                     )}
                   >
-                    <td className="px-3 py-2 align-top">
-                      <span className="block font-medium leading-tight text-foreground">{row.productName}</span>
-                      <span className="mt-0.5 block text-xs text-muted-foreground">
+                    <td role="cell" className="col-span-full min-w-0 align-top sm:px-3 sm:py-2">
+                      <span className="block wrap-anywhere font-medium leading-tight text-foreground">{row.productName}</span>
+                      <span className="mt-0.5 block wrap-anywhere text-xs text-muted-foreground">
                         {row.label}
                         {row.sku ? ` · ${row.sku}` : ""}
                       </span>
@@ -623,7 +625,8 @@ export function OpeningStockSheet({
                         </div>
                       ) : null}
                     </td>
-                    <td className="px-2 py-2 align-top">
+                    <td role="cell" className="min-w-0 align-top sm:px-2 sm:py-2">
+                      <Label htmlFor={`opening-qty-${row.variantId}`} className="mb-1 block text-xs sm:hidden">Opening qty</Label>
                       <NumberField
                         id={`opening-qty-${row.variantId}`}
                         aria-label={`Opening quantity for ${row.productName} ${row.label}`}
@@ -633,11 +636,12 @@ export function OpeningStockSheet({
                         aria-invalid={rowErr.qty ? true : undefined}
                         onChange={(event) => patchDraft(row.variantId, { qtyText: event.target.value }, "qty")}
                         placeholder="0"
-                        className="h-8 text-sm"
+                        className="h-11 text-base sm:h-8 sm:text-sm"
                       />
                       <FieldError id={`opening-qty-err-${row.variantId}`}>{rowErr.qty}</FieldError>
                     </td>
-                    <td className="hidden px-2 py-2 align-top sm:table-cell">
+                    <td role="cell" className="min-w-0 align-top sm:px-2 sm:py-2">
+                      <Label htmlFor={`opening-cost-${row.variantId}`} className="mb-1 block text-xs sm:hidden">Ref. unit cost</Label>
                       <NumberField
                         id={`opening-cost-${row.variantId}`}
                         aria-label={`Reference unit cost for ${row.productName} ${row.label}`}
@@ -648,11 +652,12 @@ export function OpeningStockSheet({
                         aria-invalid={rowErr.unitCost ? true : undefined}
                         onChange={(event) => patchDraft(row.variantId, { unitCostText: event.target.value }, "unitCost")}
                         placeholder="0.00"
-                        className="h-8 text-sm"
+                        className="h-11 text-base sm:h-8 sm:text-sm"
                       />
                       <FieldError id={`opening-cost-err-${row.variantId}`}>{rowErr.unitCost}</FieldError>
                     </td>
-                    <td className="px-3 py-2 text-right align-top font-mono text-xs tabular-nums text-muted-foreground">
+                    <td role="cell" className="col-span-full text-right align-top font-mono text-xs tabular-nums text-muted-foreground sm:px-3 sm:py-2">
+                      <span className="mr-2 font-sans sm:hidden">Preview</span>
                       {isIneligible ? "Blocked" : <>0 → <strong className="text-foreground">{qtyVal !== undefined ? qtyVal : "—"}</strong></>}
                     </td>
                   </tr>

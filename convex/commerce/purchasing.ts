@@ -406,6 +406,7 @@ export const receipt = staffQuery({
   returns: v.object({
     receipt: receiptRowValidator, lines: v.array(receiptLineRowValidator),
     holds: v.array(holdRowValidator), permissions: permissionsValidator,
+    sourceOrderDueUnits: v.union(v.number(), v.null()),
   }),
   handler: (ctx, { receiptId }) => getReceipt(ctx, ctx.staff, receiptId),
 });

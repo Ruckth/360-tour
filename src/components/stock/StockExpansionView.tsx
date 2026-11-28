@@ -5,7 +5,7 @@ import type { FunctionReturnType } from "convex/server";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import { flushSync } from "react-dom";
-import { ArrowRightLeft, Layers, Plus, Send } from "lucide-react";
+import { ArrowRightLeft, ArrowLeft, Filter, Layers, Plus, Send } from "lucide-react";
 import { useMemo, useState, type FormEvent } from "react";
 import { EmptyState, SkeletonRows } from "@/components/admin/admin-bulk";
 import list from "./StockRecordList.module.css";
@@ -26,7 +26,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { SheetDescription, SheetTitle } from "@/components/ui/sheet";
+import { Sheet, SheetClose, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { staffDate, staffDateTime } from "@/lib/staff-time";
 import { cn } from "@/lib/utils";
 import { useRouter, useSearchParams } from "@/platform/navigation";
@@ -34,7 +34,9 @@ import {
   createOperationKey,
   parseStockError,
   parseWholeQuantity,
+  sanitizeStockReturnTo,
   STOCK_PAGE_SIZE,
+  stockReturnLabel,
 } from "./stock-format";
 import { useResolvedStockVariants, useStockDirtyGuard } from "./StockFormGuard";
 import { LotDetailPanel } from "./StockLotDetailPanel";
@@ -65,28 +67,57 @@ const TRANSFER_STATE_META: Record<TransferState, { label: string; tone: Tone }> 
   cancelled: { label: "Cancelled", tone: "muted" },
 };
 
+type TransferDirection = "origin" | "destination";
+type TransferFilter = TransferState | "all";
+
+function TransferStatusFilter({ state, onChange }: { state: TransferFilter; onChange: (value: TransferFilter) => void }) {
+  return (
+    <Select value={state} onValueChange={(value) => onChange(value as TransferFilter)}>
+      <SelectTrigger aria-label="Transfer status" className="w-full sm:w-44"><SelectValue /></SelectTrigger>
+      <SelectContent>
+        <SelectItem value="all">All statuses</SelectItem>
+        {Object.entries(TRANSFER_STATE_META).map(([value, meta]) => <SelectItem key={value} value={value}>{meta.label}</SelectItem>)}
+      </SelectContent>
+    </Select>
+  );
+}
+
 export function StockExpansionView() {
   const { current: branch, branches } = useAdminBranch();
   const { notice, show, clear } = useNotice();
   const router = useRouter();
   const searchParams = useSearchParams();
   const variantIdParam = searchParams.get("variantId") as Id<"productVariants"> | null;
-
+  const lotIdParam = searchParams.get("lotId");
   const activeTransferId = searchParams.get("transferId");
-  const [tab, setTab] = useState<"transfers" | "lots" | "holds">(() => (!activeTransferId && variantIdParam ? "lots" : "transfers"));
-  const [direction, setDirection] = useState<"origin" | "destination">("origin");
-  const [state, setState] = useState<TransferState | "all">("all");
+  const returnTo = sanitizeStockReturnTo(searchParams.get("returnTo"));
+  const viewParam = searchParams.get("view");
+  const tab = viewParam === "transfers" || viewParam === "lots" || viewParam === "holds"
+    ? viewParam : !activeTransferId && variantIdParam ? "lots" : "transfers";
+  const direction: TransferDirection = searchParams.get("direction") === "destination" ? "destination" : "origin";
+  const state = (Object.keys(TRANSFER_STATE_META) as TransferState[]).find(value => value === searchParams.get("status")) ?? "all";
   const [createOriginId, setCreateOriginId] = useState<Id<"branches"> | null>(null);
-  function setActiveTransferId(id: Id<"stockTransfers"> | null) {
-    if (id) router.replace(`/admin/stock/expansion?transferId=${encodeURIComponent(id)}`);
-    else router.replace("/admin/stock/expansion");
-  }
-  const [syncedVariantParam, setSyncedVariantParam] = useState<string | null>(variantIdParam);
   const [lotPickerOpen, setLotPickerOpen] = useState(false);
 
-  if (variantIdParam !== syncedVariantParam) {
-    setSyncedVariantParam(variantIdParam);
-    if (variantIdParam) setTab("lots");
+  function updateSearch(values: Record<string, string | null>) {
+    const params = new URLSearchParams(searchParams);
+    for (const [key, value] of Object.entries(values)) {
+      if (value) params.set(key, value);
+      else params.delete(key);
+    }
+    router.replace(params.size ? `/admin/stock/expansion?${params}` : "/admin/stock/expansion", { scroll: false });
+  }
+  function setActiveTransferId(id: Id<"stockTransfers"> | null) {
+    updateSearch({ transferId: id });
+  }
+  function setDirection(value: TransferDirection) {
+    updateSearch({ direction: value === "destination" ? value : null, status: value === "destination" ? "inTransit" : null });
+  }
+  function setState(value: TransferFilter) {
+    updateSearch({ status: value === "all" ? null : value });
+  }
+  function openLots(id: Id<"productVariants">) {
+    updateSearch({ variantId: id, lotId: null, view: "lots" });
   }
 
   const access = useQuery(api.commerce.stock.access, branch ? { branchId: branch.id } : "skip");
@@ -133,7 +164,9 @@ export function StockExpansionView() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="font-serif text-xl font-semibold text-foreground">Transfers, lots & holds</h2>
+          <p className="text-xs text-muted-foreground">{branch.name}</p>
         </div>
+        {returnTo ? <ButtonLink href={returnTo} variant="ghost" size="sm"><ArrowLeft aria-hidden className="size-4" />Back to {stockReturnLabel(returnTo, "Stock")}</ButtonLink> : null}
         {tab === "transfers" && access.requester && otherBranches.length > 0 ? (
           <Button type="button" onClick={() => setCreateOriginId(branch.id)}>
             <ArrowRightLeft aria-hidden className="size-4" />
@@ -146,7 +179,7 @@ export function StockExpansionView() {
         id="stock-expansion"
         label="Inventory expansion views"
         value={tab}
-        onValueChange={setTab}
+        onValueChange={(next) => updateSearch({ view: next })}
         tabs={[
           { value: "transfers", label: "Branch transfers" },
           { value: "lots", label: "Lots & expiry" },
@@ -156,23 +189,44 @@ export function StockExpansionView() {
 
       {tab === "transfers" ? (
         <div {...tabPanelProps("stock-expansion", "transfers")} className="grid gap-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="hidden flex-wrap items-center justify-between gap-2 sm:flex">
             <SegmentedTabs
               label="Transfer direction"
               value={direction}
-              onValueChange={(value) => { setDirection(value); setState(value === "destination" ? "inTransit" : "all"); }}
+              onValueChange={setDirection}
               tabs={[
                 { value: "origin", label: `Sending from ${branch.name}` },
                 { value: "destination", label: `Receiving at ${branch.name}` },
               ]}
             />
-            <Select value={state} onValueChange={(value) => setState(value as TransferState | "all")}>
-              <SelectTrigger aria-label="Transfer status" className="w-44"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All statuses</SelectItem>
-                {Object.entries(TRANSFER_STATE_META).map(([value, meta]) => <SelectItem key={value} value={value}>{meta.label}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <TransferStatusFilter state={state} onChange={setState} />
+          </div>
+          <div className="flex items-center justify-between gap-2 sm:hidden">
+            <p className="min-w-0 text-xs text-muted-foreground" role="status">
+              {direction === "origin" ? "Outgoing" : "Incoming"} · {state === "all" ? "All statuses" : TRANSFER_STATE_META[state].label}
+            </p>
+            <Sheet>
+              <SheetTrigger asChild>
+                <Button type="button" variant="outline" size="sm" className="min-h-11">
+                  <Filter aria-hidden className="size-4" />Filters
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="bottom" className="gap-4 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+                <SheetHeader>
+                  <SheetTitle>Transfer filters</SheetTitle>
+                  <SheetDescription>Filter transfers for {branch.name}.</SheetDescription>
+                </SheetHeader>
+                <Select value={direction} onValueChange={(value) => setDirection(value as TransferDirection)}>
+                  <SelectTrigger aria-label="Transfer direction" className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="origin">Outgoing</SelectItem>
+                    <SelectItem value="destination">Incoming</SelectItem>
+                  </SelectContent>
+                </Select>
+                <TransferStatusFilter state={state} onChange={setState} />
+                <SheetClose asChild><Button type="button" className="min-h-11">Done</Button></SheetClose>
+              </SheetContent>
+            </Sheet>
           </div>
 
           <Card className={cn("overflow-hidden", list.frame)}>
@@ -189,9 +243,11 @@ export function StockExpansionView() {
                   ) : null
                 }
               >
-                {direction === "origin"
-                  ? `No outgoing transfers from ${branch.name} yet.`
-                  : `No incoming transfers to ${branch.name} yet.`}
+                {state !== "all"
+                  ? `No ${direction === "origin" ? "outgoing" : "incoming"} transfers match ${TRANSFER_STATE_META[state].label.toLowerCase()} at ${branch.name}.`
+                  : direction === "origin"
+                    ? `No outgoing transfers from ${branch.name} yet.`
+                    : `No incoming transfers to ${branch.name} yet.`}
               </EmptyState>
             ) : (
               <table role="table" className={list.table}>
@@ -276,10 +332,11 @@ export function StockExpansionView() {
             </Callout>
           ) : selectedLotVariant ? (
             <LotDetailPanel
-              key={`${branch.id}:${selectedLotVariant.variantId}`}
+              key={`${branch.id}:${selectedLotVariant.variantId}:${lotIdParam ?? ""}`}
               branchId={branch.id}
               branchName={branch.name}
               variant={selectedLotVariant}
+              requestedLotId={lotIdParam}
               onSuccess={(msg) => show(msg, "success")}
             />
           ) : null}
@@ -287,7 +344,7 @@ export function StockExpansionView() {
             key={`${branch.id}:${variantIdParam ?? ""}`}
             branchId={branch.id}
             initiallyOpen={!variantIdParam}
-            onSelect={(variantId) => router.replace(`/admin/stock/expansion?variantId=${encodeURIComponent(variantId)}`)}
+            onSelect={openLots}
           />
         </div>
       ) : (
@@ -313,7 +370,7 @@ export function StockExpansionView() {
         branchId={branch.id}
         title="Select item for lot & hold balances"
         onSelect={(item) => {
-          router.replace(`/admin/stock/expansion?variantId=${encodeURIComponent(item.variantId)}`);
+          openLots(item.variantId);
         }}
       />
 
@@ -617,7 +674,15 @@ function TransferDetailSheet({
         <>
           <SheetTitle>{detail?.transfer.reference ?? "Branch transfer"}</SheetTitle>
           <SheetDescription>
-            {detail ? `${detail.origin ?? "Origin"} → ${detail.destination ?? "Destination"}` : "Loading transfer…"}
+            {detail ? (
+              <>
+                {detail.origin ?? "Origin"} → {detail.destination ?? "Destination"}
+                <span className="mt-0.5 block tabular-nums">
+                  {detail.lines.reduce((total, line) => total + line.quantity, 0)} units
+                  {detail.transfer.state !== "draft" ? ` · ${detail.lines.reduce((total, line) => total + line.received, 0)} received` : ""}
+                </span>
+              </>
+            ) : "Loading transfer…"}
           </SheetDescription>
         </>
       }

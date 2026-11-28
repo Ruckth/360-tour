@@ -517,13 +517,15 @@ export async function getReceipt(ctx: QueryCtx, staff: StaffActor, receiptId: Id
   const receipt = await get(ctx, receiptId);
   if (!receipt) fail('RECEIPT_NOT_FOUND', 'This receipt no longer exists.');
   const access = await purchasingAccess(ctx, staff, receipt.branchId, 'read');
-  const [lines, holds] = await Promise.all([
+  const [lines, holds, sourceOrder] = await Promise.all([
     stockRead(ctx, () => ctx.db.query('supplierReceiptLines').withIndex('by_receiptId', q => q.eq('receiptId', receipt._id)).take(PURCHASING_MAX_LINES)),
     stockRead(ctx, () => ctx.db.query('purchaseHolds').withIndex('by_receiptId', q => q.eq('receiptId', receipt._id)).take(PURCHASING_MAX_LINES)),
+    receipt.orderId ? get(ctx, receipt.orderId) : null,
   ]);
   return {
     receipt: receiptRow(receipt, access.buyer || access.lead), lines: lines.map(line => receiptLineRow(line, access.buyer || access.lead)),
     holds: holds.map(holdRow), permissions: permissions(access),
+    sourceOrderDueUnits: sourceOrder?.branchId === receipt.branchId && sourceOrder.status !== 'deleted' ? sourceOrder.dueUnits : null,
   };
 }
 

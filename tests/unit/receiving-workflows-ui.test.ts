@@ -29,7 +29,8 @@ const mockBranch = vi.hoisted(() => ({
 
 vi.mock("convex/react", () => ({
   useQuery: (ref: FunctionReference<"query">, args: unknown) => (args === "skip" ? undefined : mockConvex.query(getFunctionName(ref), args)),
-  useQueries: () => ({}),
+  useQueries: (requests: Record<string, { query: FunctionReference<"query">; args: unknown }>) =>
+    Object.fromEntries(Object.entries(requests).map(([key, { query, args }]) => [key, mockConvex.query(getFunctionName(query), args)])),
   usePaginatedQuery: (ref: FunctionReference<"query">, args: unknown) =>
     args === "skip" ? { results: [], status: "Exhausted", loadMore: vi.fn() } : mockConvex.paginated(getFunctionName(ref), args),
   useMutation: (ref: FunctionReference<"mutation">) => mutation(ref),
@@ -214,12 +215,16 @@ describe("receiving sheets and queue", () => {
       reason: "Extra", createdAt: Date.now(), revision: 3, unresolved: 6,
       acceptPath: { kind: "own_order" as const, orderId: "order_1" as Id<"purchaseOrders">, orderReference: "PO-1", status: "ordered" as const, orderLineId: "ol_1" as Id<"purchaseOrderLines">, due: 4 },
     };
-    mockConvex.paginated.mockImplementation(() => ({ results: [row], status: "Exhausted", loadMore: vi.fn() }));
+    const sameReceipt = { ...row, _id: "hold_2", variantId: "variant_2", item: { productName: "Body wash", variantLabel: "200 ml" }, acceptPath: null };
+    mockConvex.paginated.mockImplementation(() => ({ results: [row, sameReceipt], status: "Exhausted", loadMore: vi.fn() }));
     const onNotice = vi.fn();
     await render(createElement(HeldGoodsPanel, {
       branch: { id: "branch_1" as Id<"branches">, name: "Koh Samui" }, access: { buyer: true, directOrder: false }, status: "open",
       onStatusChange: vi.fn(), detailHref: (path: string) => path, onCreateLinkedOrder: vi.fn(), onNotice,
     }));
+    const receiptLinks = [...document.querySelectorAll("a")].filter(link => link.textContent?.trim() === "GR-1");
+    expect(receiptLinks).toHaveLength(1);
+    expect(receiptLinks[0].closest("li")?.textContent).toContain("Body wash");
     await act(async () => button("Accept on PO-1 (4 due)")!.click());
     expect(document.querySelector<HTMLInputElement>("#hold-acc-qty")!.value).toBe("4");
     await act(async () => button("Accept into On hand")!.click());
@@ -271,7 +276,11 @@ describe("receiving sheets and queue", () => {
       permissions: { requester: true, approver: true, buyer: true, receiver: true, lead: true, directOrder: true, directReceipt: true },
     } : undefined);
     await render(createElement(SupplierReceiptDetailView, { receiptId: "receipt_1" }));
-    await act(async () => button("Return")!.click());
+    const returnAction = button("Return")!;
+    await act(async () => returnAction.click());
+    await act(async () => button("Cancel")!.click());
+    await vi.waitFor(() => expect(document.activeElement).toBe(returnAction));
+    await act(async () => returnAction.click());
     await act(async () => {
       setInputValue(document.querySelector<HTMLInputElement>("#ret-qty")!, "2");
       setInputValue(document.querySelector<HTMLInputElement>("#ret-reason")!, "Wrong item supplied");
@@ -286,9 +295,10 @@ describe("receiving sheets and queue", () => {
   });
 
   it.each([
-    [{ buyer: true, lead: false }, true],
-    [{ buyer: false, lead: false }, false],
-  ])("shows receipt cost and invoice variance only to buyers and leads (%o)", async (roles, sees) => {
+    [{ buyer: true, lead: false }, true, 2],
+    [{ buyer: false, lead: false }, false, 0],
+    [{ buyer: false, lead: false }, false, null],
+  ])("shows authorized cost and reads live remaining units (%o)", async (roles, sees, dueUnits) => {
     const permissions = { requester: false, approver: false, receiver: true, directOrder: false, directReceipt: false, ...roles };
     const uncosted: Partial<typeof line> = { ...line };
     delete uncosted.unitCost;
@@ -298,12 +308,17 @@ describe("receiving sheets and queue", () => {
         orderReference: "PO-1", lineCount: 1, acceptedUnits: 5, rejectedUnits: 1, heldUnits: 0, actorLabel: "Dan", createdAt: 1, revision: 1,
         ...(sees ? { invoiceTotal: 26_000, acceptedValue: 25_000 } : {}),
       },
-      lines: [sees ? line : uncosted], holds: [], permissions,
+      lines: [sees ? line : uncosted], holds: [], permissions, sourceOrderDueUnits: dueUnits,
     } : undefined);
     await render(createElement(SupplierReceiptDetailView, { receiptId: "receipt_1" }));
     expect(text().includes("Unit cost")).toBe(sees);
     expect(text().includes("Receipt total")).toBe(sees);
     expect(text().includes("Invoice differs from the order price")).toBe(sees);
     expect(text()).toContain("Rejected: Damaged · Crushed");
+    expect(document.querySelector('[aria-label="Receipt quantities"]')?.textContent).toBe(`Accepted5Rejected1Order due now${dueUnits ?? "Unavailable"}`);
+    expect(button("Receive missing units")).toBeDefined();
+    expect(mockConvex.query).not.toHaveBeenCalledWith(getFunctionName(api.commerce.purchasing.order), expect.anything());
+    const movement = [...document.querySelectorAll("a")].find(link => link.textContent?.trim() === "Stock movement");
+    expect(new URL(movement?.getAttribute("href") ?? "", "https://stock.local").searchParams.get("movementId")).toBe("movement_1");
   });
 });
