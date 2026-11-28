@@ -1,3 +1,4 @@
+import { isLowStock } from "convex/shared/commerce/stock";
 import { bahtToSatang, MAX_MONEY, satangToBaht } from "convex/shared/money";
 import type { Tone } from "@/components/admin/status-tones";
 import { errorText } from "@/lib/staff-bookings";
@@ -63,6 +64,17 @@ export function stockReturnLabel(returnTo: string | null, fallback: string): str
     return "Orders";
   }
   return fallback;
+}
+
+export function stockLotHref(variantId: string, returnTo?: string, lotId?: string) {
+  const params = new URLSearchParams({ variantId });
+  if (lotId) params.set("lotId", lotId);
+  if (returnTo) params.set("returnTo", returnTo);
+  return `/admin/stock/expansion?${params}`;
+}
+
+export function stockDetailHref(path: string, returnTo: string | null) {
+  return returnTo ? `${path}${path.includes("?") ? "&" : "?"}${new URLSearchParams({ returnTo })}` : path;
 }
 
 /** Build a clean pathname+search string with consumed auto-open query params stripped. */
@@ -165,7 +177,7 @@ export function balanceStatusBadges(row: {
     badges.push({ label: "Negative", tone: "danger" });
   } else if (row.onHand === 0) {
     badges.push({ label: "Out", tone: "danger" });
-  } else if (row.reorderPoint !== undefined && row.onHand <= row.reorderPoint) {
+  } else if (isLowStock(row.onHand, row.reorderPoint)) {
     badges.push({ label: "Low", tone: "warning" });
   }
   return badges;

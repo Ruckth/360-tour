@@ -8,7 +8,7 @@ import { ChatContextProvider, useChatPageContext } from "@/components/chat/ChatC
 import { SiteFooter } from "@/components/global/SiteFooter";
 import { SiteHeader } from "@/components/global/SiteHeader";
 import { stripLocalePrefix } from "@/i18n/routing";
-import { buildChatHref } from "@/lib/chat/navigation";
+import { buildChatHref, usesFloatingChatOnMobile } from "@/lib/chat/navigation";
 import { loadAIChatWidget, preloadAIChatWidget } from "@/lib/chat/preload";
 import { resort } from "@/lib/data/resort-config";
 import { registerGuestBottomControl } from "@/lib/guest-bottom-inset";
@@ -36,7 +36,6 @@ function IntentionalChatWidget() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const chatContext = useChatPageContext();
-  const normalizedPath = stripLocalePrefix(pathname);
   const propertySlug = chatContext?.context.propertySlug;
 
   const [activated, setActivated] = useState(false);
@@ -49,12 +48,12 @@ function IntentionalChatWidget() {
     propertySlug,
     search: searchParams,
   });
-  const hideMobileRoomTrigger = normalizedPath.startsWith("/rooms/");
+  const showMobileTrigger = usesFloatingChatOnMobile(pathname);
 
   useEffect(() => {
     if (activated) return;
     const cleanups: (() => void)[] = [];
-    if (mobileLauncherRef.current && !hideMobileRoomTrigger) {
+    if (mobileLauncherRef.current && showMobileTrigger) {
       cleanups.push(
         registerGuestBottomControl("chat-launcher-mobile", mobileLauncherRef.current, {
           fallbackPx: 88,
@@ -73,7 +72,7 @@ function IntentionalChatWidget() {
     return () => {
       for (const cleanup of cleanups) cleanup();
     };
-  }, [activated, hideMobileRoomTrigger]);
+  }, [activated, showMobileTrigger]);
 
   function open() {
     setActivated(true);
@@ -105,24 +104,22 @@ function IntentionalChatWidget() {
 
   return (
     <>
-      {/* Mobile: a plain link to the dedicated chat page — works with no JS, before the widget loads.
-          Hidden on room pages (which have their own in-page trigger) but still carries context. */}
-      <div
-        ref={mobileLauncherRef}
-        className={[
-          "fixed bottom-[calc(1.25rem+env(safe-area-inset-bottom,0px))] right-5 z-50",
-          hideMobileRoomTrigger ? "hidden" : "flex md:hidden",
-        ].join(" ")}
-      >
-        <Link
-          href={chatHref}
-          data-testid="chat-launcher-link"
-          className="flex h-14 w-14 items-center justify-center rounded-full bg-gold text-navy shadow-2xl shadow-black/20 transition hover:scale-105"
-          aria-label={t("open")}
+      {/* Use the in-page actions on home, room and booking pages. */}
+      {showMobileTrigger ? (
+        <div
+          ref={mobileLauncherRef}
+          className="fixed bottom-[calc(1.25rem+env(safe-area-inset-bottom,0px))] right-5 z-50 flex md:hidden"
         >
-          <MessageCircle className="h-6 w-6" />
-        </Link>
-      </div>
+          <Link
+            href={chatHref}
+            data-testid="chat-launcher-link"
+            className="flex h-14 w-14 items-center justify-center rounded-full bg-gold text-navy shadow-2xl shadow-black/20 transition hover:scale-105"
+            aria-label={t("open")}
+          >
+            <MessageCircle className="h-6 w-6" />
+          </Link>
+        </div>
+      ) : null}
       {/* Desktop: a real button that loads + opens the overlay on activation. */}
       <button
         ref={desktopLauncherRef}

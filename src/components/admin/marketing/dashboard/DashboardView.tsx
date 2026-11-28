@@ -207,8 +207,12 @@ function LoadingBody() {
       <span className="sr-only">Loading marketing results</span>
       <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
         <Skeleton className="col-span-2 h-52 rounded-xl md:h-auto" />
-        <div className="col-span-2 grid grid-cols-2 gap-3 sm:gap-4 md:col-span-3 lg:grid-cols-3 [&>*:last-child]:col-span-2">
-          {Array.from({ length: 5 }, (_, i) => <Skeleton key={i} className="h-[132px] rounded-xl" />)}
+        <div className="col-span-2 grid grid-cols-1 max-sm:divide-y max-sm:divide-border max-sm:rounded-xl max-sm:border max-sm:border-border max-sm:bg-card max-sm:px-4 sm:grid-cols-2 sm:gap-4 md:col-span-3 lg:grid-cols-3 sm:[&>*:last-child]:col-span-2">
+          {Array.from({ length: 5 }, (_, i) => (
+            <div key={i} className="max-sm:py-3">
+              <Skeleton className="h-[72px] rounded-lg sm:h-[132px] sm:rounded-xl" />
+            </div>
+          ))}
         </div>
       </div>
       <Card>
@@ -333,7 +337,7 @@ export function DashboardView({
           </ToggleGroupItem>
         </ToggleGroup>
       </div>
-      <div className="flex justify-end gap-2 max-sm:col-start-2 max-sm:row-start-2 sm:ml-auto">
+      <div className="flex justify-end gap-2 max-sm:col-start-2 max-sm:row-start-2 max-sm:justify-self-end sm:ml-auto">
         {/* The phone menu keeps secondary report actions out of the filter controls. */}
         <Button type="button" variant="outline" size="sm" className="h-10 flex-1 max-sm:hidden sm:h-10 pointer-coarse:h-12 sm:flex-none" disabled={!p || emptyWithoutSetup} onClick={() => setExporting(true)}>
           <Download aria-hidden className="size-4" />
@@ -466,6 +470,29 @@ export function DashboardView({
       </>
     );
 
+  const trackingSetup = noSetup && !emptyWithoutSetup ? (
+    <Callout
+      role="status"
+      title="No campaigns or links yet"
+      action={capabilities.draft ? (
+        <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+          <ButtonLink href={campaignsHref} size="sm" className="flex-1 sm:flex-none">
+            <Megaphone aria-hidden className="size-4" />
+            Create a campaign
+          </ButtonLink>
+          <ButtonLink href={linksHref} size="sm" variant="outline" className="flex-1 sm:flex-none">
+            <Link2 aria-hidden className="size-4" />
+            Make a link
+          </ButtonLink>
+        </div>
+      ) : undefined}
+    >
+      {capabilities.draft
+        ? "Until then, every sale counts as not tracked. Create a campaign, then a short link or QR code for each place you share it, to see which ones bring paid bookings."
+        : "Until then, every sale counts as not tracked. Ask a manager to set up campaigns and links to see which ones bring paid bookings."}
+    </Callout>
+  ) : null;
+
   return (
     <div className={cn("mx-auto grid w-full min-w-0 max-w-7xl gap-4 px-4 py-4 sm:px-6", CHART_COLOR_VARS)}>
       <h1 className="text-xl font-semibold">Marketing dashboard</h1>
@@ -506,33 +533,11 @@ export function DashboardView({
       {report && emptyRange && !noSetup && capabilities.spend && !report.campaigns.some((campaign) => campaign.status === "active") ? (
         <Callout action={<ButtonLink href={campaignsHref} size="sm" variant="outline">Review campaigns</ButtonLink>}>Add spend is available for active campaigns.</Callout>
       ) : null}
-      {noSetup && !emptyWithoutSetup ? (
-        <Callout
-          role="status"
-          title="No campaigns or links yet"
-          action={
-            capabilities.draft ? (
-              <div className="flex w-full flex-wrap gap-2 sm:w-auto">
-                <ButtonLink href={campaignsHref} size="sm" className="flex-1 sm:flex-none">
-                  <Megaphone aria-hidden className="size-4" />
-                  Create a campaign
-                </ButtonLink>
-                <ButtonLink href={linksHref} size="sm" variant="outline" className="flex-1 sm:flex-none">
-                  <Link2 aria-hidden className="size-4" />
-                  Make a link
-                </ButtonLink>
-              </div>
-            ) : undefined
-          }
-        >
-          {capabilities.draft
-            ? "Until then, every sale counts as not tracked. Create a campaign, then a short link or QR code for each place you share it, to see which ones bring paid bookings."
-            : "Until then, every sale counts as not tracked. Ask a manager to set up campaigns and links to see which ones bring paid bookings."}
-        </Callout>
-      ) : null}
+      {request.basis !== "cash" ? trackingSetup : null}
       <div role="region" aria-label="Report results" aria-busy={busy} className={cn("grid min-w-0 gap-4 transition-opacity", state.status === "ready" && state.refreshing && "opacity-60")}>
         {body}
       </div>
+      {request.basis === "cash" ? trackingSetup : null}
 
       {sheet ? <SalesSheet target={sheet} p={sheet.snapshot} onClose={() => setSheet(null)} onOpenStay={onOpenStay} orderHref={orderHref} /> : null}
       {p && breakdown ? <ExportDialog open={exporting} onOpenChange={setExporting} p={p} breakdown={breakdown} pathLabel={pathLabel} propertyName={propertyName} stale={state.status === "ready" && !!state.refreshError} /> : null}

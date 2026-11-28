@@ -1,9 +1,12 @@
 "use client";
 
+import { Info } from "lucide-react";
+import { useId, useState, type ReactNode } from "react";
 import { Button, ButtonLink } from "@/components/ui/button";
-import { Stat } from "@/components/ui/stat";
 import { Disclosure } from "@/components/ui/disclosure";
-import type { ReactNode } from "react";
+import { Stat } from "@/components/ui/stat";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { cn } from "@/lib/utils";
 import { pluralize } from "../../admin-bulk";
 import { thb } from "../marketing-format";
 import { useMarketingAccess } from "../MarketingAccess";
@@ -19,8 +22,78 @@ const HINTS: Record<string, string> = {
   "Paid bookings": "From tracked links",
   "Booked rate": "Distinct converted sessions ÷ tracked visits",
 };
-function Tile({ label, value, children, hint }: { label: string; value: ReactNode; children: ReactNode; hint?: string }) {
-  return <Stat label={label} value={value} info={children} hint={hint ?? HINTS[label]} className="gap-1 px-4 py-3 sm:p-4" />;
+
+function SecondaryMetric({
+  label,
+  value,
+  info,
+  hint,
+  inlineDefinitions,
+  children,
+}: {
+  label: string;
+  value: ReactNode;
+  info: ReactNode;
+  hint?: string;
+  inlineDefinitions: boolean;
+  children?: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const defId = useId();
+  const aboutLabel = `About ${label.toLowerCase()}`;
+
+  if (!inlineDefinitions) {
+    return (
+      <Stat
+        label={label}
+        value={value}
+        info={info}
+        hint={hint}
+        className="gap-1 px-4 py-3 sm:p-4 max-sm:rounded-none max-sm:border-0 max-sm:bg-transparent max-sm:px-0 max-sm:shadow-none"
+      >
+        {children}
+      </Stat>
+    );
+  }
+
+  return (
+    <div data-slot="stat" className="grid min-w-0 content-start gap-1 py-3">
+      <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+        <span>{label}</span>
+        <button
+          type="button"
+          aria-label={aboutLabel}
+          aria-expanded={open}
+          aria-controls={defId}
+          onClick={() => setOpen((current) => !current)}
+          className={cn(
+            "relative inline-grid size-5 shrink-0 place-items-center rounded-full align-middle text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            // A 44px touch target without shifting the label row.
+            "after:absolute after:-inset-3 after:content-['']",
+            open && "text-gold-text",
+          )}
+        >
+          <Info aria-hidden className="size-4" />
+        </button>
+      </div>
+      <p className="wrap-anywhere font-sans text-[26px] leading-tight font-semibold tabular-nums tracking-tight text-foreground">
+        {value}
+      </p>
+      {hint ? <p className="text-balance text-[13px] text-muted-foreground" title={hint}>{hint}</p> : null}
+      <div
+        id={defId}
+        hidden={!open}
+        className="mt-1 mb-0.5 rounded-[10px] bg-secondary px-2.5 py-2 text-[13px] leading-5 text-secondary-foreground"
+      >
+        {open ? info : null}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function Tile({ label, value, children, hint, inlineDefinitions }: { label: string; value: ReactNode; children: ReactNode; hint?: string; inlineDefinitions: boolean }) {
+  return <SecondaryMetric label={label} value={value} info={children} hint={hint ?? HINTS[label]} inlineDefinitions={inlineDefinitions} />;
 }
 
 const Strong = ({ children }: { children: ReactNode }) => <span className="font-medium text-foreground">{children}</span>;
@@ -35,7 +108,7 @@ export function AddSpendLink({ onClick, label = "Add spend" }: { onClick: () => 
   );
 }
 
-function RoasTile({ roas, eligible, campaignsHref, onAddSpend }: { roas: Roas; eligible: string[]; campaignsHref: string; onAddSpend: (campaignIds: string[]) => void }) {
+function RoasTile({ roas, eligible, campaignsHref, onAddSpend, inlineDefinitions }: { roas: Roas; eligible: string[]; campaignsHref: string; onAddSpend: (campaignIds: string[]) => void; inlineDefinitions: boolean }) {
   const info = roas.kind === "all_properties_only" ? "All properties only: spend isn’t split by property."
     : roas.kind === "missing" ? "No spend entered for these dates."
       : `${thb(Math.round(roas.net))} net ÷ ${thb(Math.round(roas.spend))} spend · ${pluralize(roas.campaigns, "campaign")} with spend${roas.missing.length ? ` · ${pluralize(roas.missing.length, "more campaign")} with sales have no spend` : ""}`;
@@ -43,9 +116,15 @@ function RoasTile({ roas, eligible, campaignsHref, onAddSpend }: { roas: Roas; e
   const addable = missing.filter((id) => eligible.includes(id));
   const { capabilities } = useMarketingAccess();
   return (
-    <Stat className="gap-1 px-4 py-3 sm:p-4" label="Return on ad spend" value={roas.kind === "value" ? formatRoas(roas.value) : "—"} info={info} hint={roas.kind === "all_properties_only" ? "All properties only" : roas.kind === "missing" ? "No spend entered" : `Net from ${pluralize(roas.campaigns, "campaign")} with spend${roas.missing.length ? `; ${pluralize(roas.missing.length, "sales campaign")} without spend excluded` : ""}`}>
+    <SecondaryMetric
+      label="Return on ad spend"
+      value={roas.kind === "value" ? formatRoas(roas.value) : "—"}
+      info={info}
+      hint={roas.kind === "all_properties_only" ? "All properties only" : roas.kind === "missing" ? "No spend entered" : `Net from ${pluralize(roas.campaigns, "campaign")} with spend${roas.missing.length ? `; ${pluralize(roas.missing.length, "sales campaign")} without spend excluded` : ""}`}
+      inlineDefinitions={inlineDefinitions}
+    >
       {addable.length ? <div className="pt-1"><AddSpendLink onClick={() => onAddSpend(addable)} /></div> : roas.kind === "missing" && capabilities.spend ? <p className="text-xs">Add spend is available for active campaigns. <ButtonLink href={campaignsHref} variant="link" size="sm" className="pointer-coarse:min-h-11 pointer-coarse:min-w-11">Review campaigns</ButtonLink></p> : null}
-    </Stat>
+    </SecondaryMetric>
   );
 }
 
@@ -53,39 +132,40 @@ const ALL_ONLY = "All properties only";
 
 export function DashboardTiles({ p, totals, onAddSpend, definitionsAction, campaignsHref }: { p: Prepared; totals: BusinessTotals; onAddSpend: (campaignIds: string[]) => void; definitionsAction: ReactNode; campaignsHref: string }) {
   const { tracked, unknown, staff, messaging, all } = totals;
+  const isPhone = useIsMobile(640);
   const eligible = p.report.campaigns.filter((campaign) => campaign.status === "active").map((campaign) => campaign.id);
   const tiles = p.cash ? (
     <>
-      <Tile label="Collected" value={thb(all.collected)}>
+      <Tile key="cash-collected" label="Collected" value={thb(all.collected)} inlineDefinitions={isPhone}>
         Payments dated in range · tracked <Strong>{thb(tracked.collected)}</Strong>
       </Tile>
-      <Tile label="Refunds" value={thb(all.refunded)}>
+      <Tile key="cash-refunds" label="Refunds" value={thb(all.refunded)} inlineDefinitions={isPhone}>
         Refunds dated in range · tracked <Strong>{thb(tracked.refunded)}</Strong>
       </Tile>
-      <Tile label="First-payment sales" value={all.paid.toLocaleString("en-US")}>
+      <Tile key="cash-first-payment" label="First-payment sales" value={all.paid.toLocaleString("en-US")} inlineDefinitions={isPhone}>
         Sales receiving their first payment in range · tracked <Strong>{tracked.paid.toLocaleString("en-US")}</Strong>
         <span className="block">{pluralize(all.couponOnlySettlements, "coupon-only checkout settlement")}</span>
       </Tile>
-      <Tile label="Discounts granted" value={thb(all.discount)}>
+      <Tile key="cash-discounts" label="Discounts granted" value={thb(all.discount)} inlineDefinitions={isPhone}>
         Coupons at first payment or checkout settlement in range · tracked <Strong>{thb(tracked.discount)}</Strong>
       </Tile>
-      <RoasTile roas={totals.roas} eligible={eligible} campaignsHref={campaignsHref} onAddSpend={onAddSpend} />
+      <RoasTile key="cash-roas" roas={totals.roas} eligible={eligible} campaignsHref={campaignsHref} onAddSpend={onAddSpend} inlineDefinitions={isPhone} />
     </>
   ) : (
     <>
-      <Tile label="Tracked visits" value={totals.trackedSessions === null ? "—" : totals.trackedSessions.toLocaleString("en-US")}>
+      <Tile key="cohort-visits" label="Tracked visits" value={totals.trackedSessions === null ? "—" : totals.trackedSessions.toLocaleString("en-US")} inlineDefinitions={isPhone}>
         {totals.trackedSessions === null ? ALL_ONLY : "Visits with tracking consent include direct arrivals."}
       </Tile>
-      <Tile label="Paid bookings" value={tracked.paid.toLocaleString("en-US")}>
+      <Tile key="cohort-paid" label="Paid bookings" value={tracked.paid.toLocaleString("en-US")} inlineDefinitions={isPhone}>
         Of {all.paid.toLocaleString("en-US")} paid stays, {tracked.paid.toLocaleString("en-US")} came from tracked links; {pluralize(all.paidOther, "checkout order")} {all.paidOther === 1 ? "counts" : "count"} in money only.
       </Tile>
-      <Tile label="Booked rate" hint={totals.trackedSessions === null ? ALL_ONLY : `${pluralize(totals.convertedSessions, "converted session")} ÷ ${pluralize(totals.trackedSessions, "consented visit")}`} value={totals.conv === null ? "—" : formatPercent(totals.conv)}>
+      <Tile key="cohort-rate" label="Booked rate" hint={totals.trackedSessions === null ? ALL_ONLY : `${pluralize(totals.convertedSessions, "converted session")} ÷ ${pluralize(totals.trackedSessions, "consented visit")}`} value={totals.conv === null ? "—" : formatPercent(totals.conv)} inlineDefinitions={isPhone}>
         {totals.trackedSessions === null ? ALL_ONLY : "Distinct consented sessions behind paid web stays ÷ consented sessions started in the range, including direct visits."}
       </Tile>
-      <Tile label="Discounts granted" value={thb(tracked.discount)}>
+      <Tile key="cohort-discounts" label="Discounts granted" value={thb(tracked.discount)} inlineDefinitions={isPhone}>
         Coupons on tracked sales · <Strong>{thb(all.discount)}</Strong> business total
       </Tile>
-      <RoasTile roas={totals.roas} eligible={eligible} campaignsHref={campaignsHref} onAddSpend={onAddSpend} />
+      <RoasTile key="cohort-roas" roas={totals.roas} eligible={eligible} campaignsHref={campaignsHref} onAddSpend={onAddSpend} inlineDefinitions={isPhone} />
     </>
   );
 
@@ -133,7 +213,12 @@ export function DashboardTiles({ p, totals, onAddSpend, definitionsAction, campa
             </>}
           </div>
         </Stat>
-        <div className="col-span-2 grid grid-cols-2 gap-3 sm:gap-4 md:col-span-3 lg:grid-cols-3 [&>*:last-child:nth-child(odd)]:col-span-2">{tiles}</div>
+        <div
+          data-slot="secondary-metrics"
+          className="col-span-2 grid grid-cols-1 max-sm:divide-y max-sm:divide-border max-sm:rounded-xl max-sm:border max-sm:border-border max-sm:bg-card max-sm:px-4 max-sm:py-0.5 max-sm:text-card-foreground max-sm:shadow-sm sm:grid-cols-2 sm:gap-4 md:col-span-3 lg:grid-cols-3 sm:[&>*:last-child:nth-child(odd)]:col-span-2"
+        >
+          {tiles}
+        </div>
       </div>
     </section>
   );

@@ -92,8 +92,10 @@ test.describe("managers", () => {
     await open(page, "?role=manager&scenario=spa");
     await page.getByRole("button", { name: "Orders", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "Orders" });
-    await expect(dialog.getByRole("radio")).toHaveText(["Unpaid", "Paid", "Discarded", "Voided"]);
+    await expect(dialog.getByRole("radio")).toHaveText(["Unpaid", "Paid", "Returned", "Discarded", "Voided"]);
     await expect(dialog.getByRole("list", { name: "Unpaid orders" })).toBeVisible();
     await expect(dialog.getByRole("list", { name: "Open orders" })).toHaveCount(0);
+    await dialog.getByRole("radio", { name: "Returned" }).click();
+    await expect(dialog.getByText("No returned orders yet.")).toBeVisible();
   });
 });

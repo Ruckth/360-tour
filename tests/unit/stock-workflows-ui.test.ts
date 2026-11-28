@@ -610,8 +610,9 @@ describe("Stock UI components and workflow regressions", () => {
       loadMore: vi.fn(),
     }));
 
-    const href = "/admin/stock/expansion?variantId=var_1";
-    mockNav.searchParams = new URLSearchParams("countVariantId=var_1");
+    const balancesHref = "/admin/stock/balances?q=OIL-250";
+    const href = `/admin/stock/expansion?${new URLSearchParams({ variantId: "var_1", returnTo: balancesHref })}`;
+    mockNav.searchParams = new URLSearchParams("q=OIL-250&countVariantId=var_1");
     await act(async () => root.render(wrap(createElement(StockBalancesView))));
     const rowActions = [...document.querySelectorAll("td a")].map((link) => [
       link.textContent?.trim(),
@@ -620,9 +621,10 @@ describe("Stock UI components and workflow regressions", () => {
     expect(rowActions).toEqual([["Open lots", href]]);
     expect(mockNav.replace).toHaveBeenCalledExactlyOnceWith(href);
 
-    mockNav.searchParams = new URLSearchParams("variantId=var_1");
+    mockNav.searchParams = new URL(href, "https://stock.local").searchParams;
     await act(async () => root.render(wrap(createElement(StockExpansionView))));
     expect(document.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toBe("Lots & expiry");
+    expect([...document.querySelectorAll("a")].find(a => a.textContent?.includes("Back to Balances"))?.getAttribute("href")).toBe(balancesHref);
     expect(document.body.textContent).toContain("Spa Oil · 250 ml (OIL-250) · Koh Samui");
     expect(mockConvex.query).toHaveBeenCalledWith(getFunctionName(api.commerce.stockExpansion.lotBalances), {
       branchId: "branch_1",
@@ -808,10 +810,11 @@ describe("Stock UI components and workflow regressions", () => {
       await act(async () => button!.click());
     };
     const receive = getMutationSpy(api.commerce.stockExpansion.receiveTransfer);
+    mockNav.searchParams = new URLSearchParams("direction=destination&status=inTransit");
     await act(async () => root.render(wrap(createElement(StockExpansionView))));
     await click("Open");
-    expect(mockNav.replace).toHaveBeenCalledWith("/admin/stock/expansion?transferId=transfer1");
-    mockNav.searchParams = new URLSearchParams("transferId=transfer1");
+    expect(mockNav.replace).toHaveBeenCalledWith("/admin/stock/expansion?direction=destination&status=inTransit&transferId=transfer1", { scroll: false });
+    mockNav.searchParams.set("transferId", "transfer1");
     await act(async () => root.render(wrap(createElement(StockExpansionView))));
     await click("Fill all remaining");
     const robe = document.querySelector<HTMLInputElement>("#tr-recv-robe")!;

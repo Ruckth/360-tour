@@ -51,7 +51,7 @@ for (const [name, size] of Object.entries(SIZES)) {
     expect(unitBox.height).toBe(discountBox.height);
     expect(counts.wordsOnPage, "words on the page").toBeLessThanOrEqual(130);
     await expectAtMostSentences(editor(page), 1);
-    // Dates, minimums and terms are folded away; a quote can't run before the first save.
+    // Rules and quote inputs are folded away until requested.
     await expect(page.locator("summary", { hasText: "More · campaign, dates, limits, terms" })).toBeVisible();
     await expect(page.getByLabel("Total uses")).toBeHidden();
     await expect(page.getByRole("heading", { name: "Test a quote" })).toHaveCount(0);
@@ -87,7 +87,7 @@ for (const [name, size] of Object.entries(SIZES)) {
     await expect(page.getByRole("status").filter({ hasText: "SPA20 is live" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Dismiss" })).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "SPA20" })).toBeVisible();
-    // Test a quote appears once the rules are saved.
+    // Saved coupons show the quote form without opening the New page disclosure.
     await expect(page.getByRole("heading", { name: "Test a quote" })).toBeVisible();
     if (SHOTS && name !== "ipad") await page.screenshot({ path: `${SHOTS}/after-coupon-published-${name}.png` });
 
@@ -115,6 +115,23 @@ for (const [name, size] of Object.entries(SIZES)) {
     await expectAtMostSentences(editor(page), 1);
   });
 }
+
+test("previews an unsaved spa quote without a villa at 360px", async ({ page }) => {
+  await open(page, { width: 360, height: 780 });
+  await page.getByRole("textbox", { name: "Code", exact: true }).fill("SPA20");
+  await page.getByRole("textbox", { name: "Discount", exact: true }).fill("20%");
+  await page.getByRole("radio", { name: /^Spa$/ }).click();
+  await page.locator("summary", { hasText: "Test a quote" }).click();
+  await expect(page.getByText("Unsaved rules · preview only")).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Villa", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Add a service" }).click();
+  await page.getByRole("combobox", { name: "Service 1", exact: true }).selectOption("massage");
+  await page.getByRole("textbox", { name: "Price of service 1" }).fill("1000");
+  await page.getByRole("button", { name: "Run quote" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Coupon wins" })).toContainText("฿200");
+  expect(await calls(page)).toEqual(["testQuote"]);
+  await expect(page.getByRole("heading", { name: "New coupon" })).toBeVisible();
+});
 
 test("a failed publish keeps the saved draft and says so once", async ({ page }) => {
   await open(page, SIZES.ipad, "?fail=publish");

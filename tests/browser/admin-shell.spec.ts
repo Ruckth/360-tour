@@ -96,6 +96,18 @@ for (const [device, viewport] of [["iPad", IPAD], ["phone", PHONE]] as const) {
 test.describe("manager on a phone", () => {
   test.use({ viewport: PHONE });
 
+  test("Menu groups permitted pages without moving the daily shortcuts", async ({ page }) => {
+    await open(page, "?role=manager&path=/admin/chats&pending=0");
+    const tabBar = sections(page);
+    await tabBar.getByRole("button", { name: "Menu", exact: true }).click();
+    const groupedLink = (group: string, link: string) => page.getByText(group, { exact: true })
+      .locator("xpath=..").getByRole("link", { name: link, exact: true });
+    await expect(groupedLink("Daily", "Hotel bookings")).toBeVisible();
+    await expect(groupedLink("Grow", "Leads")).toBeVisible();
+    await expect(groupedLink("Manage", "Properties")).toBeVisible();
+    await expect(groupedLink("Configure", "Settings")).toBeVisible();
+  });
+
   test("opens Checkout from any page in 1 tap: Checkout replaces Search on the tab bar", async ({ page }) => {
     await open(page, "?role=manager&path=/admin/chats&pending=0");
     const tabBar = sections(page);

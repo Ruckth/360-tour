@@ -27,12 +27,14 @@ const state = vi.hoisted(() => ({
   tab: "business",
   update: vi.fn(),
   restore: vi.fn(),
+  sendTestEmail: vi.fn(),
   reconcileDirectPanel: vi.fn(),
   confirm: vi.fn(),
 }));
 
 vi.mock("@/components/admin/ConfirmDialog", () => ({ useConfirm: () => state.confirm }));
 vi.mock("convex/react", () => ({
+  useAction: () => state.sendTestEmail,
   useQuery: (ref: FunctionReference<"query">) => {
     const name = getFunctionName(ref);
     if (name === "settings/settings:get") return state.settings;
@@ -54,7 +56,7 @@ vi.mock("@/platform/navigation", () => ({
 }));
 vi.mock("@/components/admin/SetupChecklist", () => ({ SetupChecklistCard: () => null }));
 vi.mock("@/components/admin/useChannelConfig", () => ({
-  useChannelConfig: () => ({ state: "ready", channels: { line: { configured: true, vars: {} } }, retry: vi.fn() }),
+  useChannelConfig: () => ({ state: "ready", channels: { line: { configured: true, vars: {} } }, checkedAt: Date.parse("2026-11-28T04:45:00Z"), retry: vi.fn() }),
 }));
 vi.mock("@/components/ui/time-picker", () => ({
   TimePicker: ({
@@ -101,6 +103,7 @@ beforeEach(() => {
   state.tab = "business";
   state.update.mockReset().mockResolvedValue(null);
   state.restore.mockReset();
+  state.sendTestEmail.mockReset();
   state.reconcileDirectPanel.mockReset().mockResolvedValue(null);
   state.confirm.mockReset().mockResolvedValue(true);
   host = document.createElement("div");
@@ -205,6 +208,31 @@ describe("AdminSettingsView workflows (M24, M25, M26, M31)", () => {
     expect(host.textContent).not.toContain("reception@example.com");
   });
 
+  it("confirms the saved test recipient, blocks a send from a dirty preview, and shows delivery errors", async () => {
+    state.tab = "email";
+    await render(
+      createElement(StaffAccessProvider, { access: staffAccessFor("owner", "owner@example.com") }, createElement(AdminSettingsView)),
+    );
+    const button = [...host.querySelectorAll<HTMLButtonElement>("button")].find((candidate) => candidate.textContent === "Send test email")!;
+    const sender = host.querySelector<HTMLInputElement>("#settings-email-fromName")!;
+    await setInput(sender, "My sample sender");
+    expect(host.textContent).toContain("From My sample sender");
+    expect(button.disabled).toBe(true);
+    await setInput(sender, "");
+    expect(button.disabled).toBe(false);
+
+    state.confirm.mockResolvedValueOnce(false);
+    await act(async () => button.click());
+    expect(state.confirm).toHaveBeenCalledWith(expect.objectContaining({ description: "Send to reception@example.com using the saved email settings." }));
+    expect(state.sendTestEmail).not.toHaveBeenCalled();
+
+    state.sendTestEmail.mockResolvedValue({ ok: false, message: "The email provider rejected the sender." });
+    await act(async () => button.click());
+    expect(state.sendTestEmail).toHaveBeenCalledWith({ expectedRecipient: "reception@example.com" });
+    expect(host.querySelector('[role="alert"]')?.textContent).toBe("The email provider rejected the sender.");
+    expect(sender.value).toBe("");
+  });
+
   it("M26: folds long channel failure details behind a Technical details disclosure while keeping summary and timestamp visible", async () => {
     state.tab = "channels";
     const longDetail = `Webhook delivery failed: HTTP 429 from the provider. ${"Trace segment ".repeat(35)}`;
@@ -218,6 +246,7 @@ describe("AdminSettingsView workflows (M24, M25, M26, M31)", () => {
     );
 
     expect(host.textContent).toContain("Latest error at");
+    expect(host.textContent).toContain("Setup checked");
     expect(host.textContent).toContain("Webhook delivery failed");
     const details = host.querySelector("details")!;
     expect(details).not.toBeNull();

@@ -3,6 +3,7 @@
 import { Fragment, forwardRef, type CSSProperties } from "react";
 import { ChatBookingCard } from "@/components/chat/ChatBookingCard";
 import { ChatVillaTourCard } from "@/components/chat/ChatVillaTourCard";
+import { AnalyticsConsentChoice } from "@/components/global/AnalyticsConsent";
 import {
   ChatBubble,
   ChatBubbleAvatar,
@@ -122,6 +123,7 @@ export const ChatMessages = forwardRef<
       )}
       style={style}
     >
+      {mode === "page" ? <AnalyticsConsentChoice inline /> : null}
       {messages.length === 0 ? (
         <div
           data-testid="chat-initial-prompts"

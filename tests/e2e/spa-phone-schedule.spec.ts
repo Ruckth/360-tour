@@ -47,6 +47,15 @@ test("D24: on a phone, Friday 10:00–18:00 for three therapists saves, survives
 
     await dayPicker.getByRole("button", { name: /^Fri / }).click();
     const roster = page.getByRole("list", { name: /^Roster for Fri / });
+    const rosterView = page.getByRole("group", { name: "Roster view" });
+    await rosterView.getByRole("button", { name: "Week", exact: true }).click();
+    const grid = page.getByRole("grid");
+    await expect(grid).toBeVisible();
+    const staffWeek = grid.getByRole("button", { name: `Select ${people[0].name}'s week` });
+    expect(await staffWeek.evaluate((button) => getComputedStyle(button.parentElement!).position)).toBe("sticky");
+    await expectNoHorizontalPan(page);
+    await rosterView.getByRole("button", { name: "Day", exact: true }).click();
+    await expect(roster).toBeVisible();
     for (const person of people) await roster.getByRole("button", { name: new RegExp(`^${person.name},`) }).click();
     const toolbar = page.getByRole("toolbar", { name: "Change selected cells" });
     await expect(toolbar).toContainText("3 cells selected");

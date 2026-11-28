@@ -120,6 +120,7 @@ describe("Start admin route components wiring", () => {
         options,
         useLoaderData: () => state.loaderData,
         useParams: () => state.params,
+        useNavigate: () => state.push,
         useSearch: () => (options.validateSearch as ((search: Record<string, unknown>) => unknown) | undefined)?.(state.search) ?? state.search,
         useRouteContext: () => state.routeContext,
       }),
@@ -127,6 +128,7 @@ describe("Start admin route components wiring", () => {
       notFound: () => ({ __notFound: true }),
       redirect: (payload: Record<string, unknown>) => ({ __redirect: true, ...payload }),
       useRouter: () => ({ invalidate: vi.fn() }),
+      useBlocker: vi.fn(),
     }));
 
     vi.doMock("@tanstack/react-start", () => ({
@@ -263,14 +265,16 @@ describe("Start admin route components wiring", () => {
 
   it("forwards dynamic $id, $tab, and $orderId params and receipt navigation controls", async () => {
     const propertyMod = await import("@/start-app/routes/admin.properties.$id");
+    const { ConfirmProvider } = await import("@/components/admin/ConfirmDialog");
     const Property = (propertyMod.Route as unknown as { options: { component: React.ComponentType } }).options.component;
+    const renderProperty = () => renderToStaticMarkup(React.createElement(ConfirmProvider, null, React.createElement(Property)));
     state.params = { id: "villa-42" };
     state.search = { tab: "reviews" };
-    const propertyHtml = renderToStaticMarkup(React.createElement(Property));
+    const propertyHtml = renderProperty();
     expect(propertyHtml).toContain('data-property-id="villa-42"');
     expect(propertyHtml).toContain('data-property-tab="reviews"');
     state.search = { tab: ["reviews", "calendar"] };
-    expect(renderToStaticMarkup(React.createElement(Property))).toContain('data-property-tab="details"');
+    expect(renderProperty()).toContain('data-property-tab="details"');
 
     const couponMod = await import("@/start-app/routes/admin.marketing.coupons.$id");
     const Coupon = (couponMod.Route as unknown as { options: { component: React.ComponentType } }).options.component;

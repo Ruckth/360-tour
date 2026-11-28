@@ -41,6 +41,43 @@ test("villa deep links survive hard refresh and the direct pricing shortcut pres
   }
 });
 
+test("phone villa sections keep drafts and warn before browser Back leaves the villa", async ({ page }) => {
+  test.setTimeout(60_000);
+  const owner = await signedInBackend(page);
+  const propertyId = await owner.mutation(api.catalog.adminProperties.create, { name: "Villa draft navigation test" });
+  try {
+    await page.setViewportSize({ width: 360, height: 780 });
+    await page.goto("/admin/properties");
+    const villa = page.getByRole("link", { name: /Villa draft navigation test/ });
+    await chooseBranchIfPrompted(page, villa);
+    await villa.click();
+
+    const name = page.getByRole("textbox", { name: "Name", exact: true });
+    await name.fill("Unsaved villa name");
+    const sectionPicker = page.getByRole("button", { name: "Villa sections: Details" });
+    expect((await sectionPicker.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+    await sectionPicker.click();
+    const sections = page.getByRole("dialog", { name: "Villa sections" });
+    await sections.getByRole("button", { name: "Pricing & OTA" }).click();
+    await expect(page).toHaveURL(/[?]tab=pricing$/);
+    await page.evaluate(() => history.back());
+    await expect(name).toHaveValue("Unsaved villa name");
+
+    await page.evaluate(() => history.back());
+    const confirm = page.getByRole("alertdialog", { name: "Leave this villa without saving?" });
+    await confirm.getByRole("button", { name: "Keep editing" }).click();
+    await expect(name).toHaveValue("Unsaved villa name");
+    await expect(page).toHaveURL(new RegExp(`/admin/properties/${propertyId}`));
+
+    await page.getByRole("link", { name: "All villas" }).click();
+    await confirm.getByRole("button", { name: "Discard and leave" }).click();
+    await expect(villa).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(360);
+  } finally {
+    await owner.mutation(api.catalog.adminProperties.deleteDraft, { propertyId });
+  }
+});
+
 type ChannelHealthFrame = {
   type: string;
   modifications?: {

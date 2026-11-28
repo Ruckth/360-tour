@@ -37,10 +37,10 @@ export function AdminPropertiesView() {
   });
 
   return (
-    <div className="mx-auto grid w-full max-w-5xl gap-4 px-4 py-4 sm:px-6">
-      <section className="border border-border bg-card">
+    <div className="mx-auto grid w-full min-w-0 max-w-5xl grid-cols-[minmax(0,1fr)] gap-4 px-4 py-4 sm:px-6">
+      <section className="min-w-0 border border-border bg-card">
         <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
-          <p className="min-w-60 flex-1 text-sm text-muted-foreground">
+          <p className="min-w-0 basis-full text-sm text-muted-foreground lg:basis-auto lg:flex-1">
             Villas used by the AI concierge, the chat channels and the booking flow. Only active villas are offered to guests.
           </p>
           <Input
@@ -50,10 +50,10 @@ export function AdminPropertiesView() {
             placeholder="Search name or slug…"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            className="h-9 w-full min-w-44 sm:w-56"
+            className="h-9 min-h-11 w-full min-w-0 sm:w-56 sm:min-h-9"
           />
           <Select value={status} onValueChange={(value) => setStatus(value as PropertyStatus | "all")}>
-            <SelectTrigger className="h-9 w-36 rounded-lg" aria-label="Villa status">
+            <SelectTrigger className="h-9 min-h-11 w-36 rounded-lg sm:min-h-9" aria-label="Villa status">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -70,7 +70,7 @@ export function AdminPropertiesView() {
             New villa
           </Button>
           {shown ? (
-            <p role="status" className="w-full text-xs text-muted-foreground">
+            <p role="status" className="w-full min-w-0 text-xs text-muted-foreground [overflow-wrap:anywhere]">
               {shown.length} {shown.length === 1 ? "villa" : "villas"}
               {needle ? ` matching “${query.trim()}”` : ""}
               {status !== "all" ? ` · ${PROPERTY_STATUS[status].label}` : ""}
@@ -82,8 +82,8 @@ export function AdminPropertiesView() {
             {Array.from({ length: 3 }, (_, i) => (
               <li key={i} className="flex items-center gap-3 px-4 py-3">
                 <Skeleton className="size-10" />
-                <div className="grid flex-1 gap-1.5">
-                  <Skeleton className="h-4 w-40" />
+                <div className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)] gap-1.5">
+                  <Skeleton className="h-4 w-40 max-w-full" />
                   <Skeleton className="h-3 w-72 max-w-full" />
                 </div>
               </li>
@@ -100,9 +100,9 @@ export function AdminPropertiesView() {
                   {/* Only the picture fades for archived villas: faded text would fail contrast. */}
                   <Thumb src={property.images[0]} className={cn("size-10", property.status === "archived" && "opacity-50 grayscale")} />
                   <div className="min-w-0 flex-1">
-                    <p className="flex items-center gap-2 truncate text-sm font-semibold text-foreground">
-                      {property.name}
-                      {property.status !== "active" ? <StatusBadge {...PROPERTY_STATUS[property.status]} /> : null}
+                    <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-semibold text-foreground">
+                      <span className="min-w-0 break-words [overflow-wrap:anywhere]">{property.name}</span>
+                      <StatusBadge {...PROPERTY_STATUS[property.status]} label={property.status === "active" ? "Published" : PROPERTY_STATUS[property.status].label} />
                     </p>
                     <p className="truncate text-xs text-muted-foreground">
                       {formatMoney(property.pricePerNight, property.currency)} / night · {property.maxGuests} guests ·{" "}
@@ -117,7 +117,7 @@ export function AdminPropertiesView() {
               <li className="grid justify-items-center gap-3 px-4 py-10 text-center text-sm text-muted-foreground">
                 {needle ? (
                   <>
-                    <span>
+                    <span className="min-w-0 [overflow-wrap:anywhere]">
                       No {status === "all" ? "" : `${PROPERTY_STATUS[status].label.toLowerCase()} `}villas match &ldquo;{query.trim()}&rdquo;.
                     </span>
                     <Button size="sm" variant="outline" onClick={() => setQuery("")}>

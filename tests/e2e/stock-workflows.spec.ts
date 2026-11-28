@@ -44,12 +44,12 @@ test('staff can receive a partial tracked purchase order on a phone and inspect 
   await owner.mutation(api.commerce.stockExpansion.enableLotTracking, { branchId, variantId });
   const supplier = await owner.mutation(purchasing.addSupplier, { branchId, name: `Local supplier ${token}`, confirmSimilar: true, operationKey: crypto.randomUUID() });
   const draft = await owner.mutation(purchasing.saveOrder, {
-    branchId, supplierId: supplier.id as Id<'suppliers'>, lines: [{ variantId, quantity: 12, unitCost: 7000 }], operationKey: crypto.randomUUID(),
+    branchId, supplierId: supplier.id as Id<'suppliers'>, lines: [{ variantId, quantity: 7, unitCost: 7000 }], operationKey: crypto.randomUUID(),
   });
   const orderId = draft.id as Id<'purchaseOrders'>;
   const path = `/admin/stock/purchasing/orders/${orderId}`;
 
-  for (const viewport of [{ width: 320, height: 800 }, { width: 390, height: 844 }]) {
+  for (const viewport of [{ width: 360, height: 800 }, { width: 430, height: 844 }, { width: 390, height: 844 }]) {
     await page.setViewportSize(viewport);
     await page.goto(path);
     const nav = page.getByRole('navigation', { name: 'Stock pages' });
@@ -73,6 +73,7 @@ test('staff can receive a partial tracked purchase order on a phone and inspect 
     await test.info().attach(`stock-layout-${viewport.width}`, { contentType: 'application/json', body: JSON.stringify({ viewport, links, issue: await issue.boundingBox() }) });
   }
   await page.getByRole('button', { name: 'Issue order', exact: true }).click();
+  await expect(page.locator('[aria-label="Order quantities"]')).toHaveText('Ordered7Received0Due7');
   await page.getByRole('button', { name: 'Receive', exact: true }).click();
   const form = page.getByRole('dialog', { name: /Receive delivery/ });
   const rejected = form.getByLabel('Rejected (optional)');
@@ -100,20 +101,27 @@ test('staff can receive a partial tracked purchase order on a phone and inspect 
   await expiryDay.click();
   await form.getByRole('button', { name: /Post receipt.*5 accepted/ }).click();
   await expect(form).toBeHidden();
+  await expect(page.locator('[aria-label="Receipt quantities"]')).toHaveText('Accepted5Rejected0Order due now2');
+  await page.getByRole('link', { name: 'Stock movement', exact: true }).click();
+  await page.getByRole('link', { name: `LOT-${token}`, exact: true }).click();
+  await expect(page.getByRole('combobox', { name: 'Lot', exact: true })).toContainText(`LOT-${token}`);
+  await expect(page.getByLabel('Counted quantity on shelf')).toHaveValue('');
   const posted = await owner.query(purchasing.order, { orderId });
-  expect(posted.lines[0]).toMatchObject({ accepted: 5, due: 7 });
+  expect(posted.lines[0]).toMatchObject({ accepted: 5, due: 2 });
   expect(posted.order.status).toBe('partially_received');
   await expect(owner.query(api.commerce.stockExpansion.lotBalances, { branchId, variantId }))
     .resolves.toMatchObject({ onHand: 5, lots: [{ code: `LOT-${token}`, onHand: 5 }] });
+  await owner.mutation(stock.setReorderPoint, { branchId, variantId, expectedRevision: 0, quantity: 6 });
 
   await page.setViewportSize({ width: 1366, height: 900 });
   await page.goto(`/admin/stock/balances?q=${encodeURIComponent(sku)}`);
   const row = page.getByRole('row', { name: new RegExp(name) });
   await expect(row).toBeVisible();
   await expect(row).toContainText('5');
-  await expect(row).toContainText('7');
+  await expect(row).toContainText('2');
+  await expect(row.getByText('Low', { exact: true })).toBeVisible();
   const balances = await owner.query(stock.listBalances, { branchId, search: sku, paginationOpts: firstPage });
-  expect(balances.page).toEqual(expect.arrayContaining([expect.objectContaining({ variantId, onHand: 5, onOrder: 7 })]));
+  expect(balances.page).toEqual(expect.arrayContaining([expect.objectContaining({ variantId, onHand: 5, onOrder: 2 })]));
   await row.getByRole('link', { name: 'Open lots', exact: true }).click();
   await expect(page.getByRole('tab', { name: 'Lots & expiry' })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByText(`LOT-${token}`, { exact: true })).toBeVisible();
@@ -122,6 +130,10 @@ test('staff can receive a partial tracked purchase order on a phone and inspect 
   await expect(lot).toHaveCSS('display', 'table-row');
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(lot).toHaveCSS('display', 'grid');
+  await page.getByRole('link', { name: 'Back to Balances' }).click();
+  await page.getByRole('tab', { name: 'Low stock', exact: true }).click();
+  await expect(page).toHaveURL(/stock\/balances\?view=low-stock/);
+  await expect(row.getByText('Low', { exact: true })).toBeVisible();
 });
 
 test('bad adjust shows inline preview error without crashing and balance-to-request prefill consumes URL flags for Back', async ({ page }) => {
@@ -144,7 +156,10 @@ test('bad adjust shows inline preview error without crashing and balance-to-requ
   });
 
   await page.setViewportSize({ width: 1366, height: 900 });
-  await page.goto(`/admin/stock/balances?q=${encodeURIComponent(sku)}`);
+  await page.goto('/admin/stock/balances');
+  const balanceSearch = page.getByRole('searchbox', { name: 'Search catalog by name or SKU' });
+  await balanceSearch.pressSequentially(sku);
+  await expect(page).toHaveURL(new RegExp(`stock/balances\\?q=${sku}`));
   const row = page.getByRole('row', { name: new RegExp(name) });
   await expect(row).toBeVisible();
 
@@ -190,6 +205,9 @@ test('bad adjust shows inline preview error without crashing and balance-to-requ
   await page.goBack();
   await expect(page).toHaveURL(/\/admin\/stock\/purchasing/);
   await expect(page.getByRole('dialog', { name: /Request stock/ })).toHaveCount(0);
+  await page.goBack();
+  await expect(balanceSearch).toHaveValue(sku);
+  await expect(row).toBeVisible();
 });
 
 test('purchasing searches posted documents and restores filtered queues from detail', async ({ page }) => {
@@ -345,6 +363,7 @@ test.describe('Stock touch layouts', () => {
       await menu.tap();
       await expect(page.getByRole('menuitem', { name: 'Show variants' })).toBeVisible();
       await page.keyboard.press('Escape');
+      await expect(page.getByRole('menuitem', { name: 'Show variants' })).toBeHidden();
     }
 
     await page.setViewportSize({ width: 320, height: 800 });
@@ -354,8 +373,11 @@ test.describe('Stock touch layouts', () => {
     await balance.getByRole('checkbox').check();
     const actions = page.getByRole('toolbar', { name: 'Actions for selected item', exact: true });
     await expect(actions).toContainText('1 selected');
-    await expect(actions.getByRole('button', { name: 'Request 1' })).toBeVisible();
-    await expect(actions.getByRole('button', { name: 'Create order' })).toBeVisible();
+    await expect(actions.getByRole('button', { name: 'Opening stock' })).toBeVisible();
+    await actions.getByRole('button', { name: 'More stock actions' }).tap();
+    await expect(page.getByRole('menuitem', { name: 'Request 1' })).toBeVisible();
+    await expect(page.getByRole('menuitem', { name: 'Create order' })).toBeVisible();
+    await page.keyboard.press('Escape');
     const clear = actions.getByRole('button', { name: 'Clear selection' });
     await clear.focus();
     for (const [width, height] of [[820, 1180], [1180, 820], [390, 844]]) {
@@ -368,5 +390,19 @@ test.describe('Stock touch layouts', () => {
     }
     await clear.tap();
     await expect(actions).toHaveCount(0);
+
+    await page.goto('/admin/stock/expansion');
+    const filters = page.getByRole('button', { name: 'Filters', exact: true });
+    await filters.tap();
+    const filterSheet = page.getByRole('dialog', { name: 'Transfer filters' });
+    await filterSheet.getByRole('combobox', { name: 'Transfer direction' }).tap();
+    await page.getByRole('option', { name: 'Incoming', exact: true }).tap();
+    await filterSheet.getByRole('button', { name: 'Done', exact: true }).tap();
+    await expect(filterSheet).toBeHidden();
+    await expect(filters).toBeFocused();
+    await expect(page.getByText('Incoming · In transit', { exact: true })).toBeVisible();
+    await expect(page).toHaveURL(/direction=destination&status=inTransit/);
+    await page.reload();
+    await expect(page.getByText('Incoming · In transit', { exact: true })).toBeVisible();
   });
 });

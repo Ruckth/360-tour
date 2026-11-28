@@ -325,7 +325,8 @@ describe("MarketingCapture", () => {
 });
 
 describe("consent banner", () => {
-  async function banner() {
+  async function banner(pathname = "/rooms/pool-villa") {
+    nav.pathname = pathname;
     const { AnalyticsConsent } = await import("@/components/global/AnalyticsConsent");
     await mount(createElement(AnalyticsConsent));
     return document.querySelector('[role="dialog"]');
@@ -353,11 +354,9 @@ describe("consent banner", () => {
     expect(await banner()).toBeNull();
     await unmount();
     window.localStorage.clear();
-    nav.pathname = "/admin";
-    expect(await banner()).toBeNull();
+    expect(await banner("/admin")).toBeNull();
     await unmount();
-    nav.pathname = "/display";
-    expect(await banner()).toBeNull();
+    expect(await banner("/display")).toBeNull();
     await unmount();
   });
 

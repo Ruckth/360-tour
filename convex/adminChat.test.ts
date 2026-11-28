@@ -137,6 +137,28 @@ describe("adminChat.listSessions", () => {
     ]);
   });
 
+  it("combines channel and assignment filters before selecting the queue or search results", async () => {
+    const t = convexTest(schema, modules);
+    const admin = await adminTest(t);
+    const mine = await insertAdminSession(t, { visitorName: "Garden guest mine", channel: "line", messageCount: 1, latestMessageAt: 4000 });
+    const theirs = await insertAdminSession(t, { visitorName: "Garden guest theirs", channel: "line", messageCount: 1, latestMessageAt: 3000 });
+    const unassigned = await insertAdminSession(t, { visitorName: "Garden guest unassigned", channel: "line", messageCount: 1, latestMessageAt: 2000 });
+    const web = await insertAdminSession(t, { visitorName: "Garden guest web", channel: "web", messageCount: 1, latestMessageAt: 1000 });
+    await t.run(async (ctx) => {
+      await ctx.db.patch(mine, { assignedAdminEmail: adminEmail });
+      await ctx.db.patch(theirs, { assignedAdminEmail: "colleague@example.com" });
+      await ctx.db.patch(web, { assignedAdminEmail: adminEmail });
+    });
+    for (const searchQuery of [undefined, "Garden guest"]) {
+      const endpoint = api.messaging.adminChat.listSessions;
+      const args = { status: "all", channel: "line", searchQuery } as const;
+      const mineResult = await admin.query(endpoint, { ...args, assignment: "mine" });
+      const unassignedResult = await admin.query(endpoint, { ...args, assignment: "unassigned" });
+      expect(mineResult.sessions.map(({ _id }) => _id)).toEqual([mine]);
+      expect(unassignedResult.sessions.map(({ _id }) => _id)).toEqual([unassigned]);
+    }
+  });
+
   it("returns 10 sessions per cursor page", async () => {
     const t = convexTest(schema, modules);
     const admin = await adminTest(t);

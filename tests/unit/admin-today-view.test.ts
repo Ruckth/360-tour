@@ -16,7 +16,7 @@ function readMock(name: string, args: unknown) {
   if (name === "bookings/admin:listForAdmin") return mocks.failHotel ? new Error("Hotel unavailable") : { complete: mocks.complete, bookings: [stay("a", today, addDaysIso(today, 2)), stay("b", today, addDaysIso(today, 1), 500), stay("c", addDaysIso(today, -2), today)] };
   if (name === "services/admin:listSchedule") {
     const start = resortMidnight(today);
-    return mocks.failSpa ? new Error("Spa unavailable") : { appointments: [{ start: start + 3_600_000, status: "booked" }, { start: start + 7_200_000, status: "cancelled" }, { start: start - 3_600_000, status: "booked" }] };
+    return mocks.failSpa ? new Error("Spa unavailable") : { appointments: [{ _id: "spaA", start: start + 82_800_000, end: start + 86_400_000, guestName: "Spa guest", serviceNameSnapshot: "Massage", status: "booked" }, { start: start + 7_200_000, status: "cancelled" }, { start: start - 3_600_000, status: "booked" }] };
   }
   if (name === "messaging/adminChat:queueCounts") return mocks.queue;
   return undefined;
@@ -67,6 +67,9 @@ describe("Today home (D01)", () => {
     expect(linkCount("/admin/hotel?today=balanceDue")).toBe("Balance due1");
     expect(linkCount(`/admin/staff/calendar?date=${today}&scope=open`)).toBe("Open appointments today1");
     expect(linkCount("/admin/chats")).toBe("Needs you3");
+    expect(linkCount("/admin/hotel?booking=b")).toContain("due");
+    expect(linkCount(`/admin/staff/calendar?date=${today}&appointment=spaA`)).toContain("Massage");
+    expect(linkCount("/admin/checkout")).toBe("Open Checkout");
   });
 
   it("settles subscription updates when staff access changes after mount", async () => {
@@ -97,7 +100,7 @@ describe("Today home (D01)", () => {
     await act(async () => root.render(createElement(StaffAccessProvider, { access: staffAccessFor("manager", undefined, [PHUKET]) }, createElement(AdminTodayView))));
     expect(mocks.calls.some(([name]) => name === "bookings/admin:listForAdmin")).toBe(false);
     expect(mocks.calls.some(([name]) => name === "messaging/adminChat:queueCounts")).toBe(false);
-    expect(host.querySelectorAll("a")).toHaveLength(1);
+    expect(host.querySelector('a[href^="/admin/hotel"], a[href="/admin/chats"]')).toBeNull();
     expect(linkCount(`/admin/staff/calendar?date=${today}&scope=open`)).toBe("Open appointments today1");
   });
 
@@ -123,9 +126,10 @@ describe("Today home (D01)", () => {
     expect(count?.className).toContain("text-sm");
   });
 
-  it("asks for nothing and links nowhere a cashier can't open", async () => {
+  it("links a cashier directly to Checkout with no queries for other desks", async () => {
     await act(async () => root.render(createElement(StaffAccessProvider, { access: staffAccessFor("cashier") }, createElement(AdminTodayView))));
-    expect(host.querySelectorAll("a")).toHaveLength(0);
+    expect(host.querySelectorAll("a")).toHaveLength(1);
+    expect(linkCount("/admin/checkout")).toBe("Open Checkout");
     expect(host.textContent).toContain("Use the navigation to open your available workspaces");
     expect(mocks.calls).toHaveLength(0);
   });

@@ -36,12 +36,20 @@ export const channelFilterOptions = [
   "whatsapp",
   "instagram",
 ] satisfies SessionChannelFilter[];
+export const assignmentTabs = [
+  { value: "all", label: "Anyone" },
+  { value: "mine", label: "Mine" },
+  { value: "unassigned", label: "Unassigned" },
+] as const;
+export type AssignmentFilter = typeof assignmentTabs[number]["value"];
+export const assignmentOptions = assignmentTabs.map(({ value }) => value);
 // URL param defaults; a param equal to its default is left out of the URL.
 export const FILTER_DEFAULTS = {
   view: "needs_reply",
   state: "open",
   empty: "non_empty",
   channel: "all",
+  assignment: "all",
   q: "",
   from: "",
   to: "",

@@ -82,16 +82,16 @@ function OpenDirectPanels({ panels, onSaved }: { panels: DirectPanelRow[]; onSav
         <p className="text-xs text-muted-foreground">{t("payments.openPanelsHint")}</p>
       </div>
       {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
-      <ul className="grid divide-y divide-border rounded-lg border border-border">
+      <ul className="grid min-w-0 grid-cols-[minmax(0,1fr)] divide-y divide-border rounded-lg border border-border">
         {panels.map((panel) => {
           const staff = panel.actorEmail ? panel.actorEmail.split("@")[0] : panel.actor;
           const confirmed = stopped.has(reviewKey(panel));
           const idle = busyKey === null && confirmed;
           const checkbox = `stopped-${panel.tillId}-${panel.panelKey}`;
           return (
-            <li key={`${panel.tillId}:${panel.panelKey}`} data-testid="direct-panel-row" className="grid gap-2 px-3 py-3 text-sm">
+            <li key={`${panel.tillId}:${panel.panelKey}`} data-testid="direct-panel-row" className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2 px-3 py-3 text-sm">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="grid gap-0.5">
+                <div className="grid min-w-0 gap-0.5 wrap-anywhere">
                   <p className="font-medium">{t("payments.panelCashier", { till: tillName(panel.tillKey), staff, time: when(panel.openedAt) })}</p>
                   <p className="text-xs text-muted-foreground tabular-nums">
                     {instructionSummary(panel)}
@@ -104,9 +104,9 @@ function OpenDirectPanels({ panels, onSaved }: { panels: DirectPanelRow[]; onSav
                   {t("payments.openOrder")}<ExternalLink aria-hidden className="size-3.5" />
                 </a>
               </div>
-              <label htmlFor={checkbox} className="flex min-h-11 items-center gap-3">
-                <input id={checkbox} type="checkbox" className="size-5" checked={confirmed} onChange={(event) => confirmStopped(panel, event.target.checked)} />
-                {t("pay.operatorStopped", { staff })}
+              <label htmlFor={checkbox} className="flex min-h-11 min-w-0 items-center gap-3">
+                <input id={checkbox} type="checkbox" className="size-5 shrink-0" checked={confirmed} onChange={(event) => confirmStopped(panel, event.target.checked)} />
+                <span className="min-w-0 wrap-anywhere">{t("pay.operatorStopped", { staff })}</span>
               </label>
               <details open className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs">
                 <summary className="cursor-pointer font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">

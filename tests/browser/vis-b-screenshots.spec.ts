@@ -48,7 +48,7 @@ async function scene(page: Page, name: string, phone: boolean) {
         })
         .first()
         .click();
-      await page.getByRole("button", { name: "Details", exact: true }).click();
+      if ((page.viewportSize()?.width ?? 640) >= 640) await page.getByRole("button", { name: "Details", exact: true }).click();
       await page.getByRole("region", { name: "Balance due" }).waitFor();
     }
     if (name === "appointment-sheet") {

@@ -106,7 +106,7 @@ function liveBranchIds(ids: readonly Id<"branches">[] | undefined, branchById: R
 }
 
 /** Settings › Team: everyone with a Desk or Marketing role, owners & recovery, and cashier rules. */
-export function TeamSettings({ onDirtyChange, confirmDiscard }: { onDirtyChange?: (dirty: boolean) => void; confirmDiscard?: () => Promise<boolean> } = {}) {
+export function TeamSettings({ onDirtyChange, confirmDiscard, filterMarketing }: { onDirtyChange?: (dirty: boolean) => void; confirmDiscard?: () => Promise<boolean>; filterMarketing?: boolean } = {}) {
   const [inviteDirty, setInviteDirty] = useState(false);
   const [rulesDirty, setRulesDirty] = useState(false);
   useEffect(() => { onDirtyChange?.(inviteDirty || rulesDirty); return () => onDirtyChange?.(false); }, [inviteDirty, rulesDirty, onDirtyChange]);
@@ -140,6 +140,7 @@ export function TeamSettings({ onDirtyChange, confirmDiscard }: { onDirtyChange?
         assignableBranches={assignableBranches}
         branchById={branchById}
         defaultBranchIds={defaultBranchIds}
+        filterMarketing={filterMarketing}
         inviteDirty={inviteDirty}
         onDirtyChange={setInviteDirty}
         confirmDiscard={confirmDiscard ?? localGuard.confirmDiscard}
@@ -216,6 +217,7 @@ function PeoplePanel({
   assignableBranches,
   branchById,
   defaultBranchIds,
+  filterMarketing,
   inviteDirty,
   onDirtyChange,
   confirmDiscard,
@@ -224,6 +226,7 @@ function PeoplePanel({
   assignableBranches: readonly SelectableBranch[];
   branchById: ReadonlyMap<Id<"branches">, SelectableBranch>;
   defaultBranchIds: readonly Id<"branches">[];
+  filterMarketing?: boolean;
   inviteDirty: boolean;
   onDirtyChange: (dirty: boolean) => void;
   confirmDiscard: () => Promise<boolean>;
@@ -250,9 +253,9 @@ function PeoplePanel({
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<{ text: string; error?: boolean; email: string } | null>(null);
   const filtersId = useId();
-  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(Boolean(filterMarketing));
   const [peopleSearch, setPeopleSearch] = useState("");
-  const [peopleFilter, setPeopleFilter] = useState<PeopleFilter>({ kind: "all" });
+  const [peopleFilter, setPeopleFilter] = useState<PeopleFilter>(filterMarketing ? { kind: "role", role: "marketing" } : { kind: "all" });
   const labelOf = (person: { email: string }) => personLabel(person.email);
   const chips: { key: string; label: string; filter: PeopleFilter }[] = [
     { key: "all", label: "All", filter: { kind: "all" } },

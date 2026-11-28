@@ -40,7 +40,7 @@ export function VillaSelector({
           unavailable && "cursor-not-allowed opacity-55",
         )}
       >
-        <div className="relative aspect-[4/3]">
+        <div className="relative aspect-[16/9] md:aspect-[4/3]">
           <PropertyImage
             images={item.images}
             alt={item.name}
@@ -73,7 +73,7 @@ export function VillaSelector({
       <div className="md:hidden">
         <SwipeRail
           label={t("villaOptions")}
-          viewportClassName="-mx-5 px-5"
+          viewportClassName="-mx-4 px-4"
           itemClassName="basis-[84%]"
         >
           {properties.map((item) => renderCard(item))}

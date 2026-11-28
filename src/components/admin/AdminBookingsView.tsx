@@ -126,6 +126,7 @@ function HotelBookings() {
   const [storedVilla, setVilla] = useStoredState(branchId ? `admin.hotel.villa:${branchId}` : "admin.hotel.villa", "all");
   const [showCancelled, setShowCancelled] = useState(false);
   const [selected, setSelected] = useState<{ id: Id<"bookings">; initialAction?: BookingSheetAction } | null>(null);
+  const agendaBookingTrigger = useRef<HTMLElement | null>(null);
   const [quick, setQuick] = useState<QuickTarget | null>(null);
   const [creating, setCreating] = useState<NewBookingPrefill | null>(null);
   const [blockTarget, setBlockTarget] = useState<BlockTarget | null>(null);
@@ -303,15 +304,16 @@ function HotelBookings() {
             const b = item.booking;
             const day = isoDate(segment.day);
             const phase = day === b.checkIn ? "Arrives" : day === b.checkOut ? "Leaves" : "In house";
-            return <span className="flex w-full min-w-0 items-center justify-between gap-3">
-              <span className="grid min-w-0 gap-1 text-left">
+            const status = statusKey(b);
+            return <span className="flex w-full min-w-0 items-center justify-between gap-2 sm:gap-3">
+              <span className="grid min-w-0 gap-0.5 text-left sm:gap-1">
                 <span className="truncate text-[15px] font-medium">{b.guestName}</span>
                 <span className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground"><span className="truncate">{villaName(b.propertyId)}</span><span className="shrink-0">· {phase}</span></span>
                 <span className="text-xs text-muted-foreground">{displayDate(b.checkIn)} → {displayDate(b.checkOut)}</span>
               </span>
-              <span className="grid shrink-0 justify-items-end gap-1">
-                {b.owed > 0 || statusKey(b) !== "paid" ? <span className={`money font-sans text-[15px] font-medium tabular-nums ${b.owed <= 0 ? "text-emerald-700" : ""}`}>{b.owed > 0 ? `${formatMoney(b.owed, b.currency)} due` : "Paid"}</span> : null}
-                <StatusBadge {...hotelStatus(statusKey(b))} />
+              <span className="grid max-w-[49%] justify-items-end gap-0.5 text-right sm:max-w-none sm:gap-1">
+                {b.owed > 0 && status !== "cancelled" ? <span className="money font-sans text-[15px] font-medium tabular-nums wrap-anywhere">{formatMoney(b.owed, b.currency)} due</span> : null}
+                <StatusBadge {...hotelStatus(status)} />
               </span>
             </span>;
           }}
@@ -362,6 +364,12 @@ function HotelBookings() {
           onEventClick={(occurrence, event) => {
             const eventData = occurrence.event.data;
             if (eventData?.kind === "booking") {
+              if (phone && view === "agenda") {
+                const trigger = event.currentTarget;
+                agendaBookingTrigger.current = trigger instanceof HTMLElement ? trigger : null;
+                openDetails(eventData.booking._id);
+                return;
+              }
               const chip =
                 (event.target as HTMLElement).closest("[data-slot=event-calendar-event]") ?? (event.currentTarget as HTMLElement);
               openQuick(eventData.booking, chip);
@@ -379,6 +387,7 @@ function HotelBookings() {
             setRange({ from: isoDate(addDays(visible.start, -1)), to: isoDate(addDays(visible.end, 1)) })
           }
           classNames={{
+            agendaItem: "max-sm:px-2 max-sm:py-1",
             monthCellFooter: "absolute left-0 top-1 justify-start pb-0",
             monthDayNumber: "text-[13px] tabular-nums in-data-[outside=true]:text-muted-foreground",
             monthCellContent: "pt-7",
@@ -460,6 +469,13 @@ function HotelBookings() {
         initialAction={selected?.initialAction}
         properties={properties ?? []}
         onClose={closeBooking}
+        onCloseAutoFocus={(event) => {
+          const trigger = agendaBookingTrigger.current;
+          agendaBookingTrigger.current = null;
+          if (!trigger?.isConnected) return;
+          event.preventDefault();
+          trigger.focus({ preventScroll: true });
+        }}
         onBookSpa={(booking) => {
           closeBooking();
           openStaySpa(booking, booking.propertyName);

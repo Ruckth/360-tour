@@ -1,9 +1,10 @@
 import type { Id } from "convex/_generated/dataModel";
+import { evaluateOffer } from "convex/shared/offers";
 import { useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
 import { CouponEditor } from "@/components/admin/marketing/CouponEditor";
-import type { CampaignRow, CouponDetail, LinkRow, MarketingProperty, SaveCouponArgs } from "@/components/admin/marketing/types";
+import type { CampaignRow, CouponDetail, LinkRow, MarketingActions, MarketingProperty, SaveCouponArgs } from "@/components/admin/marketing/types";
 import "@/app.css";
 
 /*
@@ -29,6 +30,7 @@ const properties = [
   { _id: "pool-id" as Id<"properties">, name: "Tideglass Pool Residence", slug: "pool-villa", status: "active", pricePerNight: 850000, currency: "THB", maxGuests: 6, directDiscountPercent: 1500 },
   { _id: "garden-id" as Id<"properties">, name: "Garden Villa", slug: "garden-villa", status: "active", pricePerNight: 420000, currency: "THB", maxGuests: 4, directDiscountPercent: 0 },
 ] as MarketingProperty[];
+const massage = { id: "massage" as Id<"services">, name: "Thai massage", category: "Spa", durationMin: 60 };
 
 function record(name: string, args: unknown) {
   const calls = JSON.parse(document.body.dataset.calls ?? "[]");
@@ -90,8 +92,14 @@ function Fixture() {
         setCampaigns((current) => [...current, { ...args, _id: id, _creationTime: 0, status: "draft", ...audit, linkCount: 0, couponCount: 0, opens: 0, countsCapped: false }]);
         return id;
       },
-      testQuote: async () => {
-        throw new Error("Not in this fixture");
+      testQuote: async (args: Parameters<MarketingActions["testQuote"]>[0]) => {
+        record("testQuote", args);
+        if (!args.proposed || !args.services || args.propertySlug) throw new Error("Use a proposed service-only quote in this fixture");
+        return evaluateOffer({
+          lines: args.services.map(({ serviceId, amount }, index) => ({ id: String(index), kind: "service", label: serviceId, amount })),
+          directDiscountPercent: 0, today: "2026-11-12",
+          coupon: { ...args.proposed.rules, code: args.code, version: 1, status: "active", used: 0, discountGranted: 0 },
+        });
       },
     }),
     [campaigns, links],
@@ -106,6 +114,7 @@ function Fixture() {
         coupons={coupons}
         campaigns={campaigns}
         properties={properties}
+        serviceCatalog={{ choices: [massage] }}
         today="2026-11-12"
         listHref="/admin/marketing/coupons"
         origin="https://book.auralis.example"

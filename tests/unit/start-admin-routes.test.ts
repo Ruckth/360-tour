@@ -213,10 +213,10 @@ describe("start admin route helpers and server logic", () => {
     expect(resolveAdminRedirect(pathname)).toEqual(expected);
   });
 
-  it("redirects /admin/marketing/access to Settings Team tab", () => {
+  it("redirects /admin/marketing/access to Settings Team with the Marketing roles selected", () => {
     expect(resolveMarketingAccessRedirect()).toEqual({
       to: "/admin/settings",
-      search: { tab: "team" },
+      search: { tab: "team", people: "marketing" },
       replace: true,
       statusCode: 307,
     });
@@ -406,7 +406,7 @@ describe("start admin route lifecycle with mocked TanStack Start runtime", () =>
     expect(accessRoute.options.beforeLoad).toBeUndefined();
     expect(accessRoute.options.component().props).toMatchObject({
       to: "/admin/settings",
-      search: { tab: "team" },
+      search: { tab: "team", people: "marketing" },
       replace: true,
     });
 

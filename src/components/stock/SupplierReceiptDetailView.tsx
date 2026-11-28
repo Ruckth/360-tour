@@ -5,7 +5,7 @@ import type { FunctionReturnType } from "convex/server";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import { ArrowLeft, ExternalLink, Flag, PackagePlus, Pencil, RotateCcw, Undo2 } from "lucide-react";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { SkeletonRows } from "@/components/admin/admin-bulk";
 import { STOCK_TABLE } from "./stock-table";
 import { useAdminBranch } from "@/components/admin/branch/branch-context";
@@ -43,6 +43,7 @@ import {
   rejectReasonLabel,
   returnOutcomeLabel,
   sanitizeStockReturnTo,
+  stockDetailHref,
   stockReturnLabel,
 } from "./stock-format";
 import { StockStaleBanner, useStockDirtyGuard } from "./StockFormGuard";
@@ -84,6 +85,9 @@ export function SupplierReceiptDetailView({ receiptId }: { receiptId: string }) 
   const [followUpAdjustment, setFollowUpAdjustment] = useState<AdjustmentRow | null>(null);
   const [receivingMissing, setReceivingMissing] = useState(false);
   const [replacementReturn, setReplacementReturn] = useState<Pick<AdjustmentRow, "_id" | "variantId" | "item" | "quantity"> | null>(null);
+  const actionOpener = useRef<HTMLElement | null>(null);
+  const resumeActionFocus = useRef(false);
+  const receiptHeading = useRef<HTMLHeadingElement>(null);
 
   const focusedLine = detail?.receipt.branchId === branch?.id && focusMovement
     ? detail?.lines.find(line => line.movementId === focusMovement)
@@ -98,7 +102,7 @@ export function SupplierReceiptDetailView({ receiptId }: { receiptId: string }) 
   if (!branch) return null;
   if (detail === undefined) return <SkeletonRows label="Loading supplier receipt" rows={5} />;
 
-  const { receipt, lines, holds, permissions } = detail;
+  const { receipt, lines, holds, permissions, sourceOrderDueUnits } = detail;
 
   if (receipt.branchId !== branch.id) {
     const targetBranch = branches.find((b) => b.id === receipt.branchId);
@@ -130,10 +134,32 @@ export function SupplierReceiptDetailView({ receiptId }: { receiptId: string }) 
     ? `/admin/stock/purchasing/orders/${receipt.orderId}`
     : "/admin/stock/purchasing?tab=receipts";
   const defaultBackLabel = receipt.orderId ? (receipt.orderReference ? `Order ${receipt.orderReference}` : "Order") : "Receipts";
-  const currentReceiptHref = `/admin/stock/purchasing/receipts/${receipt._id}`;
+  const currentReceiptHref = stockDetailHref(`/admin/stock/purchasing/receipts/${receipt._id}`, returnTo);
+  const sourceOrderHref = returnTo?.split("?")[0] === defaultBackHref ? returnTo : stockDetailHref(defaultBackHref, currentReceiptHref);
   // Cost columns and the receipt total are for buyers and stock leads; the server omits them for everyone else.
   const seeCost = permissions.buyer || permissions.lead;
   const variance = invoiceVariance(receipt.invoiceTotal, receipt.acceptedValue);
+
+  function openAdjustment(opener: HTMLElement, open: () => void) {
+    actionOpener.current = opener;
+    resumeActionFocus.current = false;
+    open();
+  }
+
+  function closeAdjustment(close: () => void) {
+    resumeActionFocus.current = true;
+    close();
+  }
+
+  function restoreAdjustmentFocus(event: Event) {
+    if (!actionOpener.current) return;
+    event.preventDefault();
+    if (!resumeActionFocus.current) return;
+    const opener = actionOpener.current;
+    actionOpener.current = null;
+    resumeActionFocus.current = false;
+    (opener.isConnected ? opener : receiptHeading.current)?.focus();
+  }
 
   return (
     <div className="grid gap-5">
@@ -154,7 +180,7 @@ export function SupplierReceiptDetailView({ receiptId }: { receiptId: string }) 
             <span className="text-xs text-muted-foreground">· {branch.name}</span>
           </div>
           <div className="flex flex-wrap items-center gap-2.5">
-            <h2 className="font-mono text-xl font-semibold text-foreground">{receipt.reference}</h2>
+            <h2 ref={receiptHeading} tabIndex={-1} className="font-mono text-xl font-semibold text-foreground">{receipt.reference}</h2>
             <StatusBadge {...RECEIPT_KIND_META[receipt.kind]} />
           </div>
           <p className="text-xs text-muted-foreground">
@@ -162,6 +188,17 @@ export function SupplierReceiptDetailView({ receiptId }: { receiptId: string }) 
             {receipt.deliveryReference ? `Delivery ref ${receipt.deliveryReference} · ` : ""}
             Posted by {receipt.actorLabel} · {staffDateTime(receipt.createdAt)}
           </p>
+          <dl aria-label="Receipt quantities" className="flex flex-wrap gap-x-5 gap-y-1 text-xs">
+            <div className="flex items-baseline gap-1.5"><dt className="text-muted-foreground">Accepted</dt><dd className="font-semibold tabular-nums">{receipt.acceptedUnits}</dd></div>
+            <div className="flex items-baseline gap-1.5"><dt className="text-muted-foreground">Rejected</dt><dd className="font-semibold tabular-nums">{receipt.rejectedUnits}</dd></div>
+            {receipt.heldUnits > 0 ? <div className="flex items-baseline gap-1.5"><dt className="text-muted-foreground">Held</dt><dd className="font-semibold tabular-nums">{receipt.heldUnits}</dd></div> : null}
+            {receipt.orderId ? <div className="flex items-baseline gap-1.5"><dt className="text-muted-foreground">Order due now</dt><dd className="font-semibold tabular-nums">{sourceOrderDueUnits ?? "Unavailable"}</dd></div> : null}
+          </dl>
+          {receipt.orderId ? (
+            <Link href={sourceOrderHref} className="flex min-h-11 w-fit items-center text-sm font-medium underline underline-offset-4 sm:min-h-7">
+              {receipt.orderReference ? `Source order ${receipt.orderReference}` : "Source order"}
+            </Link>
+          ) : null}
           {seeCost && (receipt.acceptedValue !== undefined || receipt.invoiceTotal !== undefined) ? (
             <p className="text-sm tabular-nums text-foreground">
               Receipt total <strong>{formatSatang(receipt.acceptedValue ?? 0)}</strong>
@@ -270,6 +307,11 @@ export function SupplierReceiptDetailView({ receiptId }: { receiptId: string }) 
                           Rejected: {[rejectReasonLabel(line.rejectReasonCode), line.rejectReason].filter(Boolean).join(" · ")}
                         </span>
                       ) : null}
+                      {line.movementId ? (
+                        <Link href={`/admin/stock/activity?${new URLSearchParams({ movementId: line.movementId, variantId: line.variantId, returnTo: stockDetailHref(`/admin/stock/purchasing/receipts/${receipt._id}?focusMovement=${line.movementId}`, returnTo) })}`} className="flex min-h-11 w-fit items-center text-xs font-medium underline underline-offset-4 sm:min-h-7">
+                          Stock movement
+                        </Link>
+                      ) : null}
                     </td>
                     <td data-label="Accepted" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled, "font-mono tabular-nums lg:text-right")}>
                       {line.accepted}
@@ -300,7 +342,7 @@ export function SupplierReceiptDetailView({ receiptId }: { receiptId: string }) 
                             type="button"
                             variant="outline"
                             size="sm"
-                            onClick={() => setCorrectingLineId(line._id)}
+                            onClick={event => openAdjustment(event.currentTarget, () => setCorrectingLineId(line._id))}
                             title="We counted or posted wrong"
                           >
                             <RotateCcw aria-hidden className="size-3.5" />
@@ -310,7 +352,7 @@ export function SupplierReceiptDetailView({ receiptId }: { receiptId: string }) 
                             type="button"
                             variant="outline"
                             size="sm"
-                            onClick={() => setReturningLineId(line._id)}
+                            onClick={event => openAdjustment(event.currentTarget, () => setReturningLineId(line._id))}
                             title="Goods go back to the supplier"
                           >
                             <Undo2 aria-hidden className="size-3.5" />
@@ -410,7 +452,7 @@ export function SupplierReceiptDetailView({ receiptId }: { receiptId: string }) 
                             type="button"
                             variant="outline"
                             size="sm"
-                            onClick={() => setReversingAdjustment(adj)}
+                            onClick={event => openAdjustment(event.currentTarget, () => setReversingAdjustment(adj))}
                           >
                             Reverse return
                           </Button>
@@ -491,13 +533,14 @@ export function SupplierReceiptDetailView({ receiptId }: { receiptId: string }) 
       {correctingLine ? (
         <CorrectReceiptLineSheet
           line={correctingLine}
-          onClose={() => setCorrectingLineId(null)}
+          onClose={() => closeAdjustment(() => setCorrectingLineId(null))}
+          onCloseAutoFocus={restoreAdjustmentFocus}
           onSwitchToReturn={() => {
             setCorrectingLineId(null);
             setReturningLineId(correctingLine._id);
           }}
           onDone={(resolvedReport) => {
-            setCorrectingLineId(null);
+            closeAdjustment(() => setCorrectingLineId(null));
             show(
               resolvedReport
                 ? "Receipt quantity correction posted and reconciliation report resolved."
@@ -511,14 +554,16 @@ export function SupplierReceiptDetailView({ receiptId }: { receiptId: string }) 
       {returningLine ? (
         <ReturnToSupplierSheet
           line={returningLine}
-          onClose={() => setReturningLineId(null)}
+          onClose={() => closeAdjustment(() => setReturningLineId(null))}
+          onCloseAutoFocus={restoreAdjustmentFocus}
           onDone={({ adjustmentId, outcome, quantity }) => {
-            setReturningLineId(null);
             if (outcome === "replacement_expected" && permissions.directOrder) {
+              setReturningLineId(null);
               show("Supplier return posted. Create the replacement order.", "success");
               setReplacementReturn({ _id: adjustmentId, variantId: returningLine.variantId, item: returningLine.item, quantity });
               return;
             }
+            closeAdjustment(() => setReturningLineId(null));
             show(
               outcome === "replacement_expected"
                 ? "Supplier return posted. Ask a buyer to raise the replacement order from this receipt."
@@ -546,9 +591,10 @@ export function SupplierReceiptDetailView({ receiptId }: { receiptId: string }) 
       {reversingAdjustment ? (
         <ReverseReturnSheet
           adjustment={reversingAdjustment}
-          onClose={() => setReversingAdjustment(null)}
+          onClose={() => closeAdjustment(() => setReversingAdjustment(null))}
+          onCloseAutoFocus={restoreAdjustmentFocus}
           onDone={() => {
-            setReversingAdjustment(null);
+            closeAdjustment(() => setReversingAdjustment(null));
             show("Supplier return reversed.", "success");
           }}
         />

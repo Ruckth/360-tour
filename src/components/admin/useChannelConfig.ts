@@ -8,7 +8,7 @@ import { errorText } from "@/lib/staff-bookings";
 type ChannelConfigState =
   | { state: "loading" }
   | { state: "error"; message: string }
-  | { state: "ready"; channels: ChannelConfigStatus };
+  | { state: "ready"; channels: ChannelConfigStatus; checkedAt: number };
 
 export type ChannelConfig = ChannelConfigState & { retry: () => void };
 
@@ -37,7 +37,7 @@ export function useChannelConfig(): ChannelConfig {
         if (!response.ok || !body.channels) {
           setStatus({ state: "error", message: body.error ?? `Request failed (${response.status})` });
         } else {
-          setStatus({ state: "ready", channels: body.channels });
+          setStatus({ state: "ready", channels: body.channels, checkedAt: Date.now() });
         }
       } catch (err) {
         if (!cancelled) setStatus({ state: "error", message: errorText(err, "Could not check the website configuration.") });

@@ -5,8 +5,8 @@ import { Canvas, useThree, type ThreeEvent } from "@react-three/fiber";
 import { useMutation } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Doc } from "convex/_generated/dataModel";
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Eye, Plus, RotateCw, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Crosshair, Eye, Plus, RotateCw, Trash2, Undo2 } from "lucide-react";
+import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
 import { Raycaster, SRGBColorSpace, TextureLoader, Vector2, type Mesh, type Texture } from "three";
 import { Hotspot } from "@/components/tour/Hotspot";
 import { RoomSphere } from "@/components/tour/RoomSphere";
@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
+import { useIsMobile } from "@/hooks/use-mobile";
 import {
   anglesToHotspotPosition,
   HOTSPOT_RADIUS,
@@ -30,6 +31,7 @@ type Room = Doc<"tourScenes">;
 type Draft = { key: number; id?: string; label: string; targetRoomSlug: string; position: HotspotPosition };
 type Marker = { key: number; label: string; targetRoomSlug: string; position: HotspotPosition };
 type PanoramaLoadState = "loading" | "ready" | "error";
+type EditingMode = "Look" | "Add" | "Move";
 
 /** Pointer travel (px) below which a press counts as a click, not a drag. */
 const CLICK_SLOP = 4;
@@ -72,6 +74,8 @@ export function HotspotEditorDialog({
     })),
   );
   const [drafts, setDrafts] = useState(initial);
+  const [previousDrafts, setPreviousDrafts] = useState<Draft[] | null>(null);
+  const [mode, setMode] = useState<EditingMode>("Look");
   const [nextKey, setNextKey] = useState(initial.length);
   const [selectedKey, setSelectedKey] = useState<number | null>(null);
   const [preview, setPreview] = useState(false);
@@ -81,6 +85,12 @@ export function HotspotEditorDialog({
   const listButtonRefs = useRef<Map<number, HTMLButtonElement | null>>(new Map());
   const returnFocusKeyRef = useRef<number | null>(null);
   const panoramaSurfaceRef = useRef<HTMLDivElement>(null);
+  const centerPositionRef = useRef<(() => HotspotPosition | undefined) | null>(null);
+  const positionPanel = useRef<HTMLDivElement>(null);
+  const phone = useIsMobile(640);
+  useEffect(() => {
+    if (phone && selectedKey !== null) positionPanel.current?.scrollIntoView?.({ block: "nearest" });
+  }, [phone, selectedKey]);
 
   const dirty = JSON.stringify(drafts) !== JSON.stringify(initial);
   const selected = drafts.find((draft) => draft.key === selectedKey);
@@ -99,8 +109,10 @@ export function HotspotEditorDialog({
     );
   }, []);
 
-  const change = (key: number, patch: Partial<Draft>) =>
+  function change(key: number, patch: Partial<Draft>, remember = true) {
+    if (remember) setPreviousDrafts(drafts);
     setDrafts((current) => current.map((draft) => (draft.key === key ? { ...draft, ...patch } : draft)));
+  }
 
   /** Selects a hotspot (or none), dropping a just-added one that was left blank. */
   function select(key: number | null, options?: { restoreListFocus?: boolean }) {
@@ -119,6 +131,7 @@ export function HotspotEditorDialog({
   }
 
   function add(position: HotspotPosition) {
+    setPreviousDrafts(drafts);
     const targetRoomSlug = targets.length === 1 ? targets[0].slug : "";
     const label = targets.length === 1 ? targets[0].name : "";
     setDrafts((current) => [...current.filter((draft) => !isEmpty(draft)), { key: nextKey, label, targetRoomSlug, position }]);
@@ -128,9 +141,17 @@ export function HotspotEditorDialog({
   }
 
   function remove(key: number) {
+    setPreviousDrafts(drafts);
     setDrafts((current) => current.filter((draft) => draft.key !== key));
     setSelectedKey(null);
     returnFocusKeyRef.current = null;
+  }
+
+  function undo() {
+    if (!previousDrafts) return;
+    setDrafts(previousDrafts);
+    setPreviousDrafts(null);
+    if (!previousDrafts.some((draft) => draft.key === selectedKey)) setSelectedKey(null);
   }
 
   function togglePreview() {
@@ -185,14 +206,16 @@ export function HotspotEditorDialog({
         ? `Could not load ${viewRoom.name} panorama. Your hotspot drafts are preserved.`
         : preview
           ? `Preview${viewRoom._id === room._id ? "" : ` · ${viewRoom.name}`}: click a hotspot to walk to its room, like guests do.`
-          : "Drag to look around. Click the panorama to add a hotspot, drag or nudge it to move, or choose one from the hotspot list.";
+          : phone
+            ? mode === "Add" ? "Aim the crosshair, then tap Add here." : mode === "Move" ? "Drag a hotspot to move it, or edit its position below." : "Drag to look around. Choose Add or Move to change a hotspot."
+            : "Drag to look around. Click the panorama to add a hotspot, drag or nudge it to move, or choose one from the hotspot list.";
   const selectedAngles = selected ? hotspotPositionToAngles(selected.position) : null;
   const targetNameFor = (slug: string) => targets.find((target) => target.slug === slug)?.name ?? "";
 
   return (
     <Dialog open onOpenChange={(open) => !open && void requestClose()}>
       <DialogContent
-        className="flex h-[90dvh] max-w-6xl flex-col gap-0 overflow-hidden p-0"
+        className="flex h-[90dvh] max-w-6xl flex-col gap-0 overflow-hidden p-0 max-sm:h-dvh max-sm:max-h-dvh max-sm:rounded-none max-sm:[&>[data-slot=dialog-close]]:hidden"
         onCloseAutoFocus={onCloseAutoFocus}
         onEscapeKeyDown={(event) => {
           if (selectedKey === null) return;
@@ -200,7 +223,7 @@ export function HotspotEditorDialog({
           select(null, { restoreListFocus: true });
         }}
       >
-        <div className="flex flex-wrap items-center gap-3 border-b border-border py-3 pl-4 pr-12">
+        <div className="flex flex-wrap items-center gap-3 border-b border-border py-3 pl-4 pr-12 max-sm:px-3 max-sm:pt-[max(0.75rem,env(safe-area-inset-top))]">
           <div className="min-w-0 flex-1">
             <DialogTitle className="text-base">Hotspots · {room.name}</DialogTitle>
             <DialogDescription className="text-xs">{hint}</DialogDescription>
@@ -218,8 +241,21 @@ export function HotspotEditorDialog({
             Save hotspots
           </Button>
         </div>
+        {phone && !preview ? (
+          <div className="flex flex-wrap items-center gap-1 border-b border-border px-3 py-1.5" role="group" aria-label="Hotspot editing mode">
+            {(["Look", "Add", "Move"] as const).map((next) => (
+            <Button key={next} size="sm" type="button" className="min-h-11" variant={mode === next ? "secondary" : "ghost"} aria-pressed={mode === next} onClick={() => setMode(next)}>
+                {next}
+              </Button>
+            ))}
+            <Button type="button" size="sm" variant="ghost" className="ms-auto min-h-11" onClick={undo} disabled={!previousDrafts || save.saving}>
+              <Undo2 aria-hidden className="size-4" />
+              Undo
+            </Button>
+          </div>
+        ) : null}
         <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-          <div ref={panoramaSurfaceRef} tabIndex={-1} aria-label="Panorama preview" className="relative min-h-56 flex-1 touch-none select-none bg-black">
+          <div ref={panoramaSurfaceRef} tabIndex={-1} aria-label="Panorama preview" className="relative min-h-32 flex-1 touch-none select-none bg-black sm:min-h-56">
             <Canvas resize={{ offsetSize: true }} dpr={[1, 1.5]} gl={{ antialias: false }} style={{ position: "absolute", inset: 0 }}>
               <TourCamera />
               <PanoramaScene
@@ -229,13 +265,17 @@ export function HotspotEditorDialog({
                 markers={preview ? markers.filter((marker) => rooms.some((other) => other.slug === marker.targetRoomSlug)) : markers}
                 preview={preview}
                 selectedKey={selectedKey}
+                centerPositionRef={centerPositionRef}
+                allowPointAdd={!phone}
+                allowMove={!phone || mode === "Move"}
                 onAdd={add}
-                onMove={(key, position) => change(key, { position })}
+                onMoveStart={() => setPreviousDrafts(drafts)}
+                onMove={(key, position) => change(key, { position }, false)}
                 onSelect={(key) => select(key)}
                 onNavigate={setViewSlug}
                 onStatusChange={handleTextureStatus}
               >
-                {selected && !preview && panoramaState === "ready" ? (
+                {selected && !phone && !preview && panoramaState === "ready" ? (
                   <Html position={selected.position} zIndexRange={ABOVE_MARKERS}>
                     <HotspotForm
                       draft={selected}
@@ -248,6 +288,23 @@ export function HotspotEditorDialog({
                 ) : null}
               </PanoramaScene>
             </Canvas>
+            {phone && !preview && mode === "Add" && panoramaState === "ready" ? (
+              <div className="pointer-events-none absolute inset-0 z-10">
+                <Crosshair aria-hidden className="absolute start-1/2 top-1/2 size-7 -translate-x-1/2 -translate-y-1/2 text-white drop-shadow-[0_1px_3px_black]" />
+                <Button
+                  type="button"
+                  size="sm"
+                  className="pointer-events-auto absolute inset-x-3 bottom-3 mx-auto min-h-11 w-fit"
+                  onClick={() => {
+                    const position = centerPositionRef.current?.();
+                    if (position) add(position);
+                  }}
+                >
+                  <Plus aria-hidden className="size-4" />
+                  Add here
+                </Button>
+              </div>
+            ) : null}
             {panoramaState === "loading" ? (
               <div
                 role="status"
@@ -293,13 +350,13 @@ export function HotspotEditorDialog({
           {!preview ? (
             <aside
               aria-label="Hotspot list"
-              className="flex max-h-64 shrink-0 flex-col gap-3 overflow-y-auto border-t border-border bg-card p-3 md:max-h-none md:w-72 md:border-l md:border-t-0"
+              className="flex max-h-[44dvh] shrink-0 flex-col gap-3 overflow-y-auto border-t border-border bg-card p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:max-h-none md:w-72 md:border-l md:border-t-0"
             >
               <div className="flex items-center justify-between gap-2">
                 <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   Hotspots ({drafts.length})
                 </h3>
-                <Button
+                {!phone || panoramaState === "error" ? <Button
                   type="button"
                   size="sm"
                   variant="outline"
@@ -308,11 +365,11 @@ export function HotspotEditorDialog({
                 >
                   <Plus aria-hidden className="size-3.5" />
                   Add hotspot
-                </Button>
+                </Button> : null}
               </div>
               {drafts.length === 0 ? (
                 <p className="text-xs text-muted-foreground">
-                  No hotspots yet. Click the panorama or use Add hotspot to place one.
+                  {phone ? "No hotspots yet. Choose Add to place one." : "No hotspots yet. Click the panorama or use Add hotspot to place one."}
                 </p>
               ) : (
                 <ul className="grid gap-1.5">
@@ -347,7 +404,7 @@ export function HotspotEditorDialog({
                 </ul>
               )}
               {selected && selectedAngles ? (
-                <div className="grid gap-2.5 border-t border-border pt-3">
+                <div ref={positionPanel} className="grid gap-2.5 border-t border-border pt-3">
                   <div className="flex items-center justify-between gap-2">
                     <p className="min-w-0 break-words text-xs font-semibold text-foreground [overflow-wrap:anywhere]">
                       Position · {selected.label.trim() || "New hotspot"}
@@ -362,7 +419,7 @@ export function HotspotEditorDialog({
                       Close
                     </Button>
                   </div>
-                  {panoramaState !== "ready" ? (
+                  {phone || panoramaState !== "ready" ? (
                     <HotspotForm
                       draft={selected}
                       targets={targets}
@@ -474,7 +531,11 @@ function PanoramaScene({
   markers,
   preview,
   selectedKey,
+  centerPositionRef,
+  allowPointAdd,
+  allowMove,
   onAdd,
+  onMoveStart,
   onMove,
   onSelect,
   onNavigate,
@@ -486,7 +547,11 @@ function PanoramaScene({
   markers: Marker[];
   preview: boolean;
   selectedKey: number | null;
+  centerPositionRef: RefObject<(() => HotspotPosition | undefined) | null>;
+  allowPointAdd: boolean;
+  allowMove: boolean;
   onAdd: (position: HotspotPosition) => void;
+  onMoveStart: () => void;
   onMove: (key: number, position: HotspotPosition) => void;
   onSelect: (key: number | null) => void;
   onNavigate: (roomSlug: string) => void;
@@ -500,6 +565,12 @@ function PanoramaScene({
   // The marker drag in progress, so unmounting mid-drag removes its window listeners.
   const endDrag = useRef<(() => void) | null>(null);
   useEffect(() => () => endDrag.current?.(), []);
+  useImperativeHandle(centerPositionRef, () => () => {
+    if (!sphere.current) return undefined;
+    raycaster.setFromCamera(new Vector2(0, 0), camera);
+    const hit = raycaster.intersectObject(sphere.current)[0];
+    return hit ? toHotspotPosition(hit.point.toArray()) : undefined;
+  }, [camera, raycaster]);
 
   useEffect(() => {
     let cancelled = false;
@@ -531,7 +602,7 @@ function PanoramaScene({
 
   // Clicks on hotspots and the form bubble here too; only bare-panorama clicks (not drags) count.
   function clickPanorama(event: ThreeEvent<MouseEvent>) {
-    if (preview || event.delta > CLICK_SLOP || event.nativeEvent.target !== gl.domElement) return;
+    if (preview || !allowPointAdd || event.delta > CLICK_SLOP || event.nativeEvent.target !== gl.domElement) return;
     if (selectedKey !== null) onSelect(null);
     else onAdd(toHotspotPosition(event.point.toArray()));
   }
@@ -542,8 +613,11 @@ function PanoramaScene({
     const start = { x: event.clientX, y: event.clientY };
     let dragging = false;
     const move = (moveEvent: PointerEvent) => {
-      dragging ||= Math.hypot(moveEvent.clientX - start.x, moveEvent.clientY - start.y) > CLICK_SLOP;
-      if (!dragging || !sphere.current) return;
+      if (!dragging && Math.hypot(moveEvent.clientX - start.x, moveEvent.clientY - start.y) > CLICK_SLOP) {
+        dragging = true;
+        if (allowMove) onMoveStart();
+      }
+      if (!dragging || !allowMove || !sphere.current) return;
       const rect = gl.domElement.getBoundingClientRect();
       const pointer = new Vector2(((moveEvent.clientX - rect.left) / rect.width) * 2 - 1, -((moveEvent.clientY - rect.top) / rect.height) * 2 + 1);
       raycaster.setFromCamera(pointer, camera);

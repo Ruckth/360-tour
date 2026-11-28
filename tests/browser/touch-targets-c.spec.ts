@@ -167,11 +167,40 @@ for (const [size, viewport] of Object.entries({
       await expect(page.getByRole("combobox", { name: "Inspect date" })).toHaveValue("2026-11-06");
       await assertTargets(page);
     });
-    test("overflow reveals Email and Channels", async ({ page }) => {
+    test(size === "phone" ? "the section picker opens Email and Channels by touch" : "overflow reveals Email and Channels", async ({ page }) => {
       await page.goto(
         "/tests/browser/staff-roles.html?view=settings&tab=business",
       );
       await page.getByLabel("Business name", { exact: true }).waitFor();
+      if (size === "phone") {
+        let current = "Business";
+        for (const [name, panel] of [["Email", "Email"], ["Channels", "Messaging channels"]]) {
+          const picker = page.getByRole("button", { name: `Settings sections: ${current}`, exact: true });
+          const trigger = (await picker.boundingBox())!;
+          expect(trigger.width).toBeGreaterThanOrEqual(44);
+          expect(trigger.height).toBeGreaterThanOrEqual(44);
+          await picker.tap();
+
+          const sheet = page.getByRole("dialog", { name: "Settings sections", exact: true });
+          const section = sheet.getByRole("button", { name, exact: true });
+          await expect(section).toBeInViewport({ ratio: 1 });
+          const target = (await section.boundingBox())!;
+          expect(target.width).toBeGreaterThanOrEqual(44);
+          expect(target.height).toBeGreaterThanOrEqual(44);
+          await section.tap();
+          await expect(sheet).toBeHidden();
+
+          // This fixture records navigation. Load the requested query to check the destination panel.
+          const body = page.locator("body");
+          await expect(body).toHaveAttribute("data-navigation", `/admin/settings?tab=${name.toLowerCase()}`);
+          const search = new URL((await body.getAttribute("data-navigation"))!, page.url()).searchParams;
+          search.set("view", "settings");
+          await page.goto(`/tests/browser/staff-roles.html?${search}`);
+          await expect(page.getByRole("region", { name: panel, exact: true })).toBeVisible();
+          current = name;
+        }
+        return;
+      }
       for (const name of ["Email", "Channels"]) {
         const tab = page.getByRole("tab", { name, exact: true });
         for (let step = 0; step < 4; step++) {

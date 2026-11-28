@@ -78,6 +78,22 @@ describe("Leads view", () => {
     expect(host.querySelector("table")?.className).not.toContain("min-w-");
   });
 
+  it("copies the selected lead email from its phone row", async () => {
+    const writeText = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
+    try {
+      await render();
+      const press = async (element: Element) => act(async () => {
+        for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) element.dispatchEvent(new MouseEvent(type, { bubbles: true }));
+      });
+      await press(host.querySelector('ul[aria-label="Leads"] [aria-label="Actions for lead guest@example.com"]')!);
+      await press([...document.querySelectorAll('[role="menuitem"]')].find((element) => element.textContent === "Copy email address")!);
+      expect(writeText).toHaveBeenCalledWith(lead.email);
+      expect(host.textContent).toContain("Email copied.");
+    } finally {
+      writeText.mockRestore();
+    }
+  });
+
   it("keeps an export and each deletion pending until its own request settles", async () => {
     const first = Promise.withResolvers<void>();
     const second = Promise.withResolvers<void>();

@@ -386,8 +386,8 @@ export function StockCountSheet({
           <>
             {useCompactGrid ? (
               <div className="overflow-hidden rounded-lg border border-border">
-                <table className="w-full text-left text-sm">
-                  <thead className="border-b border-border bg-muted/40 text-xs font-medium text-muted-foreground">
+                <table role="table" className="block w-full text-left text-sm sm:table">
+                  <thead className="hidden border-b border-border bg-muted/40 text-xs font-medium text-muted-foreground sm:table-header-group">
                     <tr>
                       <th scope="col" className="px-3 py-2">Item</th>
                       <th scope="col" className="w-24 px-2 py-2 text-right">Expected</th>
@@ -395,7 +395,7 @@ export function StockCountSheet({
                       <th scope="col" className="w-32 px-3 py-2 text-right">Variance</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-border">
+                  <tbody role="rowgroup" className="block divide-y divide-border sm:table-row-group">
                     {countableItems.map((item, idx) => {
                       const reviewed = reviewedByVariant[item.variantId] ?? { revision: item.revision, onHand: item.onHand };
                       const live = liveByVariant.get(item.variantId);
@@ -411,18 +411,19 @@ export function StockCountSheet({
                       const inputId = `count-qty-${item.variantId}`;
                       const errorId = `${inputId}-error`;
                       return (
-                        <tr key={item.variantId} className={cn(fieldError && "bg-destructive/5")}>
-                          <td className="px-3 py-1.5 align-middle">
-                            <span className="block truncate text-sm font-medium leading-tight text-foreground">
+                        <tr key={item.variantId} role="row" className={cn("grid grid-cols-3 items-end gap-x-2 gap-y-2 p-3 sm:table-row sm:p-0", fieldError && "bg-destructive/5")}>
+                          <td role="cell" className="col-span-full min-w-0 align-middle sm:px-3 sm:py-1.5">
+                            <span className="block wrap-anywhere text-sm font-medium leading-tight text-foreground">
                               {item.productName}
                             </span>
-                            <span className="block truncate text-xs leading-tight text-muted-foreground">
+                            <span className="block wrap-anywhere text-xs leading-tight text-muted-foreground">
                               {item.label}
                               {item.sku ? ` · ${item.sku}` : ""}
                             </span>
                             <FieldError id={errorId}>{fieldError}</FieldError>
                           </td>
-                          <td className="px-2 py-1.5 text-right align-middle font-mono text-xs tabular-nums text-muted-foreground">
+                          <td role="cell" className="min-w-0 self-center align-middle font-mono text-xs tabular-nums text-muted-foreground sm:px-2 sm:py-1.5 sm:text-right">
+                            <span className="mb-1 block font-sans sm:hidden">Expected</span>
                             {showExpected ? (
                               <>
                                 <strong className="text-foreground">{reviewed.onHand}</strong>
@@ -436,20 +437,22 @@ export function StockCountSheet({
                               <span aria-label="Hidden in blind count">—</span>
                             )}
                           </td>
-                          <td className="px-2 py-1.5 align-middle">
+                          <td role="cell" className="min-w-0 align-middle sm:px-2 sm:py-1.5">
+                            <Label htmlFor={inputId} className="mb-1 block text-xs sm:hidden">Counted</Label>
                             <NumberField
                               id={inputId}
                               aria-label={`Counted quantity for ${item.productName} ${item.label}`}
                               value={rawVal}
                               placeholder="0"
-                              className="h-8 text-sm"
+                              className="h-11 text-base sm:h-8 sm:text-sm"
                               aria-invalid={fieldError ? true : undefined}
                               aria-describedby={fieldError ? errorId : undefined}
                               onKeyDown={(event) => handleGridKeyDown(idx, event)}
                               onChange={(event) => handleQtyChange(item.variantId, event.target.value)}
                             />
                           </td>
-                          <td className="px-3 py-1.5 text-right align-middle">
+                          <td role="cell" className="min-w-0 self-center text-right align-middle sm:px-3 sm:py-1.5">
+                            <span className="mb-1 block text-xs text-muted-foreground sm:hidden">Variance</span>
                             {showExpected && delta !== null && parsedValue !== undefined ? (
                               <div className="inline-flex flex-col items-end gap-0.5">
                                 <VarianceBadge delta={delta} />

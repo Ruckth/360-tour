@@ -37,37 +37,37 @@ export function ServicesView({
     return localizeHref(`/services${search.size ? `?${search}` : ""}`, locale);
   };
   return (
-    <main className="mx-auto max-w-7xl px-5 py-16 md:px-8 md:py-24">
+    <section className="mx-auto max-w-7xl px-5 pb-12 pt-20 md:px-8 md:py-24" aria-labelledby="service-directory-title">
       <div className="max-w-2xl">
-        <h1 className="font-serif text-4xl font-semibold text-foreground md:text-5xl">
+        <h1 id="service-directory-title" className="font-serif text-4xl font-semibold text-foreground md:text-5xl">
           {t.title}
         </h1>
-        <p className="mt-4 leading-relaxed text-muted-foreground">{t.intro}</p>
+        <p className="mt-2 leading-relaxed text-muted-foreground md:mt-4">{t.intro}</p>
       </div>
       <form
         action={localizeHref("/services", locale)}
-        className="mt-8 flex flex-wrap items-end gap-3"
+        className="mt-4 flex items-end gap-2 md:mt-8 md:gap-3"
       >
         {category && <input type="hidden" name="category" value={category} />}
-        <label className="grid flex-1 gap-2 text-sm font-medium">
+        <label className="grid min-w-0 flex-1 gap-1.5 text-sm font-medium">
           {t.search}
           <input
             name="q"
             defaultValue={query}
             maxLength={100}
             placeholder={t.searchPlaceholder}
-            className="min-w-48 rounded-lg border border-border bg-background px-4 py-3 text-foreground focus-visible:outline-2 focus-visible:outline-primary"
+            className="min-h-11 min-w-0 rounded-lg border border-border bg-background px-3 text-foreground focus-visible:outline-2 focus-visible:outline-primary md:px-4"
           />
         </label>
-        <Button type="submit" size="lg">
+        <Button type="submit" className="h-11 min-h-11 md:px-6">
           {t.search}
         </Button>
       </form>
-      <nav aria-label={t.categories} className="mt-6 flex flex-wrap gap-2">
+      <nav aria-label={t.categories} className="mt-3 flex flex-wrap gap-2 md:mt-6">
         <Link
           href={href({ category: null, cursor: null })}
           aria-current={!category ? "page" : undefined}
-          className="rounded-full border border-border px-4 py-2 text-sm aria-[current=page]:bg-primary aria-[current=page]:text-primary-foreground"
+          className="inline-flex min-h-11 items-center rounded-full border border-border px-3 text-sm aria-[current=page]:bg-primary aria-[current=page]:text-primary-foreground"
         >
           {t.all}
         </Link>
@@ -76,7 +76,7 @@ export function ServicesView({
             key={item.name}
             href={href({ category: item.name, cursor: null })}
             aria-current={category === item.name ? "page" : undefined}
-            className="rounded-full border border-border px-4 py-2 text-sm aria-[current=page]:bg-primary aria-[current=page]:text-primary-foreground"
+            className="inline-flex min-h-11 items-center rounded-full border border-border px-3 text-sm aria-[current=page]:bg-primary aria-[current=page]:text-primary-foreground"
           >
             {item.name}
           </Link>
@@ -125,36 +125,46 @@ export function ServicesView({
         </div>
       ) : (
         <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {result.page.map((service) => (
-            <article
-              key={service.slug}
-              className="overflow-hidden rounded-xl border border-border bg-card"
-            >
-              {service.imageUrl && allowedImageUrl(service.imageUrl) && (
-                <div className="relative aspect-[16/10] bg-muted">
-                  <Image
-                    src={service.imageUrl}
-                    alt={service.name}
-                    fill
-                    sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
-                    className="object-cover"
+          {result.page.map((service) => {
+            // Use the same fragment in the page and URL, including for older slugs with spaces.
+            const anchor = `service-${encodeURIComponent(service.slug).replaceAll("~", "%7E").replaceAll("%", "~")}`;
+            return (
+              <article
+                key={service.slug}
+                id={anchor}
+                className="scroll-mt-24 overflow-hidden rounded-xl border border-border bg-card"
+              >
+                {service.imageUrl && allowedImageUrl(service.imageUrl) && (
+                  <div className="relative aspect-[16/10] bg-muted">
+                    <Image
+                      src={service.imageUrl}
+                      alt={service.name}
+                      fill
+                      sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+                      className="object-cover"
+                    />
+                  </div>
+                )}
+                <div className="flex flex-col gap-3 p-5">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    {service.category}
+                  </p>
+                  <h3 className="font-serif text-2xl font-semibold">
+                    {service.name}
+                  </h3>
+                  <p className="text-sm leading-relaxed text-muted-foreground">
+                    {service.description}
+                  </p>
+                  <ServiceCardBooking
+                    service={service}
+                    locale={locale}
+                    t={t}
+                    returnTo={`${href({ cursor, categoryAfter })}#${anchor}`}
                   />
                 </div>
-              )}
-              <div className="flex flex-col gap-3 p-5">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  {service.category}
-                </p>
-                <h3 className="font-serif text-2xl font-semibold">
-                  {service.name}
-                </h3>
-                <p className="text-sm leading-relaxed text-muted-foreground">
-                  {service.description}
-                </p>
-                <ServiceCardBooking service={service} locale={locale} t={t} />
-              </div>
-            </article>
-          ))}
+              </article>
+            );
+          })}
         </div>
       )}
       {result && (
@@ -171,6 +181,6 @@ export function ServicesView({
           )}
         </div>
       )}
-    </main>
+    </section>
   );
 }

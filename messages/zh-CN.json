@@ -560,6 +560,7 @@
     }
   },
   "Tour": {
+    "scene": "场景",
     "detail": {
       "available": "显示高清画面",
       "loading": "正在加载高清画面…",

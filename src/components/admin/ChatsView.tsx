@@ -13,8 +13,10 @@ import {
   adminStatusTabs,
   emptyFilterOptions,
   channelFilterOptions,
+  assignmentOptions,
+  assignmentTabs,
+  type AssignmentFilter,
   FILTER_DEFAULTS,
-  type FilterParam,
   readOption,
   dateTimeInputToMillis,
   dateTimeBadgeLabel,
@@ -28,8 +30,7 @@ import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import { isChatSessionActive } from "convex/shared/chatPresence";
 import { useMutation, usePaginatedQuery, useQueries, useQuery } from "convex/react";
-import { useRouter, useSearchParams } from "@/platform/navigation";
-import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState, type ReactNode } from "react";
 import { RemovableBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -44,6 +45,7 @@ import { SegmentedTabs } from "@/components/admin/SegmentedTabs";
 import { EmptyState, SkeletonRows } from "@/components/admin/admin-bulk";
 import { sourceLabel } from "@/components/admin/labels";
 import { TONES } from "@/components/admin/status-tones";
+import { useAdminChatNavigation } from "./useAdminChatNavigation";
 import { useAdminReplyComposer } from "@/components/admin/useAdminReplyComposer";
 import type { AdminFactProperty } from "@/components/admin/business-facts-form";
 import {
@@ -118,42 +120,11 @@ function useLatestDefined<T>(value: T | undefined, resetKey: string) {
 }
 
 export function ChatsView() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const navigationQueryRef = useRef(searchParams.toString());
-  useEffect(() => {
-    navigationQueryRef.current = searchParams.toString();
-  }, [searchParams]);
   const now = usePresenceClock();
   const presenceMinute = Math.floor(now / 60_000) * 60_000;
   const largeViewport = useMediaQuery("(min-width: 1024px)");
   const isLargeViewport = largeViewport === true;
-  // Filters and the open chat live in the URL so views can be shared and deep-linked (?session=<id>).
-  const leaveReply = useRef<() => Promise<boolean>>(async () => true);
-  const updateParams = useCallback(
-    (patch: Partial<Record<FilterParam | "session", string | null>>) => {
-      // Compose rapid filter changes against the latest requested URL, including an uncommitted navigation.
-      const params = new URLSearchParams(navigationQueryRef.current);
-      // A filter change must not leave a conversation from the previous queue open.
-      // Search is the exception: typing in it keeps the open chat (and its reply draft) where it is.
-      if (!Object.hasOwn(patch, "session") && Object.keys(patch).some((key) => key in FILTER_DEFAULTS && key !== "q"))
-        params.delete("session");
-      for (const [key, value] of Object.entries(patch)) {
-        const fallback = key in FILTER_DEFAULTS ? FILTER_DEFAULTS[key as FilterParam] : "";
-        if (!value || value === fallback) params.delete(key);
-        else params.set(key, value);
-      }
-      const query = params.toString();
-      const commit = () => {
-        navigationQueryRef.current = query;
-        router.replace(`/admin/chats${query ? `?${query}` : ""}`, { scroll: false });
-      };
-      if (params.get("session") !== new URLSearchParams(navigationQueryRef.current).get("session")) {
-        void leaveReply.current().then(leave => { if (leave) commit(); });
-      } else commit();
-    },
-    [router],
-  );
+  const { searchParams, isCurrentQuery, setLeaveReply, selectedSessionId, updateParams, selectSession, openQueueSession, closeQueueSession, restoreQueueFocus } = useAdminChatNavigation(largeViewport === false);
   const adminStatus = readOption(searchParams.get("state"), adminStatusOptions, FILTER_DEFAULTS.state);
   // Older Done links omitted activity because All used to be the default.
   const status = readOption(
@@ -163,6 +134,7 @@ export function ChatsView() {
   );
   const emptyFilter = readOption(searchParams.get("empty"), emptyFilterOptions, FILTER_DEFAULTS.empty);
   const channelFilter = readOption(searchParams.get("channel"), channelFilterOptions, FILTER_DEFAULTS.channel);
+  const assignment = readOption(searchParams.get("assignment"), assignmentOptions, FILTER_DEFAULTS.assignment);
   const messageStartAt = searchParams.get("from") ?? "";
   const messageEndAt = searchParams.get("to") ?? "";
   const setStatus = (value: SessionStatus) => updateParams({ view: value });
@@ -171,6 +143,7 @@ export function ChatsView() {
   const setQueue = (value: InboxQueue) => updateParams(queueParams(value));
   const setEmptyFilter = (value: EmptyChatFilter) => updateParams({ empty: value });
   const setChannelFilter = (value: SessionChannelFilter) => updateParams({ channel: value });
+  const setAssignment = (value: AssignmentFilter) => updateParams({ assignment: value });
   const setMessageStartAt = (value: string) => updateParams({ from: value });
   const setMessageEndAt = (value: string) => updateParams({ to: value });
   // Typing stays local; the URL follows after a short pause.
@@ -180,14 +153,9 @@ export function ChatsView() {
   const [pageCursors, setPageCursors] = useState<Array<string | null>>([null]);
   const [pageDepth, setPageDepth] = useState(1);
   const [retryKeys, setRetryKeys] = useState<Record<number, string>>({});
-  const selectedSessionId = searchParams.get("session") as Id<"conversations"> | null;
   const [incomingSessionId, setIncomingSessionId] = useState(() =>
     !searchParams.has("view") && !searchParams.has("state") ? selectedSessionId : null,
   );
-  function selectSession(sessionId: Id<"conversations"> | null) {
-    if (sessionId === selectedSessionId) return;
-    updateParams({ session: sessionId });
-  }
   // Saved answers are retired: a guest question can seed a draft business fact instead.
   const [factTarget, setFactTarget] = useState<FactFormTarget | null>(null);
   const factProperties = useQuery(api.catalog.properties.adminList, factTarget ? {} : "skip") as
@@ -218,6 +186,7 @@ export function ChatsView() {
     urlSearchQuery.trim(),
     emptyFilter,
     channelFilter,
+    assignment,
     messageStartAt,
     messageEndAt,
   ].join(":");
@@ -241,13 +210,14 @@ export function ChatsView() {
         adminStatus,
         empty: emptyFilter,
         channel: channelFilter,
+        ...(assignment === "all" ? {} : { assignment }),
         ...(queryText ? { searchQuery: queryText } : {}),
         ...(parsedMessageStartAt === undefined ? {} : { messageStartAt: parsedMessageStartAt }),
         ...(parsedMessageEndAt === undefined ? {} : { messageEndAt: parsedMessageEndAt }),
         ...(status === "active" || status === "inactive" ? { now: presenceMinute } : {}),
       },
     }]),
-  ), [invalidMessageDateRange, pageCursors, retryKeys, status, adminStatus, emptyFilter, channelFilter, queryText, parsedMessageStartAt, parsedMessageEndAt, presenceMinute]);
+  ), [invalidMessageDateRange, pageCursors, retryKeys, status, adminStatus, emptyFilter, channelFilter, assignment, queryText, parsedMessageStartAt, parsedMessageEndAt, presenceMinute]);
   const listResults = useQueries(listRequests) as Record<string, SessionListResult | Error | undefined>;
   const firstPage = listResults["0"];
   const { sessions, lastPage, failedPage, replacementCursors, loadingOlder } = useMemo(() => {
@@ -308,7 +278,7 @@ export function ChatsView() {
   ) as TranscriptPaginationResult;
   const sessionDetail = useLatestDefined(liveSessionDetail, selectedSessionId ?? "none");
   const reply = useAdminReplyComposer(selectedSessionId, sessionDetail?.session.latestGuestMessageId);
-  useEffect(() => { leaveReply.current = reply.confirmLeave; }, [reply.confirmLeave]);
+  useEffect(() => { setLeaveReply(reply.confirmLeave); }, [reply.confirmLeave, setLeaveReply]);
   const unqualifiedDeepLink =
     Boolean(selectedSessionId) &&
     incomingSessionId === selectedSessionId &&
@@ -318,7 +288,7 @@ export function ChatsView() {
   if (!unqualifiedDeepLink && incomingSessionId) setIncomingSessionId(null);
   useEffect(() => {
     // Links from staff alerts and Missing Information have no queue. Open their actual conversation.
-    if (!unqualifiedDeepLink || !sessionDetail?.session || navigationQueryRef.current !== searchParams.toString())
+    if (!unqualifiedDeepLink || !sessionDetail?.session || !isCurrentQuery(searchParams.toString()))
       return;
     const selectedStatus = sessionDetail.session.adminStatus ?? "open";
     if (selectedStatus === "open" && sessionDetail.session.needsReply) {
@@ -333,7 +303,7 @@ export function ChatsView() {
       state: selectedStatus === "open" ? "open" : "done",
       session: selectedSessionId,
     });
-  }, [incomingSessionId, unqualifiedDeepLink, sessionDetail, searchParams, selectedSessionId, updateParams]);
+  }, [incomingSessionId, unqualifiedDeepLink, sessionDetail, searchParams, selectedSessionId, updateParams, isCurrentQuery]);
   const transcriptMessages = useMemo(
     () => chronologicalTranscriptMessages(transcriptPagination.results),
     [transcriptPagination.results],
@@ -427,7 +397,7 @@ export function ChatsView() {
         {...detailProps}
         compact={compact}
         emptyList={!loadingSessions && failedPage === undefined && sessions.length === 0}
-        onBack={compact ? () => selectSession(null) : undefined}
+        onBack={compact ? () => void closeQueueSession() : undefined}
         actions={actions}
         replyAction={replyAction}
         actionError={actionError}
@@ -443,11 +413,11 @@ export function ChatsView() {
           selectedSession.latestGuestMessageId ?? sessionDetail?.session.latestGuestMessageId }}
         beforeLeave={reply.confirmLeave}
         onDeleted={() => {
-          if (navigationQueryRef.current === searchParams.toString()) selectSession(null);
+          if (isCurrentQuery(searchParams.toString())) selectSession(null);
         }}
         onStatusChanged={(nextStatus) => {
           // A completed mutation must not replace navigation requested while it was pending.
-          if (navigationQueryRef.current !== searchParams.toString()) return;
+          if (!isCurrentQuery(searchParams.toString())) return;
           if (nextStatus === "open") {
             updateParams({ ...queueParams("open"), session: selectedSession._id });
             return;
@@ -493,6 +463,7 @@ export function ChatsView() {
     adminStatus === "resolved" || adminStatus === "archived",
     emptyFilter !== "non_empty",
     channelFilter !== "all",
+    assignment !== "all",
     messageStartAt,
     messageEndAt,
   ].filter(Boolean).length;
@@ -519,6 +490,7 @@ export function ChatsView() {
                     q: null,
                     empty: null,
                     channel: null,
+                    assignment: null,
                     from: null,
                     to: null,
                     ...queueParams(queue),
@@ -583,7 +555,7 @@ export function ChatsView() {
       const messageId = session.latestGuestMessageId ?? (session.latestMessage?.role === "user" ? session.latestMessage._id : undefined);
       if (!messageId) return;
       void settleGuestMessage(session, messageId, () => {
-        if (status === "needs_reply" && navigationQueryRef.current === searchParams.toString()) {
+        if (status === "needs_reply" && isCurrentQuery(searchParams.toString())) {
           moveSelection(selectedIndex < sessions.length - 1 ? 1 : -1);
         }
       });
@@ -682,7 +654,7 @@ export function ChatsView() {
                       ) : null}
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent align="end" className="w-[24rem] max-w-[calc(100vw-2rem)] space-y-4">
+                  <PopoverContent align="end" className="max-h-[var(--radix-popover-content-available-height)] w-[24rem] max-w-[calc(100vw-2rem)] space-y-4 overflow-y-auto">
                     <p className="text-sm font-semibold text-foreground">Filters</p>
                     <div className="space-y-2">
                       <p className="admin-eyebrow">Chat status</p>
@@ -742,6 +714,10 @@ export function ChatsView() {
                       </ToggleGroup>
                     </div>
                     <div className="grid gap-3">
+                      <div className="space-y-2">
+                        <p className="admin-eyebrow">Assignment</p>
+                        <SegmentedTabs tabs={assignmentTabs} value={assignment} onValueChange={setAssignment} label="Assignment" fill />
+                      </div>
                       <AdminDateTimeFilterField
                         id="admin-message-start"
                         label="Latest message start"
@@ -769,6 +745,7 @@ export function ChatsView() {
                           updateParams({
                             empty: null,
                             channel: null,
+                            assignment: null,
                             from: null,
                             to: null,
                             ...queueParams(queue),
@@ -788,6 +765,16 @@ export function ChatsView() {
                       Search: {truncate(trimmedSearchQuery, 24)}
                     </RemovableBadge>
                   ) : null}
+                  {status === "active" || status === "inactive" ? (
+                    <RemovableBadge removeLabel="Clear guest activity filter" onRemove={() => setStatus(queueParams(queue).view)}>
+                      {status === "active" ? "Live guests" : "Inactive guests"}
+                    </RemovableBadge>
+                  ) : null}
+                  {adminStatus === "resolved" || adminStatus === "archived" ? (
+                    <RemovableBadge removeLabel="Clear chat status filter" onRemove={() => setAdminStatus("done")}>
+                      {adminStatusTabs.find(({ value }) => value === adminStatus)?.label}
+                    </RemovableBadge>
+                  ) : null}
                   {emptyFilter !== "non_empty" ? (
                     <RemovableBadge removeLabel="Clear empty filter" onRemove={() => setEmptyFilter("non_empty")}>
                       {emptyFilterLabel(emptyFilter)}
@@ -797,6 +784,11 @@ export function ChatsView() {
                     <RemovableBadge removeLabel="Clear channel filter" onRemove={() => setChannelFilter("all")}>
                       <ChannelIcon channel={channelFilter} className="h-3.5 w-3.5" />
                       {channelFilterLabel(channelFilter)}
+                    </RemovableBadge>
+                  ) : null}
+                  {assignment !== "all" ? (
+                    <RemovableBadge removeLabel="Clear assignment filter" onRemove={() => setAssignment("all")}>
+                      {assignment === "mine" ? "Assigned to me" : "Unassigned"}
                     </RemovableBadge>
                   ) : null}
                   {messageStartAt ? (
@@ -852,7 +844,7 @@ export function ChatsView() {
                   >
                     <button
                       type="button"
-                      onClick={() => selectSession(session._id)}
+                      onClick={(event) => openQueueSession(session._id, event.currentTarget)}
                       aria-current={selected ? "true" : undefined}
                       className="min-w-0 flex-1 px-3 py-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                     >
@@ -938,13 +930,14 @@ export function ChatsView() {
       <Dialog
         open={largeViewport === false && Boolean(selectedSession)}
         onOpenChange={(isOpen) => {
-          if (!isOpen) selectSession(null);
+          if (!isOpen) void closeQueueSession();
         }}
       >
         <DialogContent
           data-testid="admin-chat-detail-dialog"
           className="flex h-dvh max-h-dvh w-full max-w-none flex-col gap-0 overflow-hidden rounded-none p-0 max-md:rounded-none max-md:border-0 max-md:max-h-dvh max-md:pb-0 sm:h-[calc(100dvh-2rem)] sm:max-h-[calc(100dvh-2rem)] sm:max-w-3xl sm:rounded-xl"
           showCloseButton={false}
+          onCloseAutoFocus={restoreQueueFocus}
         >
           <DialogTitle className="sr-only">
             {selectedSession ? `Chat details for ${visitorLabel(selectedSession)}` : "Chat details"}

@@ -65,10 +65,11 @@ type UrlIntent = 'preserve' | 'set' | 'clear';
 type OtaRate = Doc<'otaRates'>;
 
 /** Add, edit and remove one villa's OTA rates. Used in the dialog above and the villa editor. */
-export function OtaRatesPanel({ propertyId, ref, onBusyChange }: {
+export function OtaRatesPanel({ propertyId, ref, onBusyChange, onDirtyChange }: {
   propertyId: Id<'properties'>;
   ref?: Ref<{ canDiscard: () => Promise<boolean> }>;
   onBusyChange?: (busy: boolean) => void;
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const [platform, setPlatform] = useState<Platform>('booking_com');
   const [nightlyRate, setNightlyRate] = useState('');
@@ -76,6 +77,10 @@ export function OtaRatesPanel({ propertyId, ref, onBusyChange }: {
   // preserve: the server keeps whatever link is stored at save time; set: replace it; clear: remove it.
   const [urlIntent, setUrlIntent] = useState<UrlIntent>('preserve');
   const [dirty, setDirty] = useState(false);
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+    return () => onDirtyChange?.(false);
+  }, [dirty, onDirtyChange]);
   const [hydratedFor, setHydratedFor] = useState<Platform | null>(null);
   const [busy, setBusy] = useState(false);
   const pending = useRef(false);

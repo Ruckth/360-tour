@@ -16,7 +16,7 @@ import { TONES } from "../status-tones";
 import { Callout, FieldError, NumberField, SideCard, nextEditorKey } from "./MarketingBits";
 import { parseWhole } from "./coupon-form";
 import { directOfferApplied, formatDay, marketingErrorText, nightsBetween, quoteVerdict, thb } from "./marketing-format";
-import type { MarketingActions, MarketingProperty, OfferResult } from "./types";
+import type { CouponScope, MarketingActions, MarketingProperty, OfferResult } from "./types";
 
 type ServiceLine = { key: number; serviceId: string; amount: string };
 export type QuoteServiceCatalog = {
@@ -24,26 +24,32 @@ export type QuoteServiceCatalog = {
   loading?: boolean;
   loadMore?: () => void;
 };
-/** A run, with the inputs and the saved coupon (code and version) it was run against. */
-type Tested = { key: number; label: string; checkIn: string; code: string; version?: number; result: OfferResult };
+type QuoteProposal = NonNullable<Parameters<MarketingActions["testQuote"]>[0]["proposed"]>;
+type Tested = {
+  key: number;
+  identity: string;
+  label: string;
+  checkIn?: string;
+  code: string;
+  version?: number;
+  isPreview: boolean;
+  result: OfferResult;
+};
 
-/**
- * Runs a quote through the shared offer engine with the coupon's saved rules (testQuote).
- * Nothing is held or booked; drafts and paused coupons can be tested too.
- */
 export function TestQuotePanel({
   code,
   savedVersion,
-  dirty,
+  preview,
+  scope = "accommodation",
   properties,
   today,
   testQuote,
   serviceCatalog,
 }: {
-  /** The saved code, or undefined before the coupon exists. */
   code?: string;
   savedVersion?: number;
-  dirty: boolean;
+  preview?: QuoteProposal & { key: string; validate: () => boolean };
+  scope?: CouponScope;
   properties: MarketingProperty[];
   today: string;
   serviceCatalog?: QuoteServiceCatalog;
@@ -52,19 +58,17 @@ export function TestQuotePanel({
   const id = useId();
   const villas = [...properties].sort((a, b) => Number(b.status === "active") - Number(a.status === "active"));
   const [villa, setVilla] = useState(villas[0]?.slug ?? "");
+  const [includeStay, setIncludeStay] = useState(false);
   const [checkIn, setCheckIn] = useState(() => addDays(today, 5));
   const [checkOut, setCheckOut] = useState(() => addDays(today, 7));
   const [services, setServices] = useState<ServiceLine[]>([]);
   const [running, setRunning] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState<{ identity: string; message: string } | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [result, setResult] = useState<Tested | null>(null);
   const [log, setLog] = useState<Tested[]>([]);
 
-  // Results are kept, but a run against an older saved version or code no longer describes this coupon.
-  const isStale = (tested: Tested) => tested.code !== code || tested.version !== savedVersion;
-  const versionName = (tested: Tested) => `${tested.code}${tested.version ? ` v${tested.version}` : ""}`;
-
+  const withStay = scope !== "services" || includeStay;
   const nights = nightsBetween(checkIn, checkOut);
   const villaInfo = properties.find((property) => property.slug === villa);
   const catalog = serviceCatalog?.choices ?? [];
@@ -77,85 +81,112 @@ export function TestQuotePanel({
     return "";
   });
   const errors = {
-    villa: villa ? "" : "Choose a villa",
-    dates: !checkIn || !checkOut ? "Choose both dates" : nights < 1 ? "Check-out must be after check-in" : "",
+    villa: withStay && !villaInfo ? "Choose a villa" : "",
+    dates: withStay && (!checkIn || !checkOut) ? "Choose both dates" : withStay && nights < 1 ? "Check-out must be after check-in" : "",
+    services: !withStay && !services.length ? "Add a service to run this quote." : "",
   };
-  const invalid = Boolean(errors.villa || errors.dates || serviceErrors.some(Boolean));
+  const invalid = Boolean(errors.villa || errors.dates || errors.services || serviceErrors.some(Boolean));
+  const identity = JSON.stringify([
+    code, savedVersion, preview?.key,
+    withStay ? [villa, checkIn, checkOut] : null,
+    services.map(({ serviceId, amount }) => [serviceId, parseWhole(amount), validServices.has(serviceId)]),
+  ]);
+  const isStale = (tested: Tested) => tested.identity !== identity;
+  const versionName = (tested: Tested) => tested.isPreview ? `unsaved ${tested.code}` : `${tested.code}${tested.version ? ` v${tested.version}` : ""}`;
 
   async function run(event: FormEvent) {
     event.preventDefault();
     setSubmitted(true);
-    if (!code || invalid || running) return;
+    if (!code || running || (preview && !preview.validate()) || invalid) return;
     setRunning(true);
-    setError("");
+    setError(null);
     const lines = services.flatMap(({ serviceId, amount }) => {
       const id = validServices.get(serviceId);
       return id ? [{ serviceId: id, amount: (parseWhole(amount) ?? 0) * 100 }] : [];
     });
     try {
-      const quote = await testQuote({ code, propertySlug: villa, checkIn, checkOut, services: lines.length ? lines : undefined });
-      const label = `${villaInfo?.name ?? villa} · ${nights} ${nights === 1 ? "night" : "nights"}${lines.length ? ` + ${lines.length} service${lines.length === 1 ? "" : "s"}` : ""}`;
-      const tested: Tested = { key: nextEditorKey(), label, checkIn, code, version: savedVersion, result: quote };
+      const quote = await testQuote({
+        code,
+        ...(withStay && { propertySlug: villa, checkIn, checkOut }),
+        ...(lines.length && { services: lines }),
+        ...(preview && { proposed: { couponId: preview.couponId, rules: preview.rules } }),
+      });
+      const stay = withStay ? `${villaInfo?.name ?? villa} · ${nights} ${nights === 1 ? "night" : "nights"}` : "";
+      const treatments = lines.length ? `${lines.length} service${lines.length === 1 ? "" : "s"}` : "";
+      const label = [stay, treatments].filter(Boolean).join(" + ");
+      const tested: Tested = {
+        key: nextEditorKey(), identity, label, checkIn: withStay ? checkIn : undefined,
+        code, version: savedVersion, isPreview: Boolean(preview), result: quote,
+      };
       setResult(tested);
       setLog((current) => [tested, ...current].slice(0, 5));
     } catch (err) {
-      setError(marketingErrorText(err, "Couldn’t run the quote."));
+      setError({ identity, message: marketingErrorText(err, "Couldn’t run the quote.") });
     } finally {
       setRunning(false);
     }
   }
 
   return (
-    <SideCard id={`${id}-title`} title="Test a quote" description="Saved rules, guest checkout pricing · nothing is held or booked">
+    <SideCard id={`${id}-title`} title="Test a quote" description={preview ? "Unsaved rules · preview only" : "Saved rules · preview only"}>
       <form noValidate onSubmit={run} className="grid gap-4 p-4">
-        {!code ? (
-          <Callout>Save the coupon to test it</Callout>
-        ) : dirty ? (
-          <Callout tone="warning">Tests the saved version{savedVersion ? ` (v${savedVersion})` : ""}, not your unsaved changes.</Callout>
+        {!code ? <Callout>Enter a coupon code to run a preview</Callout> : null}
+        {scope === "services" ? (
+          <label className="flex min-h-11 items-center gap-2 text-sm">
+            <input type="checkbox" className="size-4 accent-primary" checked={includeStay} onChange={(event) => setIncludeStay(event.target.checked)} />
+            Include a stay
+          </label>
+        ) : null}
+        {scope !== "accommodation" ? (
+          <p className="text-xs text-muted-foreground">Use this preview for booking and lodging dates, and verify treatment dates and desk eligibility separately.</p>
         ) : null}
 
-        <div className="grid gap-2">
-          <Label htmlFor={`${id}-villa`}>Villa</Label>
-          <Select value={villa} onValueChange={setVilla}>
-            <SelectTrigger id={`${id}-villa`} className="h-10 w-full" aria-invalid={submitted && errors.villa ? true : undefined}>
-              <SelectValue placeholder="Choose a villa" />
-            </SelectTrigger>
-            <SelectContent>
-              {villas.map((property) => (
-                <SelectItem key={property._id} value={property.slug}>
-                  {property.name} · {thb(property.pricePerNight)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <FieldError id={`${id}-villa-error`}>{submitted ? errors.villa : ""}</FieldError>
-        </div>
+        {withStay ? (
+          <>
+            <div className="grid gap-2">
+              <Label htmlFor={`${id}-villa`}>Villa</Label>
+              <Select value={villa} onValueChange={setVilla}>
+                <SelectTrigger id={`${id}-villa`} className="h-10 w-full" aria-invalid={submitted && errors.villa ? true : undefined}>
+                  <SelectValue placeholder="Choose a villa" />
+                </SelectTrigger>
+                <SelectContent>
+                  {villas.map((property) => (
+                    <SelectItem key={property._id} value={property.slug}>
+                      {property.name} · {thb(property.pricePerNight)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <FieldError id={`${id}-villa-error`}>{submitted ? errors.villa : ""}</FieldError>
+            </div>
 
-        <div className="grid grid-cols-2 gap-2">
-          <div className="grid min-w-0 gap-2">
-            <Label htmlFor={`${id}-in`}>Check-in</Label>
-            <DatePicker id={`${id}-in`} value={checkIn} onValueChange={setCheckIn} placeholder="Choose" />
-          </div>
-          <div className="grid min-w-0 gap-2">
-            <Label htmlFor={`${id}-out`}>Check-out</Label>
-            <DatePicker
-              id={`${id}-out`}
-              value={checkOut}
-              onValueChange={setCheckOut}
-              min={checkIn ? addDays(checkIn, 1) : undefined}
-              placeholder="Choose"
-              aria-invalid={submitted && errors.dates ? true : undefined}
-              aria-describedby={`${id}-dates`}
-            />
-          </div>
-          <p id={`${id}-dates`} className={cn("col-span-2 text-xs", submitted && errors.dates ? "font-medium text-destructive" : "text-muted-foreground")}>
-            {submitted && errors.dates ? errors.dates : nights > 0 ? `${nights} ${nights === 1 ? "night" : "nights"}` : "Choose the stay"}
-          </p>
-        </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="grid min-w-0 gap-2">
+                <Label htmlFor={`${id}-in`}>Check-in</Label>
+                <DatePicker id={`${id}-in`} value={checkIn} onValueChange={setCheckIn} placeholder="Choose" />
+              </div>
+              <div className="grid min-w-0 gap-2">
+                <Label htmlFor={`${id}-out`}>Check-out</Label>
+                <DatePicker
+                  id={`${id}-out`}
+                  value={checkOut}
+                  onValueChange={setCheckOut}
+                  min={checkIn ? addDays(checkIn, 1) : undefined}
+                  placeholder="Choose"
+                  aria-invalid={submitted && errors.dates ? true : undefined}
+                  aria-describedby={`${id}-dates`}
+                />
+              </div>
+              <p id={`${id}-dates`} className={cn("col-span-2 text-xs", submitted && errors.dates ? "font-medium text-destructive" : "text-muted-foreground")}>
+                {submitted && errors.dates ? errors.dates : nights > 0 ? `${nights} ${nights === 1 ? "night" : "nights"}` : "Choose the stay"}
+              </p>
+            </div>
+          </>
+        ) : null}
 
         <fieldset className="grid gap-2">
           <legend className="mb-2 text-sm font-medium leading-none text-foreground">
-            Services <span className="font-normal text-muted-foreground">(optional)</span>
+            Services {withStay ? <span className="font-normal text-muted-foreground">(optional)</span> : null}
           </legend>
           {services.map((line, index) => (
             <div key={line.key} className="grid gap-1">
@@ -164,7 +195,7 @@ export function TestQuotePanel({
                   aria-label={`Service ${index + 1}`}
                   aria-describedby={`${id}-service-${line.key}`}
                   aria-invalid={submitted && !!serviceErrors[index]}
-                  className="h-9 min-w-0 rounded-md border border-input bg-background px-2 text-sm"
+                  className="min-h-11 min-w-0 rounded-md border border-input bg-background px-2 text-sm"
                   value={line.serviceId}
                   onChange={(event) => setServices((current) => current.map((item) => item.key === line.key ? { ...item, serviceId: event.target.value } : item))}
                 >
@@ -174,6 +205,7 @@ export function TestQuotePanel({
                 </select>
                 <NumberField
                   aria-label={`Price of service ${index + 1}`}
+                  className="min-h-11"
                   prefix="฿"
                   placeholder="0"
                   value={line.amount}
@@ -209,23 +241,23 @@ export function TestQuotePanel({
             <Plus aria-hidden className="size-4" />
             Add a service
           </Button>
+          <FieldError id={`${id}-services-error`}>{submitted ? errors.services : ""}</FieldError>
         </fieldset>
 
         <Button type="submit" disabled={!code || running} className="w-full">
           {running ? <Spinner label="Running the quote" className="text-current" /> : null}
           Run quote
         </Button>
-        {error ? (
+        {error?.identity === identity ? (
           <p role="alert" className="text-sm font-medium text-destructive">
-            {error}
+            {error.message}
           </p>
         ) : null}
 
         <div aria-live="polite" className="grid gap-3">
           {result && isStale(result) ? (
             <Callout tone="warning">
-              Tested on {versionName(result)}. The coupon has changed since; run the quote again to see {code}
-              {savedVersion ? ` v${savedVersion}` : ""}.
+              Tested on {versionName(result)}. Run the quote again with the current inputs and rules.
             </Callout>
           ) : null}
           {result ? <QuoteResult tested={result} stale={isStale(result)} /> : null}
@@ -285,12 +317,12 @@ function QuoteResult({ tested, stale }: { tested: Tested; stale: boolean }) {
             <dt className="min-w-0">
               Subtotal
               <span className="block text-xs text-muted-foreground">
-                {label} from {formatDay(checkIn)}
+                {label}{checkIn ? ` from ${formatDay(checkIn)}` : ""}
               </span>
             </dt>
             <dd className="shrink-0 tabular-nums">{thb(result.subtotal)}</dd>
           </div>
-          <div className={cn("flex items-start justify-between gap-3 px-3 py-2", !directWins && "text-muted-foreground")}>
+          {checkIn ? <div className={cn("flex items-start justify-between gap-3 px-3 py-2", !directWins && "text-muted-foreground")}>
             <dt className="min-w-0">
               Direct-booking offer
               {directWins ? <AppliedTag /> : null}
@@ -298,7 +330,7 @@ function QuoteResult({ tested, stale }: { tested: Tested; stale: boolean }) {
             <dd className={cn("shrink-0 tabular-nums", directWins ? "font-semibold" : result.directDiscount ? "line-through" : "")}>
               {result.directDiscount ? `−${thb(result.directDiscount)}` : "—"}
             </dd>
-          </div>
+          </div> : null}
           <div className={cn("flex items-start justify-between gap-3 px-3 py-2", !couponWins && "text-muted-foreground")}>
             <dt className="min-w-0">
               <span className="font-mono text-xs font-semibold">{code}</span>

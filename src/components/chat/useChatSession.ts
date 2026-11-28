@@ -13,9 +13,9 @@ import { emptyContactForm, selectedContactHandle, type ContactForm } from './Cha
 import type { ChatSuggestion } from './chat-types';
 
 import { getChatActionCard, resolveChatActionHint } from '@/lib/chat/action-card';
-import { localizeHref, stripLocalePrefix } from '@/i18n/routing';
+import { localizeHref } from '@/i18n/routing';
 import { type ChatVillaRef } from '@/lib/chat/booking-intent';
-import { buildChatHref, CHAT_RETURN_TO_PARAM, getPathWithSearch, getSafeChatReturnTo } from '@/lib/chat/navigation';
+import { buildChatHref, CHAT_RETURN_TO_PARAM, getPathWithSearch, getSafeChatReturnTo, usesFloatingChatOnMobile } from '@/lib/chat/navigation';
 import { CHAT_HANDOFF_PARAM, stripChatHandoffParam } from '@/lib/chat/external-browser';
 import { useGuestSession } from './session/useGuestSession';
 import { latestExchangeFromMessages, previousUserMessageFor, useChatTranscript } from './session/useChatTranscript';
@@ -173,7 +173,7 @@ export function useChatSession(props: ChatExperienceProps) {
   }
   return { ...props, ...viewport, ...handoff, mode, open, hydrated, mounted, title: activePropertyName ? t('propertyTitle', { propertyName: activePropertyName }) : t('defaultTitle'),
     chatHref: buildChatHref({ locale, pathname, propertySlug: activePropertySlug, search: searchParams.toString() }),
-    hideFloatingTriggerOnMobileRoom: stripLocalePrefix(pathname).startsWith('/rooms/'), openChat, closeChat, restartChat,
+    hideFloatingTriggerOnMobile: !usesFloatingChatOnMobile(pathname), openChat, closeChat, restartChat,
     // Restart asks first whenever it would discard a transcript, a pending reply or an unsent draft.
     hasConversation: messages.length > 0 || isTyping || input.trim().length > 0,
     messages, messageActionCards, latestAssistantIndex, canShowMessageSuggestions: !isTyping && latestAssistantIndex >= 0 && latestAssistantIndex === messages.length - 1,

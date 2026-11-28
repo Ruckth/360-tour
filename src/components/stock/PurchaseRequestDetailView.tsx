@@ -126,6 +126,7 @@ export function PurchaseRequestDetailView({ requestId }: { requestId: string }) 
   }
 
   const canEdit = permissions.requester && request.mine && (request.status === "draft" || request.status === "needs_changes");
+  const requestedUnits = lines.reduce((total, line) => total + line.quantity, 0);
   const canWithdraw = request.mine && request.status === "awaiting_approval";
   const canDecide = permissions.approver && !request.mine && request.status === "awaiting_approval";
   const hasAvailableForOrder = request.status === "approved" && lines.some((l) => l.available > 0);
@@ -230,10 +231,16 @@ export function PurchaseRequestDetailView({ requestId }: { requestId: string }) 
           </div>
           <p className="text-xs text-muted-foreground">
             Requested by {request.requesterLabel}
+            {` · ${requestedUnits.toLocaleString("en-US")} ${requestedUnits === 1 ? "unit" : "units"}`}
             {request.needBy ? ` · Need by ${request.needBy}` : ""}
             {" · Updated "}
             {staffDateTime(request.updatedAt)}
           </p>
+          {request.note ? (
+            <p className="mt-0.5 whitespace-pre-wrap wrap-anywhere text-sm text-muted-foreground">
+              <strong className="text-foreground">Requester note:</strong> {request.note}
+            </p>
+          ) : null}
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -340,12 +347,6 @@ export function PurchaseRequestDetailView({ requestId }: { requestId: string }) 
         <Callout tone="info">
           Copied from <Link className="underline" href={`/admin/stock/purchasing/requests/${request.copiedFromId}`}>{request.copiedFromReference}</Link>.
         </Callout>
-      ) : null}
-
-      {request.note ? (
-        <Card className="whitespace-pre-wrap break-words px-4 py-3 text-sm text-muted-foreground">
-          <strong className="text-foreground">Requester note:</strong> {request.note}
-        </Card>
       ) : null}
 
       <SegmentedTabs

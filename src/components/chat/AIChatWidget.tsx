@@ -122,7 +122,7 @@ function ChatExperienceBody(props: ChatExperienceProps) {
     mounted,
     title,
     chatHref,
-    hideFloatingTriggerOnMobileRoom,
+    hideFloatingTriggerOnMobile,
     keyboardLayoutMode,
     chatPanelStyle,
     openChat,
@@ -209,7 +209,7 @@ function ChatExperienceBody(props: ChatExperienceProps) {
       mounted={mounted}
       title={title}
       chatHref={chatHref}
-      hideFloatingTriggerOnMobileRoom={hideFloatingTriggerOnMobileRoom}
+      hideFloatingTriggerOnMobile={hideFloatingTriggerOnMobile}
       keyboardLayoutMode={keyboardLayoutMode}
       chatPanelStyle={chatPanelStyle}
       inputRef={inputRef}

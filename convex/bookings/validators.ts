@@ -30,6 +30,7 @@ export const bookingsGetByIdResult = v.union(v.null(), v.object({
 "propertyName": v.optional(v.string()),
 "payState": v.union(v.literal("payable"), v.literal("settled"), v.literal("expired"), v.literal("closed")),
 "amountDue": v.number(),
+"holdExpiresAt": v.optional(v.number()),
 }));
 
 export const bookingsGetConfirmProposalStatusResult = v.union(v.literal("summary_expired"), v.literal("hold_expired"), v.literal("settled"), v.literal("unavailable"));

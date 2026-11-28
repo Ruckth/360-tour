@@ -1,3 +1,4 @@
+import { test as consentTest } from "@playwright/test";
 import en from "../../messages/en.json" with { type: "json" };
 import th from "../../messages/th.json" with { type: "json" };
 import { api } from "../../convex/_generated/api";
@@ -27,6 +28,37 @@ test.describe("G19 services empty-state reset", () => {
 });
 
 test.describe("G21 Experiences Contact Concierge", () => {
+  test("puts a localized activity and its details within reach at 360px", async ({ page }) => {
+    await page.setViewportSize({ width: 360, height: 780 });
+    await page.goto("/th/experiences");
+    const chef = th.Experiences.items.privateChef;
+    const wellness = th.Experiences.items.wellness;
+    const chefRow = page.getByRole("button", { name: chef.title, exact: true });
+    await expect(chefRow).toBeInViewport({ ratio: 1 });
+    expect((await chefRow.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+    await chefRow.click();
+
+    const details = page.getByRole("dialog", { name: chef.title, exact: true });
+    await expect(details).toBeVisible();
+    await expect(details.getByText(chef.description)).toBeVisible();
+    await expect(details.getByRole("img", { name: chef.alt })).toBeVisible();
+    for (const feature of chef.features) {
+      await expect(details.getByText(feature)).toBeVisible();
+    }
+    const inquiry = details.getByRole("link", { name: th.Experiences.secondaryCta });
+    const target = new URL((await inquiry.getAttribute("href"))!);
+    expect(target.protocol).toBe("mailto:");
+    expect(target.searchParams.get("subject")).toBe(chef.title);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
+
+    await details.getByRole("button", { name: th.A11y.close }).click();
+    await expect(details).toHaveCount(0);
+    await expect(chefRow).toBeFocused();
+    await page.getByRole("button", { name: wellness.title, exact: true }).click();
+    await expect(page.getByRole("dialog", { name: wellness.title, exact: true })).toBeVisible();
+    await expect(page.getByRole("dialog")).toHaveCount(1);
+  });
+
   for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 900 }]) {
     test(`opens localized chat directly without sending (${viewport.width}px)`, async ({ page }) => {
       await page.setViewportSize(viewport);
@@ -46,6 +78,37 @@ function isoDaysFromNow(days: number) {
   date.setDate(date.getDate() + days);
   return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, "0"), String(date.getDate()).padStart(2, "0")].join("-");
 }
+
+// Use a fresh consent choice here. The shared guest fixture has already declined.
+consentTest.describe("reference booking on phones", () => {
+  for (const width of [360, 390, 430]) {
+    consentTest(`keeps dates, in-flow consent and sticky payment controls separate at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 780 });
+      await page.goto(`/booking?checkin=${isoDaysFromNow(128)}&nights=2&unit=garden-suite`);
+      const consent = page.getByRole("region", { name: en.Consent.label });
+      const actions = page.getByTestId("booking-actions");
+      const next = actions.getByRole("button", { name: en.Booking.continue, exact: true });
+      const checkIn = page.getByTestId("booking-check-in");
+      const checkOut = page.getByTestId("booking-check-out");
+
+      await expect(actions).toHaveCSS("position", "sticky");
+      await expect(actions).toContainText(en.Booking.total);
+      await expect(next).toBeEnabled();
+      await expect(next).toBeInViewport();
+      await expect(consent).toHaveCSS("position", "static");
+      const [arrival, departure] = await Promise.all([checkIn.boundingBox(), checkOut.boundingBox()]);
+      expect(arrival?.y).toBe(departure?.y);
+      expect(arrival?.height).toBeGreaterThanOrEqual(44);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+
+      await consent.getByRole("button", { name: en.Consent.decline, exact: true }).click();
+      await expect(consent).toHaveCount(0);
+      await expect(next).toBeFocused();
+      await next.click();
+      await expect(page.getByRole("button", { name: en.Booking.guestDetails, exact: true })).toHaveAttribute("aria-current", "step");
+    });
+  }
+});
 
 test("G35 step bar shows one current step and a completed mark", async ({ page }) => {
   await page.goto(`/booking?checkin=${isoDaysFromNow(126)}&nights=2&adults=2&children=0&unit=garden-suite`);
@@ -211,6 +274,7 @@ test.describe("G30 + G31 pay summary and confirmation states", () => {
 
   test("a valid pay link shows villa, dates and guests above Pay; a wrong token shows none", async ({ page }) => {
     const { bookingId, accessToken } = await book(60);
+    await page.setViewportSize({ width: 360, height: 760 });
     await page.goto(`/th/booking/pay?bookingId=${bookingId}&token=${accessToken}`);
     const summary = page.getByTestId("pay-stay-summary");
     await expect(summary.getByTestId("pay-stay-villa")).toHaveText(/Mossbell Garden Suite/);
@@ -218,6 +282,8 @@ test.describe("G30 + G31 pay summary and confirmation states", () => {
     const summaryBox = (await summary.boundingBox())!;
     const payBox = (await page.getByRole("button", { name: th.Booking.pay, exact: true }).boundingBox())!;
     expect(summaryBox.y).toBeLessThan(payBox.y);
+    await expect(page.getByTestId("pay-hold-deadline")).toBeVisible();
+    await expect(page.getByTestId("chat-launcher-link")).toHaveCount(0);
     await page.goto(`/th/booking/pay?bookingId=${bookingId}&token=wrong`);
     await expect(page.getByRole("button", { name: th.Booking.pay, exact: true })).toBeDisabled();
     await expect(page.getByTestId("pay-stay-summary")).toHaveCount(0);

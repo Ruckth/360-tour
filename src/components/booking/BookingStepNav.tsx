@@ -34,7 +34,7 @@ export function BookingStepNav({
   };
 
   return (
-    <div className="mb-6 grid grid-cols-3 gap-2">
+    <div className="mb-4 grid grid-cols-3 gap-2 md:mb-6">
       {bookingSteps.map((item, index) => {
         const state = index < currentIndex ? "complete" : index === currentIndex ? "current" : "upcoming";
         return (

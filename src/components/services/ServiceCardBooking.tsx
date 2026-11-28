@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ButtonLink } from "@/components/ui/button";
 import { localizeHref, type Locale } from "@/i18n/routing";
+import { CHAT_RETURN_TO_PARAM } from "@/lib/chat/navigation";
 import type { PublicMessages } from "@/lib/i18n/public-content";
 import { durationList, serviceOption, serviceOptions, type ServiceOption } from "@/lib/service-options";
 import { currencyPrefix } from "@/lib/villas";
@@ -15,7 +16,7 @@ type CardService = { slug: string; name: string; durationMin: number; price: num
  * A service card's length, price and "Ask" link. With several lengths, chips pick one and each chip
  * shows its own price once; the link carries the chosen length to chat (`&duration=90`).
  */
-export function ServiceCardBooking({ service, locale, t }: { service: CardService; locale: Locale; t: PublicMessages["ServiceCatalog"] }) {
+export function ServiceCardBooking({ service, locale, t, returnTo }: { service: CardService; locale: Locale; t: PublicMessages["ServiceCatalog"]; returnTo?: string }) {
   const options = serviceOptions(service);
   const defaultDuration = serviceOption(service).durationMin;
   const [durationMin, setDurationMin] = useState(defaultDuration);
@@ -43,7 +44,7 @@ export function ServiceCardBooking({ service, locale, t }: { service: CardServic
       )}
       <ButtonLink
         href={localizeHref(
-          `/chat?service=${encodeURIComponent(service.slug)}${multiple ? `&duration=${chosen.durationMin}` : ""}`,
+          `/chat?service=${encodeURIComponent(service.slug)}${multiple ? `&duration=${chosen.durationMin}` : ""}${returnTo ? `&${CHAT_RETURN_TO_PARAM}=${encodeURIComponent(returnTo)}` : ""}`,
           locale,
         )}
         variant="outline"

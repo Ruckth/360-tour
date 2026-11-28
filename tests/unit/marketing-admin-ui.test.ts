@@ -162,8 +162,8 @@ const type = (el: HTMLInputElement | null, value: string) =>
 const NAME = "e.g. Facebook · December getaway";
 
 const actions = () => ({ saveCampaign: vi.fn().mockResolvedValue("c2"), setCampaignStatus: vi.fn().mockResolvedValue(null) });
-const campaigns = (a: ReturnType<typeof actions>) =>
-  createElement(CampaignsView, { campaigns: [campaign], links: [], coupons: [], today: "2026-11-08", linksHref: "/l", couponHref: (id) => `/c/${id}`, actions: a });
+const campaigns = (a: ReturnType<typeof actions>, row = campaign) =>
+  createElement(CampaignsView, { campaigns: [row], links: [], coupons: [], today: "2026-11-08", linksHref: "/l", couponHref: (id) => `/c/${id}`, actions: a });
 
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
@@ -239,6 +239,19 @@ describe("marketing editor sheets", () => {
     expect(document.body.textContent).toContain("November escape is active");
   });
 
+  it("offers Undo for the version that was just paused", async () => {
+    const a = actions();
+    a.setCampaignStatus.mockResolvedValueOnce(42).mockResolvedValueOnce(43);
+    await render(campaigns(a, { ...campaign, status: "active", updatedAt: 41 }));
+    await click(button("November escape"));
+    await click(button("Pause"));
+    await click(button("Confirm"));
+    expect(a.setCampaignStatus).toHaveBeenNthCalledWith(1, { campaignId: "c1", status: "paused", expectedUpdatedAt: 41 });
+    await click(button("Undo"));
+    expect(a.setCampaignStatus).toHaveBeenNthCalledWith(2, { campaignId: "c1", status: "active", expectedUpdatedAt: 42 });
+    expect(button("Undo")).toBeUndefined();
+  });
+
   it("opens a link quick start from the first run, prefilled", async () => {
     await render(
       createElement(LinksView, {
@@ -307,6 +320,9 @@ describe("change history in the marketing editors", () => {
     await click(button("Cancel"));
     await click(button("Facebook page"));
     expect(slot()).toBe("History of l1");
+    const share = document.querySelector('[role="group"][aria-label="Published link"]');
+    expect(share?.textContent).toContain("Copy");
+    expect(share?.textContent).toContain("QR card");
   });
 
   it("shows a saved coupon's history, not a new one's", async () => {
@@ -354,7 +370,7 @@ it("quotes a selected catalog service by identity and blocks an unavailable sele
   const more = { id: "later-page" as Id<"services">, name: "Canonical massage", category: "Spa", durationMin: 60 };
   const choice = { id: "first-page" as Id<"services">, name: "First service", category: "Spa", durationMin: 30 };
   const props = {
-    testQuote, code: "SPA-10", dirty: false, today: "2026-11-08",
+    testQuote, code: "SPA-10", today: "2026-11-08",
     properties: [{ _id: "villa" as Id<"properties">, slug: "villa", name: "Villa", status: "active" as const, pricePerNight: 50000, currency: "THB", maxGuests: 2, directDiscountPercent: 0 }],
   };
   await render(createElement(TestQuotePanel, { ...props, serviceCatalog: { choices: [choice], loadMore } }));
@@ -376,4 +392,53 @@ it("quotes a selected catalog service by identity and blocks an unavailable sele
   await click(button("Run quote"));
   expect(testQuote).toHaveBeenCalledOnce();
   expect(document.body.textContent).toContain("This service is unavailable");
+});
+
+it("previews the edited spa rules without requiring a villa and flags earlier results after another edit", async () => {
+  const offer = {
+    subtotal: 100000, total: 80000, applied: "coupon", couponStatus: "applied",
+    discount: 20000, couponDiscount: 20000, directDiscount: 0, allocation: [], capped: false,
+  };
+  const pending = Promise.withResolvers<typeof offer>();
+  const testQuote = vi.fn().mockReturnValueOnce(pending.promise).mockResolvedValue({
+    ...offer, subtotal: 120000, total: 96000, discount: 24000, couponDiscount: 24000,
+  });
+  const choice = { id: "massage" as Id<"services">, name: "Massage", category: "Spa", durationMin: 60 };
+  const rules = { scope: "services" as const, benefit: { kind: "percent" as const, percent: 2000 } };
+  const validate = vi.fn().mockReturnValue(true);
+  const props = {
+    testQuote, code: "NEW-SPA", scope: rules.scope, today: "2026-11-08",
+    properties: [], serviceCatalog: { choices: [choice] },
+    preview: { key: "20%", rules, validate },
+  };
+  await render(createElement(TestQuotePanel, props));
+  expect(document.body.textContent).toContain("Unsaved rules · preview only");
+  expect(document.body.textContent).not.toContain("Choose a villa");
+  await click(button("Run quote"));
+  expect(document.body.textContent).toContain("Add a service to run this quote.");
+  await click(button("Add a service"));
+  const picker = document.querySelector<HTMLSelectElement>('select[aria-label="Service 1"]')!;
+  await act(async () => {
+    picker.value = choice.id;
+    picker.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  await type(document.querySelector('input[aria-label="Price of service 1"]'), "1000");
+  await click(button("Run quote"));
+  expect(testQuote).toHaveBeenCalledExactlyOnceWith({
+    code: "NEW-SPA",
+    services: [{ serviceId: choice.id, amount: 100000 }],
+    proposed: { couponId: undefined, rules },
+  });
+  await type(document.querySelector('input[aria-label="Price of service 1"]'), "1200");
+  await act(async () => pending.resolve(offer));
+  expect(document.body.textContent).toContain("Coupon wins");
+  const stale = "Run the quote again with the current inputs and rules.";
+  expect(document.body.textContent).toContain(stale);
+  await click(button("Run quote"));
+  expect(testQuote).toHaveBeenLastCalledWith(expect.objectContaining({ services: [{ serviceId: choice.id, amount: 120000 }] }));
+  expect(document.body.textContent).not.toContain(stale);
+  await render(createElement(TestQuotePanel, {
+    ...props, preview: { key: "30%", rules: { ...rules, benefit: { ...rules.benefit, percent: 3000 } }, validate },
+  }));
+  expect(document.body.textContent).toContain(stale);
 });

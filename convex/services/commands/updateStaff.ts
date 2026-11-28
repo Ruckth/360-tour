@@ -9,12 +9,15 @@ import { archiveStaffRecord, attachAvatarUpload, hour, logService, logStaff, req
 
 export const updateStaff = adminMutation({
 	// `avatarStorageId`: an uploaded photo to attach, or null to remove the photo. `avatarUrl` sets an external URL.
-	args: { staffId: v.id('staff'), name: v.optional(v.string()), role: v.optional(v.string()), avatarUrl: v.optional(v.string()), avatarStorageId: v.optional(v.union(v.id('_storage'), v.null())), color: v.optional(v.string()), status: v.optional(staffStatus), workingHours: v.optional(v.array(hour)), breaks: v.optional(v.array(rest)) },
+	args: { staffId: v.id('staff'), name: v.optional(v.string()), role: v.optional(v.string()), avatarUrl: v.optional(v.string()), avatarStorageId: v.optional(v.union(v.id('_storage'), v.null())), color: v.optional(v.string()), status: v.optional(staffStatus), workingHours: v.optional(v.array(hour)), breaks: v.optional(v.array(rest)), expectedArchivedAt: v.optional(v.number()) },
 	handler: async (ctx, args) => {
 		const admin = ctx.admin;
 		const staff = await ctx.db.get(args.staffId);
 		if (!staff) throw new Error('Staff member not found');
-		const { staffId, avatarStorageId, avatarUrl, ...changes } = args;
+		const { staffId, avatarStorageId, avatarUrl, expectedArchivedAt, ...changes } = args;
+		if (expectedArchivedAt !== undefined && (staff.status !== 'archived' || staff.updatedAt !== expectedArchivedAt)) {
+			throw new Error('This staff profile changed after archiving. Review the current profile before restoring.');
+		}
 		await initializeWeeklyPattern(ctx, staffId, admin.email);
 		if (changes.status === 'archived' && staff.status !== 'archived') await archiveStaffRecord(ctx, staff, admin.email);
 		validateHours(changes.workingHours ?? staff.workingHours);

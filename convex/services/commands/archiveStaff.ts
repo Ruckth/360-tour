@@ -9,7 +9,8 @@ export const archiveStaff = adminMutation({
 		const staff = await ctx.db.get(args.staffId);
 		if (!staff) throw new Error('Staff member not found');
 		const result = await archiveStaffRecord(ctx, staff, admin.email);
-		await logStaff(ctx, staff, (await ctx.db.get(staff._id))!, admin.email, 'archived');
-		return result;
+		const archived = (await ctx.db.get(staff._id))!;
+		await logStaff(ctx, staff, archived, admin.email, 'archived');
+		return { ...result, archivedAt: archived.updatedAt };
 	}
 });

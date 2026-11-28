@@ -2,7 +2,7 @@
 
 import type { Id } from "convex/_generated/dataModel";
 import { CalendarDays, ChevronRight, Link2, ListOrdered, Plus, Search, UserRound, UserRoundPlus, X } from "lucide-react";
-import { useDeferredValue, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useDeferredValue, useEffect, useRef, useState, type FormEvent } from "react";
 import { formatMoney } from "@/components/admin/labels";
 import { useStaffAccess } from "@/components/admin/staff-access";
 import { Badge } from "@/components/ui/badge";
@@ -14,6 +14,7 @@ import { MoreMenu } from "@/components/ui/more-menu";
 import { Spinner } from "@/components/ui/spinner";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { CustomerDisplayControl } from "@/components/admin/CustomerDisplayDialog";
 import { errorText } from "@/lib/staff-bookings";
 import { customerPhoneError } from "convex/shared/phone";
 import { cn } from "@/lib/utils";
@@ -26,7 +27,7 @@ import type { Run } from "./useOrderWrites";
 import { OrderLifecycle } from "./OrderLifecycle";
 import { CustomerDetails } from "./CustomerDetails";
 
-type Panel = "customer" | "booking" | "orders" | null;
+type Panel = "customer" | "booking" | "orders" | "display" | null;
 
 /**
  * The order on screen: its number (or "New order", on narrow screens only; wide ones show it in
@@ -40,7 +41,7 @@ export function OrderStrip({
   run,
   onOrderChange,
   canStartNew = false,
-  displayControl,
+  customerDisplay,
   ordersFilterScope,
 }: {
   view: OrderView | null | undefined;
@@ -49,8 +50,8 @@ export function OrderStrip({
   onOrderChange: (orderId: OrderId | null) => void;
   /** Invalid/missing source links can be cleared even when there is no loaded order. */
   canStartNew?: boolean;
-  /** Rendered beside Orders, e.g. the customer display button (not in the dev preview). */
-  displayControl?: ReactNode;
+  /** Display pairing opens from More on phones and from its own button on wider screens. */
+  customerDisplay?: { orderId: string | null | undefined };
   ordersFilterScope?: string;
 }) {
   const actions = useCheckoutBackend().useActions();
@@ -83,7 +84,7 @@ export function OrderStrip({
     setPanel(next);
   };
   const close = () => changePanel(null);
-  // Phones get one header row: the customer, an Orders icon and ⋯ (Add booking, New order).
+  // Phones keep Orders beside the customer and place occasional actions in More.
   const phone = useIsMobile(640) === true;
   const strip = useRef<HTMLDivElement>(null);
   const focusMore = (event: Event) => {
@@ -190,7 +191,12 @@ export function OrderStrip({
       </Dialog>
 
       <div className={cn("flex justify-end gap-2", phone ? "shrink-0" : "ml-auto max-w-full flex-wrap")}>
-        {displayControl}
+        {customerDisplay ? <CustomerDisplayControl orderId={customerDisplay.orderId} controls={{
+          open: panel === "display",
+          onOpenChange: (open) => changePanel(open ? "display" : null),
+          showTrigger: !phone,
+          onCloseAutoFocus: phone ? focusMore : undefined,
+        }} /> : null}
         <Dialog open={panel === "orders"} onOpenChange={(open) => { if (!ordersPending) changePanel(open ? "orders" : null); }}>
           <DialogTrigger asChild>
             {phone ? (
@@ -218,6 +224,7 @@ export function OrderStrip({
             items={[
               { label: "Add booking", disabled: order?.state === "discarded", onSelect: () => changePanel("booking") },
               { label: "New order", hidden: !order && !canStartNew, onSelect: () => onOrderChange(null) },
+              { label: "Customer display", hidden: !customerDisplay, onSelect: () => changePanel("display") },
             ]}
           />
         ) : order || canStartNew ? (
@@ -624,11 +631,12 @@ export function OpenOrders({ currentId, onOpen }: { currentId: OrderId | undefin
 
 function OpenOrdersList({ currentId, onOpen }: { currentId: OrderId | undefined; onOpen: (orderId: OrderId) => void }) {
   const { results, status, loadMore } = useCheckoutBackend().useOpenOrders();
+  const currentRow = useCurrentRowInView(results.some(row => row._id === currentId));
   if (status === "LoadingFirstPage") return <Spinner label="Loading orders" />;
   if (!results.length && status === "Exhausted") return <p className="text-sm text-muted-foreground">No open orders.</p>;
   return (
     <div className="grid gap-2">
-      <ul className="max-h-[50dvh] divide-y divide-border overflow-y-auto" aria-label="Open orders">
+      <ul ref={currentRow} className="max-h-[50dvh] divide-y divide-border overflow-y-auto" aria-label="Open orders">
         {results.map((row) => (
           <li key={row._id}>
             <button
@@ -714,9 +722,28 @@ function OrderLookupResult({ number, receipt, cashier, onOpen }: { number: numbe
   return null;
 }
 
+/**
+ * Brings the current order into view when its page arrives. Later updates never move the list.
+ */
+function useCurrentRowInView(currentRowLoaded: boolean) {
+  const list = useRef<HTMLUListElement>(null);
+  const done = useRef(false);
+  useEffect(() => {
+    const row = list.current?.querySelector<HTMLElement>('[aria-current="true"]');
+    if (!currentRowLoaded || done.current || !list.current) return;
+    done.current = true;
+    if (!row) return;
+    const box = list.current.getBoundingClientRect();
+    const at = row.getBoundingClientRect();
+    if (at.top < box.top || at.bottom > box.bottom) list.current.scrollTop += at.top - box.top - (box.height - at.height) / 2;
+  }, [currentRowLoaded]);
+  return list;
+}
+
 const FILTERS: Array<{ value: OrderFilter; label: string; empty: string }> = [
   { value: "unpaid", label: "Unpaid", empty: "No unpaid orders." },
   { value: "paid", label: "Paid", empty: "No paid orders yet." },
+  { value: "returned", label: "Returned", empty: "No returned orders yet." },
   { value: "discarded", label: "Discarded", empty: "No discarded orders." },
   { value: "void", label: "Voided", empty: "No voided orders." },
 ];
@@ -746,11 +773,13 @@ const PAGE = 20;
 
 function OrdersList({ filter, currentId, onOpen, onRestore }: { filter: OrderFilter; currentId: OrderId | undefined; onOpen: (orderId: OrderId) => void; onRestore: (id: OrderId) => void }) {
   const { results, status, loadMore } = useCheckoutBackend().useOrders(filter);
+  const currentRow = useCurrentRowInView(results.some(row => row._id === currentId));
   if (status === "LoadingFirstPage") return <Spinner label="Loading orders" />;
   if (!results.length && status === "Exhausted") return <p className="text-sm text-muted-foreground">{FILTERS.find((f) => f.value === filter)!.empty}</p>;
   return (
     <div className="grid gap-2">
-      <ul className="max-h-[55dvh] divide-y divide-border overflow-y-auto" aria-label={`${FILTERS.find((f) => f.value === filter)!.label} orders`}>
+      {!results.length && filter === "returned" && status === "CanLoadMore" ? <p className="text-sm text-muted-foreground">No returns in these orders. Load older orders to keep looking.</p> : null}
+      <ul ref={currentRow} className="max-h-[55dvh] divide-y divide-border overflow-y-auto" aria-label={`${FILTERS.find((f) => f.value === filter)!.label} orders`}>
         {results.map((row) => (
           // Open and Restore… are sibling buttons on one row, never one inside the other. Discard is in the open order's ⋯.
           <li key={row._id} className="flex items-center gap-2">

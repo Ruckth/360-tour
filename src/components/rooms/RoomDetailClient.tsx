@@ -14,7 +14,6 @@ import { DirectBookingBenefits } from "@/components/pricing/DirectBookingBenefit
 import { PriceComparison } from "@/components/pricing/PriceComparison";
 import { ReviewCarousel } from "@/components/social/ReviewCarousel";
 import { StarRating } from "@/components/social/StarRating";
-import { Button } from "@/components/ui/button";
 import { localizeHref } from "@/i18n/routing";
 import type { Review } from "@/lib/data/reviews";
 import { getLocalizedResort } from "@/lib/i18n/public-content";
@@ -148,16 +147,18 @@ export function RoomDetailClient({ property, reviews, renderer = "three" }: {
               ) : null}
               <button
                 type="button"
+                data-testid="room-gallery-tour"
                 disabled={!hydrated}
                 aria-haspopup="dialog"
                 onClick={openTour}
                 onFocus={preloadViewer}
                 onPointerEnter={preloadViewer}
                 onTouchStart={preloadViewer}
-                className="absolute bottom-4 right-4 hidden items-center gap-2 rounded-lg bg-white/90 px-4 py-2 text-sm font-semibold text-navy shadow-lg backdrop-blur-sm md:inline-flex"
+                className="absolute bottom-4 right-4 inline-flex min-h-11 max-w-[70%] items-center gap-2 rounded-lg bg-white/90 px-3 py-2 text-sm font-semibold text-navy shadow-lg backdrop-blur-sm focus-visible:ring-2 focus-visible:ring-gold md:px-4"
               >
-                <Globe2 className="h-4 w-4" />
-                {t("explore360")}
+                <Globe2 className="size-4 shrink-0" aria-hidden="true" />
+                <span className="md:hidden">{t("exploreIn360")}</span>
+                <span className="hidden md:inline">{t("explore360")}</span>
               </button>
               {images.length > 1 ? (
                 <>
@@ -168,7 +169,7 @@ export function RoomDetailClient({ property, reviews, renderer = "three" }: {
                       if (!isFirstPhoto) goTo(galleryIndex - 1);
                     }}
                     className={cn(
-                      "absolute left-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-background/90 text-foreground shadow-lg transition focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+                      "absolute left-3 top-1/2 flex size-11 -translate-y-1/2 items-center justify-center rounded-full bg-background/90 text-foreground shadow-lg transition focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
                       isFirstPhoto && "cursor-not-allowed opacity-40",
                     )}
                     aria-label={t("previousPhoto")}
@@ -182,7 +183,7 @@ export function RoomDetailClient({ property, reviews, renderer = "three" }: {
                       if (!isLastPhoto) goTo(galleryIndex + 1);
                     }}
                     className={cn(
-                      "absolute right-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-background/90 text-foreground shadow-lg transition focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+                      "absolute right-3 top-1/2 flex size-11 -translate-y-1/2 items-center justify-center rounded-full bg-background/90 text-foreground shadow-lg transition focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
                       isLastPhoto && "cursor-not-allowed opacity-40",
                     )}
                     aria-label={t("nextPhoto")}
@@ -225,20 +226,6 @@ export function RoomDetailClient({ property, reviews, renderer = "three" }: {
                 })}
               </div>
             ) : null}
-
-            <Button
-              variant="outline"
-              className="mt-3 w-full bg-card py-3 md:hidden"
-              disabled={!hydrated}
-              aria-haspopup="dialog"
-              onClick={openTour}
-              onFocus={preloadViewer}
-              onPointerEnter={preloadViewer}
-              onTouchStart={preloadViewer}
-            >
-              <Globe2 className="h-4 w-4" />
-              {t("exploreIn360")}
-            </Button>
 
             <div className="mt-5 md:mt-8">
               <h1 className="font-serif text-3xl font-semibold text-foreground md:text-4xl">

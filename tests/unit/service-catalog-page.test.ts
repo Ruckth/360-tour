@@ -83,9 +83,15 @@ describe("public service catalog", () => {
     expect(
       document.querySelector<HTMLInputElement>("input[name=category]")?.value,
     ).toBe(service.category);
-    expect(link(t.ask).getAttribute("href")).toBe(
-      "/th/chat?service=thai%20massage",
-    );
+    const ask = new URL(link(t.ask).href);
+    expect(ask.pathname).toBe("/th/chat");
+    expect(ask.searchParams.get("service")).toBe(service.slug);
+    const returnTo = new URL(ask.searchParams.get("returnTo")!, ask.origin);
+    expect(returnTo.pathname).toBe("/th/services");
+    expect(returnTo.searchParams.get("q")).toBe("Massage");
+    expect(returnTo.searchParams.get("category")).toBe(service.category);
+    expect(returnTo.searchParams.get("cursor")).toBe("old");
+    expect(document.getElementById(returnTo.hash.slice(1))).toBe(document.querySelector("article"));
     const next = new URL(link(t.next).href);
     expect(next.pathname).toBe("/th/services");
     expect(next.searchParams.get("q")).toBe("Massage");
@@ -180,7 +186,10 @@ describe("service durations on the catalog", () => {
     expect(card.textContent).toContain("Default: 60 min");
     expect(card.querySelector("fieldset legend")?.textContent).toBe("Choose a duration");
     expect([...card.querySelectorAll<HTMLInputElement>("input[type=radio]")].map((radio) => [radio.value, radio.checked])).toEqual([["60", true], ["90", false], ["120", false]]);
-    expect(link("Ask about this service").getAttribute("href")).toBe("/chat?service=thai-massage&duration=60");
+    const ask = new URL(link("Ask about this service").href);
+    expect(ask.pathname).toBe("/chat");
+    expect(ask.searchParams.get("service")).toBe(thai.slug);
+    expect(ask.searchParams.get("duration")).toBe("60");
   });
 
   it("shows the saved replacement default even when a shorter duration is offered", async () => {
@@ -190,7 +199,7 @@ describe("service durations on the catalog", () => {
     const card = document.querySelector("article")!;
     expect(card.textContent).toContain("Default: 120 min");
     expect(card.querySelector<HTMLInputElement>('input[type="radio"][value="120"]')?.checked).toBe(true);
-    expect(link("Ask about this service").getAttribute("href")).toBe("/chat?service=thai-massage&duration=120");
+    expect(new URL(link("Ask about this service").href).searchParams.get("duration")).toBe("120");
   });
 
   it("keeps a one-length service as it was: no chips and no duration in the link", async () => {
@@ -198,7 +207,9 @@ describe("service durations on the catalog", () => {
     expect(document.querySelectorAll("input[type=radio]")).toHaveLength(0);
     expect(document.querySelector("article")?.textContent).toContain("60 min฿2,400");
     expect(document.querySelector("article")?.textContent).not.toContain("from");
-    expect(link("Ask about this service").getAttribute("href")).toBe("/chat?service=thai%20massage");
+    const ask = new URL(link("Ask about this service").href);
+    expect(ask.searchParams.get("service")).toBe(service.slug);
+    expect(ask.searchParams.has("duration")).toBe(false);
   });
 
   it("a duration chip updates the price and the chat link", async () => {
@@ -212,7 +223,7 @@ describe("service durations on the catalog", () => {
     await act(async () => ninety.click());
     expect(ninety.checked).toBe(true);
     expect(document.querySelector("article")?.textContent!.split("฿1,100")).toHaveLength(2);
-    expect(link("Ask about this service").getAttribute("href")).toBe("/chat?service=thai-massage&duration=90");
+    expect(new URL(link("Ask about this service").href).searchParams.get("duration")).toBe("90");
     await act(async () => root.unmount());
     vi.unstubAllGlobals();
   });

@@ -144,7 +144,7 @@ export function HomeHero() {
       data-testid="home-hero"
       data-hero-step={desktopStep}
       data-hero-motion={reducedMotion ? "reduced" : userPaused ? "paused" : "full"}
-      className="relative h-[100svh] overflow-hidden md:h-screen md:min-h-[520px]"
+      className="relative h-[clamp(22rem,60svh,38rem)] overflow-hidden md:h-screen md:min-h-[520px]"
     >
       <div className="absolute inset-0">
         <div className={cn("absolute inset-0 transition-opacity duration-[2000ms] motion-reduce:transition-none", desktopStep === 0 ? "z-[1] opacity-100" : "z-0 opacity-0")}>

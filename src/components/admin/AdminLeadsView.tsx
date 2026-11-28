@@ -100,6 +100,17 @@ export function AdminLeadsView() {
     setEmail("");
   }
 
+  async function copyLeadEmail(address: string) {
+    setNotice(null);
+    setError(null);
+    try {
+      await navigator.clipboard.writeText(address);
+      setNotice("Email copied.");
+    } catch {
+      setError("Couldn’t copy the email address.");
+    }
+  }
+
   async function deleteLead(lead: Doc<"leads">) {
     if (deleting.current.has(lead._id)) return;
     deleting.current.add(lead._id);
@@ -244,7 +255,7 @@ export function AdminLeadsView() {
                       {[SOURCES[lead.source], villaName(lead), staffDateTime(lead.createdAt)].filter(Boolean).join(" · ")}
                     </p>
                   </div>
-                  <LeadActions lead={lead} pending={pendingDeletes.has(lead._id)} onDelete={() => void deleteLead(lead)} />
+                  <LeadActions lead={lead} pending={pendingDeletes.has(lead._id)} onCopy={() => void copyLeadEmail(lead.email)} onDelete={() => void deleteLead(lead)} />
                 </li>
               ))}
             </ul>
@@ -277,7 +288,7 @@ export function AdminLeadsView() {
                     <td className="px-4 py-3 text-muted-foreground">{villaName(lead) ?? "—"}</td>
                     <td className="px-4 py-3 text-muted-foreground">{staffDateTime(lead.createdAt)}</td>
                     <td className="px-2 py-2 text-right">
-                      <LeadActions lead={lead} pending={pendingDeletes.has(lead._id)} onDelete={() => void deleteLead(lead)} />
+                      <LeadActions lead={lead} pending={pendingDeletes.has(lead._id)} onCopy={() => void copyLeadEmail(lead.email)} onDelete={() => void deleteLead(lead)} />
                     </td>
                   </tr>
                 ))}
@@ -300,7 +311,10 @@ export function AdminLeadsView() {
 }
 
 /** Permanent deletion sits in the row's ⋯ menu, labelled as such, and still asks to confirm. */
-function LeadActions({ lead, pending, onDelete }: { lead: Doc<"leads">; pending: boolean; onDelete: () => void }) {
+function LeadActions({ lead, pending, onCopy, onDelete }: { lead: Doc<"leads">; pending: boolean; onCopy: () => void; onDelete: () => void }) {
   if (pending) return <Spinner label="Deleting" />;
-  return <MoreMenu label={`Actions for lead ${lead.email}`} items={[{ label: "Delete permanently", destructive: true, onSelect: onDelete }]} />;
+  return <MoreMenu label={`Actions for lead ${lead.email}`} items={[
+    { label: "Copy email address", onSelect: onCopy },
+    { label: "Delete permanently", destructive: true, onSelect: onDelete },
+  ]} />;
 }

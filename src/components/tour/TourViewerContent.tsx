@@ -5,6 +5,7 @@ import { useAuth } from "@/platform/auth";
 import { useTranslations } from "@/platform/intl";
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps, type ComponentType } from "react";
 import { createPortal } from "react-dom";
+import { PropertyImage } from "@/components/property/PropertyImage";
 import { LeadCapture } from "@/components/tour/LeadCapture";
 import type { TourCanvas, TourSceneStatus } from "@/components/tour/TourCanvas";
 import { TourConclusion } from "@/components/tour/TourConclusion";
@@ -186,8 +187,6 @@ function LiveTourViewer({ property, onClose, onFirstSceneDrawn, onReady, standar
     setDetailRequest(null);
   }
 
-  const allRoomsVisited =
-    activeRooms.length > 0 && activeRooms.every((room) => visited.has(room.id));
   const currentRoomIndex = Math.max(
     0,
     activeRooms.findIndex((room) => room.id === currentRoomId),
@@ -291,23 +290,24 @@ function LiveTourViewer({ property, onClose, onFirstSceneDrawn, onReady, standar
         <div
           role="alert"
           aria-live="assertive"
-          className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-4 bg-black/80 px-6 text-center"
+          className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-4 overflow-hidden bg-black px-6 text-center"
         >
-          <p className="font-serif text-xl font-semibold text-white md:text-2xl">
+          <PropertyImage images={property.images} alt="" sizes="100vw" imgClassName="opacity-25" />
+          <p className="relative font-serif text-xl font-semibold text-white md:text-2xl">
             {tourT("loadFailed")}
           </p>
           <Button
             type="button"
             variant="gold"
             onClick={handleRetry}
-            className="rounded-full px-6 shadow-lg shadow-black/30"
+            className="relative min-h-11 rounded-full px-6 shadow-lg shadow-black/30"
           >
             {tourT("retry")}
           </Button>
           <button
             type="button"
             onClick={onClose}
-            className="text-xs text-white/50 underline-offset-4 hover:text-white hover:underline"
+            className="relative min-h-11 text-sm text-white/80 underline-offset-4 hover:text-white hover:underline"
           >
             {a11y("close")}
           </button>
@@ -319,15 +319,17 @@ function LiveTourViewer({ property, onClose, onFirstSceneDrawn, onReady, standar
           <button
             type="button"
             onClick={onClose}
-            className="absolute right-4 top-4 z-30 flex h-10 w-10 items-center justify-center rounded-full bg-black/30 text-white backdrop-blur-sm transition hover:bg-black/50 md:right-6 md:top-5"
+            className="absolute right-4 top-4 z-30 flex size-11 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-sm transition hover:bg-black/75 focus-visible:ring-2 focus-visible:ring-white md:right-6 md:top-5"
             aria-label={a11y("closeTour")}
           >
             <X className="h-5 w-5" />
           </button>
           <TourOverlay
             visitedCount={visited.size}
-            totalRooms={activeRooms.length}
-            allRoomsVisited={allRoomsVisited}
+            rooms={activeRooms}
+            currentRoomId={currentRoomId}
+            navigationLocked={navigationLocked}
+            onSelectRoom={navigateTo}
             onFinish={() => setPhase("conclusion")}
           />
           {detailStatus && !navigationLocked && currentRoom ? (

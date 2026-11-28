@@ -1,7 +1,7 @@
 "use client";
 
 import { staffDateTime } from "@/lib/staff-time";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import {
   CHAT_CHANNEL_LABELS,
@@ -19,6 +19,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { StickyActionBar } from "@/components/ui/sticky-action-bar";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Disclosure } from "@/components/ui/disclosure";
 import { InfoTip } from "@/components/ui/info-tip";
 import { useUnsavedGuard } from "@/hooks/use-unsaved-guard";
 import { Combobox, ComboboxInput, ComboboxContent, ComboboxList, ComboboxItem, ComboboxEmpty } from "@/components/ui/combobox";
@@ -33,6 +34,7 @@ import { errorText } from "@/lib/staff-bookings";
 import { cn } from "@/lib/utils";
 import { useConfirm } from "./ConfirmDialog";
 import { HistoryDisclosure, RecordHistoryPanel, type HistoryEntry } from "./RecordHistoryPanel";
+import { MobileSectionPicker } from "./MobileSectionPicker";
 import { SegmentedTabs, tabPanelProps } from "./SegmentedTabs";
 import { ADMIN_SETTINGS_TABS, adminSettingsTab, adminSettingsTabPath, isOwnerOnlySettingsTab, type AdminSettingsTab } from "./admin-routes";
 import { SetupChecklistCard } from "./SetupChecklist";
@@ -80,10 +82,11 @@ export function AdminSettingsView() {
   const [dirty, setDirty] = useState(false);
   const { confirmDiscard } = useUnsavedGuard(dirty);
   const setTab = async (next: Tab) => {
-    if (next !== tab && await confirmDiscard()) {
-      setDirty(false);
-      router.replace(adminSettingsTabPath(next), { scroll: false });
-    }
+    if (next === tab) return true;
+    if (!(await confirmDiscard())) return false;
+    setDirty(false);
+    router.replace(adminSettingsTabPath(next), { scroll: false });
+    return true;
   };
   const legacyTab = searchParams.get("tab") === "admins";
   // Old ?tab=admins links open Team under its own address.
@@ -100,13 +103,16 @@ export function AdminSettingsView() {
           <AlertDescription><strong className="font-semibold">Read only.</strong> Only owners can change settings.</AlertDescription>
         </Alert>
       ) : null}
-      <SegmentedTabs
-        id="settings"
-        tabs={tabs.map(({ id, label }) => ({ value: id, label }))}
-        value={tab}
-        onValueChange={setTab}
-        label="Settings sections"
-      />
+      <MobileSectionPicker label="Settings sections" sections={tabs.map(({ id, label, keywords }) => ({ value: id, label, keywords }))} value={tab} onSelect={setTab} />
+      <div className="hidden sm:block">
+        <SegmentedTabs
+          id="settings"
+          tabs={tabs.map(({ id, label }) => ({ value: id, label }))}
+          value={tab}
+          onValueChange={(next) => void setTab(next)}
+          label="Settings sections"
+        />
+      </div>
       {tab === "business" ? <SetupChecklistCard /> : null}
 
       <div {...tabPanelProps("settings", tab)} className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4">
@@ -115,7 +121,7 @@ export function AdminSettingsView() {
         ) : tab === "checkoutRules" ? (
           <Suspense fallback={<PanelSpinner label="Loading checkout rules" />}><CheckoutRulesPanel onDirtyChange={setDirty} /></Suspense>
         ) : tab === "team" ? (
-          <TeamSettings onDirtyChange={setDirty} confirmDiscard={confirmDiscard} />
+          <TeamSettings key={searchParams.get("people") === "marketing" ? "marketing" : "team"} filterMarketing={searchParams.get("people") === "marketing"} onDirtyChange={setDirty} confirmDiscard={confirmDiscard} />
         ) : tab === "branches" ? (
           <BranchesSettings />
         ) : settings === undefined ? (
@@ -164,7 +170,7 @@ const SECTIONS: Record<
 > = {
   bookingRules: {
     title: "Booking rules",
-    description: "Timing and stay limits for online villa bookings; staff-created bookings are exempt from stay limits and unpaid expiry.",
+    description: "Online booking rules across the resort, with stay limits and unpaid expiry applying to guest bookings only.",
     fields: () => [
       { name: "unpaidHoldMinutes", label: "Reservation held while awaiting payment", type: "number", unit: "min", hint: "Minutes the dates stay reserved while the guest pays. Opening the payment page extends this until that page expires." },
       { name: "chatQuoteValidityMinutes", label: "Guest confirmation window for chat quotes", type: "number", unit: "min", hint: "Minutes a guest has to confirm a booking summary sent in chat before the quote expires." },
@@ -178,7 +184,7 @@ const SECTIONS: Record<
   },
   business: {
     title: "Business profile",
-    description: "Used by the AI concierge, guest emails and the admin.",
+    description: "Resort profile used by the AI concierge, guest emails and the admin.",
     fields: () => [
       { name: "businessName", label: "Business name", required: true },
       { name: "tagline", label: "Tagline" },
@@ -241,7 +247,7 @@ const SECTIONS: Record<
   },
   email: {
     title: "Email",
-    description: "Booking confirmations, lifecycle emails and staff alerts",
+    description: "Resort-wide sender identity, guest emails and staff alerts",
     fields: () => [
       {
         name: "fromName",
@@ -326,6 +332,53 @@ function formatTimerMinutes(value: string | undefined): string {
   return value?.trim() && Number.isInteger(parsed) && parsed > 0 ? `${parsed} min` : "not set";
 }
 
+function EmailPreview({ sender, footer, recipient, unavailable }: { sender: string; footer: string; recipient: string; unavailable: boolean }) {
+  const sendTestEmail = useAction(api.settings.emails.sendTestEmail);
+  const confirm = useConfirm();
+  const pending = useRef(false);
+  const [sending, setSending] = useState(false);
+  const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
+  async function send() {
+    if (!recipient || unavailable || pending.current) return;
+    pending.current = true;
+    setSending(true);
+    setResult(null);
+    try {
+      const accepted = await confirm({
+        title: "Send a test email?",
+        description: `Send to ${recipient} using the saved email settings.`,
+        confirmLabel: "Send test email",
+      });
+      if (accepted) setResult(await sendTestEmail({ expectedRecipient: recipient }));
+    } catch (error) {
+      setResult({ ok: false, message: errorText(error, "Could not send the test email.") });
+    } finally {
+      pending.current = false;
+      setSending(false);
+    }
+  }
+
+  return (
+    <Disclosure label="Email preview" className="border-t border-border">
+      <div className="grid gap-3 break-words text-sm [overflow-wrap:anywhere]">
+        <div>
+          <p className="font-medium">From {sender}</p>
+          <p className="text-muted-foreground">Sample booking confirmation</p>
+        </div>
+        <p>Your villa stay is confirmed. We look forward to welcoming you.</p>
+        {footer ? <p className="whitespace-pre-wrap text-muted-foreground">{footer}</p> : null}
+        {recipient ? <div className="flex flex-wrap items-center gap-2">
+          <Button type="button" variant="outline" className="min-h-11" disabled={unavailable || sending} onClick={() => void send()}>
+            {sending ? <Spinner label="Sending" /> : null}Send test email
+          </Button>
+          <p className="text-xs text-muted-foreground">{unavailable ? "Save or review changes before sending." : `Test recipient: ${recipient}`}</p>
+        </div> : null}
+        {result ? <p role={result.ok ? "status" : "alert"} className={result.ok ? "text-muted-foreground" : "text-destructive"}>{result.message}</p> : null}
+      </div>
+    </Disclosure>
+  );
+}
+
 function SettingsForm({ section, settings, readOnly = false, onDirtyChange }: { section: Section; settings: SettingsRecord; readOnly?: boolean; onDirtyChange: (dirty: boolean) => void }) {
   const config = SECTIONS[section];
   const pending = useRef(false);
@@ -334,6 +387,7 @@ function SettingsForm({ section, settings, readOnly = false, onDirtyChange }: { 
   const update = useMutation(api.settings.settings.update);
   const restore = useMutation(api.settings.settings.restore);
   const confirm = useConfirm();
+  const account = useStaffAccess();
   const [revision, setRevision] = useState(settings.revision);
   const [savedValues, setSavedValues] = useState(() => config.values(settings));
   const [values, setValues] = useState(() => config.values(settings));
@@ -580,8 +634,12 @@ function SettingsForm({ section, settings, readOnly = false, onDirtyChange }: { 
       names: ["unpaidHoldMinutes", "chatQuoteValidityMinutes"],
     },
     {
-      title: "Stay limits & guest emails",
-      names: ["preArrivalDaysBefore", "reviewDaysAfter", "minNights", "maxAdvanceDays", "sameDayCutoff"],
+      title: "Stay limits",
+      names: ["minNights", "maxAdvanceDays", "sameDayCutoff"],
+    },
+    {
+      title: "Guest reminders",
+      names: ["preArrivalDaysBefore", "reviewDaysAfter"],
     },
   ];
 
@@ -638,7 +696,33 @@ function SettingsForm({ section, settings, readOnly = false, onDirtyChange }: { 
               </header>
               <div className="grid min-w-0 content-start grid-cols-[minmax(0,1fr)] gap-x-5 gap-y-5 sm:grid-cols-2">{fields.filter((field) => group.names.includes(field.name)).map(renderField)}</div>
             </Card>
-          )) : <Card className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-5 p-5 sm:grid-cols-2 lg:p-6">{fields.map(renderField)}</Card>}
+          )) : section === "email" ? (
+            <Card className="grid min-w-0 gap-4 p-4 sm:p-5 lg:p-6">
+              <section className="grid gap-3" aria-label="Sender identity">
+                <h3 className="text-[15px] font-semibold">Sender identity</h3>
+                <div className="grid gap-4 sm:grid-cols-2">{fields.filter((field) => field.name !== "ownerNotificationEmail").map(renderField)}</div>
+              </section>
+              <section className="grid gap-3 border-t border-border pt-4" aria-label="Notifications">
+                <h3 className="text-[15px] font-semibold">Notifications</h3>
+                <div className="grid gap-4 sm:grid-cols-2">{fields.filter((field) => field.name === "ownerNotificationEmail").map(renderField)}</div>
+              </section>
+              <EmailPreview
+                sender={values.fromName.trim() || settings.businessName}
+                footer={values.footer}
+                recipient={readOnly ? "" : savedValues.ownerNotificationEmail.trim() || settings.defaultOwnerNotificationEmail || account.email || ""}
+                unavailable={dirty || isStale || state.saving}
+              />
+            </Card>
+          ) : <Card className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-5 p-5 sm:grid-cols-2 lg:p-6">
+            {fields.map(renderField)}
+            <Disclosure label="Example guest reply" className="border-t border-border sm:col-span-2">
+              <div className="grid gap-1.5 text-sm">
+                <p className="text-muted-foreground">Illustrative reply using the saved check-in time.</p>
+                <p className="font-medium">What time can I check in?</p>
+                <p>Check-in starts at {settings.checkInTime} resort time. Let us know if you plan to arrive early.</p>
+              </div>
+            </Disclosure>
+          </Card>}
           {section === "ai" ? <FastRepliesCard
             checked={values.fastReplies === "true"}
             disabled={state.saving || readOnly}
@@ -712,7 +796,14 @@ function ChannelsPanel() {
                 Retry
               </Button>
             </Alert>
-          ) : null}
+          ) : <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <p role="status" className="text-xs text-muted-foreground">
+              {config.state === "ready" ? `Setup checked ${formatTime(config.checkedAt)}` : "Checking channel setup…"}
+            </p>
+            <Button type="button" size="sm" variant="ghost" className="min-h-11" disabled={config.state === "loading"} onClick={config.retry}>
+              <RotateCw aria-hidden className="size-4" />Check setup
+            </Button>
+          </div>}
           {health === undefined ? (
             <PanelSpinner label="Loading channel health" />
           ) : (

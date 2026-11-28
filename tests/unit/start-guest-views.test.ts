@@ -27,6 +27,14 @@ describe("shared guest views", () => {
     const chatLinks = [...html.matchAll(/<a[^>]*href="\/th\/chat"[^>]*>([^<]*)</g)].map((match) => match[1]);
     expect(chatLinks).toEqual([th.Experiences.secondaryCta, th.Experiences.secondaryCta]);
     expect(html).toContain(th.ServiceCatalog.all);
+    document.body.innerHTML = html;
+    const triggers = [...document.querySelectorAll('button[aria-haspopup="dialog"]')];
+    expect(triggers.map((trigger) => trigger.getAttribute("aria-label")))
+      .toEqual(Object.values(th.Experiences.items).map((item) => item.title));
+    for (const trigger of triggers) {
+      expect(document.getElementById(trigger.getAttribute("aria-describedby")!)?.textContent)
+        .toBe(th.Experiences.secondaryCta);
+    }
   });
 
   it("renders the service catalog's unavailable, empty and paged states", () => {
@@ -42,7 +50,7 @@ describe("shared guest views", () => {
       continueCursor: "next-1",
     } as never, { category: "Spa", query: "massage", cursor: "c0" });
     expect(html).toContain("Thai massage");
-    expect(html).toContain('href="/th/chat?service=thai-massage"');
+    expect(html).toContain('href="/th/chat?service=thai-massage&amp;returnTo=');
     expect(html).toContain('href="/th/services?category=Spa&amp;q=massage&amp;cursor=next-1"');
     expect(html).toContain('href="/th/services?category=Spa&amp;q=massage"');
     expect(html).toContain('action="/th/services"');

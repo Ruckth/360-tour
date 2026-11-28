@@ -330,27 +330,33 @@ export const getOrder = staffQuery({
 });
 
 /**
- * Orders with items, newest change first, for the Orders list: unpaid, paid, voided or discarded.
+ * Orders with items, newest change first. Returned uses the same bounded pages as paid orders.
  * Unpaid never includes discarded orders; `discarded` lists them newest discard first.
  */
 export const listOrders = staffQuery({
 	capability: 'operations',
-	args: { filter: v.union(v.literal('unpaid'), v.literal('paid'), v.literal('void'), v.literal('discarded')), paginationOpts: paginationOptsValidator },
+	args: { filter: v.union(v.literal('unpaid'), v.literal('paid'), v.literal('returned'), v.literal('void'), v.literal('discarded')), paginationOpts: paginationOptsValidator },
 	handler: async (ctx, args) => {
 		const numItems = Math.min(Math.max(args.paginationOpts.numItems, 1), ORDERS_PAGE_MAX);
+		const status = args.filter === 'unpaid' ? 'draft' : args.filter === 'returned' ? 'paid' : args.filter;
 		const page = await ctx.db
 			.query('orders')
-			.withIndex('by_hasItems_and_status_and_updatedAt', (q) => {
-				const withItems = q.eq('hasItems', true);
-
-				return args.filter === 'unpaid' ? withItems.eq('status', 'draft') : withItems.eq('status', args.filter);
-			})
+			.withIndex('by_hasItems_and_status_and_updatedAt', q => q.eq('hasItems', true).eq('status', status))
 			.order('desc')
 			.paginate({ ...args.paginationOpts, numItems });
 		const orders = page.page;
 		const rows = [];
 		for (const order of orders) {
-			if (canAccessCheckoutOrderBranch(ctx.staff, order)) rows.push(await orderListRow(ctx, order));
+			if (!canAccessCheckoutOrderBranch(ctx.staff, order)) continue;
+			const refunded = order.returnedTotal ?? await orderRefundTotal(ctx, order._id);
+			if (args.filter === 'returned' && refunded <= 0 && (order.rowReturnedTotal ?? 0) <= 0) {
+				// A completed return can restore an entitlement without changing the financial totals.
+				if (order.returnedTotal === undefined) continue;
+				const completed = await readOrderProjection(ctx, () => ctx.db.query('orderReturns')
+					.withIndex('by_orderId_and_status', q => q.eq('orderId', order._id).eq('status', 'completed')).first());
+				if (!completed) continue;
+			}
+			rows.push(await orderListRow(ctx, order, refunded));
 		}
 		return { ...page, page: rows };
 	}
@@ -517,9 +523,9 @@ export const appointmentFees = staffQuery({
 	}
 });
 
-async function orderListRow(ctx: QueryCtx, order: Doc<"orders">) {
+async function orderListRow(ctx: QueryCtx, order: Doc<"orders">, refunded?: number) {
 		const sources = await orderSourceRefs(ctx, order, await sourceRows(ctx, order._id));
-			const refundAmounts: { refundedAmountSatang?: number } = { refundedAmountSatang: order.returnedTotal ?? await orderRefundTotal(ctx, order._id) };
+			const refundAmounts: { refundedAmountSatang?: number } = { refundedAmountSatang: refunded ?? order.returnedTotal ?? await orderRefundTotal(ctx, order._id) };
 		const paidAt = order.paymentEffectiveAt ?? order.paidAt;
 		const paymentTime: { paidAt?: number } = paidAt === undefined ? {} : { paidAt };
 			return {

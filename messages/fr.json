@@ -560,6 +560,7 @@
     }
   },
   "Tour": {
+    "scene": "Scène",
     "detail": {
       "available": "Afficher tous les détails",
       "loading": "Chargement des détails…",

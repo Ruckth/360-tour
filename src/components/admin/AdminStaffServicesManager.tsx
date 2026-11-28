@@ -35,6 +35,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import { Toast, useToast } from "@/components/ui/toast";
 import {
   WEEKDAYS,
   errorText,
@@ -72,6 +73,7 @@ export function AdminStaffServicesManager({ section }: { section: "staff" | "ser
   const services = useQuery(api.services.admin.listServices, { includeArchived: true });
   const [editing, setEditing] = useState<{ kind: "staff"; staff?: Staff } | { kind: "service"; service?: Service } | null>(null);
   const [showArchived, setShowArchived] = useState(false);
+  const [search, setSearch] = useState({ staff: "", services: "" });
   const [view, setView] = useState<"list" | "matrix">("list");
   const [matrixDirty, setMatrixDirty] = useState(false);
   const [bulkTimeOff, setBulkTimeOff] = useState(false);
@@ -82,6 +84,7 @@ export function AdminStaffServicesManager({ section }: { section: "staff" | "ser
   const convex = useConvex();
   const router = useRouter();
   const [error, setError] = useState("");
+  const archiveNotice = useToast();
   const confirm = useConfirm();
   // Team is owner-only (isOwnerOnlySettingsTab); others see where it lives without a link they can't open.
   const caps = useStaffAccess().capabilities;
@@ -125,7 +128,16 @@ export function AdminStaffServicesManager({ section }: { section: "staff" | "ser
   const staffNames = new Map(staff.map((s) => [s._id as string, s.name]));
   const rows = section === "staff" ? staff : services;
   const archivedCount = rows.filter((row) => row.status === "archived").length;
-  const visibleCount = showArchived ? rows.length : rows.length - archivedCount;
+  const needle = search[section].trim().toLowerCase();
+  const matchingStaff = staff.filter((person) => (
+    (showArchived || person.status === "active") && `${person.name} ${person.role}`.toLowerCase().includes(needle)
+  ));
+  const matchingServices = services.filter((service) => {
+    if (!showArchived && service.status !== "active") return false;
+    const assignees = service.staffIds.map((id) => staffNames.get(id) ?? "");
+    return [service.name, service.category, ...assignees].join(" ").toLowerCase().includes(needle);
+  });
+  const visibleCount = section === "staff" ? matchingStaff.length : matchingServices.length;
   const hasActiveStaff = staff.some((s) => s.status === "active");
 
   async function run(action: () => Promise<unknown>, fallback: string) {
@@ -165,7 +177,13 @@ export function AdminStaffServicesManager({ section }: { section: "staff" | "ser
       confirmLabel: "Archive",
       destructive: true,
     });
-    if (confirmed) await run(() => archiveStaff({ staffId: person._id }), "Could not archive.");
+    if (confirmed) await run(async () => {
+      const { archivedAt } = await archiveStaff({ staffId: person._id });
+      archiveNotice.show(`${person.name} archived`, {
+        label: "Undo",
+        run: () => updateStaff({ staffId: person._id, status: "active", expectedArchivedAt: archivedAt }),
+      });
+    }, "Could not archive.");
   }
 
   async function archiveOffering(service: Service) {
@@ -181,11 +199,12 @@ export function AdminStaffServicesManager({ section }: { section: "staff" | "ser
 
   return (
     <section className="border border-border bg-card">
+      {section === "staff" ? <Toast current={archiveNotice.current} busy={archiveNotice.busy} error={archiveNotice.error} run={archiveNotice.run} dismiss={archiveNotice.dismiss} /> : null}
       <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
-        <p className="min-w-60 flex-1 text-sm text-muted-foreground">
+        <p className="min-w-0 basis-full text-sm text-muted-foreground lg:basis-auto lg:flex-1">
           {section === "staff" ? (
             <>
-              Therapist profiles: who performs services, and when they work. Breaks show as blocked time on the calendar.{" "}
+              Resort-wide therapist profiles and working hours.{" "}
               {canManageTeam ? (
                 <>Staff logins and access are managed in <Link className="font-medium text-foreground underline underline-offset-2" href={adminSettingsTabPath("team")}>Settings → Team</Link>.</>
               ) : (
@@ -196,6 +215,19 @@ export function AdminStaffServicesManager({ section }: { section: "staff" | "ser
             "What guests can book, how long it takes, and who can do it."
           )}
         </p>
+        {!(section === "services" && view === "matrix") ? (
+          <Input
+            type="search"
+            aria-label={section === "staff" ? "Search staff" : "Search services"}
+            placeholder={section === "staff" ? "Search name or role…" : "Search name, category or staff…"}
+            value={search[section]}
+            onChange={(event) => {
+              const value = event.target.value;
+              setSearch((current) => ({ ...current, [section]: value }));
+            }}
+            className="min-h-11 w-full min-w-0 sm:w-56 lg:min-h-9"
+          />
+        ) : null}
         {section === "services" ? (
           <div className="flex h-9 rounded-lg border border-border bg-muted/40 p-0.5" role="group" aria-label="Services view">
             {([["list", "List"], ["matrix", "Who does what"]] as const).map(([key, label]) => (
@@ -259,9 +291,7 @@ export function AdminStaffServicesManager({ section }: { section: "staff" | "ser
       ) : (
         <ul className="divide-y divide-border">
           {section === "staff"
-            ? staff
-                .filter((s) => showArchived || s.status === "active")
-                .map((s) => (
+            ? matchingStaff.map((s) => (
                   <Row
                     key={s._id}
                     archived={s.status === "archived"}
@@ -273,9 +303,7 @@ export function AdminStaffServicesManager({ section }: { section: "staff" | "ser
                     onRestore={() => run(() => updateStaff({ staffId: s._id, status: "active" }), "Could not restore.")}
                   />
                 ))
-            : services
-                .filter((s) => showArchived || s.status === "active")
-                .map((s) => (
+            : matchingServices.map((s) => (
                   <Row
                     key={s._id}
                     archived={s.status === "archived"}
@@ -293,7 +321,12 @@ export function AdminStaffServicesManager({ section }: { section: "staff" | "ser
                 ))}
           {visibleCount === 0 ? (
             <li className="grid justify-items-center gap-3 px-4 py-10 text-center text-sm text-muted-foreground">
-              {rows.length
+              {needle ? (
+                <>
+                  <span>No {section} match “{search[section].trim()}”.</span>
+                  <Button size="sm" variant="outline" onClick={() => setSearch((current) => ({ ...current, [section]: "" }))}>Clear search</Button>
+                </>
+              ) : rows.length
                 ? `Every ${section === "staff" ? "staff member" : "service"} is archived.`
                 : section === "staff"
                   ? "No staff yet. Add the people who perform services."

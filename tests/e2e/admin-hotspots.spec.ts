@@ -99,6 +99,15 @@ test("the visual editor opens from the keyboard, places and moves a hotspot, and
     await page.keyboard.press("Enter");
     await expect(editor.getByTestId("tour-hotspot")).toHaveText("Walk to the pool");
     await expect(editor.getByRole("button", { name: "Save hotspots" })).toBeDisabled();
+    const mode = editor.getByRole("group", { name: "Hotspot editing mode" });
+    await expect(mode.getByRole("button", { name: "Look", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(editor.getByRole("button", { name: "Add here", exact: true })).toHaveCount(0);
+    await mode.getByRole("button", { name: "Add", exact: true }).click();
+    await editor.getByRole("button", { name: "Add here", exact: true }).click();
+    await expect(editor.getByRole("heading", { name: "Hotspots (2)" })).toBeVisible();
+    await mode.getByRole("button", { name: "Undo", exact: true }).click();
+    await expect(editor.getByRole("heading", { name: "Hotspots (1)" })).toBeVisible();
+    await expect(editor.getByRole("button", { name: "Save hotspots" })).toBeDisabled();
     await page.keyboard.press("Escape");
     await expect(editor).toHaveCount(0);
     await expect(trigger).toBeFocused();

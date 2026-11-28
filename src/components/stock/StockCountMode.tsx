@@ -412,8 +412,8 @@ export function StockCountMode({
           <div className="flex min-h-0 flex-1 flex-col justify-between overflow-y-auto px-5 py-6">
             <div className="mx-auto grid w-full max-w-md gap-5">
               <div className="grid gap-1 text-center">
-                <p className="text-xl font-semibold text-foreground">{currentItem.productName}</p>
-                <p className="text-sm text-muted-foreground">
+                <p className="wrap-anywhere text-xl font-semibold text-foreground">{currentItem.productName}</p>
+                <p className="wrap-anywhere text-sm text-muted-foreground">
                   {currentItem.label}
                   {currentItem.sku ? ` · ${currentItem.sku}` : ""}
                 </p>

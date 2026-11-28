@@ -73,6 +73,10 @@ function printCss(paper: Paper, lengthMm: number) {
 }
 
 const noSubscription = () => () => undefined;
+/** Cash handed over, from the tenders that record what was received (the ones that give change). */
+export const cashReceived = (tenders: readonly { amount: number; received?: number }[]) =>
+  roundMoney(tenders.reduce((sum, tender) => sum + (tender.received ?? 0), 0));
+
 /** Whether the system share sheet exists here; false on the server so hydration matches. */
 const useCanShare = () =>
   useSyncExternalStore(noSubscription, () => typeof navigator.share === "function", () => false);
@@ -341,6 +345,12 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
             {order.title} · <span className="font-medium text-foreground font-sans tabular-nums">{formatMoney(totals.total)}</span> · {isVoid ? "Void" : `Paid${paidWith ? ` by ${paidWith}` : ""}`}
             {!isVoid && view.paymentRecord.tendersAmended ? " · corrected" : ""}
           </p>
+          {/* On a phone the receipt preview starts folded, so the change to hand back shows here too. */}
+          {change && !isVoid ? (
+            <p data-testid="receipt-change" className="mt-1 text-sm text-muted-foreground">
+              Cash received <span className="font-sans tabular-nums">{formatMoney(cashReceived(payments))}</span> · Change due <span className="font-semibold text-foreground font-sans tabular-nums">{formatMoney(change)}</span>
+            </p>
+          ) : null}
           {notice ? <p ref={noticeRef} tabIndex={-1} role="status" className="mt-1 rounded text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring">{notice}</p> : null}
         </div>
         <div ref={toolbarRef} role="toolbar" aria-label="Receipt actions" className="flex flex-wrap items-center gap-1.5 max-sm:w-full sm:gap-2">

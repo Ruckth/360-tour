@@ -31,6 +31,7 @@ it('G30: a valid payment link reads the villa name, stay dates and guest count w
 	const { t, booking } = await booked();
 	const summary = await t.query(api.bookings.bookings.getById, { id: booking.bookingId, accessToken: booking.accessToken });
 	expect(summary).toMatchObject({ propertyName: 'Pool Villa', checkIn: day(10), checkOut: day(12), guests: 3, nights: 2 });
+	expect(summary?.holdExpiresAt).toBeGreaterThan(now);
 	expect(JSON.stringify(summary)).not.toMatch(/guest@example\.com|812345678|"Guest"/);
 });
 
@@ -54,6 +55,7 @@ it('G30: the pay state follows the checkout rules, keeping a positive balance on
 	expect(await read()).toMatchObject({ payState: 'payable', amountDue: total });
 	await patch({ status: 'confirmed', paymentStatus: 'paid', amountPaid: total - 5000 });
 	expect(await read()).toMatchObject({ payState: 'payable', amountDue: 5000 });
+	expect((await read())?.holdExpiresAt).toBeUndefined();
 	await patch({ amountPaid: total });
 	expect(await read()).toMatchObject({ payState: 'settled', amountDue: 0 });
 	await patch({ status: 'cancelled', paymentStatus: 'refunded', amountPaid: 0 });

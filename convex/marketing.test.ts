@@ -334,6 +334,53 @@ describe('marketing audit regressions', () => {
     await expect(admin.query(api.marketing.queries.testQuote, args)).rejects.toThrow('service_unavailable');
   });
 
+  it('tests proposed rules without changing the public quote, coupon version, or redemption counts', async () => {
+    const { t, admin, couponId } = await setup();
+    await admin.mutation(api.marketing.commands.setCouponStatus.setCouponStatus, { couponId, status: 'active' });
+    const before = await admin.query(api.marketing.queries.getCoupon, { couponId });
+    const publicQuote = await t.query(api.marketing.public.previewCoupon, quote);
+    const proposed = { couponId, rules: { ...rules, benefit: { kind: 'percent' as const, percent: 3000 } } };
+    expect(publicQuote).toMatchObject({ couponDiscount: 180000, total: 720000 });
+    expect(await admin.query(api.marketing.queries.testQuote, { ...quote, proposed }))
+      .toMatchObject({ couponDiscount: 270000, total: 630000 });
+    expect(await admin.query(api.marketing.queries.getCoupon, { couponId })).toEqual(before);
+    expect(await t.query(api.marketing.public.previewCoupon, quote)).toEqual(publicQuote);
+
+    for (const role of ['viewer', 'marketer'] as const) {
+      const email = `${role}@example.com`;
+      const account = t.withIdentity({ email, emailVerified: true, tokenIdentifier: role });
+      await admin.mutation(api.marketing.access.setGrant, { email, role, expectedGrant: null });
+      await account.mutation(api.marketing.access.claimInvite, {});
+      expect(await account.query(api.marketing.queries.testQuote, quote)).toEqual(publicQuote);
+      await expect(account.query(api.marketing.queries.testQuote, { ...quote, proposed }))
+        .rejects.toThrow(role === 'viewer' ? 'Not authorized' : 'Marketers may edit drafts only');
+    }
+  });
+
+  it('tests unsaved service-only, mixed, invalid and expired rules with the same pricing engine', async () => {
+    const { t, admin } = await setup();
+    const serviceId = await t.run(ctx => ctx.db.insert('services', service));
+    const spa = { code: 'NEW-SPA', services: [{ serviceId, amount: 100000 }] };
+    const spaRules = { benefit: { kind: 'percent' as const, percent: 2000 }, scope: 'services' as const };
+    expect(await admin.query(api.marketing.queries.testQuote, { ...spa, proposed: { rules: spaRules } }))
+      .toMatchObject({ couponStatus: 'applied', total: 80000, directDiscount: 0 });
+    expect(await admin.query(api.marketing.queries.testQuote, { ...spa, proposed: { rules: { ...spaRules, bookTo: '2026-11-06' } } }))
+      .toMatchObject({ couponStatus: 'invalid', problem: { code: 'expired' } });
+    await expect(admin.query(api.marketing.queries.testQuote, { ...spa, proposed: { rules: { ...spaRules, benefit: { kind: 'percent', percent: 15000 } } } }))
+      .rejects.toThrow('invalid_coupon_benefit');
+    const mixed = { ...spa, proposed: { rules: { ...spaRules, scope: 'accommodation_and_services' as const } } };
+    await expect(admin.query(api.marketing.queries.testQuote, mixed)).rejects.toThrow('stay_required');
+    expect(await admin.query(api.marketing.queries.testQuote, { ...quote, ...mixed }))
+      .toMatchObject({ couponStatus: 'applied', couponDiscount: 200000, total: 800000 });
+    await expect(admin.query(api.marketing.queries.testQuote, {
+      ...quote, proposed: { rules: { ...rules, propertySlugs: ['mossbell', 'missing-villa'] } },
+    })).rejects.toThrow('property_not_found');
+    expect(await admin.query(api.marketing.queries.listCoupons, {})).toHaveLength(1);
+
+    await admin.mutation(api.marketing.commands.saveCoupon.saveCoupon, { code: spa.code, ...spaRules });
+    expect(await admin.query(api.marketing.queries.testQuote, spa)).toMatchObject({ total: 80000 });
+  });
+
   it('bounds service count at 50 and accepts zero and maximum satang prices', async () => {
     const { t } = await setup();
     const services = Array.from({ length: 50 }, (_, i) => ({ label: `Service ${i}`, amount: i ? 100000000 : 0 }));

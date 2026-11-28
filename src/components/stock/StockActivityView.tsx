@@ -1,6 +1,6 @@
 "use client";
 
-import { usePaginatedQuery, useQuery } from "convex/react";
+import { usePaginatedQuery, useQueries, useQuery, type RequestForQueries } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
@@ -55,6 +55,7 @@ export function StockActivityView() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const initialVariantId = searchParams.get("variantId") as Id<"productVariants"> | null;
+  const linkedMovementId = searchParams.get("movementId") as Id<"stockMovements"> | null;
   const initialView = searchParams.get("view") === "needs-review" ? "reports" : "movements";
   const returnTo = sanitizeStockReturnTo(searchParams.get("returnTo"));
 
@@ -69,12 +70,21 @@ export function StockActivityView() {
   const [reasonCodeFilter, setReasonCodeFilter] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
   const [reportStatus, setReportStatus] = useState<StockProblemStatus>("open");
-  const [activeMovementId, setActiveMovementId] = useState<Id<"stockMovements"> | null>(null);
+  const [selectedMovementId, setActiveMovementId] = useState<Id<"stockMovements"> | null>(null);
   const [activeReportContext, setActiveReportContext] = useState<ProblemReportRow | null>(null);
 
   const { notice, show, clear } = useNotice();
 
   const access = useQuery(api.commerce.stock.access, branch ? { branchId: branch.id } : "skip");
+  const branchId = branch?.id;
+  const linkedMovementQuery = useMemo((): RequestForQueries => {
+    if (!branchId || !access?.read || !linkedMovementId) return {};
+    return { movement: { query: api.commerce.stock.getMovement, args: { branchId, movementId: linkedMovementId } } };
+  }, [access?.read, branchId, linkedMovementId]);
+  const linkedMovement = useQueries(linkedMovementQuery).movement;
+  const activeMovementId = selectedMovementId ?? (linkedMovement && !(linkedMovement instanceof Error) ? linkedMovementId : null);
+  const movementParams = new URLSearchParams(searchParams);
+  if (activeMovementId) movementParams.set("movementId", activeMovementId);
 
   const tab = access?.lead ? selectedTab : "movements";
 
@@ -184,6 +194,13 @@ export function StockActivityView() {
   return (
     <div className="grid gap-5">
       <NoticeBar notice={notice} onClose={clear} />
+      {linkedMovementId ? linkedMovement === undefined ? (
+        <SkeletonRows label="Loading linked stock movement" rows={1} />
+      ) : linkedMovement instanceof Error || linkedMovement === null ? (
+        <Callout tone="warning" title="Movement unavailable">
+          The linked movement is unavailable at {branch.name}. Check the selected branch or browse recent activity below.
+        </Callout>
+      ) : null : null}
 
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
@@ -426,9 +443,15 @@ export function StockActivityView() {
           movementId={activeMovementId}
           access={access}
           reportContext={activeReportContext}
+          returnTo={`/admin/stock/activity?${movementParams}`}
           onClose={() => {
             setActiveMovementId(null);
             setActiveReportContext(null);
+            if (linkedMovementId) {
+              const params = new URLSearchParams(searchParams.toString());
+              params.delete("movementId");
+              router.replace(params.size ? `/admin/stock/activity?${params}` : "/admin/stock/activity", { scroll: false });
+            }
           }}
           onSuccess={(message) => show(message, "success")}
         />

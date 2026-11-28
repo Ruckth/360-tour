@@ -38,6 +38,7 @@ import {
   RECEIPT_KIND_META,
   sanitizeStockReturnTo,
   STOCK_PAGE_SIZE,
+  stockDetailHref,
   stockReturnLabel,
 } from "./stock-format";
 import { AmendOrderSheet, CloseRemainderSheet, ReasonSheet } from "./PurchaseOrderSheets";
@@ -136,6 +137,7 @@ export function PurchaseOrderDetailView({ orderId }: { orderId: string }) {
   const awaitingApproval = order.status === "awaiting_approval";
   const expected = relativeDate(order.expectedDate);
   const isOpenIssued = order.status === "ordered" || order.status === "partially_received";
+  const currentOrderHref = stockDetailHref(`/admin/stock/purchasing/orders/${order._id}`, returnTo);
   const openHolds = holds.filter((h) => h.status === "open");
   const oldestHold = openHolds.length ? holdAge(Math.min(...openHolds.map((h) => h.createdAt))) : null;
   const heldUnits = openHolds.reduce((sum, h) => sum + h.quantity - h.acceptedQuantity, 0);
@@ -259,6 +261,13 @@ export function PurchaseOrderDetailView({ orderId }: { orderId: string }) {
             ) : ""}
             {order.supplierReference ? ` · Ref ${order.supplierReference}` : ""}
           </p>
+          {!isDraft && !awaitingApproval ? (
+            <dl aria-label="Order quantities" className="flex flex-wrap gap-x-5 gap-y-1 text-xs">
+              <div className="flex items-baseline gap-1.5"><dt className="text-muted-foreground">Ordered</dt><dd className="font-semibold tabular-nums">{order.orderedUnits.toLocaleString("en-US")}</dd></div>
+              <div className="flex items-baseline gap-1.5"><dt className="text-muted-foreground">Received</dt><dd className="font-semibold tabular-nums">{order.acceptedUnits.toLocaleString("en-US")}</dd></div>
+              <div className="flex items-baseline gap-1.5"><dt className="text-muted-foreground">Due</dt><dd className="font-semibold tabular-nums">{order.dueUnits.toLocaleString("en-US")}</dd></div>
+            </dl>
+          ) : null}
           <OrderValueSummary order={order} />
         </div>
 
@@ -532,7 +541,7 @@ export function PurchaseOrderDetailView({ orderId }: { orderId: string }) {
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
                         <Link
-                          href={`/admin/stock/purchasing/receipts/${rec._id}`}
+                          href={stockDetailHref(`/admin/stock/purchasing/receipts/${rec._id}`, currentOrderHref)}
                           className="font-mono text-sm font-semibold text-foreground hover:underline"
                         >
                           {rec.reference}
@@ -559,7 +568,7 @@ export function PurchaseOrderDetailView({ orderId }: { orderId: string }) {
                         {rec.actorLabel} · {staffDateTime(rec.createdAt)}
                       </p>
                     </div>
-                    <ButtonLink href={`/admin/stock/purchasing/receipts/${rec._id}`} variant="outline" size="sm">
+                    <ButtonLink href={stockDetailHref(`/admin/stock/purchasing/receipts/${rec._id}`, currentOrderHref)} variant="outline" size="sm">
                       Open receipt
                     </ButtonLink>
                   </li>
@@ -634,7 +643,7 @@ export function PurchaseOrderDetailView({ orderId }: { orderId: string }) {
           onClose={() => setReceiveOpen(false)}
           onPosted={(receiptId) => {
             setReceiveOpen(false);
-            router.push(`/admin/stock/purchasing/receipts/${receiptId}?returnTo=${encodeURIComponent(`/admin/stock/purchasing/orders/${order._id}`)}`);
+            router.push(stockDetailHref(`/admin/stock/purchasing/receipts/${receiptId}`, currentOrderHref));
           }}
         />
       ) : null}

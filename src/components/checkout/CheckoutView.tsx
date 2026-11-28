@@ -2,7 +2,7 @@
 
 import type { Id } from "convex/_generated/dataModel";
 import { ChevronUp, ReceiptText, X } from "lucide-react";
-import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { formatMoney } from "@/components/admin/labels";
 import { useStaffAccess } from "@/components/admin/staff-access";
 import { Dialog, DialogTitle } from "@/components/ui/dialog";
@@ -44,7 +44,7 @@ type CheckoutViewProps = {
   notice?: string;
   onNoticeRetry?: () => void;
   /** The customer display button; only the admin page has one. */
-  displayControl?: ReactNode;
+  customerDisplay?: { orderId: string | null | undefined };
   retail?: boolean;
   ordersFilterScope?: string;
   preferredRetailBranchId?: Id<"branches">;
@@ -61,7 +61,7 @@ function CheckoutContent({
   onPaid,
   notice,
   onNoticeRetry,
-  displayControl,
+  customerDisplay,
   retailLabels,
   preferredRetailBranchId,
   ordersFilterScope,
@@ -239,7 +239,7 @@ function CheckoutContent({
     <div inert={sheetOpen && keepHeader} className={cn("relative isolate flex min-h-0 flex-1 flex-col overflow-y-auto bg-background", TOUCH_TARGETS)}>
       {discountNotice && discountNotice.orderId !== orderId ? <DiscountNoticeTarget orderId={discountNotice.orderId} /> : null}
       <Backdrop src={catalog?.rooms.find((room) => room.imageUrl)?.imageUrl} />
-      <OrderStrip key={ordersFilterScope} ordersFilterScope={ordersFilterScope} view={missing ? null : view} title={title} run={run} onOrderChange={changeOrder} canStartNew={orderId !== null || Boolean(notice)} displayControl={displayControl} />
+      <OrderStrip key={ordersFilterScope} ordersFilterScope={ordersFilterScope} view={missing ? null : view} title={title} run={run} onOrderChange={changeOrder} canStartNew={orderId !== null || Boolean(notice)} customerDisplay={customerDisplay} />
       {message ? alert(message) : null}
       {narrow && !sheetOpen ? discountAlert : null}
       <div className="flex min-h-0 flex-1">
@@ -278,14 +278,15 @@ function CheckoutContent({
               type="button"
               // Starts with the visible text, so voice control can say what it sees (WCAG 2.5.3).
               aria-label={count ? `View order ${count} ${count === 1 ? "item" : "items"}${quickCash ? ` · ${title}` : ` ${formatMoney(due)} · ${title}, due`} · open the order` : `${requestLabel} · View · open the order`}
-              className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-4 py-2 text-left focus-visible:outline-2 focus-visible:outline-ring"
+              className="flex min-w-0 flex-1 items-center gap-2 rounded-xl py-2 pr-2 pl-3 text-left focus-visible:outline-2 focus-visible:outline-ring min-[400px]:gap-3 min-[400px]:px-4"
             >
               <ReceiptText aria-hidden className="size-5 shrink-0" />
+              {/* "View order" never truncates; a long total shrinks the Cash amount instead. */}
               <span className="min-w-0 flex-1 leading-tight">
-                <span className="block truncate text-sm font-semibold">{count ? "View order" : `${requestLabel} · View`}</span>{" "}
+                <span className={cn("block text-sm font-semibold", count ? "whitespace-nowrap" : "truncate")}>{count ? "View order" : `${requestLabel} · View`}</span>{" "}
                 {count ? <span className="block truncate text-xs opacity-80">{`${count} ${count === 1 ? "item" : "items"}`}</span> : null}{" "}
               </span>
-              {count && !quickCash ? <span className="shrink-0 text-2xl leading-none font-semibold font-sans tabular-nums">{formatMoney(due)}</span> : null}
+              {count && !quickCash ? <span className={cn("shrink-0 leading-none font-semibold font-sans whitespace-nowrap tabular-nums", cashAmountSize(formatMoney(due), "text-2xl"))}>{formatMoney(due)}</span> : null}
               <ChevronUp aria-hidden className="size-5 shrink-0" />
             </button>
           </SheetTrigger> : <p className="flex flex-1 items-center justify-center gap-2 px-4 py-2 text-sm text-muted-foreground"><ReceiptText aria-hidden className="size-5 shrink-0" />No items yet</p>}
@@ -294,10 +295,10 @@ function CheckoutContent({
               type="button"
               data-testid="bar-cash"
               onClick={() => { setPayOnOpen("cash"); setSheetOpen(true); }}
-              className="flex shrink-0 items-center gap-1.5 rounded-xl bg-primary-foreground px-4 text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+              className="flex shrink-0 items-center gap-1.5 rounded-xl bg-primary-foreground px-3 text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring min-[400px]:px-4"
             >
               <span className="text-sm font-semibold">Cash</span>
-              <span className=" text-xl leading-none font-semibold font-sans tabular-nums">{formatMoney(due)}</span>
+              <span className={cn("leading-none font-semibold font-sans whitespace-nowrap tabular-nums", cashAmountSize(formatMoney(due)))}>{formatMoney(due)}</span>
             </button>
           ) : null}
         </div>
@@ -313,6 +314,11 @@ function CheckoutContent({
       </Sheet>
     </div>
   );
+}
+
+/** The bar amount's type size: a long total (฿155,386.60) steps down so "View order" keeps its room. */
+export function cashAmountSize(amount: string, base = "text-xl") {
+  return amount.length > 11 ? "text-base" : amount.length > 8 ? "text-lg" : base;
 }
 
 /**

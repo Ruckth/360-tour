@@ -5,7 +5,6 @@ import type { Id } from "convex/_generated/dataModel";
 import { useRouter, useSearchParams } from "@/platform/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAdminBranch } from "@/components/admin/branch/branch-context";
-import { CustomerDisplayControl } from "@/components/admin/CustomerDisplayDialog";
 import { useShowOrderOnDisplay } from "@/components/admin/useShowOrderOnDisplay";
 import { CheckoutBackendProvider, type OrderId } from "@/components/checkout/backend";
 import { orderPath, parseCheckoutSource, receiptPath } from "@/components/checkout/checkout-source";
@@ -90,7 +89,7 @@ function CheckoutPage() {
         setRetry((value) => value + 1);
       } : display.error ? display.retry : undefined}
       notice={source.kind === "invalid" ? source.reason : linkFailed ? openError.message : (display.error ?? undefined)}
-      displayControl={<CustomerDisplayControl orderId={shownOrder} />}
+      customerDisplay={{ orderId: shownOrder }}
     />
   );
 }

@@ -381,10 +381,10 @@ export function AdminSessionDetail({
               </div>
             </div>
             <div data-testid="chat-header-meta" className="flex min-w-0 flex-wrap items-center gap-2 sm:hidden">
-              <div className="flex min-w-20 flex-1 items-center gap-2">
+              <div className="flex min-w-32 flex-1 flex-wrap items-center gap-x-1.5 gap-y-1">
                 <StatusBadge tone={status.tone} label={status.label} className="shrink-0 text-xs" />
                 <span className="shrink-0 whitespace-nowrap rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{automationLabel}</span>
-                <p className="min-w-0 truncate text-[13px] text-muted-foreground">{sourceLabel(session.channel)} · {propertyLabel}</p>
+                <span className="shrink-0 text-xs text-muted-foreground">{sourceLabel(session.channel)}</span>
               </div>
               {replyAction}
             </div>
@@ -604,6 +604,7 @@ export function AdminSessionDetail({
         <div className="mt-2 border-t border-border pt-5">
           <dl className="mt-3 grid gap-x-4 gap-y-1.5 text-muted-foreground sm:grid-cols-[max-content_minmax(0,1fr)]">
             <DetailRow label="Assigned staff">{session.assignedAdminEmail ?? "None"}</DetailRow>
+            {session.propertyName || session.propertySlug ? <DetailRow label="Villa">{propertyLabel}</DetailRow> : null}
             <DetailRow label="Started">{formatDateTime(session.createdAt)}</DetailRow>
             <DetailRow label="Presence">
               {session.isActive ? "Online" : "Offline"} · last seen {relativeTime(session.lastSeenAt ?? session.createdAt, now)}

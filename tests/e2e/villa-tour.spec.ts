@@ -80,6 +80,8 @@ for (const width of [390, 1280]) {
     await expect(dialog).toBeVisible();
     await expect(dialog).toHaveAttribute("aria-modal", "true");
     await expect(dialog.getByRole("button", { name: "Close tour" })).toBeVisible({ timeout: 20_000 });
+    await expect(dialog.getByRole("combobox", { name: "Scene" })).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Book", exact: true })).toBeVisible();
     for (const key of ["Tab", "Shift+Tab"]) {
       await page.keyboard.press(key);
       await expect(dialog.locator(":focus")).toHaveCount(1);

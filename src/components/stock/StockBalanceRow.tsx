@@ -2,26 +2,21 @@
 
 import type { FunctionReturnType } from "convex/server";
 import type { api } from "convex/_generated/api";
-import type { Id } from "convex/_generated/dataModel";
 import { SelectCheckbox } from "@/components/admin/admin-bulk";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { MoreMenu } from "@/components/ui/more-menu";
 import { cn } from "@/lib/utils";
 import Link from "@/platform/link";
-import { balanceStatusBadges } from "./stock-format";
+import { balanceStatusBadges, stockLotHref } from "./stock-format";
 
 export type BalanceRow = FunctionReturnType<typeof api.commerce.stock.listBalances>["page"][number];
-
-function lotViewHref(variantId: Id<"productVariants">) {
-  return `/admin/stock/expansion?variantId=${encodeURIComponent(variantId)}`;
-}
 
 export function StockBalanceRow({
   row,
   checked,
   mobileSelectMode,
-  encodedReturnTo,
+  returnTo,
   access,
   onToggleSelect,
   onOpenOpening,
@@ -34,7 +29,7 @@ export function StockBalanceRow({
   row: BalanceRow;
   checked: boolean;
   mobileSelectMode: boolean;
-  encodedReturnTo: string;
+  returnTo: string;
   access: { receiver: boolean; lead: boolean; requester: boolean; directOrder: boolean };
   onToggleSelect: () => void;
   onOpenOpening: () => void;
@@ -44,6 +39,7 @@ export function StockBalanceRow({
   onPurchasingAction: (action: "receive" | "request" | "order") => void;
   onNavigate: (href: string) => void;
 }) {
+  const encodedReturnTo = encodeURIComponent(returnTo);
   const statusBadges = balanceStatusBadges(row);
   const showCheckbox = mobileSelectMode || checked;
   const showOpenLotsPrimary = row.hasBalance && row.lotTracked && (access.receiver || access.lead);
@@ -111,7 +107,7 @@ export function StockBalanceRow({
       >
         {row.onOrder > 0 ? (
           <Link
-            href={`/admin/stock/purchasing?tab=orders&variantId=${row.variantId}&returnTo=${encodedReturnTo}`}
+            href={`/admin/stock/purchasing?tab=orders&variantId=${row.variantId}&returnTo=${encodeURIComponent(returnTo)}`}
             aria-label={`${row.onOrder.toLocaleString("en-US")} ${row.onOrder === 1 ? "unit" : "units"} on open orders`}
             className="inline-flex min-h-11 items-center text-xs font-medium text-foreground underline decoration-border underline-offset-4 hover:decoration-current"
           >
@@ -160,7 +156,7 @@ export function StockBalanceRow({
             ) : null
           ) : showOpenLotsPrimary ? (
             <ButtonLink
-              href={lotViewHref(row.variantId)}
+              href={stockLotHref(row.variantId, returnTo)}
               variant="outline"
               size="sm"
               className="min-h-11 @2xl/balances:min-h-0 @2xl/balances:h-8 @2xl/balances:px-2.5 @2xl/balances:text-xs pointer-coarse:min-h-11"
@@ -214,7 +210,7 @@ export function StockBalanceRow({
               {
                 label: "Open lots",
                 hidden: !row.lotTracked || showOpenLotsPrimary,
-                onSelect: () => onNavigate(lotViewHref(row.variantId)),
+                onSelect: () => onNavigate(stockLotHref(row.variantId, returnTo)),
               },
               {
                 label: "Receive delivery",

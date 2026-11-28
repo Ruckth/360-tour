@@ -585,7 +585,7 @@ function StaffCalendar() {
           onDateChange={(next) => { if (scopedDay && resortIsoDate(next.getTime()) !== scopedDay) setDismissedScope(scopedDay); setDate(next); }}
           views={[...STAFF_VIEWS]}
           // listSchedule serves at most 14 days; the list defaults to 30.
-          agendaDayCount={scopedDay ? 1 : 7}
+          agendaDayCount={scopedDay || phone ? 1 : 7}
           resources={resources}
           timeZone={RESORT_ZONE}
           dayStartHour={6}

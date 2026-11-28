@@ -5,7 +5,7 @@ import { Archive, CopyPlus, Facebook, Instagram, Link2, MapPin, MessageCircle, P
 import Link from "@/platform/link";
 import { useRouter } from "@/platform/navigation";
 import { adminMarketingPath } from "../admin-routes";
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SheetDescription, SheetTitle } from "@/components/ui/sheet";
@@ -98,6 +98,7 @@ export function LinksView({ links, campaigns, coupons, properties, origin, brand
   const setCampaignFilter = (campaignFilter: string) => changeFilters({ ...currentFilters, campaignFilter });
   const setOfferIssuesOnly = (offerIssuesOnly: boolean) => changeFilters({ ...currentFilters, campaignFilter, offerIssuesOnly });
   const [qrLink, setQrLink] = useState<LinkRow | null>(null);
+  const qrTrigger = useRef<HTMLButtonElement>(null);
 
   const loading = links === undefined || campaigns === undefined || coupons === undefined || properties === undefined;
   const couponOf = (link: LinkRow) => coupons?.find((coupon) => coupon._id === link.couponId);
@@ -126,6 +127,10 @@ export function LinksView({ links, campaigns, coupons, properties, origin, brand
   const openNew = (preset?: LinkPreset) => { if (access.capabilities.draft) sheet.open({ preset }); };
   const partnerHref = (link: LinkRow) => adminMarketingPath("affiliates") + "?" + new URLSearchParams({ partner: link.affiliateId ?? "" });
   const openEdit = (link: LinkRow) => { if (canonicalPartnerLink(link)) router.push(partnerHref(link)); else sheet.open({ link }); };
+  function openQr(event: MouseEvent<HTMLButtonElement>, link: LinkRow) {
+    qrTrigger.current = event.currentTarget;
+    setQrLink(link);
+  }
   // The open QR card follows the live row, so publishing from it unlocks the downloads.
   const qrCurrent = qrLink ? (all.find((link) => link._id === qrLink._id) ?? qrLink) : null;
 
@@ -187,6 +192,7 @@ export function LinksView({ links, campaigns, coupons, properties, origin, brand
   const counts = (value: Tab) => (value === "all" ? all.length : all.filter((link) => link.status === value).length);
 
   const { editing } = sheet;
+  const savedLink = editing?.link && all.find(link => link._id === editing.link?._id);
   const editorSheet = (
     <EditorSheet
       open={editing !== null}
@@ -198,6 +204,14 @@ export function LinksView({ links, campaigns, coupons, properties, origin, brand
           <SheetDescription>
             {editing?.link ? "Changes apply to everyone who opens the link from now on." : "It starts counting opens as soon as it’s live."}
           </SheetDescription>
+          {savedLink && savedLink.status !== "archived" && savedLink.status !== "draft" ? (
+            <div role="group" aria-label="Published link" className="mt-2 flex flex-wrap gap-2">
+              <CopyButton text={shortUrl(origin, savedLink.shortUrlPath).full} label="Copy published link" showLabel variant="outline" className="min-h-11" />
+              <Button type="button" variant="outline" className="min-h-11" onClick={(event) => openQr(event, savedLink)}>
+                <QrCode aria-hidden className="size-4" /> QR card
+              </Button>
+            </div>
+          ) : null}
         </>
       }
     >
@@ -240,11 +254,11 @@ export function LinksView({ links, campaigns, coupons, properties, origin, brand
   return (
     <div className="mx-auto grid w-full min-w-0 max-w-7xl gap-4 px-4 py-4 sm:px-6">
       <div className="flex flex-wrap items-center gap-3">
-        <p className="min-w-60 flex-1 text-sm text-muted-foreground">
+        <p className="hidden min-w-60 flex-1 text-sm text-muted-foreground sm:block">
           One short link for each place you share. It records where guests came from and can suggest a coupon. Published links never change
           address, so printed QR codes keep working.
         </p>
-        {access.capabilities.draft ? <Button size="sm" onClick={() => openNew()} className="w-full sm:w-auto">
+        {access.capabilities.draft ? <Button size="sm" onClick={() => openNew()} className="max-sm:min-h-11">
           <Plus aria-hidden className="size-4" />
           New link
         </Button> : null}
@@ -274,10 +288,10 @@ export function LinksView({ links, campaigns, coupons, properties, origin, brand
           onValueChange={setTab}
           tabs={countTabs(TABS.map(({ value, label }) => ({ value, label, n: loading ? undefined : counts(value) })))}
         />
-        <div className="flex flex-wrap items-center gap-2">
-          <SearchBox value={query} onChange={setQuery} label="Search links, campaigns, codes" />
+        <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,7.75rem)] items-center gap-2 sm:flex sm:flex-wrap">
+          <SearchBox value={query} onChange={setQuery} label="Search links, campaigns, codes" placeholder="Search links" className="max-sm:min-w-0 max-sm:[&_input]:min-h-11" />
           <Select value={campaignFilter} onValueChange={setCampaignFilter}>
-            <SelectTrigger className="h-9 w-full rounded-lg sm:w-56" aria-label="Campaign">
+            <SelectTrigger className="h-9 w-full min-w-0 rounded-lg max-sm:min-h-11 sm:w-56" aria-label="Campaign">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -294,7 +308,7 @@ export function LinksView({ links, campaigns, coupons, properties, origin, brand
               Show all links
             </Button>
           ) : null}
-          <p role="status" className="w-full text-xs text-muted-foreground sm:ms-auto sm:w-auto">
+          <p role="status" className="col-span-full w-full text-xs text-muted-foreground sm:ms-auto sm:w-auto">
             {loading ? "Loading links…" : shown.length === all.length ? `${all.length} links` : `${shown.length} of ${all.length} links`}
           </p>
         </div>
@@ -357,7 +371,7 @@ export function LinksView({ links, campaigns, coupons, properties, origin, brand
                             <div className="min-w-0">
                               <button
                                 type="button"
-                                onClick={() => (link.status === "archived" ? setQrLink(link) : openEdit(link))}
+                                onClick={(event) => (link.status === "archived" ? openQr(event, link) : openEdit(link))}
                                 className="max-w-full rounded-sm text-left font-medium text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                               >
                                 {link.name}
@@ -399,7 +413,7 @@ export function LinksView({ links, campaigns, coupons, properties, origin, brand
                                 className="size-9 text-muted-foreground hover:text-foreground"
                                 aria-label={`QR offer card for ${link.shortUrlPath}`}
                                 title="QR offer card"
-                                onClick={() => setQrLink(link)}
+                                onClick={(event) => openQr(event, link)}
                               >
                                 <QrCode aria-hidden className="size-4" />
                               </Button>
@@ -423,7 +437,9 @@ export function LinksView({ links, campaigns, coupons, properties, origin, brand
                     <div className="flex items-start gap-3">
                       <SlugChip path={link.shortUrlPath} large />
                       <div className="min-w-0 flex-1">
-                        <p className="font-medium text-foreground">{link.name}</p>
+                        {link.status === "archived" ? <p className="font-medium text-foreground">{link.name}</p> : (
+                          <button type="button" className="min-h-11 max-w-full text-start font-medium text-foreground hover:underline" onClick={() => openEdit(link)}>{link.name}</button>
+                        )}
                         {canonicalPartnerLink(link) ? <Link href={partnerHref(link)} className="text-xs font-semibold underline underline-offset-2">{access.capabilities.partners ? "Manage partner" : "View partner"}</Link> : null}
                         <p className="break-all font-mono text-xs text-muted-foreground">{url.display}</p>
                       </div>
@@ -459,7 +475,7 @@ export function LinksView({ links, campaigns, coupons, properties, origin, brand
                     <div className="flex gap-2">
                       <CopyButton text={url.full} label={`Copy ${url.display}`} showLabel variant="outline" className="flex-1" />
                       {link.status !== "archived" ? (
-                        <Button type="button" variant="outline" className="flex-1" onClick={() => setQrLink(link)}>
+                        <Button type="button" variant="outline" className="flex-1" onClick={(event) => openQr(event, link)}>
                           <QrCode aria-hidden className="size-4" />
                           QR card
                         </Button>
@@ -489,6 +505,11 @@ export function LinksView({ links, campaigns, coupons, properties, origin, brand
         brand={brand}
         today={today}
         onClose={() => setQrLink(null)}
+        onCloseAutoFocus={(event) => {
+          if (!qrTrigger.current?.isConnected) return;
+          event.preventDefault();
+          qrTrigger.current.focus();
+        }}
         onPublish={(link) => void changeStatus(link, "active")}
       />
     </div>

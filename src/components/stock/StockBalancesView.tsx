@@ -26,12 +26,13 @@ import { SegmentedTabs } from "@/components/admin/SegmentedTabs";
 import { TONES } from "@/components/admin/status-tones";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { MoreMenu } from "@/components/ui/more-menu";
 import { StickyActionBar } from "@/components/ui/sticky-action-bar";
 import { staffDateTime } from "@/lib/staff-time";
 import { cn } from "@/lib/utils";
 import { useRouter, useSearchParams } from "@/platform/navigation";
 import { ReceiveDeliverySheet } from "./ReceiveDeliverySheet";
-import { STOCK_MAX_LINES, STOCK_PAGE_SIZE, stripSearchParams } from "./stock-format";
+import { stockLotHref, STOCK_MAX_LINES, STOCK_PAGE_SIZE, stripSearchParams } from "./stock-format";
 import { StockBalanceRow, type BalanceRow } from "./StockBalanceRow";
 import {
   BranchStockAccessSheet,
@@ -52,6 +53,8 @@ type BatchSession = {
   scopeLabel: string;
 };
 
+type BalanceView = "catalog" | "low-stock" | "recount";
+
 function createBatchSession(kind: BatchSession["kind"], rows: BalanceRow[], scopeLabel: string, batchNumber = 1, totalBatches?: number): BatchSession | null {
   const source = kind === "countMode" ? rows.filter((row) => !row.lotTracked) : rows;
   if (source.length === 0) return null;
@@ -66,23 +69,33 @@ function createBatchSession(kind: BatchSession["kind"], rows: BalanceRow[], scop
   };
 }
 
-function lotViewHref(variantId: Id<"productVariants">) {
-  return `/admin/stock/expansion?variantId=${encodeURIComponent(variantId)}`;
-}
-
 export function StockBalancesView() {
   const { current: branch } = useAdminBranch();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const initialView = searchParams.get("view") === "recount" ? "recount" : "catalog";
-  const initialSearch = searchParams.get("q") ?? "";
+  const viewParam = searchParams.get("view");
+  const view = viewParam === "recount" || viewParam === "low-stock" ? viewParam : "catalog";
+  const search = view === "catalog" ? searchParams.get("q") ?? "" : "";
   const receiveVariantParam = searchParams.get("receiveVariantId") as Id<"productVariants"> | null;
   const countVariantParam = searchParams.get("countVariantId") as Id<"productVariants"> | null;
 
-  const [view, setView] = useState<"catalog" | "recount">(initialView);
-  const [search, setSearch] = useState(initialSearch);
   const debouncedSearch = useDebounced(search.trim(), 200);
   const [mobileSelectMode, setMobileSelectMode] = useState(false);
+  const balancesPath = "/admin/stock/balances";
+  const returnParams = new URLSearchParams();
+  if (view !== "catalog") returnParams.set("view", view);
+  else if (search.trim()) returnParams.set("q", search.trim());
+  const currentBalancesHref = returnParams.size ? `${balancesPath}?${returnParams}` : balancesPath;
+  const encodedReturnTo = encodeURIComponent(currentBalancesHref);
+
+  function replaceFilters(nextView: BalanceView, nextSearch = "") {
+    const params = new URLSearchParams(searchParams);
+    if (nextView !== "catalog") params.set("view", nextView);
+    else params.delete("view");
+    if (nextView === "catalog" && nextSearch) params.set("q", nextSearch);
+    else params.delete("q");
+    router.replace(params.size ? `${balancesPath}?${params}` : balancesPath, { scroll: false });
+  }
 
   // Active sheets (ordered targets frozen into batchSession at launch, capped at STOCK_MAX_LINES)
   const [pendingRelocations, setPendingRelocations] = useState<Record<string, BinRelocation>>({});
@@ -119,11 +132,14 @@ export function StockBalancesView() {
     branch && access?.read
       ? {
           branchId: branch.id,
+          includeReorderPoint: true,
           ...(view === "recount"
             ? { recountOnly: true }
-            : debouncedSearch
-              ? { search: debouncedSearch }
-              : {}),
+            : view === "low-stock"
+              ? { lowOnly: true }
+              : debouncedSearch
+                ? { search: debouncedSearch }
+                : {}),
         }
       : "skip",
     { initialNumItems: STOCK_PAGE_SIZE },
@@ -147,10 +163,10 @@ export function StockBalancesView() {
     if (!routeFlagKey || pendingRouteAction) return;
     router.replace(
       expansionRedirectId
-        ? lotViewHref(expansionRedirectId)
+        ? stockLotHref(expansionRedirectId, currentBalancesHref)
         : stripSearchParams("/admin/stock/balances", searchParams, ["receiveVariantId", "countVariantId"]),
     );
-  }, [expansionRedirectId, pendingRouteAction, routeFlagKey, router, searchParams]);
+  }, [currentBalancesHref, expansionRedirectId, pendingRouteAction, routeFlagKey, router, searchParams]);
 
   if (branch && pendingRouteAction) {
     if (pendingRouteAction.branchId === null) {
@@ -246,15 +262,6 @@ export function StockBalancesView() {
     );
   }
 
-  const currentBalancesHref = (() => {
-    const params = new URLSearchParams();
-    if (view === "recount") params.set("view", "recount");
-    else if (search.trim()) params.set("q", search.trim());
-    const qs = params.toString();
-    return qs ? `/admin/stock/balances?${qs}` : "/admin/stock/balances";
-  })();
-  const encodedReturnTo = encodeURIComponent(currentBalancesHref);
-
   function startPurchasingAction(action: "request" | "order" | "receive", rows: BalanceRow[]) {
     const ids = rows.map((row) => row.variantId).join(",");
     const variantQuery = ids ? `&variants=${encodeURIComponent(ids)}` : "";
@@ -271,9 +278,11 @@ export function StockBalancesView() {
   const activeScopeLabel =
     view === "recount"
       ? "Needs recount"
-      : debouncedSearch
-        ? `Search “${debouncedSearch}”`
-        : "Visible catalog";
+      : view === "low-stock"
+        ? "Low stock"
+        : debouncedSearch
+          ? `Search “${debouncedSearch}”`
+          : "Visible catalog";
 
   function openBatch(kind: BatchSession["kind"], rows: BalanceRow[], scopeLabel: string) {
     const session = createBatchSession(kind, rows, scopeLabel);
@@ -398,12 +407,12 @@ export function StockBalancesView() {
               label="Balance views"
               value={view}
               onValueChange={(next) => {
-                setView(next);
-                if (next === "recount") setSearch("");
+                replaceFilters(next);
                 selection.clear();
               }}
               tabs={[
                 { value: "catalog", label: "Catalog" },
+                { value: "low-stock", label: "Low stock" },
                 {
                   value: "recount",
                   label: (
@@ -429,11 +438,11 @@ export function StockBalancesView() {
             {view === "catalog" ? (
               <SearchBox
                 value={search}
-                onChange={setSearch}
+                onChange={(value) => replaceFilters("catalog", value)}
                 label="Search catalog by name or SKU"
                 placeholder="Search item name or SKU…"
               />
-            ) : results.length > 0 || status === "LoadingFirstPage" ? (
+            ) : view === "recount" && (results.length > 0 || status === "LoadingFirstPage") ? (
               <p className="text-xs text-muted-foreground">
                 Showing items flagged for recount at {branch.name}. Post a verified count to clear the flag.
               </p>
@@ -475,28 +484,33 @@ export function StockBalancesView() {
               role="toolbar"
               aria-label={selectedRows.length === 1 ? "Actions for selected item" : "Actions for selected items"}
               data-admin-bottom-bar="lg"
-              className="gap-1 px-3 py-1.5 sm:inset-x-auto sm:right-4 sm:bottom-[calc(var(--admin-tab-bar,0px)+0.5rem)] lg:sticky lg:inset-auto lg:top-0 lg:gap-2 lg:px-4"
+              className="gap-1 px-3 py-1.5 max-sm:flex-nowrap sm:inset-x-auto sm:right-4 sm:bottom-[calc(var(--admin-tab-bar,0px)+0.5rem)] lg:sticky lg:inset-auto lg:top-0 lg:gap-2 lg:px-4"
             >
               <span className="mr-auto text-sm font-medium">{selectedRows.length} selected</span>
               {selectedOnOrderTotal > 0 ? <span className="text-xs text-muted-foreground max-lg:sr-only">({selectedOnOrderTotal} already on order)</span> : null}
               {access.receiver && allSelectedNeverStocked ? (
-                <Button size="sm" onClick={() => openBatch("opening", selectedRows, "Selected items")}>
+                <Button size="sm" className="max-sm:min-h-11" onClick={() => openBatch("opening", selectedRows, "Selected items")}>
                   <span className="hidden sm:inline">Record opening stock ({selectedRows.length})</span>
                   <span className="sm:hidden">Opening stock</span>
                 </Button>
               ) : access.receiver && selectedUntrackedRows.length > 0 ? (
-                <Button size="sm" onClick={() => openBatch("count", selectedRows, "Selected items")}>
+                <Button size="sm" className="max-sm:min-h-11" onClick={() => openBatch("count", selectedRows, "Selected items")}>
                   {selectedTrackedRows.length > 0 ? "Count untracked" : "Count selected"}
                 </Button>
               ) : access.receiver && selectedTrackedRows.length > 0 ? (
-                <ButtonLink size="sm" href={lotViewHref(selectedTrackedRows[0].variantId)}>
-                  {selectedTrackedRows.length === 1 ? "Open lots" : "Open first in lot view"}
+                <ButtonLink size="sm" className="max-sm:min-h-11" href={stockLotHref(selectedTrackedRows[0].variantId, currentBalancesHref)}>
+                  {selectedTrackedRows.length === 1 ? "Open lots" : "Open first item’s lots"}
                 </ButtonLink>
               ) : null}
-              {access.receiver ? <Button variant="outline" size="sm" onClick={() => startPurchasingAction("receive", selectedRows)}>Receive {selectedRows.length}</Button> : null}
-              {access.requester ? <Button variant="outline" size="sm" onClick={() => startPurchasingAction("request", selectedRows)}>Request {selectedRows.length}</Button> : null}
-              {access.directOrder ? <Button variant="outline" size="sm" onClick={() => startPurchasingAction("order", selectedRows)}>Create order</Button> : null}
-              <Button size="icon" variant="ghost" aria-label="Clear selection" title="Clear selection" className="size-11" onClick={() => {
+              {access.receiver ? <Button variant="outline" size="sm" className="hidden sm:inline-flex" onClick={() => startPurchasingAction("receive", selectedRows)}>Receive {selectedRows.length}</Button> : null}
+              {access.requester ? <Button variant="outline" size="sm" className={access.receiver ? "hidden sm:inline-flex" : "max-sm:min-h-11"} onClick={() => startPurchasingAction("request", selectedRows)}>Request {selectedRows.length}</Button> : null}
+              {access.directOrder ? <Button variant="outline" size="sm" className={access.receiver || access.requester ? "hidden sm:inline-flex" : "max-sm:min-h-11"} onClick={() => startPurchasingAction("order", selectedRows)}>Create order</Button> : null}
+              <MoreMenu label="More stock actions" className="shrink-0 sm:hidden" items={[
+                { label: `Receive ${selectedRows.length}`, hidden: !access.receiver, onSelect: () => startPurchasingAction("receive", selectedRows) },
+                { label: `Request ${selectedRows.length}`, hidden: !access.requester || !access.receiver, onSelect: () => startPurchasingAction("request", selectedRows) },
+                { label: "Create order", hidden: !access.directOrder || (!access.receiver && !access.requester), onSelect: () => startPurchasingAction("order", selectedRows) },
+              ]} />
+              <Button size="icon" variant="ghost" aria-label="Clear selection" title="Clear selection" className="size-11 shrink-0" onClick={() => {
                 selection.clear();
                 setMobileSelectMode(false);
               }}>
@@ -518,7 +532,7 @@ export function StockBalancesView() {
                     {selectedTrackedRows.map((row) => (
                       <ButtonLink
                         key={row.variantId}
-                        href={lotViewHref(row.variantId)}
+                        href={stockLotHref(row.variantId, currentBalancesHref)}
                         size="sm"
                         variant="outline"
                       >
@@ -546,15 +560,19 @@ export function StockBalancesView() {
                       Last verified count: {staffDateTime(access.lastVerifiedCountAt)}
                     </p>
                   ) : null}
-                  <Button type="button" variant="outline" size="sm" className="mt-1" onClick={() => setView("catalog")}>
+                  <Button type="button" variant="outline" size="sm" className="mt-1" onClick={() => replaceFilters("catalog")}>
                     View full catalog
                   </Button>
                 </div>
+              ) : view === "low-stock" ? (
+                <EmptyState>
+                  {status === "Exhausted" ? `No items are low on stock at ${branch.name}.` : "No low-stock items on the loaded pages."}
+                </EmptyState>
               ) : (
                 <EmptyState
                   action={
                     search ? (
-                      <Button type="button" variant="outline" size="sm" onClick={() => setSearch("")}>
+                      <Button type="button" variant="outline" size="sm" onClick={() => replaceFilters("catalog")}>
                         Clear search
                       </Button>
                     ) : (
@@ -596,7 +614,7 @@ export function StockBalancesView() {
                       row={row}
                       checked={selection.isSelected(row.variantId)}
                       mobileSelectMode={mobileSelectMode}
-                      encodedReturnTo={encodedReturnTo}
+                      returnTo={currentBalancesHref}
                       access={access}
                       onToggleSelect={() => selection.toggle(row.variantId)}
                       onOpenOpening={() => openBatch("opening", [row], "Single item")}

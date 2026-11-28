@@ -153,6 +153,36 @@ describe("HotspotEditorDialog keyboard selection/repositioning and loading/error
   });
   const rooms = [living, pool];
 
+  it("defaults to Look on phones and can undo a position edit before saving", async () => {
+    vi.stubGlobal("matchMedia", () => ({ matches: true, addEventListener: () => {}, removeEventListener: () => {} }));
+    await render(createElement(HotspotEditorDialog, { room: living, rooms, onClose: vi.fn(), onCloseAutoFocus: () => {} }));
+    await act(async () => state.loads[0].resolve());
+    const button = (name: string, scope: ParentNode = document) => [...scope.querySelectorAll<HTMLButtonElement>("button")].find((candidate) => candidate.textContent?.trim() === name)!;
+    const mode = document.querySelector('[aria-label="Hotspot editing mode"]')!;
+    expect(button("Look", mode).getAttribute("aria-pressed")).toBe("true");
+    expect(button("Add here")).toBeUndefined();
+    await act(async () => button("Add", mode).click());
+    expect(button("Add here")).toBeTruthy();
+    await act(async () => button("Move", mode).click());
+    expect(button("Move", mode).getAttribute("aria-pressed")).toBe("true");
+    const aside = document.querySelector('aside[aria-label="Hotspot list"]')!;
+    const existing = [...aside.querySelectorAll<HTMLButtonElement>("button")].find((candidate) => candidate.textContent?.includes("Edit To pool"))!;
+    await act(async () => existing.click());
+    const heading = aside.querySelector<HTMLInputElement>('input[aria-label="Heading"]')!;
+    await act(async () => button("Right 5°", aside).click());
+    expect(Number(heading.value)).toBeCloseTo(50, 0);
+    await act(async () => button("Undo", mode).click());
+    expect(Number(heading.value)).toBeCloseTo(45, 0);
+    expect(button("Save hotspots").disabled).toBe(true);
+
+    await act(async () => button("Up 5°", aside).click());
+    await act(async () => button("Save hotspots").click());
+    expect(state.setHotspots).toHaveBeenCalledWith({
+      roomId: living._id,
+      hotspots: [expect.objectContaining({ id: "h1", position: anglesToHotspotPosition(45, 10) })],
+    });
+  });
+
   it("F17: selects and repositions an existing hotspot via keyboard marker activation and Hotspot list controls, returning focus on close", async () => {
     const onClose = vi.fn();
     await render(

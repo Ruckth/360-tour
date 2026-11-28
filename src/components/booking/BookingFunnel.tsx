@@ -18,6 +18,7 @@ import {
 } from "@/components/booking/BookingPanels";
 import { BookingStepNav } from "@/components/booking/BookingStepNav";
 import { VillaSelector } from "@/components/booking/VillaSelector";
+import { AnalyticsConsentChoice } from "@/components/global/AnalyticsConsent";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -68,7 +69,7 @@ const BookingDatePicker = dynamic(
 function BookingDatePickerSkeleton() {
   return (
     <div className="space-y-2">
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-2 gap-3">
         <div className="h-12 animate-pulse rounded-lg bg-muted" />
         <div className="h-12 animate-pulse rounded-lg bg-muted" />
       </div>
@@ -96,8 +97,12 @@ export function BookingFunnel(props: FunnelProps) {
   const initialProperty = props.initialProperty;
   const rows = useQuery(api.catalog.properties.list, initialProperty ? { includeSlug: initialProperty } : {});
   const t = useTranslations("Booking");
-  if (rows === undefined) return <div role="status" className="p-24">{t("loadingInventory")}</div>;
-  if (rows.length === 0) return <div role="alert" className="p-24">{t("liveBookingUnavailable")}</div>;
+  if (!rows?.length) {
+    return <div className="mx-auto max-w-6xl px-4 pb-12 pt-20 md:px-6 md:py-24">
+      <p role={rows ? "alert" : "status"}>{t(rows ? "liveBookingUnavailable" : "loadingInventory")}</p>
+      <AnalyticsConsentChoice inline className="mt-4 max-w-lg" />
+    </div>;
+  }
   return <LiveBookingFunnel key={initialProperty} {...props} rows={rows} record={record} />;
 }
 function LiveBookingFunnel({
@@ -133,6 +138,7 @@ function LiveBookingFunnel({
   });
 
   const [step, setStep] = useState<BookingStep>("select");
+  const actionsRef = useRef<HTMLDivElement>(null);
   const [datePickerMounted, setDatePickerMounted] = useState(false);
   const handleDatePickerReady = useCallback(() => setDatePickerMounted(true), []);
   const propertyList = useMemo(() => rows.map(row => localizePropertyLike({ ...row, id: row.slug, source: "live" as const }, messages, locale)), [rows, messages, locale]);
@@ -422,19 +428,19 @@ function LiveBookingFunnel({
   }
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-24 md:px-6">
-      <div className="mb-8">
+    <div className="mx-auto max-w-6xl px-4 pb-12 pt-20 md:px-6 md:py-24">
+      <div className="mb-4 md:mb-8">
         <p className="text-xs font-semibold uppercase tracking-[0.25em] text-gold">
           {t("directBooking")}
         </p>
-        <h1 className="mt-3 font-serif text-4xl font-semibold text-foreground">
+        <h1 className="mt-2 font-serif text-4xl font-semibold text-foreground md:mt-3">
           {t("reserveTitle")}
         </h1>
 
       </div>
 
-      <div className="grid gap-8 lg:grid-cols-[1fr_360px]">
-        <Card className="min-w-0 p-5 md:p-7">
+      <div className="grid gap-5 md:gap-8 lg:grid-cols-[1fr_360px]">
+        <Card className="min-w-0 p-4 pb-0 md:p-7">
           <BookingStepNav
             currentStep={step}
             highestAllowedStepIndex={highestAllowedStepIndex}
@@ -442,7 +448,7 @@ function LiveBookingFunnel({
           />
 
           {step === "select" ? (
-            <div className="space-y-5">
+            <div className="space-y-4 md:space-y-5">
               <VillaSelector
                 properties={propertyList}
                 selectedId={property.slug}
@@ -556,21 +562,45 @@ function LiveBookingFunnel({
             </Alert>
           ) : null}
 
-          <div className="mt-8 flex justify-between gap-3">
-            <Button variant="outline" onClick={previous} disabled={step === "select"}>
-              <ArrowLeft className="h-4 w-4" />
-              {t("back")}
-            </Button>
-            {step === "review" ? (
-              <Button onClick={submitBooking} disabled={submitting || couponChecking || !currentStepValid()}>
-                <CreditCard className="h-4 w-4" />
-                {submitting || couponChecking ? t("checking") : t("continueToPay")}
+          <AnalyticsConsentChoice
+            inline
+            className="mt-4"
+            onDecision={() => {
+              const actions = actionsRef.current;
+              (actions?.querySelector<HTMLElement>("button[data-booking-continue]:not([disabled])") ?? actions)?.focus({ preventScroll: true });
+            }}
+          />
+
+          <div
+            ref={actionsRef}
+            tabIndex={-1}
+            data-testid="booking-actions"
+            className="sticky bottom-0 z-30 -mx-4 mt-5 rounded-b-xl border-t border-border bg-card px-4 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] pt-3 md:static md:mx-0 md:mt-8 md:rounded-none md:border-0 md:p-0"
+          >
+            {nights > 0 ? (
+              <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-xs text-muted-foreground md:hidden">
+                <span>{t("nightsSelected", { count: nights })} · {couponCopy.format.money(property.pricePerNight)} {villaT("perNight")}</span>
+                <span className="font-semibold tabular-nums text-foreground">
+                  {t("total")} {couponCopy.format.money(price.total)}
+                </span>
+              </div>
+            ) : null}
+            <div className="flex justify-between gap-2 md:gap-3">
+              <Button variant="outline" onClick={previous} disabled={step === "select"} className="min-h-11 max-w-full whitespace-normal disabled:max-md:hidden">
+                <ArrowLeft className="h-4 w-4 rtl:rotate-180" />
+                {t("back")}
               </Button>
-            ) : (
-              <Button onClick={next} disabled={!currentStepValid()}>
-                {t("continue")}
-              </Button>
-            )}
+              {step === "review" ? (
+                <Button data-booking-continue onClick={submitBooking} disabled={submitting || couponChecking || !currentStepValid()} className="min-h-11 min-w-0 flex-1 whitespace-normal md:flex-none">
+                  <CreditCard className="h-4 w-4" />
+                  {submitting || couponChecking ? t("checking") : t("continueToPay")}
+                </Button>
+              ) : (
+                <Button data-booking-continue onClick={next} disabled={!currentStepValid()} className="min-h-11 min-w-0 flex-1 whitespace-normal md:flex-none">
+                  {t("continue")}
+                </Button>
+              )}
+            </div>
           </div>
         </Card>
 

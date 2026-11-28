@@ -14,6 +14,10 @@ test.use({ timezoneId: "Asia/Bangkok" });
 const calls = (page: Page) => page.evaluate(() => window.desk.calls());
 const chip = (page: Page, guest: string) => page.locator("[data-slot=event-calendar-event]", { hasText: guest }).first();
 const popover = (page: Page, guest: string) => page.getByRole("dialog", { name: `Booking for ${guest}` });
+async function openDeskWithMonthView(page: Page) {
+  await page.addInitScript(() => localStorage.setItem("admin.hotel.view", "month"));
+  await openDesk(page);
+}
 /** Visible controls (buttons, fields, comboboxes…) inside `scope`, counted like the click audit. */
 const controls = async (page: Page, scope: Locator) => {
   await scope.evaluate((el) => el.setAttribute("data-census", "1"));
@@ -42,8 +46,33 @@ test("opens a stay on the first click within the drag suppression window", async
     performance.now = () => 100;
   });
   await chip(page, "Anna Schmidt").click();
-  await expect(popover(page, "Anna Schmidt")).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Anna Schmidt", exact: true })).toBeVisible();
 });
+
+for (const width of [360, 390, 430]) {
+  test(`hotel agenda opens stay details in one tap and restores focus at ${width}px`, async ({ browser }) => {
+    const context = await browser.newContext({ viewport: { width, height: 844 }, hasTouch: true, isMobile: true, timezoneId: "Asia/Bangkok" });
+    try {
+      const page = await context.newPage();
+      await openDesk(page);
+      const toolbar = page.getByTestId("calendar-toolbar");
+      expect((await toolbar.boundingBox())?.height ?? Infinity).toBeLessThanOrEqual(112);
+      const row = chip(page, "Anna Schmidt");
+      await expect(row).toBeVisible();
+      expect((await row.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
+      await row.tap();
+      const details = page.getByRole("dialog", { name: "Anna Schmidt", exact: true });
+      await expect(details.getByRole("region", { name: "Balance due" })).toBeVisible();
+      await expect(details.getByRole("button", { name: "Book spa", exact: true })).toBeVisible();
+      await expect(popover(page, "Anna Schmidt")).toHaveCount(0);
+      await details.getByRole("button", { name: "Close", exact: true }).tap();
+      await expect(row).toBeFocused();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
+    } finally {
+      await context.close();
+    }
+  });
+}
 
 test("replaces a pending villa calendar response when the filter changes", async ({ page }) => {
   await page.setViewportSize(DESK_VIEWPORTS.ipad);
@@ -135,7 +164,7 @@ for (const [size, viewport] of Object.entries(DESK_VIEWPORTS)) {
     });
 
     test("stay popover: Take payment · Book spa · Details, the rest in ⋯", async ({ page }) => {
-      await openDesk(page);
+      await openDeskWithMonthView(page);
       await chip(page, "Anna Schmidt").click();
       const pop = popover(page, "Anna Schmidt");
       await expect(pop.getByRole("button")).toHaveText(["Take payment ฿27,500", "Book spa", "Details", ""]);
@@ -144,7 +173,7 @@ for (const [size, viewport] of Object.entries(DESK_VIEWPORTS)) {
     });
 
     test("already paid from the calendar: 4 taps, its own dialog, same revision and one attempt key", async ({ page }) => {
-      await openDesk(page);
+      await openDeskWithMonthView(page);
       const t = new Taps(page);
       await t.tap(chip(page, "Maya Lin"), "Maya's stay");
       await t.tap(popover(page, "Maya Lin").getByRole("button", { name: "More stay actions" }), "⋯");
@@ -169,7 +198,7 @@ for (const [size, viewport] of Object.entries(DESK_VIEWPORTS)) {
     });
 
     test("cancel a paid stay opens its own dialog, with Keep stay", async ({ page }) => {
-      await openDesk(page);
+      await openDeskWithMonthView(page);
       await chip(page, "Maya Lin").click();
       await popover(page, "Maya Lin").getByRole("button", { name: "More stay actions" }).click();
       await page.getByRole("menuitem", { name: "Cancel stay" }).click();
@@ -249,7 +278,7 @@ for (const [size, viewport] of Object.entries(DESK_VIEWPORTS)) {
     });
 
     test("book spa for a staying guest: 5 taps, nothing typed, on the stay", async ({ page }) => {
-      await openDesk(page);
+      await openDeskWithMonthView(page);
       const t = new Taps(page);
       await t.tap(chip(page, "Maya Lin"), "Maya's stay");
       await t.tap(popover(page, "Maya Lin").getByRole("button", { name: "Book spa" }), "Book spa");
@@ -278,7 +307,7 @@ for (const [size, viewport] of Object.entries(DESK_VIEWPORTS)) {
     });
 
     test("Other time… swaps the chips for a time box", async ({ page }) => {
-      await openDesk(page);
+      await openDeskWithMonthView(page);
       await chip(page, "Maya Lin").click();
       await popover(page, "Maya Lin").getByRole("button", { name: "Book spa" }).click();
       const dialog = page.getByRole("dialog", { name: "Book spa" });
@@ -312,7 +341,7 @@ for (const [size, viewport] of Object.entries(DESK_VIEWPORTS)) {
     });
 
     test("guest leaves: balance with spa, paid, receipt printed in 5 taps", async ({ page }) => {
-      await openDesk(page);
+      await openDeskWithMonthView(page);
       const t = new Taps(page);
       await t.tap(chip(page, "Anna Schmidt"), "Anna's stay");
       // ฿26,000 left on the stay and her unpaid Hot stone 60 (฿1,500).
@@ -334,7 +363,7 @@ for (const [size, viewport] of Object.entries(DESK_VIEWPORTS)) {
     test("stay sheet: one money block, one closed History, reference in ⋯, staff by name", async ({ page }) => {
       await openDesk(page);
       await chip(page, "Anna Schmidt").click();
-      await popover(page, "Anna Schmidt").getByRole("button", { name: "Details" }).click();
+      if (size !== "phone") await popover(page, "Anna Schmidt").getByRole("button", { name: "Details" }).click();
       const sheet = page.getByRole("dialog", { name: "Anna Schmidt" });
       const money = sheet.getByRole("region", { name: "Balance due" });
       await expect(money).toContainText("฿27,500");
@@ -484,7 +513,7 @@ for (const [size, viewport] of Object.entries(DESK_VIEWPORTS)) {
     test("stay notes survive Keep editing on every sheet close route", async ({ page }) => {
       await openDesk(page);
       await chip(page, "Anna Schmidt").click();
-      await page.getByRole("button", { name: "Details", exact: true }).click();
+      if (size !== "phone") await page.getByRole("button", { name: "Details", exact: true }).click();
       const sheet = page.getByRole("dialog", { name: "Anna Schmidt", exact: true });
       await sheet.getByLabel("Notes (staff only)").fill("Please keep this unsaved note");
       for (const close of [() => sheet.getByRole("button", { name: "Close", exact: true }).click(), () => page.keyboard.press("Escape"), ...(size === "ipad" ? [() => page.mouse.click(10, 10)] : [])]) {

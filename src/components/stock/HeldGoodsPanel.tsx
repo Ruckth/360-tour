@@ -65,6 +65,12 @@ export function HeldGoodsPanel({
   );
   const current = (row: HeldGoodsRow | null) => (row ? results.find((r) => r._id === row._id) ?? row : null);
   const filtered = Boolean(receiptReference || item);
+  const holdsByReceipt = new Map<Id<"supplierReceipts">, HeldGoodsRow[]>();
+  for (const hold of results) {
+    const group = holdsByReceipt.get(hold.receiptId);
+    if (group) group.push(hold);
+    else holdsByReceipt.set(hold.receiptId, [hold]);
+  }
 
   function applyReference(event: FormEvent) {
     event.preventDefault();
@@ -133,118 +139,125 @@ export function HeldGoodsPanel({
           </EmptyState>
         ) : (
           <ul className="divide-y divide-border">
-            {results.map((hold) => {
-              const age = holdAge(hold.createdAt, now);
-              const path = hold.acceptPath;
-              return (
-                <li key={hold._id} className="flex flex-wrap items-start justify-between gap-4 p-4">
-                  <div className="grid min-w-0 flex-1 gap-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <StatusBadge {...HOLD_STATUS_META[hold.status]} />
-                      {hold.status === "open" ? <StatusBadge tone={age.tone} label={age.label} /> : null}
-                      <button
-                        type="button"
-                        className="text-left font-medium text-foreground hover:underline"
-                        title="Show only this item"
-                        onClick={() => {
-                          setReferenceText("");
-                          setReceiptReference("");
-                          setItem({ variantId: hold.variantId, label: `${hold.item.productName} · ${hold.item.variantLabel}` });
-                        }}
-                      >
-                        {hold.item.productName} · {hold.item.variantLabel}
-                      </button>
-                    </div>
-                    <p className="text-sm tabular-nums text-foreground">
-                      {hold.status === "open" ? (
-                        <>
-                          <strong>{hold.unresolved} unresolved</strong>
-                          <span className="text-muted-foreground"> of {hold.quantity} held{hold.acceptedQuantity ? ` · ${hold.acceptedQuantity} accepted` : ""}</span>
-                        </>
-                      ) : (
-                        <span className="text-muted-foreground">{hold.quantity} held · {hold.acceptedQuantity} accepted</span>
-                      )}
-                      {hold.supplierName ? <span className="text-muted-foreground"> · {hold.supplierName}</span> : null}
-                    </p>
-                    <p className="text-sm text-foreground">{hold.reason}</p>
-                    <p className="text-xs text-muted-foreground">
-                      Receipt{" "}
-                      <Link href={detailHref(`receipts/${hold.receiptId}`)} className="font-mono underline underline-offset-4">
-                        {hold.receiptReference}
-                      </Link>
-                      {hold.orderId ? (
-                        <>
-                          {" · Order "}
-                          <Link href={detailHref(`orders/${hold.orderId}`)} className="font-mono underline underline-offset-4">
-                            {hold.orderReference ?? hold.orderId}
-                          </Link>
-                        </>
-                      ) : null}
-                      {" · "}
-                      {staffDateTime(hold.createdAt)}
-                    </p>
-                    {hold.resolution ? (
-                      <p className="text-xs text-muted-foreground">
-                        Resolution: {hold.resolution}
-                        {hold.resolvedByLabel ? ` (${hold.resolvedByLabel})` : ""}
-                      </p>
-                    ) : null}
-                    {hold.handoff ? (
-                      <p className="text-xs text-muted-foreground">
-                        Handoff:{" "}
-                        {[
-                          hold.handoff.carrier,
-                          hold.handoff.returnReference ? `Return ref ${hold.handoff.returnReference}` : undefined,
-                          hold.handoff.note,
-                          hold.handoff.collectedAt ? `Collected ${staffDateTime(hold.handoff.collectedAt)}` : "Awaiting pickup",
-                        ].filter(Boolean).join(" · ")}
-                      </p>
-                    ) : null}
-                    {path?.kind === "order_closed" ? (
-                      <p className="text-xs text-muted-foreground">
-                        {path.orderReference} is closed, so these goods can only go on a linked order or back to the supplier.
-                      </p>
-                    ) : null}
-                  </div>
-                  {hold.status === "open" && access.buyer ? (
-                    <div className="flex shrink-0 flex-wrap gap-2">
-                      {path?.kind === "own_order" ? (
-                        <Button type="button" size="sm" onClick={() => setAccepting(hold)}>
-                          <PackageCheck aria-hidden className="size-3.5" />
-                          Accept on {path.orderReference} ({path.due} due)
-                        </Button>
-                      ) : null}
-                      {path?.kind === "no_due" ? (
-                        <ButtonLink href={detailHref(`orders/${path.orderId}`)} size="sm" variant="outline">
-                          Amend {path.orderReference} to accept
-                        </ButtonLink>
-                      ) : null}
-                      {access.directOrder && path?.kind !== "own_order" ? (
-                        <Button type="button" size="sm" variant="outline" onClick={() => onCreateLinkedOrder(hold)}>
-                          Create linked order
-                        </Button>
-                      ) : null}
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="ghost"
-                        className="text-destructive hover:text-destructive"
-                        onClick={() => setDeclining(hold)}
-                      >
-                        <ShieldAlert aria-hidden className="size-3.5" />
-                        Decline & return
-                      </Button>
-                    </div>
-                  ) : null}
-                  {hold.status === "declined" && access.buyer && !hold.handoff?.collectedAt ? (
-                    <Button type="button" size="sm" variant="outline" onClick={() => setRecordingPickup(hold)}>
-                      <Truck aria-hidden className="size-3.5" />
-                      Record pickup
-                    </Button>
-                  ) : null}
-                </li>
-              );
-            })}
+            {[...holdsByReceipt.values()].map((holds) => (
+              <li key={holds[0].receiptId}>
+                <div className="flex flex-wrap items-center gap-x-2 bg-muted/40 px-4 text-xs text-muted-foreground">
+                  <Link href={detailHref(`receipts/${holds[0].receiptId}`)} className="flex min-h-11 items-center font-mono font-medium text-foreground underline underline-offset-4 sm:min-h-9">
+                    {holds[0].receiptReference}
+                  </Link>
+                  {holds[0].supplierName}
+                </div>
+                <ul className="divide-y divide-border">
+                  {holds.map((hold) => {
+                    const age = holdAge(hold.createdAt, now);
+                    const path = hold.acceptPath;
+                    return (
+                      <li key={hold._id} className="flex flex-wrap items-start justify-between gap-4 p-4">
+                        <div className="grid min-w-0 flex-1 gap-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <StatusBadge {...HOLD_STATUS_META[hold.status]} />
+                            {hold.status === "open" ? <StatusBadge tone={age.tone} label={age.label} /> : null}
+                            <button
+                              type="button"
+                              className="text-left font-medium text-foreground hover:underline"
+                              title="Show only this item"
+                              onClick={() => {
+                                setReferenceText("");
+                                setReceiptReference("");
+                                setItem({ variantId: hold.variantId, label: `${hold.item.productName} · ${hold.item.variantLabel}` });
+                              }}
+                            >
+                              {hold.item.productName} · {hold.item.variantLabel}
+                            </button>
+                          </div>
+                          <p className="text-sm tabular-nums text-foreground">
+                            {hold.status === "open" ? (
+                              <>
+                                <strong>{hold.unresolved} unresolved</strong>
+                                <span className="text-muted-foreground"> of {hold.quantity} held{hold.acceptedQuantity ? ` · ${hold.acceptedQuantity} accepted` : ""}</span>
+                              </>
+                            ) : (
+                              <span className="text-muted-foreground">{hold.quantity} held · {hold.acceptedQuantity} accepted</span>
+                            )}
+                          </p>
+                          <p className="text-sm text-foreground">{hold.reason}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {hold.orderId ? (
+                              <>
+                                {"Order "}
+                                <Link href={detailHref(`orders/${hold.orderId}`)} className="font-mono underline underline-offset-4">
+                                  {hold.orderReference ?? hold.orderId}
+                                </Link>
+                                {" · "}
+                              </>
+                            ) : null}
+                            {staffDateTime(hold.createdAt)}
+                          </p>
+                          {hold.resolution ? (
+                            <p className="text-xs text-muted-foreground">
+                              Resolution: {hold.resolution}
+                              {hold.resolvedByLabel ? ` (${hold.resolvedByLabel})` : ""}
+                            </p>
+                          ) : null}
+                          {hold.handoff ? (
+                            <p className="text-xs text-muted-foreground">
+                              Handoff:{" "}
+                              {[
+                                hold.handoff.carrier,
+                                hold.handoff.returnReference ? `Return ref ${hold.handoff.returnReference}` : undefined,
+                                hold.handoff.note,
+                                hold.handoff.collectedAt ? `Collected ${staffDateTime(hold.handoff.collectedAt)}` : "Awaiting pickup",
+                              ].filter(Boolean).join(" · ")}
+                            </p>
+                          ) : null}
+                          {path?.kind === "order_closed" ? (
+                            <p className="text-xs text-muted-foreground">
+                              {path.orderReference} is closed, so these goods can only go on a linked order or back to the supplier.
+                            </p>
+                          ) : null}
+                        </div>
+                        {hold.status === "open" && access.buyer ? (
+                          <div className="flex shrink-0 flex-wrap gap-2">
+                            {path?.kind === "own_order" ? (
+                              <Button type="button" size="sm" onClick={() => setAccepting(hold)}>
+                                <PackageCheck aria-hidden className="size-3.5" />
+                                Accept on {path.orderReference} ({path.due} due)
+                              </Button>
+                            ) : null}
+                            {path?.kind === "no_due" ? (
+                              <ButtonLink href={detailHref(`orders/${path.orderId}`)} size="sm" variant="outline">
+                                Amend {path.orderReference} to accept
+                              </ButtonLink>
+                            ) : null}
+                            {access.directOrder && path?.kind !== "own_order" ? (
+                              <Button type="button" size="sm" variant="outline" onClick={() => onCreateLinkedOrder(hold)}>
+                                Create linked order
+                              </Button>
+                            ) : null}
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              className="text-destructive hover:text-destructive"
+                              onClick={() => setDeclining(hold)}
+                            >
+                              <ShieldAlert aria-hidden className="size-3.5" />
+                              Decline & return
+                            </Button>
+                          </div>
+                        ) : null}
+                        {hold.status === "declined" && access.buyer && !hold.handoff?.collectedAt ? (
+                          <Button type="button" size="sm" variant="outline" onClick={() => setRecordingPickup(hold)}>
+                            <Truck aria-hidden className="size-3.5" />
+                            Record pickup
+                          </Button>
+                        ) : null}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </li>
+            ))}
           </ul>
         )}
       </Card>

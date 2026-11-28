@@ -50,6 +50,15 @@ const USER_BUTTON_APPEARANCE = {
 const noSubscription = () => () => {};
 const platformShortcut = () => (/mac|iphone|ipad/i.test(navigator.platform) ? "⌘K" : "Ctrl K");
 
+const mobileMenuGroups = ["Daily", "Grow", "Manage", "Configure"] as const;
+
+function mobileMenuGroup(href: string): typeof mobileMenuGroups[number] {
+  if (href === "/admin/settings") return "Configure";
+  if (href === "/admin/leads" || href.startsWith("/admin/marketing/")) return "Grow";
+  if (["/admin/today", "/admin/chats", "/admin/hotel", "/admin/staff/calendar", "/admin/checkout"].includes(href)) return "Daily";
+  return "Manage";
+}
+
 export function AdminSidebar({ userEmail }: { userEmail?: string }) {
   const pathname = usePathname();
   const tab = useSearchParams().get("tab");
@@ -71,6 +80,9 @@ export function AdminSidebar({ userEmail }: { userEmail?: string }) {
   const searching = query.trim() !== "";
   const nav = useAdminNav();
   const results = searchAdminNav(query, nav);
+  const groups = !searching && isMobile
+    ? mobileMenuGroups.map(label => ({ label, items: results.filter(({ href }) => mobileMenuGroup(href) === label) })).filter(({ items }) => items.length)
+    : [{ label: searching ? "Results" : "Workspace", items: results }];
   const waiting = useWaitingChatsBadge();
   const firstHit = results[0]?.children?.[0]?.href ?? results[0]?.href;
 
@@ -164,11 +176,11 @@ export function AdminSidebar({ userEmail }: { userEmail?: string }) {
       </SidebarHeader>
 
       <SidebarContent role="navigation" aria-label="Admin sections">
-        <SidebarGroup>
-          <SidebarGroupLabel>{searching ? "Results" : "Workspace"}</SidebarGroupLabel>
+        {groups.map(({ label: groupLabel, items }) => <SidebarGroup key={groupLabel}>
+          <SidebarGroupLabel>{groupLabel}</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {results.map((item) => {
+              {items.map((item) => {
                 const { href, label, icon: Icon, children } = item;
                 const current = href === activeHref;
                 const expanded = searching || (toggled[href] ?? current);
@@ -221,12 +233,11 @@ export function AdminSidebar({ userEmail }: { userEmail?: string }) {
                 );
               })}
             </SidebarMenu>
-            {/* Always mounted, so screen readers announce changes to it. */}
-            <p role="status" className={results.length ? "sr-only" : "px-2 py-3 text-sm text-sidebar-foreground/70"}>
-              {!searching ? "" : results.length ? `${results.length} ${results.length === 1 ? "section" : "sections"} found` : `No pages match “${query.trim()}”.`}
-            </p>
           </SidebarGroupContent>
-        </SidebarGroup>
+        </SidebarGroup>)}
+        <p role="status" className={results.length ? "sr-only" : "px-2 py-3 text-sm text-sidebar-foreground/70"}>
+          {!searching ? "" : results.length ? `${results.length} ${results.length === 1 ? "section" : "sections"} found` : `No pages match “${query.trim()}”.`}
+        </p>
         {searching ? <AdminRecordSearch query={query} onOpen={close} /> : null}
       </SidebarContent>
 

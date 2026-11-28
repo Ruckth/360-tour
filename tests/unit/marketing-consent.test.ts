@@ -85,19 +85,24 @@ const settle = () => act(async () => { for (let i = 0; i < 20; i++) await new Pr
 const pageviews = () => sdk.log.filter((line) => line === "capture $pageview").length;
 const visitor = () => JSON.parse(window.localStorage.getItem(VISITOR) ?? "null");
 const button = (label: string) => [...document.querySelectorAll("button")].find((el) => el.textContent?.trim() === label) as HTMLButtonElement;
-const banner = () => document.querySelector('[role="dialog"]');
+const banner = () => document.querySelector('[aria-label="Measurement choice"]');
 
 async function mount(path: string, { choice = false } = {}) {
   await load();
   nav.pathname = path;
   window.history.replaceState(null, "", path);
-  const [{ AnalyticsConsent }, { MarketingCapture }, { AnalyticsChoice }] = await Promise.all([
+  const [{ AnalyticsConsent, AnalyticsConsentChoice }, { MarketingCapture }, { AnalyticsChoice }] = await Promise.all([
     import("@/components/global/AnalyticsConsent"),
     import("@/components/global/MarketingCapture"),
     import("@/components/legal/AnalyticsChoice"),
   ]);
   // Fresh elements on every render, so a navigation re-renders the components as Next's router would.
-  tree = () => createElement(IntlProvider, intl, createElement(Fragment, null, choice ? createElement(AnalyticsChoice) : null, createElement(AnalyticsConsent), createElement(MarketingCapture)));
+  tree = () => createElement(IntlProvider, intl, createElement(Fragment, null,
+    choice ? createElement(AnalyticsChoice) : null,
+    nav.pathname === "/" ? createElement(AnalyticsConsentChoice, { inline: true }) : null,
+    createElement(AnalyticsConsent),
+    createElement(MarketingCapture),
+  ));
   root = createRoot(document.body.appendChild(document.createElement("div")));
   await act(async () => root!.render(tree()));
   await settle();

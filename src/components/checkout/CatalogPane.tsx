@@ -237,7 +237,7 @@ export function CatalogPane({
         ) : null}
         {!catalog ? (
           <div role="status" aria-label="Loading items" className={cn("grid", grid)}>
-            {Array.from({ length: 6 }, (_, i) => <div key={i} className="h-[88px] animate-pulse rounded-xl bg-card/70 motion-reduce:animate-none" />)}
+            {Array.from({ length: 6 }, (_, i) => <div key={i} className="h-[76px] animate-pulse @min-[34rem]:h-[88px] rounded-xl bg-card/70 motion-reduce:animate-none" />)}
           </div>
         ) : (
           <>
@@ -319,27 +319,26 @@ function CatalogTile({ tile, count, onAdd, picking, onPick, pickerId }: {
         }}
         aria-expanded={options ? picking : undefined}
         aria-controls={options && picking ? pickerId : undefined}
-        className="group flex h-full min-h-[72px] w-full flex-nowrap items-stretch gap-3 rounded-xl border border-border/70 bg-card/70 p-2 text-left @min-[34rem]:min-h-[88px] transition hover:border-gold/60 hover:bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.99] motion-reduce:transition-none motion-reduce:active:scale-100 aria-expanded:border-gold/70"
+        className="group grid h-full min-h-[76px] w-full grid-cols-[3.5rem_minmax(0,1fr)_auto] items-center gap-3 rounded-xl border border-border/70 bg-card/70 p-2 text-left @min-[34rem]:min-h-[88px] @min-[34rem]:grid-cols-[4.5rem_minmax(0,1fr)_auto] @min-[53rem]:grid-cols-[5rem_minmax(0,1fr)_auto] transition hover:border-gold/60 hover:bg-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.99] motion-reduce:transition-none motion-reduce:active:scale-100 aria-expanded:border-gold/70"
       >
-        <span className="relative shrink-0">
-          <CheckoutPhoto src={tile.imageUrl} kind={tile.kind} className="h-full min-h-14 w-14 @min-[34rem]:min-h-[72px] @min-[34rem]:w-[72px] @min-[53rem]:w-20" />
+        {/* Photo, then name, length and price, then the add control: about 76px tall on a phone. */}
+        <span className="relative self-stretch">
+          <CheckoutPhoto src={tile.imageUrl} kind={tile.kind} className="h-full min-h-[3.75rem] w-full @min-[34rem]:min-h-[72px]" />
           {count ? (
             <span className="absolute top-1 left-1 min-w-5 rounded-full bg-primary px-1 text-center text-xs leading-5 font-semibold text-primary-foreground shadow">
               {count}<span className="sr-only"> on the order</span>
             </span>
           ) : null}
         </span>
-        <span className="flex min-w-0 flex-1 flex-col py-0.5">
+        <span className="flex min-w-0 flex-col">
           <span className="line-clamp-2 text-[15px] leading-snug font-medium [overflow-wrap:anywhere]">{tile.name}</span>
-          <span className="mt-0.5 line-clamp-2 whitespace-normal break-words text-xs leading-snug text-muted-foreground">{tile.meta}</span>
-          <span className="mt-auto flex flex-wrap items-end justify-between gap-2 pt-1 @min-[34rem]:pt-1.5">
-            <span className="text-[15px] font-semibold font-sans tabular-nums">{price}</span>
-            {/* Gold fill on hover takes accent-foreground: primary-foreground is cream in light mode. */}
-            <span className="grid size-8 shrink-0 place-items-center rounded-full border border-gold/70 text-gold-text transition group-hover:border-accent group-hover:bg-accent group-hover:text-accent-foreground motion-reduce:transition-none">
-              {options ? <ChevronDown aria-hidden className={cn("size-4 transition-transform motion-reduce:transition-none", picking && "rotate-180")} /> : <Plus aria-hidden className="size-4" />}
-              <span className="sr-only">{options ? "Choose a duration" : "Add to order"}</span>
-            </span>
-          </span>
+          <span className="line-clamp-2 whitespace-normal break-words text-xs leading-snug text-muted-foreground">{tile.meta}</span>
+          <span className="mt-0.5 text-[15px] leading-snug font-semibold font-sans tabular-nums">{price}</span>
+        </span>
+        {/* Gold fill on hover takes accent-foreground: primary-foreground is cream in light mode. */}
+        <span className="grid size-9 shrink-0 place-items-center rounded-full border border-gold/70 text-gold-text transition group-hover:border-accent group-hover:bg-accent group-hover:text-accent-foreground motion-reduce:transition-none">
+          {options ? <ChevronDown aria-hidden className={cn("size-4 transition-transform motion-reduce:transition-none", picking && "rotate-180")} /> : <Plus aria-hidden className="size-4" />}
+          <span className="sr-only">{options ? "Choose a duration" : "Add to order"}</span>
         </span>
       </button>
       {options && picking ? (

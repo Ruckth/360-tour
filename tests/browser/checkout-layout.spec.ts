@@ -39,6 +39,32 @@ test("320px enlarged checkout keeps the page and catalog actions inside the view
   await shot(page, "catalog-text200-320");
 });
 
+test("phone catalog cards stay about 78px and a long total never truncates View order", async ({ page }) => {
+  for (const width of [360, 390, 430]) {
+    await open(page, { width, height: 844 }, "?lines=13");
+    const tiles = page.locator("#checkout-catalog button").filter({ has: page.locator("span.sr-only", { hasText: "Add to order" }) });
+    const heights = await tiles.evaluateAll((els) => els.slice(0, 5).map((el) => el.getBoundingClientRect().height));
+    for (const height of heights) expect.soft(height, `${width}px tile`).toBeLessThanOrEqual(80);
+    const bar = page.locator("[data-admin-bottom-bar]");
+    await expect(bar.getByTestId("bar-cash")).toContainText("฿1,010,077.90");
+    const label = bar.getByText("View order", { exact: true });
+    expect.soft(await label.evaluate((el) => el.scrollWidth - el.clientWidth), `${width}px label`).toBeLessThanOrEqual(0);
+    expect.soft(await bar.evaluate((el) => el.scrollWidth - el.clientWidth), `${width}px bar`).toBeLessThanOrEqual(0);
+  }
+});
+
+test("360px cash receipt shows the change without opening the preview", async ({ page }) => {
+  await open(page, { width: 360, height: 780 });
+  await page.getByRole("button", { name: /^Thai massage 60.*Add to order/ }).click();
+  await page.getByTestId("bar-cash").click();
+  const sheet = page.getByRole("dialog");
+  await sheet.getByLabel("Cash received").fill("1500");
+  await sheet.getByRole("button", { name: /^Confirm cash · ฿1,500 received/ }).click();
+  const change = page.getByTestId("receipt-change");
+  await expect(change).toHaveText("Cash received ฿1,500 · Change due ฿300");
+  await expect(change).toBeInViewport();
+});
+
 async function open(page: Page, viewport: { width: number; height: number }, query = "") {
   await page.setViewportSize(viewport);
   await page.goto(`/tests/browser/checkout.html${query}`);

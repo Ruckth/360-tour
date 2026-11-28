@@ -33,6 +33,8 @@ type BookingRangePickerProps = {
   minNights?: number;
   maxCheckIn?: string;
   compact?: boolean;
+  /** Keep the two independently focusable date fields together on phones. */
+  joined?: boolean;
   markPastUnavailable?: boolean;
   /** Offer the ✕ that clears the active date; off where both dates are required (staff booking forms). */
   clearable?: boolean;
@@ -80,6 +82,7 @@ export function BookingDatePicker({
   useEffect(() => { onReady?.(); }, [onReady]);
   return (
     <BookingRangePicker
+      joined
       minNights={rules.minNights}
       maxCheckIn={addDaysIso(new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Bangkok" }), rules.maxAdvanceDays)}
       checkIn={checkIn}
@@ -103,6 +106,7 @@ export function BookingRangePicker({
   minNights = BOOKING_RULE_DEFAULTS.minNights,
   maxCheckIn,
   compact = false,
+  joined = false,
   markPastUnavailable = false,
   clearable = true,
   className,
@@ -317,11 +321,16 @@ export function BookingRangePicker({
     <div className={cn("space-y-2", className)}>
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverAnchor asChild>
-          <div ref={triggerGroup} className={cn("grid gap-3 sm:grid-cols-2", compact && "gap-2")}>
+          <div ref={triggerGroup} className={cn(
+            "grid gap-3 sm:grid-cols-2",
+            compact && "gap-2",
+            joined && "grid-cols-2 gap-0 rounded-lg border border-input bg-background sm:gap-3 sm:border-0 sm:bg-transparent",
+          )}>
             <DateTriggerField
               triggerRef={checkInTrigger}
               field="checkIn"
               compact={compact}
+              joined={joined}
               label={t("checkIn")}
               value={checkIn}
               displayValue={checkInLabel}
@@ -333,6 +342,7 @@ export function BookingRangePicker({
               triggerRef={checkOutTrigger}
               field="checkOut"
               compact={compact}
+              joined={joined}
               label={t("checkOut")}
               value={checkOut}
               displayValue={checkOutLabel}
@@ -354,6 +364,7 @@ export function BookingRangePicker({
 function DateTriggerField({
   field,
   compact,
+  joined,
   label,
   value,
   displayValue,
@@ -364,6 +375,7 @@ function DateTriggerField({
 }: {
   field: ActiveDateField;
   compact: boolean;
+  joined: boolean;
   label: string;
   value: string;
   displayValue: string;
@@ -375,10 +387,18 @@ function DateTriggerField({
   const id = useId();
   const testId = `${compact ? "chat-booking" : "booking"}-${field === "checkIn" ? "check-in" : "check-out"}`;
   return (
-    <div className={cn("space-y-2", compact && "space-y-1.5")}>
+    <div className={cn(
+      "min-w-0 space-y-2",
+      compact && "space-y-1.5",
+      joined && "max-sm:space-y-0 max-sm:px-2 max-sm:pt-2",
+      joined && field === "checkOut" && "max-sm:border-s max-sm:border-border",
+    )}>
       <Label
         htmlFor={id}
-        className={cn(compact && "text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground")}
+        className={cn(
+          compact && "text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground",
+          joined && "max-sm:text-xs max-sm:text-muted-foreground",
+        )}
       >
         {label}
       </Label>
@@ -397,10 +417,15 @@ function DateTriggerField({
         className={cn(
           "w-full justify-start border-input bg-background px-3 text-left font-medium",
           compact ? "h-10 rounded-xl text-sm" : "h-12",
+          joined && "max-sm:h-11 max-sm:border-transparent max-sm:px-0",
           !value && "text-muted-foreground",
         )}
       >
-        <CalendarDays aria-hidden className={cn("text-muted-foreground", compact ? "h-3.5 w-3.5" : "h-4 w-4")} />
+        <CalendarDays aria-hidden className={cn(
+          "text-muted-foreground",
+          compact ? "h-3.5 w-3.5" : "h-4 w-4",
+          joined && "max-sm:hidden",
+        )} />
         <span id={`${id}-value`} className="truncate">{displayValue}</span>
       </Button>
     </div>
