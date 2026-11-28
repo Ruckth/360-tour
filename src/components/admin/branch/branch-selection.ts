@@ -45,13 +45,15 @@ export function branchReadOnlyRoute(pathname: string): boolean {
 }
 
 /**
- * Whose data a route shows. Settings and Marketing are company-wide: they show "Company" instead
- * of the working branch and never ask a first-time person to choose. Every other route is a branch's.
+ * Whose data a route shows. Settings, Marketing and Leads are company-wide: they show "Company"
+ * instead of the working branch and never ask a first-time person to choose. Leads link only to
+ * villas, which carry no branch, so the server returns every lead to operations staff (D05).
+ * Every other route is a branch's.
  */
 export type AdminBranchScope = "company" | "branch";
 
 export function branchRouteScope(pathname: string): AdminBranchScope {
-  return /^\/admin\/(settings|marketing)(\/|$)/.test(pathname) ? "company" : "branch";
+  return /^\/admin\/(settings|marketing|leads)(\/|$)/.test(pathname) ? "company" : "branch";
 }
 
 /**
