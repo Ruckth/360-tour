@@ -46,7 +46,9 @@ vi.mock("@/components/reui/event-calendar/event-calendar", () => ({
   EventCalendar: (props: CalendarProps) => { observed.calendar = props; return null; },
   useEventCalendarNavigation: () => ({ navigateToDate: vi.fn() }),
 }));
-vi.mock("@/components/admin/BookingSheet", () => ({ BookingSheet: () => null }));
+vi.mock("@/components/admin/BookingSheet", () => ({
+  BookingSheet: ({ bookingId, onClose }: { bookingId: string | null; onClose: () => void }) => (bookingId ? createElement("button", { "data-testid": "booking-sheet", "data-booking": bookingId, onClick: onClose }) : null),
+}));
 vi.mock("@/components/admin/IcalSourcesDialog", () => ({
   IcalSourcesDialog: ({ open, onClose }: { open: boolean; onClose: () => void }) => (open ? createElement("button", { "data-testid": "ota-calendars", onClick: onClose }, "OTA calendars open") : null),
 }));
@@ -132,5 +134,19 @@ it("opens OTA calendars from the setup checklist link and clears the panel on cl
   nav.search = "panel=bogus";
   await act(async () => root.render(createElement(AdminBookingsView)));
   expect(document.querySelector('[data-testid="ota-calendars"]')).toBeNull();
+  nav.search = "";
+});
+
+it("opens a stay from an admin Search link and clears the link on close (D03)", async () => {
+  nav.search = "booking=k57booking0000000000000000000001";
+  nav.replace.mockClear();
+  await act(async () => root.render(createElement(AdminBookingsView)));
+  const sheet = document.querySelector<HTMLButtonElement>('[data-testid="booking-sheet"]');
+  expect(sheet?.dataset.booking).toBe("k57booking0000000000000000000001");
+  await act(async () => sheet!.click());
+  expect(nav.replace).toHaveBeenCalledWith("/admin/hotel", { scroll: false });
+  nav.search = "booking=not%20an%20id";
+  await act(async () => root.render(createElement(AdminBookingsView)));
+  expect(document.querySelector('[data-testid="booking-sheet"]')).toBeNull();
   nav.search = "";
 });

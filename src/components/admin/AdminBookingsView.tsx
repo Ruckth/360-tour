@@ -135,12 +135,18 @@ function HotelBookings() {
   const router = useRouter();
   const linkedPanel = hotelPanel(searchParams.get("panel"));
   const calendarsOpen = managingCalendars || linkedPanel === "ota-calendars";
+  // `?booking=<id>` (an admin Search result) opens that stay; its query re-checks access.
+  const linkedBooking = searchParams.get("booking");
+  const linkedSelection = !selected && linkedBooking && /^[a-z0-9]{20,40}$/.test(linkedBooking) ? { id: linkedBooking as Id<"bookings"> } : null;
+  function clearLinkParam(name: "panel" | "booking") {
+    if (!searchParams.has(name)) return;
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete(name);
+    router.replace(params.size ? `/admin/hotel?${params}` : "/admin/hotel", { scroll: false });
+  }
   function closeCalendars() {
     setManagingCalendars(false);
-    if (!searchParams.has("panel")) return;
-    const params = new URLSearchParams(searchParams.toString());
-    params.delete("panel");
-    router.replace(params.size ? `/admin/hotel?${params}` : "/admin/hotel", { scroll: false });
+    clearLinkParam("panel");
   }
   const [managingRates, setManagingRates] = useState(false);
   const [cleaningUp, setCleaningUp] = useState(false);
@@ -447,12 +453,13 @@ function HotelBookings() {
       </Card>
 
       <BookingSheet
-        bookingId={selected?.id ?? null}
+        bookingId={(selected ?? linkedSelection)?.id ?? null}
         initialAction={selected?.initialAction}
         properties={properties ?? []}
-        onClose={() => setSelected(null)}
+        onClose={() => { setSelected(null); clearLinkParam("booking"); }}
         onBookSpa={(booking) => {
           setSelected(null);
+          clearLinkParam("booking");
           openStaySpa(booking, booking.propertyName);
         }}
       />

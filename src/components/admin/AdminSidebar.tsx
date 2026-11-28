@@ -12,6 +12,7 @@ import { SidebarBranchSwitcher } from "@/components/admin/branch/BranchSwitcher"
 import { activeAdminSubLink, adminNavItem, searchAdminNav } from "@/components/admin/admin-routes";
 import { useAdminNav } from "@/components/admin/staff-access";
 import { useWaitingChatsBadge } from "@/components/admin/waiting-chats";
+import { AdminRecordSearch } from "@/components/admin/AdminRecordSearch";
 import {
   Sidebar,
   SidebarContent,
@@ -224,6 +225,7 @@ export function AdminSidebar({ userEmail }: { userEmail?: string }) {
             </p>
           </SidebarGroupContent>
         </SidebarGroup>
+        {searching ? <AdminRecordSearch query={query} onOpen={close} /> : null}
       </SidebarContent>
 
       <SidebarFooter className="p-2">
