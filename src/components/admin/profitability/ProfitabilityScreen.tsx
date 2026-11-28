@@ -37,7 +37,7 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
   if (dates !== dateDraft) setDateDraft(dates);
   const draftDays = reportDayCount(dates.start, dates.end);
   const draftInvalid = draftDays === null || draftDays > MAX_REPORT_DAYS;
-  const [refreshRevision, setRefreshRevision] = useState<number | null>(null);
+  const pendingRefresh = useRef<string | null>(null);
   const chosen = params.get('metric'),
     metric = profitMetrics.find((m) => m === chosen) ?? 'revenue';
   const overview = useMemo(() => readGroup(params.get('rules')), [params]),
@@ -58,7 +58,6 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
     if (financeEntry) financeHeading.current?.focus();
   }, [financeEntry]);
   const [revision, setRevision] = useState(0);
-  const refreshing = refreshRevision === revision;
   const expiredView = useRef<string | null>(null);
   const openView = useMutation(api.marketing.profitViews.openView);
   const viewKey = JSON.stringify([access.email, canWrite, from, to, revision]);
@@ -98,16 +97,21 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
     [viewId, from, to, overview, additional, submitted, category, page, descending, detailPage, metric],
   );
   const key = JSON.stringify([request, revision]);
+  const refreshKey = JSON.stringify([params.toString(), detailPage, submitted, access.email, revision]);
   const stampScope = JSON.stringify([access.email, access.role, from, to, detailPage]);
   const [state, setState] = useState<{
-    key: string; data?: Report; error?: string; lastSuccess?: { scope: string; asOf: number };
+    key: string; refreshed?: boolean; data?: Report; error?: string; lastSuccess?: { scope: string; asOf: number };
   } | null>(null);
   useEffect(() => {
     if (!valid || !viewId) return;
     let active = true;
     convex.query(api.marketing.profitability.report, request).then(
       (data) => {
-        if (active) setState({ key, data, lastSuccess: { scope: stampScope, asOf: data.asOf } });
+        if (active) {
+          const refreshed = pendingRefresh.current === refreshKey;
+          pendingRefresh.current = null;
+          setState({ key, data, refreshed, lastSuccess: { scope: stampScope, asOf: data.asOf } });
+        }
       },
       (err) => {
         if (!active) return;
@@ -121,7 +125,7 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
     return () => {
       active = false;
     };
-  }, [convex, key, request, stampScope, valid, viewId]);
+  }, [refreshKey, convex, key, request, stampScope, valid, viewId]);
   const href: Href = (detail, updates) => {
     const next = new URLSearchParams();
     for (const k of ['rules', 'metric', 'additional', 'page', 'sort', 'lookup', 'category']) {
@@ -174,13 +178,13 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span role="status" className="text-xs text-muted-foreground">
-            {report && refreshing ? `Report refreshed ${lastStamp}` : lastStamp ? `Report updated ${lastStamp}` : ''}
+            {report && state?.refreshed ? `Report refreshed ${lastStamp}` : lastStamp ? `Report updated ${lastStamp}` : ''}
           </span>
           {report && (
             <Button
               size="sm"
               variant="ghost"
-              onClick={() => { setRefreshRevision(revision + 1); setRevision(revision + 1); }}
+              onClick={() => { pendingRefresh.current = JSON.stringify([params.toString(), detailPage, submitted, access.email, revision + 1]); setRevision(revision + 1); }}
             >
               Refresh report
             </Button>
@@ -249,7 +253,7 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
             </label>
             <Button size="sm" disabled={draftInvalid || (dates.start === from && dates.end === to)} onClick={() => {
               if (!draftInvalid) {
-                setRefreshRevision(null);
+                pendingRefresh.current = null;
                 update({ from: dates.start, to: dates.end });
               }
             }}>Apply dates</Button>
@@ -259,7 +263,7 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
               variant="outline"
               onClick={() => {
                 setDateDraft({ from, to, start: from, end: to });
-                setRefreshRevision(null);
+                pendingRefresh.current = null;
                 const { startDate, endDate } = monthBounds(shiftMonth(monthOf(today), -1));
                 update({ from: startDate, to: endDate });
               }}
@@ -269,7 +273,7 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
             <Button
               size="sm"
               variant="outline"
-              onClick={() => { setDateDraft({ from, to, start: from, end: to }); setRefreshRevision(null); update({ from: monthOf(today) + '-01', to: today }); }}
+              onClick={() => { setDateDraft({ from, to, start: from, end: to }); pendingRefresh.current = null; update({ from: monthOf(today) + '-01', to: today }); }}
             >
               Month to date
             </Button>

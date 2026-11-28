@@ -223,7 +223,7 @@ function CouponBuilder({
   const [submitted, setSubmitted] = useState(false);
   const changeInProgress = useRef(false);
   const [saving, setSaving] = useState(false);
-  const [retryPublish, setRetryPublish] = useState(false);
+  const [retryPublish, setRetryPublish] = useState(() => Boolean(detail && savedNotices.get(detail._id)?.retryPublish));
   const [qrOpen, setQrOpen] = useState(false);
   const { pending: statusPending, run } = useConfirmedChange<Id<"coupons">>(show);
   const statusBusy = statusPending !== null;
@@ -234,7 +234,6 @@ function CouponBuilder({
     const saved = detail ? savedNotices.get(detail._id) : undefined;
     if (!saved || !detail) return;
     savedNotices.delete(detail._id);
-    setRetryPublish(Boolean(saved.retryPublish));
     show(saved.text, saved.tone);
   }, [detail, show]);
 
@@ -317,7 +316,10 @@ function CouponBuilder({
       if (!detail) {
         savedNotices.set(result.couponId, saved);
         onCreated(result.couponId);
-      } else show(saved.text, saved.tone);
+      } else {
+        setRetryPublish(Boolean(saved.retryPublish));
+        show(saved.text, saved.tone);
+      }
     } finally {
       changeInProgress.current = false;
     }
@@ -356,7 +358,10 @@ function CouponBuilder({
       await run(
         detail._id,
         { title: text.title, description: text.description, confirmLabel: text.label, destructive: status === "archived" },
-        () => actions.setCouponStatus({ couponId: detail._id, status }),
+        async () => {
+          await actions.setCouponStatus({ couponId: detail._id, status });
+          setRetryPublish(false);
+        },
         text.done,
         "Couldn’t change the coupon.",
       );

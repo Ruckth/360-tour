@@ -339,7 +339,7 @@ export function DashboardView({
           className="size-10 pointer-coarse:size-12 border border-border sm:hidden"
           items={[
             { label: busy ? "Updating…" : "Refresh", disabled: busy, onSelect: onRetry },
-            ...(report ? [{ label: `View options: ${touch === "first" ? "First touch" : "Last touch"}`, onSelect: () => setViewOptions(true) }] : []),
+            { label: `View options: ${touch === "first" ? "First touch" : "Last touch"}`, onSelect: () => setViewOptions(true) },
             { label: "Export CSV", disabled: !p || firstRun, onSelect: () => setExporting(true) },
           ]}
         />
@@ -372,7 +372,12 @@ export function DashboardView({
         </p>
       ) : null}
     </div>
-  ) : state.status === "loading" ? <p role="status" className="text-xs text-muted-foreground">Updating…</p> : null;
+  ) : (
+    <div className="flex flex-wrap items-center gap-2">
+      {state.status === "loading" && <p role="status" className="text-xs text-muted-foreground">Updating…</p>}
+      <ViewOptions mobile touch={touch} onTouch={setTouch} open={viewOptions} onOpenChange={setViewOptions} />
+    </div>
+  );
 
   let body;
   if (state.status === "loading") body = <LoadingBody />;

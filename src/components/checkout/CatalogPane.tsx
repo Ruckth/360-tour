@@ -127,7 +127,7 @@ export function CatalogPane({
   const count = tiles.length;
   useEffect(() => {
     const timer = window.setTimeout(() => setSearchStatus(
-      searching && catalog && tab !== "products" ? `${count} matching ${count === 1 ? "item" : "items"}` : "",
+      searching && catalog && tab !== "products" ? `${count} matching ${count === 1 ? "item" : "items"} for “${query}” in ${tab === "frequent" ? "all categories" : tab}` : "",
     ), 250);
     return () => window.clearTimeout(timer);
   }, [searching, query, count, catalog, tab]);

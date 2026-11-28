@@ -629,10 +629,10 @@ function OpenOrdersList({ currentId, onOpen }: { currentId: OrderId | undefined;
                   {row.title}
                   {row._id === currentId ? <Badge variant="secondary" className="ml-2 font-medium">Current</Badge> : null}
                 </span>
-                <span className="block truncate text-xs text-muted-foreground">
-                  {[row.customerName, row.bookingReference && (row.otherBookings ? `${row.bookingReference} +${row.otherBookings}` : row.bookingReference)].filter(Boolean).join(" · ") || "No customer"}
-                  {" · "}
-                  {row.itemCount} {row.itemCount === 1 ? "item" : "items"}
+                <span className="flex min-w-0 flex-wrap gap-x-1 text-xs text-muted-foreground">
+                  <span className="min-w-0 truncate">{row.customerName ?? "No customer"}</span>
+                  {row.bookingReference && <span className="break-all">{row.bookingReference}{row.otherBookings ? ` +${row.otherBookings}` : ""}</span>}
+                  <span>{row.itemCount} {row.itemCount === 1 ? "item" : "items"}</span>
                 </span>
                 <span className="block text-xs text-muted-foreground">Updated {orderTime(row.updatedAt)}</span>
               </span>
@@ -751,10 +751,9 @@ function OrdersList({ filter, currentId, onOpen, onRestore }: { filter: OrderFil
                   {row.title}
                   {row._id === currentId ? <Badge variant="secondary" className="ml-2 font-medium">Current</Badge> : null}
                 </span>
-                <span className="block truncate text-xs text-muted-foreground">
-                  {[row.customerName ?? "No customer", row.bookingReference && (row.otherBookings ? `${row.bookingReference} +${row.otherBookings}` : row.bookingReference)]
-                    .filter(Boolean)
-                    .join(" · ")}
+                <span className="flex min-w-0 flex-wrap gap-x-1 text-xs text-muted-foreground">
+                  <span className="min-w-0 truncate">{row.customerName ?? "No customer"}</span>
+                  {row.bookingReference && <span className="break-all">{row.bookingReference}{row.otherBookings ? ` +${row.otherBookings}` : ""}</span>}
                 </span>
                 <span className="block text-xs text-muted-foreground">
                   {row.itemCount} {row.itemCount === 1 ? "item" : "items"} · {filter === "paid" ? (row.paidAt ? `Paid ${orderTime(row.paidAt)}` : "Payment time unavailable") : `Updated ${orderTime(row.updatedAt)}`}{filter === "paid" && row.paidAt && row.updatedAt > row.paidAt ? ` · Updated ${orderTime(row.updatedAt)}` : ""}

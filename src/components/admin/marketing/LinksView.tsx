@@ -89,12 +89,14 @@ export function LinksView({ links, campaigns, coupons, properties, origin, brand
   const sheet = useEditorSheet<{ link?: LinkRow; preset?: LinkPreset }>();
   const [localFilters, setLocalFilters] = useState(defaultFilters);
   const currentFilters = filters ?? localFilters;
-  const { tab, query, campaignFilter, offerIssuesOnly } = currentFilters;
+  const { tab, query, offerIssuesOnly } = currentFilters;
+  const campaignFilter = campaigns && !campaigns.some(item => item._id === currentFilters.campaignFilter)
+    ? ALL_CAMPAIGNS : currentFilters.campaignFilter;
   const changeFilters = onFiltersChange ?? setLocalFilters;
-  const setTab = (tab: Tab) => changeFilters({ ...currentFilters, tab });
-  const setQuery = (query: string) => changeFilters({ ...currentFilters, query });
+  const setTab = (tab: Tab) => changeFilters({ ...currentFilters, campaignFilter, tab });
+  const setQuery = (query: string) => changeFilters({ ...currentFilters, campaignFilter, query });
   const setCampaignFilter = (campaignFilter: string) => changeFilters({ ...currentFilters, campaignFilter });
-  const setOfferIssuesOnly = (offerIssuesOnly: boolean) => changeFilters({ ...currentFilters, offerIssuesOnly });
+  const setOfferIssuesOnly = (offerIssuesOnly: boolean) => changeFilters({ ...currentFilters, campaignFilter, offerIssuesOnly });
   const [qrLink, setQrLink] = useState<LinkRow | null>(null);
 
   const loading = links === undefined || campaigns === undefined || coupons === undefined || properties === undefined;
@@ -122,7 +124,8 @@ export function LinksView({ links, campaigns, coupons, properties, origin, brand
   }
 
   const openNew = (preset?: LinkPreset) => { if (access.capabilities.draft) sheet.open({ preset }); };
-  const openEdit = (link: LinkRow) => { if (canonicalPartnerLink(link)) router.push(adminMarketingPath("affiliates") + "?" + new URLSearchParams({ partner: link.affiliateId ?? "" })); else sheet.open({ link }); };
+  const partnerHref = (link: LinkRow) => adminMarketingPath("affiliates") + "?" + new URLSearchParams({ partner: link.affiliateId ?? "" });
+  const openEdit = (link: LinkRow) => { if (canonicalPartnerLink(link)) router.push(partnerHref(link)); else sheet.open({ link }); };
   // The open QR card follows the live row, so publishing from it unlocks the downloads.
   const qrCurrent = qrLink ? (all.find((link) => link._id === qrLink._id) ?? qrLink) : null;
 
@@ -359,7 +362,7 @@ export function LinksView({ links, campaigns, coupons, properties, origin, brand
                               >
                                 {link.name}
                               </button>
-                              {canonicalPartnerLink(link) ? <Link href={adminMarketingPath("affiliates")} className="block text-xs font-semibold underline underline-offset-2">{access.capabilities.partners ? "Manage partner" : "View partner"}</Link> : null}
+                              {canonicalPartnerLink(link) ? <Link href={partnerHref(link)} className="block text-xs font-semibold underline underline-offset-2">{access.capabilities.partners ? "Manage partner" : "View partner"}</Link> : null}
                               <div className="flex min-w-0 items-center gap-0.5">
                                 <span className="min-w-0 break-all font-mono text-xs text-muted-foreground">{url.display}</span>
                                 <CopyButton text={url.full} label={`Copy ${url.display}`} className="size-7 [&_svg]:size-3.5" />
@@ -421,7 +424,7 @@ export function LinksView({ links, campaigns, coupons, properties, origin, brand
                       <SlugChip path={link.shortUrlPath} large />
                       <div className="min-w-0 flex-1">
                         <p className="font-medium text-foreground">{link.name}</p>
-                        {canonicalPartnerLink(link) ? <Link href={adminMarketingPath("affiliates")} className="text-xs font-semibold underline underline-offset-2">{access.capabilities.partners ? "Manage partner" : "View partner"}</Link> : null}
+                        {canonicalPartnerLink(link) ? <Link href={partnerHref(link)} className="text-xs font-semibold underline underline-offset-2">{access.capabilities.partners ? "Manage partner" : "View partner"}</Link> : null}
                         <p className="break-all font-mono text-xs text-muted-foreground">{url.display}</p>
                       </div>
                       <StatusBadge {...LINK_STATUS[link.status]} />

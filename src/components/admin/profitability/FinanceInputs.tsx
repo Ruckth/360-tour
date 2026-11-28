@@ -177,7 +177,7 @@ function FinanceForm({
             </div>
           </fieldset>
           <label className="flex items-start gap-2 text-sm">
-            <input type="checkbox" required className="mt-1" />I have included all service expenses, other income
+            <input type="checkbox" name="confirmedStatement" required className="mt-1" />I have included all service expenses, other income
             and acquisition spend for this month.
           </label>
         </>

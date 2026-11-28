@@ -509,7 +509,7 @@ function SettingsForm({ section, settings, readOnly = false, onDirtyChange }: { 
                 <InfoTip label="About reply limits">The five channel allowances add together; each chat also has its own limit. Website messages count during staff replies; other channels pause counting while staff take over. Changes apply from the next message, and each limit value has its own hourly count. At the limit, website guests keep their unsent draft; messages from other channels still reach your inbox without an AI reply.</InfoTip>
               </div>
               <output className="mt-1 block text-[13px]">
-                Channel total: {Object.keys(CHAT_CHANNEL_LABELS).reduce((total, key) => total + (Number(values[key]) || 0), 0).toLocaleString()} guest messages/hour
+                Channel total: {Object.keys(CHAT_CHANNEL_LABELS).reduce((total, key) => total + (Number(values[`chatReplyLimits.${key}`]) || 0), 0).toLocaleString()} guest messages/hour
               </output>
               <p className="mt-1 text-[13px] leading-5 text-muted-foreground">Default total: 2,500 guest messages/hour across five channels</p>
             </header>

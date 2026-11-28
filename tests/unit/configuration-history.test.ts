@@ -244,6 +244,8 @@ it("edits reply limits in the AI form, validates, saves all channels and discard
   for (const key of ["web", "line", "whatsapp", "facebook", "instagram"]) expect(field(key).value).toBe("500");
   expect(field("perChat").value).toBe("20");
   expect(document.body.textContent).toContain("Default total: 2,500 guest messages/hour across five channels");
+  await edit("web", "600");
+  expect(document.querySelector("output")?.textContent).toContain("2,600");
   await edit("web", "0");
   expect(document.querySelector('[data-testid="settings-save-bar"]')).not.toBeNull();
   await act(async () => document.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
