@@ -393,6 +393,8 @@ describe('admin services', () => {
 		await admin.mutation(api.services.commands.cancelAppointment.cancelAppointment, { appointmentId: cancelled.appointmentId, expectedRevision: 0 });
 		expect(await admin.query(api.services.admin.countUpcomingAppointments, { serviceId })).toBe(1);
 		expect(await admin.query(api.services.admin.countUpcomingAppointments, { staffId })).toBe(1);
+		// D23: the archive guard's Open calendar lands on the earliest still-blocking appointment (cancelled ones excluded).
+		expect(await admin.query(api.services.admin.firstUpcomingAppointment, { staffId })).toEqual({ appointmentId: kept.appointmentId, start: at('09:00') });
 		expect(await admin.mutation(api.services.commands.archiveService.archiveService, { serviceId })).toEqual({ upcomingAppointments: 1 });
 		const schedule = await admin.query(api.services.admin.listSchedule, { from: at('00:00'), to: at('23:00') });
 		expect(schedule.appointments.find((a) => a._id === kept.appointmentId)).toMatchObject({ status: 'booked' });
@@ -479,6 +481,7 @@ describe('admin services', () => {
 		await expect(t.mutation(api.services.commands.refundAppointment.refundAppointment, { appointmentId })).rejects.toThrow('Not authenticated');
 		await expect(t.query(api.services.admin.listTimeOffPage, { staffId, range: 'upcoming', paginationOpts: { numItems: 100, cursor: null } })).rejects.toThrow('Not authenticated');
 		await expect(t.query(api.services.admin.countUpcomingAppointments, { staffId })).rejects.toThrow('Not authenticated');
+		await expect(t.query(api.services.admin.firstUpcomingAppointment, { staffId })).rejects.toThrow('Not authenticated');
 	});
 
 	it('adds time off for several staff, skipping those with booked appointments in the way', async () => {

@@ -1,14 +1,16 @@
 // @vitest-environment happy-dom
-import { act, createElement } from 'react';
+import { act, createElement, useEffect } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { ServiceOptionsEditor, useServiceOptions } from '@/components/admin/ServiceOptionsEditor';
 
 let root: Root;
 let state!: ReturnType<typeof useServiceOptions>;
+const capture = (next: ReturnType<typeof useServiceOptions>) => { state = next; };
 function Harness() {
-  state = useServiceOptions({ durationMin: 60, price: 100000, options: [{ durationMin: 60, price: 100000 }, { durationMin: 90, price: 150000 }, { durationMin: 120, price: 200000 }] });
-  return createElement(ServiceOptionsEditor, { state, bufferMin: 15, currency: 'THB', serviceName: 'Thai massage' });
+  const options = useServiceOptions({ durationMin: 60, price: 100000, options: [{ durationMin: 60, price: 100000 }, { durationMin: 90, price: 150000 }, { durationMin: 120, price: 200000 }] });
+  useEffect(() => capture(options));
+  return createElement(ServiceOptionsEditor, { state: options, bufferMin: 15, currency: 'THB', serviceName: 'Thai massage' });
 }
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);

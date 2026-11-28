@@ -142,11 +142,13 @@ export function AdminStaffTabs({ children }: { children: ReactNode }) {
     router.push(adminStaffTabPath(key));
   }
 
+  // Manual activation: arrows, Home and End only move focus; Enter or Space (the button's click) opens the
+  // focused route through openTab, which keeps the unsaved-draft confirmation.
   function onTabKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number) {
     const moves: Record<string, number> = { ArrowRight: index + 1, ArrowLeft: index - 1, Home: 0, End: TABS.length - 1 };
     if (!(event.key in moves)) return;
     event.preventDefault();
-    void openTab(moves[event.key]);
+    tabRefs.current[(moves[event.key] + TABS.length) % TABS.length]?.focus();
   }
 
   return (

@@ -9,7 +9,7 @@ import { useRef, useState, type FormEvent, type ReactNode } from "react";
 import { ServiceDialog } from "@/components/admin/ServiceDialog";
 import { ServiceStaffMatrix } from "@/components/admin/AdminServiceStaffMatrix";
 import { BulkTimeOffDialog, TimeOffFields, conflictText, readTimeOff } from "@/components/admin/AdminStaffTimeOff";
-import { adminStaffTabPath } from "@/components/admin/admin-routes";
+import { staffCalendarHref } from "@/lib/staff-links";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { DisabledReason } from "@/components/admin/DisabledReason";
 import { ServiceThumbZoom } from "@/components/admin/ServicePhoto";
@@ -36,6 +36,7 @@ import {
   WEEKDAYS,
   errorText,
   formatTimeOff,
+  resortIsoDate,
   timeOffInput,
   timeOffRange,
   timeOffRangeProblem,
@@ -140,7 +141,9 @@ export function AdminStaffServicesManager({ section }: { section: "staff" | "ser
           confirmLabel: "Open calendar",
         })
       ) {
-        router.push(adminStaffTabPath("calendar"));
+        // Land on the earliest blocking appointment's date with this person shown and that appointment open.
+        const first = await convex.query(api.services.admin.firstUpcomingAppointment, { staffId: person._id });
+        router.push(staffCalendarHref(first ? { date: resortIsoDate(first.start), staffId: person._id, appointmentId: first.appointmentId } : { staffId: person._id }));
       }
       return;
     }
