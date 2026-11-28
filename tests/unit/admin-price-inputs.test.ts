@@ -9,7 +9,14 @@ import { ConfirmProvider } from '@/components/admin/ConfirmDialog';
 import { TooltipProvider } from '@/components/ui/tooltip';
 
 const state = vi.hoisted(() => ({ save: vi.fn<() => Promise<unknown>>(async () => undefined) }));
-vi.mock('@/platform/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
+vi.mock('@/platform/navigation', () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(),
+}));
+vi.mock('@/platform/link', () => ({
+  default: ({ href, children, ...props }: { href: string; children?: ReactNode; [key: string]: unknown }) =>
+    createElement('a', { href, ...props }, children),
+}));
 vi.mock('@/components/admin/RecordHistoryPanel', () => ({
   RecordHistoryPanel: () => null, ConfigurationHistoryRecords: () => null,
   HistoryDisclosure: ({ children }: { children: ReactNode }) => children,

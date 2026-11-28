@@ -49,6 +49,25 @@ export function adminSettingsTab(value: string | null): AdminSettingsTab {
   return ADMIN_SETTINGS_TABS.find((tab) => tab.id === id)?.id ?? "business";
 }
 
+/** Villa editor sections; `details` is the default and omits `?tab=`. */
+export const ADMIN_PROPERTY_TABS = [
+  ["details", "Details"],
+  ["photos", "Photos"],
+  ["tourScenes", "360 rooms"],
+  ["pricing", "Pricing & OTA"],
+  ["reviews", "Reviews"],
+  ["calendar", "Calendar sync"],
+] as const;
+export type AdminPropertyTab = (typeof ADMIN_PROPERTY_TABS)[number][0];
+
+export function adminPropertyTab(value: string | null | undefined): AdminPropertyTab {
+  return ADMIN_PROPERTY_TABS.find(([id]) => id === value)?.[0] ?? "details";
+}
+
+export function adminPropertyTabPath(propertyId: string, tab: AdminPropertyTab): string {
+  return tab === "details" ? `/admin/properties/${propertyId}` : `/admin/properties/${propertyId}?tab=${tab}`;
+}
+
 /** Stock sub-pages, in sidebar order. `/admin/stock` opens Balances. */
 export const ADMIN_STOCK_PAGES = [
   { id: "balances", label: "Balances", keywords: ["inventory", "on hand", "on order", "recount", "receive", "count", "adjust"] },

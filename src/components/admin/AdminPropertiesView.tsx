@@ -26,8 +26,15 @@ export function propertyPath(propertyId: string) {
 export function AdminPropertiesView() {
   const properties = useQuery(api.catalog.properties.adminList, {});
   const [status, setStatus] = useState<PropertyStatus | "all">("all");
+  const [query, setQuery] = useState("");
   const [creating, setCreating] = useState(false);
-  const shown = properties?.filter((property) => status === "all" || property.status === status);
+  const needle = query.trim().toLowerCase();
+  const slugNeedle = needle.replace(/^\/?(?:rooms\/)?/, "");
+  const shown = properties?.filter((property) => {
+    if (status !== "all" && property.status !== status) return false;
+    if (!needle) return true;
+    return property.name.toLowerCase().includes(needle) || property.slug.toLowerCase().includes(slugNeedle);
+  });
 
   return (
     <div className="mx-auto grid w-full max-w-5xl gap-4 px-4 py-4 sm:px-6">
@@ -36,6 +43,15 @@ export function AdminPropertiesView() {
           <p className="min-w-60 flex-1 text-sm text-muted-foreground">
             Villas used by the AI concierge, the chat channels and the booking flow. Only active villas are offered to guests.
           </p>
+          <Input
+            id="villa-search"
+            type="search"
+            aria-label="Search villa name or slug"
+            placeholder="Search name or slug…"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            className="h-9 w-full min-w-44 sm:w-56"
+          />
           <Select value={status} onValueChange={(value) => setStatus(value as PropertyStatus | "all")}>
             <SelectTrigger className="h-9 w-36 rounded-lg" aria-label="Villa status">
               <SelectValue />
@@ -53,6 +69,13 @@ export function AdminPropertiesView() {
             <Plus aria-hidden className="size-4" />
             New villa
           </Button>
+          {shown ? (
+            <p role="status" className="w-full text-xs text-muted-foreground">
+              {shown.length} {shown.length === 1 ? "villa" : "villas"}
+              {needle ? ` matching “${query.trim()}”` : ""}
+              {status !== "all" ? ` · ${PROPERTY_STATUS[status].label}` : ""}
+            </p>
+          ) : null}
         </div>
         {!shown ? (
           <ul role="status" aria-label="Loading villas" className="divide-y divide-border">
@@ -92,7 +115,16 @@ export function AdminPropertiesView() {
             ))}
             {shown.length === 0 ? (
               <li className="grid justify-items-center gap-3 px-4 py-10 text-center text-sm text-muted-foreground">
-                {status === "all" ? (
+                {needle ? (
+                  <>
+                    <span>
+                      No {status === "all" ? "" : `${PROPERTY_STATUS[status].label.toLowerCase()} `}villas match &ldquo;{query.trim()}&rdquo;.
+                    </span>
+                    <Button size="sm" variant="outline" onClick={() => setQuery("")}>
+                      Clear search
+                    </Button>
+                  </>
+                ) : status === "all" ? (
                   <>
                     No villas yet. Create the first one.
                     <Button size="sm" onClick={() => setCreating(true)}>
