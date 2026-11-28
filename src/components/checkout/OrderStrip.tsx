@@ -624,11 +624,12 @@ export function OpenOrders({ currentId, onOpen }: { currentId: OrderId | undefin
 
 function OpenOrdersList({ currentId, onOpen }: { currentId: OrderId | undefined; onOpen: (orderId: OrderId) => void }) {
   const { results, status, loadMore } = useCheckoutBackend().useOpenOrders();
+  const currentRow = useCurrentRowInView(results.length > 0);
   if (status === "LoadingFirstPage") return <Spinner label="Loading orders" />;
   if (!results.length && status === "Exhausted") return <p className="text-sm text-muted-foreground">No open orders.</p>;
   return (
     <div className="grid gap-2">
-      <ul className="max-h-[50dvh] divide-y divide-border overflow-y-auto" aria-label="Open orders">
+      <ul ref={currentRow} className="max-h-[50dvh] divide-y divide-border overflow-y-auto" aria-label="Open orders">
         {results.map((row) => (
           <li key={row._id}>
             <button
@@ -714,6 +715,25 @@ function OrderLookupResult({ number, receipt, cashier, onOpen }: { number: numbe
   return null;
 }
 
+/**
+ * Brings the current order's row into view once its list first loads, so coming back from a
+ * receipt or an order lands on the same place. Later updates never move the list.
+ */
+function useCurrentRowInView(loaded: boolean) {
+  const list = useRef<HTMLUListElement>(null);
+  const done = useRef(false);
+  useEffect(() => {
+    const row = list.current?.querySelector<HTMLElement>('[aria-current="true"]');
+    if (!loaded || done.current || !list.current) return;
+    done.current = true;
+    if (!row) return;
+    const box = list.current.getBoundingClientRect();
+    const at = row.getBoundingClientRect();
+    if (at.top < box.top || at.bottom > box.bottom) list.current.scrollTop += at.top - box.top - (box.height - at.height) / 2;
+  }, [loaded]);
+  return list;
+}
+
 const FILTERS: Array<{ value: OrderFilter; label: string; empty: string }> = [
   { value: "unpaid", label: "Unpaid", empty: "No unpaid orders." },
   { value: "paid", label: "Paid", empty: "No paid orders yet." },
@@ -746,11 +766,12 @@ const PAGE = 20;
 
 function OrdersList({ filter, currentId, onOpen, onRestore }: { filter: OrderFilter; currentId: OrderId | undefined; onOpen: (orderId: OrderId) => void; onRestore: (id: OrderId) => void }) {
   const { results, status, loadMore } = useCheckoutBackend().useOrders(filter);
+  const currentRow = useCurrentRowInView(results.length > 0);
   if (status === "LoadingFirstPage") return <Spinner label="Loading orders" />;
   if (!results.length && status === "Exhausted") return <p className="text-sm text-muted-foreground">{FILTERS.find((f) => f.value === filter)!.empty}</p>;
   return (
     <div className="grid gap-2">
-      <ul className="max-h-[55dvh] divide-y divide-border overflow-y-auto" aria-label={`${FILTERS.find((f) => f.value === filter)!.label} orders`}>
+      <ul ref={currentRow} className="max-h-[55dvh] divide-y divide-border overflow-y-auto" aria-label={`${FILTERS.find((f) => f.value === filter)!.label} orders`}>
         {results.map((row) => (
           // Open and Restore… are sibling buttons on one row, never one inside the other. Discard is in the open order's ⋯.
           <li key={row._id} className="flex items-center gap-2">
