@@ -570,7 +570,12 @@ describe("Approvals", () => {
     const { backend, details } = counted({ ...base, usePendingApprovals: () => ({ ...base.usePendingApprovals(), results: marked }) });
     await openPanel(backend);
     expect(document.querySelector("[data-approval-count]")?.textContent).toBe("2 waiting");
-    expect(items()).toHaveLength(3);
+    expect(items()).toHaveLength(2);
+    const rowsInQueue = [...document.querySelectorAll('ul[aria-label="Requests"] > li')];
+    expect(rowsInQueue).toHaveLength(3);
+    const unavailable = rowsInQueue.find((row) => row.textContent?.includes("Request changed"));
+    expect(unavailable).toBeDefined();
+    expect(unavailable?.querySelector("button")).toBeNull();
     expect(details.has(soonest._id)).toBe(false);
     expect(details.size).toBe(1);
   });

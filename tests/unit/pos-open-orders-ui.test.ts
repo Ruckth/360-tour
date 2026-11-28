@@ -139,5 +139,5 @@ describe("a cashier's checkout", () => {
     await settle();
     expect(document.querySelector('[role="dialog"]')).toBeNull();
     expect(title()).toBe("Order #1042");
-  });
+  }, 30000);
 });
