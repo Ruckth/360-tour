@@ -10,6 +10,9 @@ import { ServiceDialog } from "@/components/admin/ServiceDialog";
 import { ServiceStaffMatrix } from "@/components/admin/AdminServiceStaffMatrix";
 import { BulkTimeOffDialog, TimeOffFields, conflictText, readTimeOff } from "@/components/admin/AdminStaffTimeOff";
 import { staffCalendarHref } from "@/lib/staff-links";
+import { adminSettingsTabPath } from "@/components/admin/admin-routes";
+import { useStaffAccess } from "@/components/admin/staff-access";
+import Link from "@/platform/link";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { DisabledReason } from "@/components/admin/DisabledReason";
 import { ServiceThumbZoom } from "@/components/admin/ServicePhoto";
@@ -119,6 +122,9 @@ export function AdminStaffServicesManager({ section }: { section: "staff" | "ser
   const staffNames = new Map(staff.map((s) => [s._id as string, s.name]));
   const rows = section === "staff" ? staff : services;
   const archivedCount = rows.filter((row) => row.status === "archived").length;
+  // Team is owner-only (isOwnerOnlySettingsTab); others see where it lives without a link they can't open.
+  const caps = useStaffAccess().capabilities;
+  const canManageTeam = caps.operations && caps.manageTeam;
   const visibleCount = showArchived ? rows.length : rows.length - archivedCount;
   const hasActiveStaff = staff.some((s) => s.status === "active");
 
@@ -177,9 +183,18 @@ export function AdminStaffServicesManager({ section }: { section: "staff" | "ser
     <section className="border border-border bg-card">
       <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
         <p className="min-w-60 flex-1 text-sm text-muted-foreground">
-          {section === "staff"
-            ? "Who performs services, and when they work. Breaks show as blocked time on the calendar."
-            : "What guests can book, how long it takes, and who can do it."}
+          {section === "staff" ? (
+            <>
+              Therapist profiles: who performs services, and when they work. Breaks show as blocked time on the calendar.{" "}
+              {canManageTeam ? (
+                <>Staff logins and access are managed in <Link className="font-medium text-foreground underline underline-offset-2" href={adminSettingsTabPath("team")}>Settings → Team</Link>.</>
+              ) : (
+                "Staff logins and access are managed by the owner in Settings → Team."
+              )}
+            </>
+          ) : (
+            "What guests can book, how long it takes, and who can do it."
+          )}
         </p>
         {section === "services" ? (
           <div className="flex h-9 rounded-lg border border-border bg-muted/40 p-0.5" role="group" aria-label="Services view">

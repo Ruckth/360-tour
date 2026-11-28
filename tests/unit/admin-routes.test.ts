@@ -136,7 +136,9 @@ describe("admin routes", () => {
     });
 
     it("puts named pages ahead of earlier keyword and partial-label matches", () => {
-      expect(shown("team")).toEqual([["Settings", ["Team"]], ["Staff bookings", ["Staff"]]]);
+      // D25: Team means account access; therapist profiles are found as Therapists or by "staff".
+      expect(shown("team")).toEqual([["Settings", ["Team"]]]);
+      expect(shown("therapist")).toEqual([["Staff bookings", ["Therapists"]]]);
       expect(shown("business")[0]).toEqual(["Settings", ["Business"]]);
     });
 
