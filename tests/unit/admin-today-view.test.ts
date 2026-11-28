@@ -44,6 +44,7 @@ beforeEach(() => {
 afterEach(async () => {
   await act(async () => root.unmount());
   host.remove();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 const linkCount = (href: string) => host.querySelector(`a[href="${href}"]`)?.textContent;
@@ -70,6 +71,21 @@ describe("Today home (D01)", () => {
     await act(async () => root.render(createElement(StaffAccessProvider, { access: staffAccessFor("cashier") }, createElement(AdminTodayView))));
     expect(host.querySelectorAll("a")).toHaveLength(0);
     expect(mocks.calls.every(([, args]) => args === "skip")).toBe(true);
+  });
+
+  it("refreshes its appointment date and stay range across Bangkok midnight", async () => {
+    const tomorrow = addDaysIso(today, 1);
+    vi.useFakeTimers();
+    vi.setSystemTime(resortMidnight(tomorrow) - 30_000);
+    await act(async () => root.render(createElement(AdminTodayView)));
+    expect(linkCount(`/admin/staff/calendar?date=${today}`)).toBeDefined();
+
+    await act(async () => { vi.advanceTimersByTime(60_000); });
+    expect(linkCount(`/admin/staff/calendar?date=${today}`)).toBeUndefined();
+    expect(linkCount(`/admin/staff/calendar?date=${tomorrow}`)).toBeDefined();
+    expect(mocks.calls).toContainEqual(["bookings/admin:listForAdmin", {
+      from: today, to: addDaysIso(tomorrow, 1), bookingsOnly: true, includeRecordedStays: true,
+    }]);
   });
 
   it("opens Hotel's Today strip on the linked group", async () => {

@@ -401,6 +401,56 @@ describe('admin services', () => {
 		expect((await admin.query(api.services.admin.nextAppointment, { from: day(21, '00:00') })).appointment).toBeNull();
 	});
 
+	it('D21: the next appointment respects the calendar filters, so a hidden earlier one never wins', async () => {
+		const { t, admin, booking, staffId } = await setup();
+		const day = (offset: number, time = '10:00') => localDateTimeUtc(addDays(date, offset), time);
+		const otherStaff = await admin.mutation(api.services.commands.createStaff.createStaff, {
+			name: 'Ploy', role: 'Therapist', color: '#def', workingHours: [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({ weekday, start: '09:00', end: '18:00' })), breaks: []
+		});
+		await t.run(async (ctx) => {
+			const service = (await ctx.db.get(booking.serviceId))!;
+			await ctx.db.patch(booking.serviceId, { staffIds: [...service.staffIds, otherStaff] });
+		});
+		const hidden = await admin.mutation(api.services.commands.createAppointment.createAppointment, { ...booking, staffId: otherStaff, guestName: 'Hidden', start: day(2) });
+		const visible = await admin.mutation(api.services.commands.createAppointment.createAppointment, { ...booking, staffId, guestName: 'Shown', start: day(5) });
+		const from = day(1, '00:00');
+		expect((await admin.query(api.services.admin.nextAppointment, { from }))?.appointment?._id).toBe(hidden.appointmentId);
+		expect((await admin.query(api.services.admin.nextAppointment, { from, hiddenStaffIds: [otherStaff] }))?.appointment?._id).toBe(visible.appointmentId);
+		expect((await admin.query(api.services.admin.nextAppointment, { from, hiddenStatuses: ['booked'] }))?.appointment).toBeNull();
+		expect((await admin.query(api.services.admin.nextAppointment, { from, hiddenServiceIds: [booking.serviceId] }))).toMatchObject({ appointment: null, until: from + 30 * 86_400_000 });
+	});
+
+	it('D14: an in-window match behind many older name matches is still found, and a capped candidate read is reported', async () => {
+		const { t, admin, booking } = await setup();
+		const current = await admin.mutation(api.services.commands.createAppointment.createAppointment, { ...booking, guestName: 'Lena Park', start: localDateTimeUtc(addDays(date, 2), '10:00') });
+		const copyOld = (count: number, offset: number) => t.run(async (ctx) => {
+			const { _id, _creationTime, ...row } = (await ctx.db.get(current.appointmentId))!;
+			const old = row.start - 3 * 365 * 86_400_000;
+			for (let i = 0; i < count; i++) {
+				await ctx.db.insert('appointments', { ...row, start: old - (offset + i) * 86_400_000, end: old - (offset + i) * 86_400_000 + 3_600_000, blockedUntil: old - (offset + i) * 86_400_000 + 3_600_000, confirmationCode: `SPA-OLD-${offset + i}` });
+			}
+		});
+		await copyOld(120, 0);
+		const found = await admin.query(api.services.admin.searchAppointments, { query: 'lena' });
+		expect(found).toMatchObject({ sampled: false, results: [{ _id: current.appointmentId }] });
+		await copyOld(140, 120);
+		expect((await admin.query(api.services.admin.searchAppointments, { query: 'lena' })).sampled).toBe(true);
+	});
+
+	it('excludes an orphan appointment from search when its calendar link cannot resolve', async () => {
+		const { t, admin, booking } = await setup();
+		const { appointmentId, staffId, confirmationCode } = await admin.mutation(api.services.commands.createAppointment.createAppointment, {
+			...booking, guestName: 'Unlinked Fixture', start: at('10:00'),
+		});
+		const search = (query: string) => admin.query(api.services.admin.searchAppointments, { query });
+		expect((await search(confirmationCode)).results.map(row => row._id)).toEqual([appointmentId]);
+
+		await t.run(async (ctx) => { await ctx.db.delete(staffId); });
+		expect(await admin.query(api.services.admin.resolveCalendarAppointment, { appointmentId })).toBeNull();
+		expect((await search(confirmationCode)).results).toEqual([]);
+		expect((await search('Unlinked Fixture')).results).toEqual([]);
+	});
+
 	it('D20: finds the next open time across later dates for the same choices, within a bounded window', async () => {
 		const { t, admin, serviceId, staffId } = await setup();
 		const day = (offset: number, time: string) => localDateTimeUtc(addDays(date, offset), time);
