@@ -22,6 +22,12 @@ export function assertServicePrice(price: number, currency: string, expectedPric
 	throw new ConvexError({ code: 'SERVICE_PRICE_CHANGED', message: `The price changed to ${currency === 'THB' ? '฿' : `${currency} `}${amount}. Review and try again.` });
 }
 
+export async function activeServiceBySlug(ctx: QueryCtx, slug: string) {
+  if (!slug || slug.length > 500) return null;
+  const service = await ctx.db.query("services").withIndex("by_slug", (q) => q.eq("slug", slug)).unique();
+  return service?.status === "active" ? service : null;
+}
+
 export function publicService(service: Doc<"services">) {
   return {
     slug: service.slug,

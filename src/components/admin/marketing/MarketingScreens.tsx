@@ -1,6 +1,6 @@
 "use client";
 
-import { useConvex, useMutation, useQuery } from "convex/react";
+import { useConvex, useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import { useMemo, useState, useSyncExternalStore, type ComponentProps } from "react";
@@ -188,7 +188,7 @@ export function MarketingCouponsScreen() {
 export function MarketingCouponScreen({ couponId }: { couponId: string }) {
   const router = useRouter();
   const isNew = couponId === "new";
-  const services = useQuery(api.services.publicServices.list, isNew ? "skip" : { paginationOpts: { cursor: null, numItems: 20 } });
+  const services = usePaginatedQuery(api.services.publicServices.list, isNew ? "skip" : {}, { initialNumItems: 20 });
   // getCoupon takes the raw route param and returns null for ids that don't resolve, so typos show "Coupon not found".
   const detail = useQuery(api.marketing.queries.getCoupon, isNew ? "skip" : { couponId });
   const coupons = useQuery(api.marketing.queries.listCoupons, {});
@@ -198,7 +198,11 @@ export function MarketingCouponScreen({ couponId }: { couponId: string }) {
   return (
     <CouponEditor
       detail={detail}
-      serviceNames={services?.page.map((service) => service.name)}
+      serviceCatalog={{
+        choices: services.results,
+        loading: services.isLoading,
+        loadMore: services.status === "CanLoadMore" ? () => services.loadMore(20) : undefined,
+      }}
       isNew={isNew}
       coupons={coupons}
       campaigns={campaigns}

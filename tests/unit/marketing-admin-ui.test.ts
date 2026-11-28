@@ -8,6 +8,7 @@ import { evaluateOffer, type QuoteLine } from "convex/shared/offers";
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
 import { historyChanges } from "@/components/admin/RecordHistoryPanel";
 import { CampaignsView } from "@/components/admin/marketing/CampaignsView";
+import { TestQuotePanel } from "@/components/admin/marketing/TestQuotePanel";
 import { CouponEditor } from "@/components/admin/marketing/CouponEditor";
 import { LinksView, readLinkFilters, writeLinkFilters } from "@/components/admin/marketing/LinksView";
 import { EMPTY_COUPON_FORM, couponFormErrors, couponFormFrom, couponFormKey, couponRulesFrom, type CouponForm } from "@/components/admin/marketing/coupon-form";
@@ -345,4 +346,34 @@ describe("marketing link URL filters", () => {
     expect(readLinkFilters(new URLSearchParams("status=unknown&campaign=bad&offerIssues=true")))
       .toEqual(readLinkFilters(new URLSearchParams()));
   });
+});
+
+it("quotes a selected catalog service by identity and blocks an unavailable selection", async () => {
+  const testQuote = vi.fn().mockRejectedValue(new Error("Quote service unavailable"));
+  const loadMore = vi.fn();
+  const more = { slug: "later-page", name: "Canonical massage" };
+  const choice = { slug: "first-page", name: "First service" };
+  const props = {
+    testQuote, code: "SPA-10", dirty: false, today: "2026-11-08",
+    properties: [{ _id: "villa" as Id<"properties">, slug: "villa", name: "Villa", status: "active" as const, pricePerNight: 50000, currency: "THB", maxGuests: 2 }],
+  };
+  await render(createElement(TestQuotePanel, { ...props, serviceCatalog: { choices: [choice], loadMore } }));
+  await click(button("Load more services"));
+  expect(loadMore).toHaveBeenCalledOnce();
+  await render(createElement(TestQuotePanel, { ...props, serviceCatalog: { choices: [choice, more] } }));
+  await click(button("Add a service"));
+  await click(button("Run quote"));
+  expect(testQuote).not.toHaveBeenCalled();
+  const picker = document.querySelector<HTMLSelectElement>('select[aria-label="Service 1"]')!;
+  await act(async () => {
+    picker.value = more.slug;
+    picker.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  await type(document.querySelector('input[aria-label="Price of service 1"]'), "340");
+  await click(button("Run quote"));
+  expect(testQuote).toHaveBeenCalledWith(expect.objectContaining({ services: [{ serviceSlug: more.slug, amount: 34000 }] }));
+  await render(createElement(TestQuotePanel, { ...props, serviceCatalog: { choices: [choice] } }));
+  await click(button("Run quote"));
+  expect(testQuote).toHaveBeenCalledOnce();
+  expect(document.body.textContent).toContain("This service is unavailable");
 });

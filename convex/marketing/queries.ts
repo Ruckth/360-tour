@@ -4,6 +4,7 @@ import type { Doc } from '../_generated/dataModel';
 import { marketingQuery } from '../auth/model';
 import { readBudget, ReadBudgetExceeded } from '../lib/readBudget';
 import { canReadMarketingPersonalData } from '../shared/marketingPrivacy';
+import { activeServiceBySlug } from '../services/model';
 import { type OfferResult } from '../shared/offers';
 import { formatReceiptNumber, orderTitle } from '../shared/orderMath';
 import { CAMPAIGN_PAGE_SIZE, type CampaignRow, type CouponDetail, type CouponRow, type LinkRow, type RedemptionRow, type SlugCheck } from '../shared/marketingTypes';
@@ -173,9 +174,18 @@ export const checkSlug = marketingQuery({
 /** Admin "test a quote": same engine as the guest, ignores draft/paused status so drafts can be tested. */
 export const testQuote = marketingQuery({
   permission: 'view',
-	args: quoteArgs,
-	handler: async (ctx, args): Promise<OfferResult> => {
-		return quote(ctx, args, true);
+	args: { ...quoteArgs, services: v.optional(v.array(v.object({ serviceSlug: v.string(), amount: v.number() }))) },
+	handler: async (ctx, { services, ...args }): Promise<OfferResult> => {
+		if ((services?.length ?? 0) > 50) throw new ConvexError({ code: 'too_many_services', message: 'Use at most 50 services in a quote.' });
+		const catalog = new Map(await Promise.all([...new Set(services?.map(({ serviceSlug }) => serviceSlug))].map(
+			async (slug) => [slug, await activeServiceBySlug(ctx, slug)] as const,
+		)));
+		const lines = services?.map(({ serviceSlug, amount }) => {
+			const service = catalog.get(serviceSlug);
+			if (!service) throw new ConvexError({ code: 'service_unavailable', message: 'A selected service is no longer available. Choose another service.' });
+			return { label: service.name, amount };
+		});
+		return quote(ctx, { ...args, services: lines }, true);
 	}
 });
 

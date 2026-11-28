@@ -25,7 +25,7 @@ import { StatusBadge } from "../StatusBadge";
 import { Callout, FieldError, FieldHint, NoticeBar, NumberField, SlugChip, SideCard, UsageBar, useConfirmedChange, useNotice, type Notice } from "./MarketingBits";
 import { CouponLedger } from "./CouponLedger";
 import { CouponQrDialog, couponCardLink, type CouponQrActions } from "./CouponQrDialog";
-import { TestQuotePanel } from "./TestQuotePanel";
+import { TestQuotePanel, type QuoteServiceCatalog } from "./TestQuotePanel";
 import {
   EMPTY_COUPON_FORM,
   couponFormErrors,
@@ -69,7 +69,7 @@ type CouponEditorProps = {
   /** Where short links live, and the name printed on the QR card. */
   origin: string;
   brand: string;
-  serviceNames?: string[];
+  serviceCatalog?: QuoteServiceCatalog;
   actions: Pick<MarketingActions, "saveCoupon" | "setCouponStatus" | "testQuote"> & CouponQrActions;
   /** After the first save of a new coupon, e.g. to move to its page. */
   onCreated: (couponId: Id<"coupons">) => void;
@@ -85,7 +85,7 @@ type CouponEditorProps = {
  */
 const savedNotices = new Map<string, Notice & { retryPublish?: boolean }>();
 
-export function CouponEditor({ detail, isNew, coupons, campaigns, properties, today, listHref, origin, brand, actions, onCreated, history, refusals, serviceNames }: CouponEditorProps) {
+export function CouponEditor({ detail, isNew, coupons, campaigns, properties, today, listHref, origin, brand, actions, onCreated, history, refusals, serviceCatalog }: CouponEditorProps) {
   const { capabilities } = useMarketingAccess();
   if (isNew && !capabilities.draft) return <div className="mx-auto max-w-3xl p-6"><h2 className="text-xl font-semibold">Creating coupons requires draft access</h2><ButtonLink href={listHref} variant="outline" className="mt-3">Back to coupons</ButtonLink></div>;
   if (!isNew && detail === undefined) return <EditorSkeleton />;
@@ -107,7 +107,7 @@ export function CouponEditor({ detail, isNew, coupons, campaigns, properties, to
     <CouponBuilder
       key={detail?._id ?? "new"}
       detail={detail ?? undefined}
-      serviceNames={serviceNames}
+      serviceCatalog={serviceCatalog}
       coupons={coupons}
       campaigns={campaigns}
       properties={properties}
@@ -181,7 +181,7 @@ function usesMoreRules(form: CouponForm) {
 }
 
 function CouponBuilder({
-  serviceNames,
+  serviceCatalog,
   detail,
   coupons,
   campaigns,
@@ -196,7 +196,7 @@ function CouponBuilder({
   refusals,
 }: {
   detail?: CouponDetail;
-  serviceNames?: string[];
+  serviceCatalog?: QuoteServiceCatalog;
   coupons: CouponRow[];
   campaigns: CampaignOption[];
   properties: MarketingProperty[];
@@ -223,7 +223,7 @@ function CouponBuilder({
   const [submitted, setSubmitted] = useState(false);
   const changeInProgress = useRef(false);
   const [saving, setSaving] = useState(false);
-  const [retryPublish, setRetryPublish] = useState(false);
+  const [retryPublish] = useState(() => Boolean(detail && savedNotices.get(detail._id)?.retryPublish));
   const [qrOpen, setQrOpen] = useState(false);
   const { pending: statusPending, run } = useConfirmedChange<Id<"coupons">>(show);
   const statusBusy = statusPending !== null;
@@ -234,7 +234,6 @@ function CouponBuilder({
     const saved = detail ? savedNotices.get(detail._id) : undefined;
     if (!saved || !detail) return;
     savedNotices.delete(detail._id);
-    setRetryPublish(Boolean(saved.retryPublish));
     show(saved.text, saved.tone);
   }, [detail, show]);
 
@@ -775,7 +774,7 @@ function CouponBuilder({
 
           {/* A quote runs on saved rules, so the test appears once there are some. */}
           {detail ? (
-            <TestQuotePanel code={detail.code} savedVersion={detail.currentVersion} dirty={dirty} properties={properties} today={today} testQuote={actions.testQuote} serviceNames={serviceNames} />
+            <TestQuotePanel code={detail.code} savedVersion={detail.currentVersion} dirty={dirty} properties={properties} today={today} testQuote={actions.testQuote} serviceCatalog={serviceCatalog} />
           ) : null}
 
           {detail ? <CouponLedger code={detail.code} redemptions={detail.redemptions} /> : null}

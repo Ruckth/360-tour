@@ -8,6 +8,10 @@ import schema from './schema';
 const modules = import.meta.glob('./**/*.ts');
 const rules = { benefit: { kind: 'percent' as const, percent: 2000 }, scope: 'accommodation' as const, minNights: 2, maxSaving: 300000 };
 const quote = { code: 'dcnt-f1-20 ', propertySlug: 'mossbell', checkIn: '2026-11-10', checkOut: '2026-11-12' };
+const service = {
+  slug: 'massage', name: 'Canonical massage', description: '', category: 'Spa', durationMin: 60, bufferMin: 0,
+  price: 120000, currency: 'THB', staffIds: [], status: 'active' as const, createdAt: 0, updatedAt: 0,
+};
 async function setup() {
   const t = convexTest(schema, modules);
   const admin = await asTestOwner(t, { emailVerified: true, email: 'Admin@example.com', tokenIdentifier: 'admin' });
@@ -302,7 +306,31 @@ describe('marketing audit regressions', () => {
     const { t, admin } = await setup();
     const args = { ...quote, services: [{ label: 'Bad', amount }] };
     await expect(t.query(api.marketing.public.previewCoupon, args)).rejects.toThrow('invalid_service_amount');
-    await expect(admin.query(api.marketing.queries.testQuote, args)).rejects.toThrow('invalid_service_amount');
+    await t.run(ctx => ctx.db.insert('services', service));
+    await expect(admin.query(api.marketing.queries.testQuote, { ...quote, services: [{ serviceSlug: service.slug, amount }] }))
+      .rejects.toThrow('invalid_service_amount');
+  });
+
+  it('quotes an active service beyond the first catalog page at the supplied scenario price', async () => {
+    const { t, admin } = await setup();
+    const serviceId = await t.run(async ctx => {
+      for (let i = 0; i < 20; i++) await ctx.db.insert('services', { ...service, slug: `earlier-${i}`, category: 'Earlier' });
+      return ctx.db.insert('services', service);
+    });
+    const first = await admin.query(api.services.publicServices.list, { paginationOpts: { cursor: null, numItems: 20 } });
+    expect(first.page.some(({ slug }) => slug === service.slug)).toBe(false);
+    const next = await admin.query(api.services.publicServices.list, { paginationOpts: { cursor: first.continueCursor, numItems: 20 } });
+    expect(next.page).toEqual([expect.objectContaining({ slug: service.slug, name: service.name })]);
+    const args = { ...quote, services: [{ serviceSlug: service.slug, amount: 34000 }] };
+    const roomOnly = await admin.query(api.marketing.queries.testQuote, quote);
+    const withService = await admin.query(api.marketing.queries.testQuote, args);
+    expect(withService.total - roomOnly.total).toBe(34000);
+    await expect(admin.query(api.marketing.queries.testQuote, { ...quote, services: [{ serviceSlug: 'nonexistent', amount: 34000 }] }))
+      .rejects.toThrow('service_unavailable');
+    await t.run(ctx => ctx.db.patch(serviceId, { status: 'archived' }));
+    await expect(admin.query(api.marketing.queries.testQuote, args)).rejects.toThrow('service_unavailable');
+    await t.run(ctx => ctx.db.delete(serviceId));
+    await expect(admin.query(api.marketing.queries.testQuote, args)).rejects.toThrow('service_unavailable');
   });
 
   it('bounds service count at 50 and accepts zero and maximum satang prices', async () => {

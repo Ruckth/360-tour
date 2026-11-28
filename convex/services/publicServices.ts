@@ -2,7 +2,7 @@ import { publicServicesCategoriesResult, publicServicesListResult, publicService
 import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 import { internalQuery, publicQuery } from '../auth/model';
-import { catalogCategory, catalogFilter, publicService, serviceCategories, serviceQuery } from './private/serviceCatalog';
+import { activeServiceBySlug, catalogCategory, catalogFilter, publicService, serviceCategories, serviceQuery } from './private/serviceCatalog';
 
 export const categories = publicQuery({
   returns: publicServicesCategoriesResult,
@@ -34,12 +34,8 @@ export const getBySlug = publicQuery({
   reason: "Anonymous catalogue/availability read; existing active-status checks and public projection remain.",
   args: { slug: v.string() },
   handler: async (ctx, { slug }) => {
-    if (slug.length > 500) return null;
-    const service = await ctx.db
-      .query("services")
-      .withIndex("by_slug", (q) => q.eq("slug", slug))
-      .unique();
-    return service?.status === "active" ? publicService(service) : null;
+    const service = await activeServiceBySlug(ctx, slug);
+    return service ? publicService(service) : null;
   },
 });
 

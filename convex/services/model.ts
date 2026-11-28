@@ -1,6 +1,6 @@
 /** Services-owned named plain helpers; no RPC registrations. */
 export { serviceOptions } from '../shared/serviceOptions';
-export { resolveServiceOption, assertServicePrice, publicService, catalogFilter, catalogCategory, serviceQuery, serviceCategories } from './private/serviceCatalog';
+export { activeServiceBySlug, resolveServiceOption, assertServicePrice, publicService, catalogFilter, catalogCategory, serviceQuery, serviceCategories } from './private/serviceCatalog';
 export { prepareServicePriceEdit } from './private/serviceEdits';
 export { TIME_OFF_LOOKBACK, APPOINTMENT_LOOKBACK, SLOT_CONFLICT, type Slot, boundedIntegrityRows, assertAppointmentStart, type AdminHistoricalPolicy, historicalWarnings, staffDayOverrides, scheduleDays, staffBusyRanges, assertStaffFree, openStarts, serviceRostered, type AppointmentInput, guestDetails, appointmentLookupFields, createAppointmentRecord } from './private/serviceSlots';
 export { type Range, assertValidTime, localDateTimeUtc, localDayRange, mergeRanges, patternDay, effectivePlan, planWorking, planBusy, planUncovers, blocksTime } from '../shared/schedule';
