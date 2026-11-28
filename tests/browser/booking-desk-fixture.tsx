@@ -5,7 +5,7 @@ import { DEFAULT_CASHIER_RULES } from "convex/shared/staffTypes";
 import { IntlProvider } from "@/platform/intl";
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { StartAdminHotelRoute } from "@/start-app/routes/admin.hotel";
+import { StartAdminHotelRoute } from "@/start-app/admin/StartAdminHotelRoute";
 import { AdminBranchProvider } from "@/components/admin/branch/branch-context";
 import { RESORT_BRANCH_KEY } from "convex/shared/resortBranch";
 import { AdminBookingsView } from "@/components/admin/AdminBookingsView";
