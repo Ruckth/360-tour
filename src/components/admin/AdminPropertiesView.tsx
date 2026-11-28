@@ -33,7 +33,7 @@ export function AdminPropertiesView() {
   const shown = properties?.filter((property) => {
     if (status !== "all" && property.status !== status) return false;
     if (!needle) return true;
-    return property.name.toLowerCase().includes(needle) || property.slug.toLowerCase().includes(slugNeedle);
+    return property.name.toLowerCase().includes(needle) || (slugNeedle !== "" && property.slug.toLowerCase().includes(slugNeedle));
   });
 
   return (

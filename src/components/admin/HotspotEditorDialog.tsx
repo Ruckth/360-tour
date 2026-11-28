@@ -19,7 +19,6 @@ import {
   anglesToHotspotPosition,
   HOTSPOT_RADIUS,
   hotspotPositionToAngles,
-  MAX_HOTSPOT_ELEVATION_DEG,
   nudgeHotspotPosition,
   toHotspotPosition,
   type HotspotPosition,
@@ -81,6 +80,7 @@ export function HotspotEditorDialog({
   const [error, setError] = useState("");
   const listButtonRefs = useRef<Map<number, HTMLButtonElement | null>>(new Map());
   const returnFocusKeyRef = useRef<number | null>(null);
+  const panoramaSurfaceRef = useRef<HTMLDivElement>(null);
 
   const dirty = JSON.stringify(drafts) !== JSON.stringify(initial);
   const selected = drafts.find((draft) => draft.key === selectedKey);
@@ -140,6 +140,7 @@ export function HotspotEditorDialog({
   }
 
   function retryPanorama() {
+    panoramaSurfaceRef.current?.focus();
     setRetryNonce((value) => value + 1);
   }
 
@@ -218,7 +219,7 @@ export function HotspotEditorDialog({
           </Button>
         </div>
         <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-          <div className="relative min-h-56 flex-1 touch-none select-none bg-black">
+          <div ref={panoramaSurfaceRef} tabIndex={-1} aria-label="Panorama preview" className="relative min-h-56 flex-1 touch-none select-none bg-black">
             <Canvas resize={{ offsetSize: true }} dpr={[1, 1.5]} gl={{ antialias: false }} style={{ position: "absolute", inset: 0 }}>
               <TourCamera />
               <PanoramaScene
@@ -334,8 +335,8 @@ export function HotspotEditorDialog({
                             isSelected ? "border-foreground bg-muted text-foreground" : "border-border bg-background hover:bg-muted/60"
                           }`}
                         >
-                          <span className="truncate font-medium text-foreground">Edit {displayLabel}</span>
-                          <span className="truncate text-muted-foreground">
+                          <span className="break-words font-medium text-foreground [overflow-wrap:anywhere]">Edit {displayLabel}</span>
+                          <span className="break-words text-muted-foreground [overflow-wrap:anywhere]">
                             {targetLabel ? `→ ${targetLabel} · ` : ""}
                             {angles.heading}° · {angles.elevation}°
                           </span>
@@ -348,7 +349,7 @@ export function HotspotEditorDialog({
               {selected && selectedAngles ? (
                 <div className="grid gap-2.5 border-t border-border pt-3">
                   <div className="flex items-center justify-between gap-2">
-                    <p className="truncate text-xs font-semibold text-foreground">
+                    <p className="min-w-0 break-words text-xs font-semibold text-foreground [overflow-wrap:anywhere]">
                       Position · {selected.label.trim() || "New hotspot"}
                     </p>
                     <Button
@@ -372,40 +373,22 @@ export function HotspotEditorDialog({
                     />
                   ) : null}
                   <div className="grid grid-cols-2 gap-2">
-                    <label className="grid gap-1 text-xs text-muted-foreground">
-                      <span>Heading (°)</span>
-                      <Input
-                        aria-label="Heading"
-                        type="number"
-                        step={1}
-                        value={selectedAngles.heading}
-                        onChange={(event) => {
-                          const parsed = Number(event.target.value);
-                          if (!Number.isFinite(parsed)) return;
-                          change(selected.key, {
-                            position: anglesToHotspotPosition(parsed, selectedAngles.elevation),
-                          });
-                        }}
-                      />
-                    </label>
-                    <label className="grid gap-1 text-xs text-muted-foreground">
-                      <span>Elevation (°)</span>
-                      <Input
-                        aria-label="Elevation"
-                        type="number"
-                        step={1}
-                        min={-MAX_HOTSPOT_ELEVATION_DEG}
-                        max={MAX_HOTSPOT_ELEVATION_DEG}
-                        value={selectedAngles.elevation}
-                        onChange={(event) => {
-                          const parsed = Number(event.target.value);
-                          if (!Number.isFinite(parsed)) return;
-                          change(selected.key, {
-                            position: anglesToHotspotPosition(selectedAngles.heading, parsed),
-                          });
-                        }}
-                      />
-                    </label>
+                    <AngleInput
+                      key={`heading-${selected.key}`}
+                      label="Heading"
+                      value={selectedAngles.heading}
+                      onCommit={(value) => change(selected.key, {
+                        position: anglesToHotspotPosition(value, selectedAngles.elevation),
+                      })}
+                    />
+                    <AngleInput
+                      key={`elevation-${selected.key}`}
+                      label="Elevation"
+                      value={selectedAngles.elevation}
+                      onCommit={(value) => change(selected.key, {
+                        position: anglesToHotspotPosition(selectedAngles.heading, value),
+                      })}
+                    />
                   </div>
                   <div className="grid grid-cols-2 gap-1.5" role="group" aria-label="Nudge hotspot position">
                     <Button
@@ -614,6 +597,41 @@ function PanoramaScene({
       ))}
       {children}
     </>
+  );
+}
+
+function AngleInput({
+  label,
+  value,
+  onCommit,
+}: {
+  label: "Heading" | "Elevation";
+  value: number;
+  onCommit: (value: number) => void;
+}) {
+  const [text, setText] = useState<string | null>(null);
+  return (
+    <label className="grid min-w-0 gap-1 text-xs text-muted-foreground">
+      <span>{label} (°)</span>
+      <Input
+        aria-label={label}
+        type="text"
+        inputMode="decimal"
+        value={text ?? String(value)}
+        onChange={(event) => setText(event.target.value)}
+        onBlur={() => {
+          setText(null);
+          if (!text?.trim()) return;
+          const number = Number(text);
+          if (Number.isFinite(number) && number !== value) onCommit(number);
+        }}
+        onKeyDown={(event) => {
+          if (event.key !== "Enter") return;
+          event.preventDefault();
+          event.currentTarget.blur();
+        }}
+      />
+    </label>
   );
 }
 

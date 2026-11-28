@@ -7,7 +7,7 @@ import { api } from "convex/_generated/api";
 import type { Doc } from "convex/_generated/dataModel";
 import { ChevronLeft, ExternalLink, Lock } from "lucide-react";
 import Link from "@/platform/link";
-import { useRouter, useSearchParams } from "@/platform/navigation";
+import { useRouter } from "@/platform/navigation";
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type RefObject } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,7 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { errorText } from "@/lib/staff-bookings";
 import { parseMoneyInput } from "@/lib/money-input";
 import { cn } from "@/lib/utils";
-import { ADMIN_PROPERTY_TABS, adminPropertyTab, adminPropertyTabPath, type AdminPropertyTab } from "./admin-routes";
+import { ADMIN_PROPERTY_TABS, adminPropertyTabPath, type AdminPropertyTab } from "./admin-routes";
 import { useConfirm } from "./ConfirmDialog";
 import { IcalSourcesPanel } from "./IcalSourcesDialog";
 import { OtaRatesPanel } from "./OtaRatesDialog";
@@ -32,13 +32,9 @@ type Property = Doc<"properties">;
 const TABS = ADMIN_PROPERTY_TABS;
 type Tab = AdminPropertyTab;
 
-export function AdminPropertyEditor({ propertyId }: { propertyId: string }) {
+export function AdminPropertyEditor({ propertyId, tab = "details" }: { propertyId: string; tab?: Tab }) {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const data = useQuery(api.catalog.adminProperties.get, { propertyId });
-  const urlTab = adminPropertyTab(searchParams.get("tab"));
-  const [tabOverride, setTabOverride] = useState<{ url: Tab; selected: Tab } | null>(null);
-  const tab: Tab = tabOverride && tabOverride.url === urlTab ? tabOverride.selected : urlTab;
   const focusDirectPriceRef = useRef(false);
   const tabRefs = useRef<Array<HTMLAnchorElement | null>>([]);
   const priceInputRef = useRef<HTMLInputElement>(null);
@@ -51,8 +47,7 @@ export function AdminPropertyEditor({ propertyId }: { propertyId: string }) {
   }, [tab]);
 
   function selectTab(next: Tab) {
-    setTabOverride({ url: urlTab, selected: next });
-    router.replace(adminPropertyTabPath(propertyId, next), { scroll: false });
+    router.push(adminPropertyTabPath(propertyId, next), { scroll: false });
   }
 
   function jumpToDirectPrice() {
@@ -62,6 +57,11 @@ export function AdminPropertyEditor({ propertyId }: { propertyId: string }) {
 
   function onTabKeyDown(event: KeyboardEvent<HTMLAnchorElement>, index: number) {
     const moves: Record<string, number> = { ArrowRight: index + 1, ArrowLeft: index - 1, Home: 0, End: TABS.length - 1 };
+    if (event.key === " ") {
+      event.preventDefault();
+      selectTab(TABS[index][0]);
+      return;
+    }
     if (!(event.key in moves)) return;
     event.preventDefault();
     const next = (moves[event.key] + TABS.length) % TABS.length;

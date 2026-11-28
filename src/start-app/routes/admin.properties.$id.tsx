@@ -11,5 +11,6 @@ export const Route = createFileRoute("/admin/properties/$id")({
 
 function StartAdminPropertyRoute() {
   const { id } = Route.useParams();
-  return <AdminPropertyEditor propertyId={id} />;
+  const { tab } = Route.useSearch();
+  return <AdminPropertyEditor key={id} propertyId={id} tab={tab} />;
 }
