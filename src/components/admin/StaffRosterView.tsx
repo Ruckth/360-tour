@@ -1,6 +1,8 @@
 "use client";
 
 import { CustomShiftDialog, type Plan } from "./CustomShiftDialog";
+import { CopyWeekDialog, type CopyResult } from "./RosterCopyWeekDialog";
+import { cellKey, fullDay, plural, weekRange } from "./roster-format";
 import { addDays } from 'convex/shared/dates';
 import { RecordHistoryPanel } from "./RecordHistoryPanel";
 import { useMutation, useQuery } from "convex/react";
@@ -38,12 +40,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Spinner } from "@/components/ui/spinner";
 import { Toast, useToast } from "@/components/ui/toast";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { appointmentGuestLabel, errorText, resortIsoDate, resortMidnight } from "@/lib/staff-bookings";
+import { appointmentGuestLabel, errorText, resortIsoDate } from "@/lib/staff-bookings";
 import { staffDate, staffTime } from "@/lib/staff-time";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -51,7 +50,6 @@ import { useIsMobile } from "@/hooks/use-mobile";
 type Week = FunctionReturnType<typeof api.services.roster.getWeek>;
 type Cell = Week["cells"][number];
 type Conflict = Extract<FunctionReturnType<typeof api.services.roster.applyCells>, { ok: false }>["conflicts"][number];
-type CopyResult = FunctionReturnType<typeof api.services.roster.copyWeek>;
 type Pos = { row: number; col: number };
 type ConflictState = { title: string; conflicts: Conflict[]; retry?: () => void };
 
@@ -74,24 +72,15 @@ const PRESETS: Array<Plan & { id: string; label: string; hint: string; icon: Luc
     breaks: [{ start: "18:00", end: "19:00", label: "Break" }],
   },
 ];
-const WEEK_CHOICES = ["4", "10", "20", "custom"] as const;
 
 const utcDay = (iso: string) => Date.parse(`${iso}T00:00:00Z`);
 const weekdayShort = new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: "UTC" });
-/** "Mon 14 Nov" for a resort date. */
-const fullDay = { format: (iso: string) => staffDate(resortMidnight(iso), { weekday: true }) };
 
 /** The Monday of the week containing `iso`. */
 function mondayOf(iso: string) {
   return addDays(iso, -((new Date(utcDay(iso)).getUTCDay() + 6) % 7));
 }
 
-function weekRange(start: string, end: string) {
-  return `${staffDate(resortMidnight(start))} – ${staffDate(resortMidnight(end))}`;
-}
-
-const cellKey = (staffId: string, date: string) => `${staffId}|${date}`;
-const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 export function StaffRosterView() {
   const [historyPerson, setHistoryPerson] = useState("");
@@ -133,6 +122,10 @@ export function StaffRosterView() {
   const allKeys = useMemo(() => staff.flatMap((s) => dates.map((date) => cellKey(s._id, date))), [staff, dates]);
   const selectedKeys = allKeys.filter((key) => selected.has(key));
   const allSelected = allKeys.length > 0 && selectedKeys.length === allKeys.length;
+  const selectedOnDate = (date: string | undefined) => selectedKeys.filter((key) => key.endsWith(`|${date}`)).length;
+  // D24: on phones only one day is visible, so selections on the other days are named, not hidden.
+  const shownDay = dates[dayCol];
+  const selectedElsewhere = phone ? selectedKeys.length - selectedOnDate(shownDay) : 0;
   const weekEnd = addDays(weekStart, 6);
 
   useEffect(() => {
@@ -177,7 +170,14 @@ export function StaffRosterView() {
     setSelected(new Set([...anchorBase.current, ...keys]));
   }
 
-  function goToWeek(next: string) {
+  async function goToWeek(next: string) {
+    if (next === weekStart) return;
+    // D24: a pending selection is never dropped silently; nothing in it has been saved.
+    if (selectedKeys.length && !(await confirm({
+      title: `Clear ${plural(selectedKeys.length, "selected cell")}?`,
+      description: `Changing week clears the selection in ${weekRange(weekStart, weekEnd)}. Nothing has been changed yet.`,
+      confirmLabel: "Clear and change week",
+    }))) return;
     setWeekStart(next);
     replaceSelection(new Set());
     setWarnings([]);
@@ -279,7 +279,10 @@ export function StaffRosterView() {
   function selectionCells() {
     return selectedKeys.map((key) => {
       const [staffId, date] = key.split("|");
-      return { staffId: staffId as Id<"staff">, date };
+      // The day as reviewed: the server refuses it if someone saved a different plan since.
+      const cell = cells.get(key);
+      const expectedPlan = cell ? planOf(cell) : undefined;
+      return { staffId: staffId as Id<"staff">, date, ...(expectedPlan ? { expectedPlan } : {}) };
     });
   }
 
@@ -407,7 +410,13 @@ export function StaffRosterView() {
       >
         <span className="min-w-24 text-sm font-medium" aria-live="polite">
           {selectedKeys.length ? `${plural(selectedKeys.length, "cell")} selected` : "Select cells"}
+          {selectedElsewhere ? <span className={cn("block text-xs font-normal", TONES.warning.text)}>{selectedElsewhere} not on {shownDay ? fullDay.format(shownDay) : "this day"}</span> : null}
         </span>
+        {selectedElsewhere ? (
+          <Button size="sm" variant="ghost" onClick={() => replaceSelection(new Set(selectedKeys.filter((key) => key.endsWith(`|${shownDay}`))))}>
+            Keep only this day
+          </Button>
+        ) : null}
         {PRESETS.map((preset) => (
           <Button
             key={preset.id}
@@ -484,21 +493,25 @@ export function StaffRosterView() {
       {phone && data ? (
         <div className="grid gap-3 px-4 py-3">
           <div role="group" aria-label="Day to edit" className="grid grid-cols-7 gap-1">
-            {dates.map((date, col) => (
-              <Button
-                key={date}
-                type="button"
-                size="sm"
-                variant={col === dayCol ? "default" : "outline"}
-                aria-pressed={col === dayCol}
-                aria-label={fullDay.format(date)}
-                className="h-12 min-w-0 flex-col gap-0 px-0"
-                onClick={() => setDayCol(col)}
-              >
-                <span className="text-[11px] font-medium">{weekdayShort.format(utcDay(date))}</span>
-                <span className="text-sm font-semibold">{new Date(utcDay(date)).getUTCDate()}</span>
-              </Button>
-            ))}
+            {dates.map((date, col) => {
+              const count = selectedOnDate(date);
+              return (
+                <Button
+                  key={date}
+                  type="button"
+                  size="sm"
+                  variant={col === dayCol ? "default" : "outline"}
+                  aria-pressed={col === dayCol}
+                  aria-label={count ? `${fullDay.format(date)}, ${count} selected` : fullDay.format(date)}
+                  className="relative h-12 min-w-0 flex-col gap-0 px-0"
+                  onClick={() => setDayCol(col)}
+                >
+                  <span className="text-[11px] font-medium">{weekdayShort.format(utcDay(date))}</span>
+                  <span className="text-sm font-semibold">{new Date(utcDay(date)).getUTCDate()}</span>
+                  {count ? <span aria-hidden className="absolute -end-0.5 -top-1 min-w-4 rounded-full bg-primary px-1 text-[10px] font-semibold leading-4 text-primary-foreground ring-2 ring-background">{count}</span> : null}
+                </Button>
+              );
+            })}
           </div>
           <ul aria-label={`Roster for ${dates[dayCol] ? fullDay.format(dates[dayCol]) : ""}`} className="grid gap-2">
             {staff.map((person) => {
@@ -736,6 +749,10 @@ export function StaffRosterView() {
   );
 }
 
+function planOf(cell: Cell): Plan & { note?: string } {
+  return { shifts: cell.shifts, breaks: cell.breaks, ...(cell.note ? { note: cell.note } : {}) };
+}
+
 function cellLabel(name: string, cell: Cell) {
   const hours = cell.shifts.length ? cell.shifts.map((s) => `${s.start} to ${s.end}`).join(" and ") : "off";
   return [
@@ -787,157 +804,6 @@ function CellContent({ cell }: { cell: Cell }) {
         ) : null}
       </span>
     </div>
-  );
-}
-
-function CopyWeekDialog({
-  weekStart,
-  onClose,
-  onDone,
-}: {
-  weekStart: string;
-  onClose: () => void;
-  onDone: (result: CopyResult, weeks: number) => void;
-}) {
-  const copyWeek = useMutation(api.services.roster.copyWeek);
-  const [choice, setChoice] = useState<(typeof WEEK_CHOICES)[number]>("10");
-  const [custom, setCustom] = useState("12");
-  const [conflict, setConflict] = useState<"skip" | "overwrite">("skip");
-  const [preview, setPreview] = useState<{ key: string; result?: CopyResult; error?: string } | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const weeks = choice === "custom" ? Number(custom) : Number(choice);
-  const valid = Number.isInteger(weeks) && weeks >= 1 && weeks <= 52;
-  const key = `${weekStart}|${weeks}|${conflict}`;
-  const current = preview?.key === key ? preview : null;
-
-  useEffect(() => {
-    if (!valid) return;
-    let cancelled = false;
-    const timer = setTimeout(() => {
-      copyWeek({ sourceWeekStart: weekStart, weeks, conflict, dryRun: true })
-        .then((result) => !cancelled && setPreview({ key, result }))
-        .catch((err: unknown) => !cancelled && setPreview({ key, error: errorText(err, "Could not preview the copy.") }));
-    }, 200);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [copyWeek, weekStart, weeks, conflict, valid, key]);
-
-  async function submit() {
-    setSaving(true);
-    setError("");
-    try {
-      onDone(await copyWeek({ sourceWeekStart: weekStart, weeks, conflict }), weeks);
-    } catch (err) {
-      setError(errorText(err, "Could not copy the week."));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  const result = current?.result;
-  const firstTarget = addDays(weekStart, 7);
-  const lastTarget = addDays(weekStart, 7 * (valid ? weeks : 1) + 6);
-
-  return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Copy this week forward</DialogTitle>
-          <DialogDescription>
-            Repeats {weekRange(weekStart, addDays(weekStart, 6))} for the weeks after it
-            {valid ? ` (${weekRange(firstTarget, lastTarget)})` : ""}.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <p className="text-sm font-medium">How many weeks</p>
-            <div className="flex flex-wrap items-center gap-2">
-              <ToggleGroup value={choice} onValueChange={setChoice} aria-label="Number of weeks">
-                {WEEK_CHOICES.map((value) => (
-                  <ToggleGroupItem key={value} value={value}>
-                    {value === "custom" ? "Custom" : `${value} weeks`}
-                  </ToggleGroupItem>
-                ))}
-              </ToggleGroup>
-              {choice === "custom" ? (
-                <Input
-                  aria-label="Weeks (1–52)"
-                  type="number"
-                  min={1}
-                  max={52}
-                  value={custom}
-                  onChange={(event) => setCustom(event.target.value)}
-                  className="w-24"
-                />
-              ) : null}
-            </div>
-            {!valid ? <p className="text-xs text-destructive">Choose 1–52 weeks.</p> : null}
-          </div>
-          <div className="space-y-2">
-            <p className="text-sm font-medium">Days already changed in those weeks</p>
-            <ToggleGroup value={conflict} onValueChange={setConflict} aria-label="Days already changed">
-              <ToggleGroupItem value="skip">Keep them</ToggleGroupItem>
-              <ToggleGroupItem value="overwrite">Overwrite</ToggleGroupItem>
-            </ToggleGroup>
-          </div>
-          <div aria-live="polite" className="rounded-lg border border-border bg-muted/30 px-3 py-2.5 text-sm">
-            {!valid ? (
-              <span className="text-muted-foreground">—</span>
-            ) : current?.error ? (
-              <span className="text-destructive">{current.error}</span>
-            ) : !result ? (
-              <span className="flex items-center gap-2 text-muted-foreground">
-                <Spinner className="text-current" /> Checking…
-              </span>
-            ) : (
-              <>
-                <p className="font-medium">
-                  Adds {result.created}, replaces {result.updated}, skips {result.skippedCount}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {result.unchanged} already match. Days that follow the weekly default stay on the default.
-                </p>
-                {result.skipped.length ? (
-                  <ul className="mt-2 max-h-40 space-y-0.5 overflow-y-auto text-xs">
-                    {result.skipped.map((cell) => (
-                      <li key={cellKey(cell.staffId, cell.date)} className="flex gap-2">
-                        <span className="w-32 shrink-0 font-medium">{fullDay.format(cell.date)}</span>
-                        <span className="min-w-0 truncate">
-                          {cell.staffName} —{" "}
-                          {cell.reason === "override"
-                            ? "already changed"
-                            : `${plural(cell.appointments, "appointment")} would fall outside`}
-                        </span>
-                      </li>
-                    ))}
-                    {result.skippedCount > result.skipped.length ? (
-                      <li className="text-muted-foreground">and {result.skippedCount - result.skipped.length} more</li>
-                    ) : null}
-                  </ul>
-                ) : null}
-              </>
-            )}
-          </div>
-          {error ? (
-            <p role="alert" className="text-sm text-destructive">
-              {error}
-            </p>
-          ) : null}
-        </div>
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="button" disabled={!valid || saving || !result} onClick={submit}>
-            {saving ? <Spinner className="text-current" /> : <Copy aria-hidden className="size-4" />}
-            Copy to {valid ? plural(weeks, "week") : "weeks"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }
 

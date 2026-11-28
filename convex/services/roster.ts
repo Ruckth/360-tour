@@ -33,9 +33,10 @@ const shiftValidator = v.object({ start: v.string(), end: v.string() });
 
 const breakValidator = v.object({ start: v.string(), end: v.string(), label: v.string() });
 
-const cellValidator = v.object({ staffId: v.id('staff'), date: v.string() });
-
 const planValidator = v.object({ shifts: v.array(shiftValidator), breaks: v.array(breakValidator), note: v.optional(v.string()) });
+
+/** `expectedPlan` is the day the operator reviewed; a cell saved differently since then is refused, not overwritten. */
+const cellValidator = v.object({ staffId: v.id('staff'), date: v.string(), expectedPlan: v.optional(planValidator) });
 
 const MAX_CELLS = 1000;
 
@@ -230,7 +231,7 @@ async function setCells(
 	ctx: MutationCtx,
 	email: string,
 	label: string,
-	cells: Array<{ staffId: Id<'staff'>; date: string }>,
+	cells: Array<{ staffId: Id<'staff'>; date: string; expectedPlan?: DayPlan }>,
 	plan: DayPlan | null,
 	skipConflicts = false
 ) {
@@ -249,6 +250,7 @@ async function setCells(
 		const key = cellKey(cell.staffId, cell.date);
 		const existing = overrides.get(key);
 		const pattern = patternDay(patterns.get(person._id)!(cell.date).pattern, cell.date);
+		if (cell.expectedPlan && !samePlan(existing ? snapshot(existing)! : pattern, cell.expectedPlan)) throw new Error(STALE_ROSTER);
 		const target = plan ?? pattern;
 		const next = samePlan(target, pattern) ? null : target;
 		if (existing ? next && samePlan(next, snapshot(existing)!) : !next) continue; // no change

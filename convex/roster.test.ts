@@ -86,6 +86,31 @@ describe('staff roster', () => {
 			.rejects.toThrow('inside a shift');
 	});
 
+	it('D24: refuses a cell another operator saved differently since it was reviewed, and keeps their change', async () => {
+		const { admin, staffIds } = await setup();
+		const week = await admin.query(api.services.roster.getWeek, { weekStart: MON });
+		const reviewed = week.cells.find((c) => c.staffId === staffIds[0] && c.date === MON)!;
+		const expectedPlan = { shifts: reviewed.shifts, breaks: reviewed.breaks };
+		// Another operator changes the same day first.
+		await admin.mutation(api.services.roster.applyCells, { cells: [{ staffId: staffIds[0], date: MON }], ...evening });
+		await expect(admin.mutation(api.services.roster.applyCells, {
+			cells: [{ staffId: staffIds[0], date: MON, expectedPlan }], shifts: [{ start: '10:00', end: '18:00' }], breaks: []
+		})).rejects.toThrow('changed since you opened it');
+		await expect(admin.mutation(api.services.roster.resetCells, { cells: [{ staffId: staffIds[0], date: MON, expectedPlan }] })).rejects.toThrow('changed since you opened it');
+		const after = await admin.query(api.services.roster.getWeek, { weekStart: MON });
+		expect(after.cells.find((c) => c.staffId === staffIds[0] && c.date === MON)).toMatchObject({ override: true, shifts: evening.shifts });
+		// The current plan as the expectation applies normally, including an unchanged default day.
+		const current = after.cells.find((c) => c.staffId === staffIds[0] && c.date === MON)!;
+		const untouched = after.cells.find((c) => c.staffId === staffIds[1] && c.date === MON)!;
+		expect(await admin.mutation(api.services.roster.applyCells, {
+			cells: [
+				{ staffId: staffIds[0], date: MON, expectedPlan: { shifts: current.shifts, breaks: current.breaks } },
+				{ staffId: staffIds[1], date: MON, expectedPlan: { shifts: untouched.shifts, breaks: untouched.breaks } },
+			],
+			shifts: [{ start: '10:00', end: '18:00' }], breaks: []
+		})).toMatchObject({ ok: true, changed: 2 });
+	});
+
 	it('warns but allows scheduling over time off', async () => {
 		const { admin, staffIds, cell } = await setup();
 		await admin.mutation(api.services.commands.addTimeOff.addTimeOff, {
