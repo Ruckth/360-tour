@@ -66,7 +66,7 @@ export const create = staffMutation({
   const requester = await requesterFingerprint(ctx, actor.tokenIdentifier);
   const createdAt = Date.now();
   const requestId = await ctx.db.insert('staffApprovalRequests', {
-    orderId: order._id, orderNumber: order.orderNumber, stockBranchId: order.stockBranchId, ...('lineId' in args.payload ? { lineId: args.payload.lineId } : {}), kind: args.payload.kind, payload: args.payload, reason,
+    orderId: order._id, orderNumberAtRequest: order.orderNumber, stockBranchId: order.stockBranchId, ...('lineId' in args.payload ? { lineId: args.payload.lineId } : {}), kind: args.payload.kind, payload: args.payload, reason,
     requesterEmail: actor.email, requesterTokenIdentifier: actor.tokenIdentifier, requesterAccessFingerprint: requester.fingerprint,
     orderFingerprint: await orderFingerprint(ctx, order._id, args.payload), orderRevision: order.revision, rulesRevision: rules.revision, rulesFingerprint: rulesFingerprint(rules),
     status: 'pending', createdAt, expiresAt: createdAt + APPROVAL_TTL_MS, ...preview,
@@ -212,7 +212,7 @@ function queueRow(request: ApprovalRequest, actionable: boolean) {
   }
   const label = request.payload.kind === 'customPrice' && request.payload.action === 'addCustomItem'
     ? request.payload.name.slice(0, 160) : kind;
-  return { ...common, kind, orderId, lineId, label, orderTitle: request.orderNumber === undefined ? undefined : orderTitle(request.orderNumber), summary: { amount, percent } };
+  return { ...common, kind, orderId, lineId, label, orderTitle: request.orderNumberAtRequest === undefined ? undefined : orderTitle(request.orderNumberAtRequest), summary: { amount, percent } };
 }
 
 async function queueRows(ctx: QueryCtx, requests: ApprovalRequest[]) {
