@@ -16,7 +16,7 @@ import { staffDateTime } from '@/lib/staff-time';
 import { Button } from '@/components/ui/button';
 import { useMarketingAccess } from '../marketing/MarketingAccess';
 import { thb, marketingErrorText } from '../marketing/marketing-format';
-import { FinanceInputs } from './FinanceInputs';
+import { FinanceInputs, type FinanceInputsHandle } from './FinanceInputs';
 import { inputStyle, readGroup, RuleEditor, ruleLabel } from './report-controls';
 
 declare module '@tanstack/react-router' {
@@ -51,6 +51,7 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
   const page = Math.max(0, Math.floor(Number(params.get('page')) || 0));
   const descending = params.get('sort') !== 'asc';
   const [financeEntry, setFinanceEntry] = useState<{ mode: 'cost' | 'month'; date: string } | null>(null);
+  const financeInputs = useRef<FinanceInputsHandle>(null);
   const financeHeading = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     if (financeEntry) financeHeading.current?.focus();
@@ -183,8 +184,10 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
             <Button
               variant="outline"
               aria-expanded={Boolean(financeEntry)}
-              disabled={Boolean(financeEntry)}
-              onClick={() => setFinanceEntry({ mode: 'cost', date: to })}
+              onClick={() => {
+                if (financeEntry) void financeInputs.current?.changeContext(() => setFinanceEntry(null));
+                else setFinanceEntry({ mode: 'cost', date: to });
+              }}
             >
               <SlidersHorizontal size={16} />
               Finance inputs
@@ -198,6 +201,8 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
             Service finance inputs
           </h2>
           <FinanceInputs
+            ref={financeInputs}
+            key={financeEntry.mode + financeEntry.date}
             onClose={() => setFinanceEntry(null)}
             initialDate={financeEntry.date}
             initialMode={financeEntry.mode}
@@ -329,7 +334,11 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
                         <button
                           type="button"
                           className="inline-flex min-h-11 items-center text-primary underline"
-                          onClick={() => setFinanceEntry({ mode: 'month', date: month + '-01' })}
+                          onClick={() => {
+                            const open = () => setFinanceEntry({ mode: 'month', date: month + '-01' });
+                            if (financeInputs.current) void financeInputs.current.changeContext(open);
+                            else open();
+                          }}
                           aria-label={'Review monthly accounts for ' + month}
                         >
                           {month}

@@ -1,5 +1,5 @@
 import { useConfirm } from '../ConfirmDialog';
-import { useRef, useState, type FormEvent } from 'react';
+import { useImperativeHandle, useRef, useState, type FormEvent, type Ref } from 'react';
 import { useMutation, useQuery } from 'convex/react';
 import type { FunctionReturnType } from 'convex/server';
 import { api } from 'convex/_generated/api';
@@ -209,12 +209,16 @@ function FinanceForm({
   );
 }
 
+export type FinanceInputsHandle = { changeContext: (change: () => void) => Promise<void> };
+
 export function FinanceInputs({
+  ref,
   initialDate,
   initialMode,
   onSave,
   onClose,
 }: {
+  ref?: Ref<FinanceInputsHandle>;
   initialDate: string;
   initialMode: 'cost' | 'month';
   onSave: () => void;
@@ -242,6 +246,7 @@ export function FinanceInputs({
       confirming.current = false;
     }
   }
+  useImperativeHandle(ref, () => ({ changeContext }));
   const [mode, setMode] = useState(initialMode);
   const [date, setDate] = useState(initialDate);
   const [id, setId] = useState<Id<'services'> | null>(null);
