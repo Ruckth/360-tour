@@ -84,3 +84,40 @@ test("a closed reply window preserves the failed-send and draft warnings", async
   await expect(page.getByRole("alert").filter({ hasText: "Message could not be delivered" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Complete follow-up" })).toBeVisible();
 });
+
+test("the reply counter appears near the limit and pasted text is capped", async ({ page }) => {
+  await page.goto("/tests/browser/inbox.html");
+  const input = page.getByRole("textbox", { name: /reply/i });
+  await expect(page.getByText(/of 1,000 characters/)).toHaveCount(0);
+  await input.fill("a".repeat(920));
+  await expect(page.getByText("920 of 1,000 characters")).toBeVisible();
+  await input.selectText();
+  await page.keyboard.insertText("b".repeat(1001));
+  await expect(input).toHaveValue("b".repeat(1000));
+  await expect(page.getByText("1000 of 1,000 characters")).toBeVisible();
+});
+
+test("the closed window opens a single addressed email draft", async ({ page }) => {
+  await page.goto("/tests/browser/inbox.html?closed");
+  await expect(page.getByRole("link", { name: "Open email draft" })).toHaveAttribute("href", "mailto:guest%2Bchat@example.com");
+  await expect(page.getByRole("button", { name: "Send", exact: true })).toHaveCount(0);
+});
+
+test("typing leaves automation on and explicit takeover updates the header", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/tests/browser/inbox.html?automation");
+  const meta = page.getByTestId("chat-header-meta");
+  const takeover = page.getByRole("button", { name: "Take over from AI" });
+  await expect(meta.getByText("AI on", { exact: true })).toBeVisible();
+  await page.getByRole("textbox", { name: /reply/i }).fill("Typing leaves AI on");
+  await expect(meta.getByText("AI on", { exact: true })).toBeVisible();
+  await takeover.click();
+  await expect(meta.getByText("AI paused", { exact: true })).toBeVisible();
+});
+
+test("an overdue follow-up preserves its Bangkok time when reopened for editing", async ({ page }) => {
+  await page.goto("/tests/browser/inbox.html?overdue");
+  await expect(page.getByText("Overdue · 2026-11-11 14:59 Bangkok time")).toBeVisible();
+  await page.getByRole("button", { name: "Edit follow-up" }).click();
+  await expect(page.getByLabel("Due at (Bangkok time)")).toHaveValue("2026-11-11T14:59");
+});

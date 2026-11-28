@@ -172,6 +172,8 @@ export async function finishWithoutReply(
     inboxReason: "no_reply_needed",
     inboxHandoff: undefined,
     staffTask: undefined,
+    staffTaskDueAt: undefined,
+    staffTaskRevision: (session.staffTaskRevision ?? 0) + 1,
     adminStatus: "resolved",
     resolvedAt: Date.now(),
     archivedAt: undefined,

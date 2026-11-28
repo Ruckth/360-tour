@@ -133,6 +133,15 @@ function HotelBookings() {
   // Back still returns to where the link was followed.
   const searchParams = useSearchParams();
   const router = useRouter();
+  const linkedBooking = searchParams.get("booking");
+  const linkedBookingId = linkedBooking || null;
+  function closeBooking() {
+    setSelected(null);
+    if (!linkedBooking) return;
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("booking");
+    router.replace(params.size ? `/admin/hotel?${params}` : "/admin/hotel", { scroll: false });
+  }
   const linkedPanel = hotelPanel(searchParams.get("panel"));
   const calendarsOpen = managingCalendars || linkedPanel === "ota-calendars";
   function closeCalendars() {
@@ -443,12 +452,12 @@ function HotelBookings() {
       </Card>
 
       <BookingSheet
-        bookingId={selected?.id ?? null}
+        bookingId={selected?.id ?? linkedBookingId}
         initialAction={selected?.initialAction}
         properties={properties ?? []}
-        onClose={() => setSelected(null)}
+        onClose={closeBooking}
         onBookSpa={(booking) => {
-          setSelected(null);
+          closeBooking();
           openStaySpa(booking, booking.propertyName);
         }}
       />

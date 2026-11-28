@@ -1,0 +1,1 @@
+export const MAX_ADMIN_REPLY_LENGTH = 1000;

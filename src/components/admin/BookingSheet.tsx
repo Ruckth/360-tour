@@ -83,7 +83,7 @@ export function BookingSheet({
   onClose,
   onBookSpa,
 }: {
-  bookingId: Id<"bookings"> | null;
+  bookingId: string | null;
   initialAction?: BookingSheetAction;
   properties: AdminProperty[];
   onClose: () => void;

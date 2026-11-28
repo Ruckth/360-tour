@@ -5,7 +5,7 @@ import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
 import { parsePhoneNumberFromString } from 'libphonenumber-js/min';
 import type { Doc, Id } from '../_generated/dataModel';
-import { adminQuery } from '../auth/model';
+import { canAccessResortDesk, adminQuery } from '../auth/model';
 import { assertBookingRevision, isHistoricalStay, resolveNotify } from '../shared/bookingMoney';
 import { stayMoney } from '../shared/stayMoney';
 import { assertCapacity, assertStayDates, assertStayFree } from './private/bookingWrites';
@@ -136,9 +136,12 @@ export const listForAdmin = adminQuery({
 
 /** Full booking detail for the admin sheet, including the private pay-link token while unpaid. */
 export const getForAdmin = adminQuery({
-	args: { bookingId: v.id('bookings') },
+	args: { bookingId: v.string() },
 	handler: async (ctx, args) => {
-		const booking = await ctx.db.get(args.bookingId);
+		if (!(await canAccessResortDesk(ctx, 'bookings'))) return null;
+		const bookingId = ctx.db.normalizeId('bookings', args.bookingId);
+		if (!bookingId) return null;
+		const booking = await ctx.db.get(bookingId);
 		if (!booking) return null;
 		const property = await ctx.db.get(booking.propertyId);
 		const payable = booking.paymentStatus === 'pending' && booking.status !== 'cancelled';

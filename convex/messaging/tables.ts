@@ -89,6 +89,8 @@ export const messagingTables = {
 		inboxReason: v.optional(inboxReasonValidator),
 		inboxHandoff: v.optional(v.boolean()),
 		staffTask: v.optional(v.string()),
+		staffTaskDueAt: v.optional(v.number()),
+		staffTaskRevision: v.optional(v.number()),
 		keepWithStaff: v.optional(v.boolean()),
 		inboxSendRequestId: v.optional(v.string()),
 		inboxSendError: v.optional(v.string()),
@@ -159,6 +161,7 @@ export const messagingTables = {
 		.index('by_property_last_seen', ['propertyId', 'lastSeenAt'])
 		.index('by_visitor', ['visitorId'])
 		.index('by_adminSortAt', ['adminSortAt'])
+        .index('by_inboxState_and_adminStatus_and_latestMessageAt', ['inboxState', 'adminStatus', 'latestMessageAt'])
         .index('by_inboxState_and_lastActivityAt', ['inboxState', 'lastActivityAt'])
         .index('by_inboxProjectionVersion', ['inboxProjectionVersion'])
 		.index('by_latestMessageAt', ['latestMessageAt'])
