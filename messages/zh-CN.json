@@ -6,7 +6,8 @@
     "reviews": "评价",
     "contact": "联系",
     "book": "预订",
-    "language": "语言"
+    "language": "语言",
+    "services": "服务"
   },
   "Home": {
     "welcome": "欢迎",
@@ -126,7 +127,14 @@
     "directBenefits": "直接预订礼遇",
     "verifiedVillas": "已验证别墅",
     "secureCheckout": "安全演示结账",
-    "hostSupport": "房东直接支持"
+    "hostSupport": "房东直接支持",
+    "unavailableTitle": "暂时无法加载别墅详情",
+    "unavailableDetail": "目前无法连接别墅目录，请稍后重试。",
+    "loadErrorTitle": "出现问题",
+    "loadErrorDetail": "目前无法加载此别墅，请重试。",
+    "tryAgain": "重试",
+    "pageUnavailableTitle": "页面暂时不可用",
+    "pageUnavailableDetail": "请重试。"
   },
   "Booking": {
     "confirmAndPay": "确认并付款",
@@ -372,7 +380,9 @@
     "suggestionLocation": "离海滩和餐厅有多近？"
   },
   "Footer": {
-    "bookDirect": "直接预订"
+    "bookDirect": "直接预订",
+    "enquirySubject": "住宿咨询 — {resortName}",
+    "enquiryBody": "您好，我想咨询入住 {resortName} 的相关事宜。"
   },
   "DemoDisclaimer": {
     "title": "仅为演示网站",
@@ -405,7 +415,11 @@
     "close": "关闭",
     "closeTour": "关闭导览",
     "toggleTheme": "切换主题",
-    "toggleMenu": "切换菜单"
+    "toggleMenu": "切换菜单",
+    "appearance": "外观",
+    "themeSystem": "跟随系统",
+    "themeLight": "浅色",
+    "themeDark": "深色"
   },
   "Resort": {
     "tagline": "海洋与宁静相遇之处",

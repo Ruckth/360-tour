@@ -27,9 +27,10 @@ export function buildWhatsAppHref(
 export function buildEmailHref(
   email: string,
   message = CONTACT_PREFILL_MESSAGE,
+  subject = CONTACT_EMAIL_SUBJECT,
 ) {
   const params = buildMailtoQuery({
-    subject: CONTACT_EMAIL_SUBJECT,
+    subject,
     body: message,
   });
   return `mailto:${email.trim()}?${params}`;

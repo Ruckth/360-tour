@@ -6,7 +6,8 @@
     "reviews": "Recensioni",
     "contact": "Contatti",
     "book": "Prenota",
-    "language": "Lingua"
+    "language": "Lingua",
+    "services": "Servizi"
   },
   "Home": {
     "welcome": "Benvenuto",
@@ -126,7 +127,14 @@
     "directBenefits": "Vantaggi della prenotazione diretta",
     "verifiedVillas": "Ville verificate",
     "secureCheckout": "Checkout demo sicuro",
-    "hostSupport": "Supporto diretto dell’host"
+    "hostSupport": "Supporto diretto dell’host",
+    "unavailableTitle": "I dettagli della villa sono temporaneamente non disponibili",
+    "unavailableDetail": "Non riusciamo a raggiungere il catalogo delle ville in questo momento. Riprova tra poco.",
+    "loadErrorTitle": "Qualcosa è andato storto",
+    "loadErrorDetail": "Impossibile caricare questa villa in questo momento. Riprova.",
+    "tryAgain": "Riprova",
+    "pageUnavailableTitle": "Pagina temporaneamente non disponibile",
+    "pageUnavailableDetail": "Riprova."
   },
   "Booking": {
     "confirmAndPay": "Conferma e paga",
@@ -372,7 +380,9 @@
     "suggestionLocation": "Quanto sono vicini spiaggia e ristoranti?"
   },
   "Footer": {
-    "bookDirect": "Prenota diretto"
+    "bookDirect": "Prenota diretto",
+    "enquirySubject": "Richiesta soggiorno — {resortName}",
+    "enquiryBody": "Buongiorno, ho una domanda su un soggiorno presso {resortName}."
   },
   "DemoDisclaimer": {
     "title": "Solo sito demo",
@@ -405,7 +415,11 @@
     "close": "Chiudi",
     "closeTour": "Chiudi il tour",
     "toggleTheme": "Cambia tema",
-    "toggleMenu": "Apri o chiudi menu"
+    "toggleMenu": "Apri o chiudi menu",
+    "appearance": "Aspetto",
+    "themeSystem": "Sistema",
+    "themeLight": "Chiaro",
+    "themeDark": "Scuro"
   },
   "Resort": {
     "tagline": "Dove l’oceano incontra la serenità",

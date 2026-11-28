@@ -6,7 +6,8 @@
     "reviews": "รีวิว",
     "contact": "ติดต่อ",
     "book": "จอง",
-    "language": "ภาษา"
+    "language": "ภาษา",
+    "services": "บริการ"
   },
   "Home": {
     "welcome": "ยินดีต้อนรับ",
@@ -126,7 +127,14 @@
     "directBenefits": "สิทธิประโยชน์จองตรง",
     "verifiedVillas": "วิลล่าที่ตรวจสอบแล้ว",
     "secureCheckout": "ชำระเงินตัวอย่างอย่างปลอดภัย",
-    "hostSupport": "ติดต่อเจ้าของที่พักโดยตรง"
+    "hostSupport": "ติดต่อเจ้าของที่พักโดยตรง",
+    "unavailableTitle": "ยังโหลดข้อมูลวิลล่าไม่ได้ชั่วคราว",
+    "unavailableDetail": "ไม่สามารถเชื่อมต่อรายการวิลล่าได้ในขณะนี้ กรุณาลองอีกครั้งในอีกสักครู่",
+    "loadErrorTitle": "เกิดข้อผิดพลาด",
+    "loadErrorDetail": "ไม่สามารถโหลดข้อมูลวิลล่านี้ได้ในขณะนี้ กรุณาลองอีกครั้ง",
+    "tryAgain": "ลองอีกครั้ง",
+    "pageUnavailableTitle": "หน้านี้ไม่พร้อมใช้งานชั่วคราว",
+    "pageUnavailableDetail": "กรุณาลองอีกครั้ง"
   },
   "Booking": {
     "confirmAndPay": "ยืนยันและชำระเงิน",
@@ -372,7 +380,9 @@
     "suggestionLocation": "ใกล้ชายหาดและร้านอาหารแค่ไหน?"
   },
   "Footer": {
-    "bookDirect": "จองตรง"
+    "bookDirect": "จองตรง",
+    "enquirySubject": "สอบถามการเข้าพัก — {resortName}",
+    "enquiryBody": "สวัสดีครับ/ค่ะ ต้องการสอบถามรายละเอียดการเข้าพักที่ {resortName}"
   },
   "DemoDisclaimer": {
     "title": "เว็บไซต์ตัวอย่างเท่านั้น",
@@ -405,7 +415,11 @@
     "close": "ปิด",
     "closeTour": "ปิดทัวร์",
     "toggleTheme": "สลับธีม",
-    "toggleMenu": "เปิด/ปิดเมนู"
+    "toggleMenu": "เปิด/ปิดเมนู",
+    "appearance": "รูปแบบการแสดงผล",
+    "themeSystem": "ตามระบบ",
+    "themeLight": "สว่าง",
+    "themeDark": "มืด"
   },
   "Resort": {
     "tagline": "ที่ที่ทะเลพบความสงบ",

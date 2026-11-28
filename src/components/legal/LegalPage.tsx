@@ -12,7 +12,7 @@ export function LegalPage({ kind }: { kind: 'privacy' | 'terms' }) {
   const email = resort.contactEmail;
   const mail = (chunks: ReactNode) => <a className="underline" href={`mailto:${email}`}>{chunks}</a>;
   const heading = 'mb-2 text-xl font-semibold text-foreground';
-  return <main className="mx-auto max-w-3xl px-5 py-20 text-foreground">
+  return <article className="mx-auto max-w-3xl px-5 py-20 text-foreground">
     <h1 className="font-serif text-4xl font-semibold">{t(privacy ? 'privacy.title' : 'terms.title')}</h1>
     <p className="mt-4 text-sm text-muted-foreground">{t('lastUpdated')}</p>
     <div className="mt-8 space-y-7 leading-relaxed text-muted-foreground">
@@ -31,5 +31,5 @@ export function LegalPage({ kind }: { kind: 'privacy' | 'terms' }) {
       </>}
     </div>
     <p className="mt-10"><Link className="underline" href={localizeHref('/', locale)}>{t('returnHome')}</Link></p>
-  </main>;
+  </article>;
 }

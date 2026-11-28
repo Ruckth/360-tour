@@ -6,7 +6,8 @@
     "reviews": "Avis",
     "contact": "Contact",
     "book": "Réserver",
-    "language": "Langue"
+    "language": "Langue",
+    "services": "Services"
   },
   "Home": {
     "welcome": "Bienvenue",
@@ -126,7 +127,14 @@
     "directBenefits": "Avantages de la réservation directe",
     "verifiedVillas": "Villas vérifiées",
     "secureCheckout": "Paiement démo sécurisé",
-    "hostSupport": "Assistance directe de l’hôte"
+    "hostSupport": "Assistance directe de l’hôte",
+    "unavailableTitle": "Les détails de la villa sont temporairement indisponibles",
+    "unavailableDetail": "Nous ne parvenons pas à joindre le catalogue des villas pour le moment. Veuillez réessayer dans un instant.",
+    "loadErrorTitle": "Une erreur est survenue",
+    "loadErrorDetail": "Impossible de charger cette villa pour le moment. Veuillez réessayer.",
+    "tryAgain": "Réessayer",
+    "pageUnavailableTitle": "Page temporairement indisponible",
+    "pageUnavailableDetail": "Veuillez réessayer."
   },
   "Booking": {
     "confirmAndPay": "Confirmer et payer",
@@ -372,7 +380,9 @@
     "suggestionLocation": "À quelle distance sont la plage et les restaurants ?"
   },
   "Footer": {
-    "bookDirect": "Réserver en direct"
+    "bookDirect": "Réserver en direct",
+    "enquirySubject": "Demande de séjour — {resortName}",
+    "enquiryBody": "Bonjour, j’ai une question concernant un séjour à {resortName}."
   },
   "DemoDisclaimer": {
     "title": "Site de démonstration uniquement",
@@ -405,7 +415,11 @@
     "close": "Fermer",
     "closeTour": "Fermer la visite",
     "toggleTheme": "Changer le thème",
-    "toggleMenu": "Ouvrir ou fermer le menu"
+    "toggleMenu": "Ouvrir ou fermer le menu",
+    "appearance": "Apparence",
+    "themeSystem": "Système",
+    "themeLight": "Clair",
+    "themeDark": "Sombre"
   },
   "Resort": {
     "tagline": "Là où l’océan rencontre la sérénité",

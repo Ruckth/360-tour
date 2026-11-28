@@ -63,7 +63,10 @@ export function HomeView({
 }) {
   const t = useTranslations("Home");
   const nav = useTranslations("Nav");
+  const footer = useTranslations("Footer");
   const resort = getLocalizedResort(messages);
+  const enquirySubject = footer("enquirySubject", { resortName: resort.name });
+  const enquiryBody = footer("enquiryBody", { resortName: resort.name });
   const villaItems = villas.map((property) => ({
     property,
     // Decorative bundled line; dropped once an admin rewrites the villa copy.
@@ -239,7 +242,7 @@ export function HomeView({
               {nav("book")}
             </ButtonLink>
             <a
-              href={buildEmailHref(resort.contactEmail)}
+              href={buildEmailHref(resort.contactEmail, enquiryBody, enquirySubject)}
               className="inline-flex w-full items-center justify-center rounded-lg border border-white/25 px-8 py-3.5 text-sm font-semibold text-white transition hover:bg-white/10 sm:w-auto"
             >
               {t("contactUs")}

@@ -10,8 +10,11 @@ import { usePublicMessages } from "@/lib/i18n/use-public-messages";
 export function SiteFooter() {
   const nav = useTranslations("Nav");
   const footer = useTranslations("Footer");
+  const legal = useTranslations("Legal");
   const locale = useLocale();
   const resort = getLocalizedResort(usePublicMessages());
+  const enquirySubject = footer("enquirySubject", { resortName: resort.name });
+  const enquiryBody = footer("enquiryBody", { resortName: resort.name });
 
   return (
     <footer className="border-t border-border bg-card">
@@ -40,15 +43,25 @@ export function SiteFooter() {
           </Link>
           <Link
             className="transition hover:text-foreground"
+            href={localizeHref("/services", locale)}
+          >
+            {nav("services")}
+          </Link>
+          <Link
+            className="transition hover:text-foreground"
             href={localizeHref("/booking", locale)}
           >
             {footer("bookDirect")}
           </Link>
-          <Link className="transition hover:text-foreground" href={localizeHref("/privacy", locale)}>Privacy policy</Link>
-          <Link className="transition hover:text-foreground" href={localizeHref("/terms", locale)}>Terms</Link>
+          <Link className="transition hover:text-foreground" href={localizeHref("/privacy", locale)}>
+            {legal("privacy.title")}
+          </Link>
+          <Link className="transition hover:text-foreground" href={localizeHref("/terms", locale)}>
+            {legal("terms.title")}
+          </Link>
           <a
             className="transition hover:text-foreground"
-            href={buildEmailHref(resort.contactEmail)}
+            href={buildEmailHref(resort.contactEmail, enquiryBody, enquirySubject)}
           >
             {resort.contactEmail}
           </a>

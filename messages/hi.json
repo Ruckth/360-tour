@@ -6,7 +6,8 @@
     "reviews": "समीक्षाएँ",
     "contact": "संपर्क",
     "book": "बुक करें",
-    "language": "भाषा"
+    "language": "भाषा",
+    "services": "सेवाएँ"
   },
   "Home": {
     "welcome": "स्वागत है",
@@ -126,7 +127,14 @@
     "directBenefits": "सीधी बुकिंग के लाभ",
     "verifiedVillas": "सत्यापित विला",
     "secureCheckout": "सुरक्षित डेमो चेकआउट",
-    "hostSupport": "होस्ट से सीधा सपोर्ट"
+    "hostSupport": "होस्ट से सीधा सपोर्ट",
+    "unavailableTitle": "विला का विवरण अस्थायी रूप से उपलब्ध नहीं है",
+    "unavailableDetail": "हम अभी विला सूची से जुड़ नहीं सके। कृपया कुछ क्षण बाद पुनः प्रयास करें।",
+    "loadErrorTitle": "कुछ गलत हो गया",
+    "loadErrorDetail": "हम अभी यह विला लोड नहीं कर सके। कृपया पुनः प्रयास करें।",
+    "tryAgain": "पुनः प्रयास करें",
+    "pageUnavailableTitle": "पेज अस्थायी रूप से उपलब्ध नहीं है",
+    "pageUnavailableDetail": "कृपया पुनः प्रयास करें।"
   },
   "Booking": {
     "confirmAndPay": "पुष्टि करें और भुगतान करें",
@@ -372,7 +380,9 @@
     "suggestionLocation": "बीच और रेस्टोरेंट कितने पास हैं?"
   },
   "Footer": {
-    "bookDirect": "सीधे बुक करें"
+    "bookDirect": "सीधे बुक करें",
+    "enquirySubject": "प्रवास पूछताछ — {resortName}",
+    "enquiryBody": "नमस्ते, मुझे {resortName} में ठहरने के बारे में एक प्रश्न है।"
   },
   "DemoDisclaimer": {
     "title": "केवल डेमो वेबसाइट",
@@ -405,7 +415,11 @@
     "close": "बंद करें",
     "closeTour": "टूर बंद करें",
     "toggleTheme": "थीम बदलें",
-    "toggleMenu": "मेनू खोलें या बंद करें"
+    "toggleMenu": "मेनू खोलें या बंद करें",
+    "appearance": "दिखावट",
+    "themeSystem": "सिस्टम",
+    "themeLight": "हल्का",
+    "themeDark": "गहरा"
   },
   "Resort": {
     "tagline": "जहाँ समुद्र शांति से मिलता है",

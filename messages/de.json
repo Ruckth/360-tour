@@ -6,7 +6,8 @@
     "reviews": "Bewertungen",
     "contact": "Kontakt",
     "book": "Buchen",
-    "language": "Sprache"
+    "language": "Sprache",
+    "services": "Services"
   },
   "Home": {
     "welcome": "Willkommen",
@@ -126,7 +127,14 @@
     "directBenefits": "Vorteile der Direktbuchung",
     "verifiedVillas": "Geprüfte Villen",
     "secureCheckout": "Sicherer Demo-Checkout",
-    "hostSupport": "Direkter Host-Support"
+    "hostSupport": "Direkter Host-Support",
+    "unavailableTitle": "Villadetails sind vorübergehend nicht verfügbar",
+    "unavailableDetail": "Der Villenkatalog ist derzeit nicht erreichbar. Bitte versuchen Sie es gleich noch einmal.",
+    "loadErrorTitle": "Etwas ist schiefgelaufen",
+    "loadErrorDetail": "Diese Villa konnte derzeit nicht geladen werden. Bitte versuchen Sie es erneut.",
+    "tryAgain": "Erneut versuchen",
+    "pageUnavailableTitle": "Seite vorübergehend nicht verfügbar",
+    "pageUnavailableDetail": "Bitte versuchen Sie es erneut."
   },
   "Booking": {
     "confirmAndPay": "Bestätigen und bezahlen",
@@ -372,7 +380,9 @@
     "suggestionLocation": "Wie nah sind Strand und Restaurants?"
   },
   "Footer": {
-    "bookDirect": "Direkt buchen"
+    "bookDirect": "Direkt buchen",
+    "enquirySubject": "Aufenthaltsanfrage — {resortName}",
+    "enquiryBody": "Hallo, ich habe eine Frage zu einem Aufenthalt im {resortName}."
   },
   "DemoDisclaimer": {
     "title": "Nur Demo-Website",
@@ -405,7 +415,11 @@
     "close": "Schließen",
     "closeTour": "Tour schließen",
     "toggleTheme": "Theme umschalten",
-    "toggleMenu": "Menü umschalten"
+    "toggleMenu": "Menü umschalten",
+    "appearance": "Darstellung",
+    "themeSystem": "System",
+    "themeLight": "Hell",
+    "themeDark": "Dunkel"
   },
   "Resort": {
     "tagline": "Wo der Ozean auf Ruhe trifft",

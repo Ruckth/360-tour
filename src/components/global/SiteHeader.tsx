@@ -20,6 +20,7 @@ import { cn } from "@/lib/utils";
 const navLinks = [
   { href: "/#villas", labelKey: "villas" },
   { href: "/experiences", labelKey: "experiences" },
+  { href: "/services", labelKey: "services" },
   { href: "/#amenities", labelKey: "amenities" },
   { href: "/#reviews", labelKey: "reviews" },
   { href: "/#contact", labelKey: "contact" },

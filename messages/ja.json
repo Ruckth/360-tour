@@ -6,7 +6,8 @@
     "reviews": "レビュー",
     "contact": "お問い合わせ",
     "book": "予約",
-    "language": "言語"
+    "language": "言語",
+    "services": "サービス"
   },
   "Home": {
     "welcome": "ようこそ",
@@ -126,7 +127,14 @@
     "directBenefits": "直接予約の特典",
     "verifiedVillas": "確認済みヴィラ",
     "secureCheckout": "安全なデモ決済",
-    "hostSupport": "ホスト直接サポート"
+    "hostSupport": "ホスト直接サポート",
+    "unavailableTitle": "ヴィラの詳細を一時的に読み込めません",
+    "unavailableDetail": "現在ヴィラカタログに接続できません。しばらくしてからもう一度お試しください。",
+    "loadErrorTitle": "エラーが発生しました",
+    "loadErrorDetail": "現在このヴィラを読み込めません。もう一度お試しください。",
+    "tryAgain": "もう一度試す",
+    "pageUnavailableTitle": "ページを一時的に表示できません",
+    "pageUnavailableDetail": "もう一度お試しください。"
   },
   "Booking": {
     "confirmAndPay": "確定して支払う",
@@ -372,7 +380,9 @@
     "suggestionLocation": "ビーチやレストランまで近いですか？"
   },
   "Footer": {
-    "bookDirect": "直接予約"
+    "bookDirect": "直接予約",
+    "enquirySubject": "ご宿泊に関するお問い合わせ — {resortName}",
+    "enquiryBody": "こんにちは。{resortName} でのご宿泊について質問があります。"
   },
   "DemoDisclaimer": {
     "title": "デモサイトです",
@@ -405,7 +415,11 @@
     "close": "閉じる",
     "closeTour": "ツアーを閉じる",
     "toggleTheme": "テーマを切り替え",
-    "toggleMenu": "メニューを切り替え"
+    "toggleMenu": "メニューを切り替え",
+    "appearance": "外観",
+    "themeSystem": "システム",
+    "themeLight": "ライト",
+    "themeDark": "ダーク"
   },
   "Resort": {
     "tagline": "海と静けさが出会う場所",
