@@ -302,13 +302,13 @@ registerFixtureFunctions({
 
 // ---------- Checkout behind the desk ----------
 
-const checkout = await createFixtureBackend({ staff: { role: "manager", email: EMAIL } });
+type DeskCheckout = Awaited<ReturnType<typeof createFixtureBackend>>;
 window.print = () => {
   document.body.dataset.printed = String(Number(document.body.dataset.printed ?? 0) + 1);
 };
 
 type Route = { kind: "desk" } | { kind: "order"; orderId: OrderId | null } | { kind: "receipt"; orderId: OrderId };
-function routeFor(href: string): Route | Promise<Route> {
+function routeFor(href: string, checkout: DeskCheckout): Route | Promise<Route> {
   const url = new URL(href, location.origin);
   if (url.pathname.startsWith("/admin/receipt/")) return { kind: "receipt", orderId: url.pathname.split("/").pop() as OrderId };
   if (!url.pathname.startsWith("/admin/checkout")) return { kind: "desk" };
@@ -324,17 +324,17 @@ function routeFor(href: string): Route | Promise<Route> {
   return { kind: "order", orderId: (order as OrderId | null) ?? null };
 }
 
-function Desk() {
+function Desk({ checkout }: { checkout: DeskCheckout }) {
   const [route, setRoute] = useState<Route>({ kind: "desk" });
   useEffect(() => {
     const go = (event: Event) => {
-      const next = routeFor((event as CustomEvent<string>).detail);
+      const next = routeFor((event as CustomEvent<string>).detail, checkout);
       if (next instanceof Promise) void next.then(setRoute);
       else setRoute(next);
     };
     window.addEventListener("fixture-navigation", go);
     return () => window.removeEventListener("fixture-navigation", go);
-  }, []);
+  }, [checkout]);
   return (
     <div className="min-h-dvh bg-background text-foreground" data-fixture-ready="" data-route={route.kind}>
       <header className="flex min-h-16 items-center border-b border-border bg-card/95 px-4 sm:px-6">
@@ -374,11 +374,12 @@ declare global {
 }
 window.desk = { calls: () => desk.calls, appointments: () => desk.appointments, stayReads: () => desk.stayReads };
 
+const checkout = directResortLink ? null : await createFixtureBackend({ staff: { role: "manager", email: EMAIL } });
 createRoot(document.getElementById("root")!).render(
   <IntlProvider locale="en" timeZone="Asia/Bangkok" messages={en}>
     <StaffAccessProvider access={access}>
       <ConfirmProvider>
-        {directResortLink ? <AdminBranchProvider><StartAdminHotelRoute /></AdminBranchProvider> : <Desk />}
+        {checkout ? <Desk checkout={checkout} /> : <AdminBranchProvider><StartAdminHotelRoute /></AdminBranchProvider>}
       </ConfirmProvider>
     </StaffAccessProvider>
   </IntlProvider>,
