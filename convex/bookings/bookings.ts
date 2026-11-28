@@ -114,12 +114,11 @@ export const getById = publicQuery({
 	handler: async (ctx, args) => {
 		const booking = await ctx.db.get(args.id);
 		if (!booking) return null;
-		if (args.accessToken) {
-			assertBookingAccess(booking, args.accessToken);
-			return toPublicBooking(booking);
-		}
-		await requireAdmin(ctx);
-		return toPublicBooking(booking);
+		if (args.accessToken) assertBookingAccess(booking, args.accessToken);
+		else await requireAdmin(ctx);
+		// Read only after access is established, so an unauthorized link learns nothing about the stay.
+		const property = await ctx.db.get(booking.propertyId);
+		return { ...toPublicBooking(booking), propertyName: property?.name };
 	}
 });
 

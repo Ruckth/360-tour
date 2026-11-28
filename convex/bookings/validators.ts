@@ -27,6 +27,7 @@ export const bookingsGetByIdResult = v.union(v.null(), v.object({
 "confirmationCode": v.optional(v.string()),
 "invoiceNumber": v.optional(v.string()),
 "receiptNumber": v.optional(v.string()),
+"propertyName": v.optional(v.string()),
 }));
 
 export const bookingsGetConfirmProposalResult = v.union(v.null(), v.object({

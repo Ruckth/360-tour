@@ -251,7 +251,13 @@
     "legendBooked": "已订满",
     "legendNotSelectable": "已过日期或不符合入住规则",
     "editGuestDetails": "编辑住客信息",
-    "phoneHint": "请选择国家，或以 + 和国家代码开头。"
+    "phoneHint": "请选择国家，或以 + 和国家代码开头。",
+    "staySummary": "您的住宿",
+    "villaFallback": "您的别墅",
+    "verifyingCopy": "正在等待付款确认…",
+    "paymentPendingTitle": "付款仍在处理中",
+    "paymentPendingCopy": "我们尚未收到付款确认。再次检查不会重复扣款。",
+    "checkAgain": "再次检查"
   },
   "Coupon": {
     "haveCode": "有优惠码吗？",

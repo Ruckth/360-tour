@@ -251,7 +251,13 @@
     "legendBooked": "Réservé",
     "legendNotSelectable": "Passé ou hors règles de séjour",
     "editGuestDetails": "Modifier les coordonnées",
-    "phoneHint": "Choisissez votre pays ou commencez par + et l’indicatif du pays."
+    "phoneHint": "Choisissez votre pays ou commencez par + et l’indicatif du pays.",
+    "staySummary": "Votre séjour",
+    "villaFallback": "Votre villa",
+    "verifyingCopy": "En attente de la confirmation du paiement…",
+    "paymentPendingTitle": "Paiement toujours en cours de traitement",
+    "paymentPendingCopy": "Nous n’avons pas encore reçu la confirmation du paiement. Vérifier à nouveau n’entraîne aucun nouveau débit.",
+    "checkAgain": "Vérifier à nouveau"
   },
   "Coupon": {
     "haveCode": "Vous avez un code ?",

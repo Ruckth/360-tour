@@ -6,13 +6,14 @@ import { satangToBaht } from 'convex/shared/money';
 
 import Link from "@/platform/link";
 import { useRouter } from "@/platform/navigation";
-import { CreditCard, ShieldCheck } from "lucide-react";
+import { CalendarDays, CreditCard, Home, ShieldCheck, Users } from "lucide-react";
 import { useLocale, useTranslations } from "@/platform/intl";
 import { useEffect, useState } from "react";
 import { BookedPrice } from "@/components/booking/BookedPrice";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { localizeHref } from "@/i18n/routing";
+import { formatPickerDate } from "@/lib/dates/format";
 import { type PublicBooking } from '@/lib/booking/backend-types';
 
 import { useConvex } from 'convex/react';
@@ -32,6 +33,8 @@ export function PayClient({
   const locale = useLocale();
   const t = useTranslations("Booking");
   const couponT = useTranslations("Coupon");
+  const chatT = useTranslations("Chat");
+  const villaT = useTranslations("Villa");
   const convex = useConvex();
   const successHref = localizeHref(
     `/booking/success?bookingId=${encodeURIComponent(bookingId)}${accessToken ? `&token=${encodeURIComponent(accessToken)}` : ""}`,
@@ -106,7 +109,26 @@ export function PayClient({
         <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
           {t("livePaymentCopy")}
         </p>
-        <div className="mt-5 flex items-center gap-2 rounded-xl bg-muted p-3 text-sm text-muted-foreground">
+        {booking ? (
+          // Shown only after the access token is verified; the summary never carries guest identifiers.
+          <ul data-testid="pay-stay-summary" aria-label={t("staySummary")} className="mt-5 space-y-2 rounded-xl border border-border p-4 text-sm">
+            <li data-testid="pay-stay-villa" className="flex items-start gap-3 font-semibold text-foreground">
+              <Home className="mt-0.5 h-4 w-4 shrink-0 text-gold" aria-hidden="true" />
+              <span className="min-w-0 break-words">{booking.propertyName ?? t("villaFallback")}</span>
+            </li>
+            <li data-testid="pay-stay-dates" className="flex items-start gap-3 text-muted-foreground">
+              <CalendarDays className="mt-0.5 h-4 w-4 shrink-0 text-gold" aria-hidden="true" />
+              <span>
+                {formatPickerDate(booking.checkIn, locale)} – {formatPickerDate(booking.checkOut, locale)} · {chatT("bookingCardNights", { count: booking.nights })}
+              </span>
+            </li>
+            <li data-testid="pay-stay-guests" className="flex items-start gap-3 text-muted-foreground">
+              <Users className="mt-0.5 h-4 w-4 shrink-0 text-gold" aria-hidden="true" />
+              <span>{villaT("guests", { count: booking.guests })}</span>
+            </li>
+          </ul>
+        ) : null}
+        <div className="mt-3 flex items-center gap-2 rounded-xl bg-muted p-3 text-xs text-muted-foreground">
           <ShieldCheck className="h-4 w-4 text-gold" />
           {t("bookingId", { bookingId })}
         </div>
