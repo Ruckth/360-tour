@@ -1,3 +1,4 @@
+import { chooseBranchIfPrompted } from "../support/choose-branch.mjs";
 import { signedInBackend } from "./backend";
 import { expect, test } from "./fixtures";
 
@@ -7,6 +8,7 @@ test("hotel staff can read the phone calendar key and open maintenance with a ke
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/admin/hotel");
   const tools = page.getByRole("button", { name: "More calendar tools" });
+  await chooseBranchIfPrompted(page, tools);
   await expect(tools).toBeEnabled();
 
   const key = page.locator("details").filter({ has: page.locator("summary", { hasText: /^Key$/ }) });
