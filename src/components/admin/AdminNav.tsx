@@ -7,6 +7,7 @@ import { adminTabBarFor } from "@/components/admin/admin-access";
 import { adminNavItem, type AdminNavItem } from "@/components/admin/admin-routes";
 import { useAdminNav } from "@/components/admin/staff-access";
 import { useSidebar } from "@/components/ui/sidebar";
+import { useWaitingChatsBadge, type WaitingBadge } from "@/components/admin/waiting-chats";
 import { cn } from "@/lib/utils";
 
 /** Asks the sidebar to open with its search field focused (it owns the field and the results). */
@@ -24,14 +25,18 @@ const tile = (current: boolean | undefined, className?: string) =>
     className,
   );
 
-function TileBody({ icon: Icon, label, fullLabel }: TileProps & { fullLabel?: string }) {
+function TileBody({ icon: Icon, label, fullLabel, badge }: TileProps & { fullLabel?: string; badge?: WaitingBadge | null }) {
   return (
     <>
-      <Icon aria-hidden="true" className="size-5" />
+      <span className="relative">
+        <Icon aria-hidden="true" className="size-5" />
+        {badge ? <span aria-hidden="true" data-testid="nav-waiting-badge" className="absolute -top-1.5 left-3 min-w-5 rounded-full bg-destructive px-1 text-center text-[11px] font-semibold leading-4 text-white">{badge.text}</span> : null}
+      </span>
       <span className="px-0.5 text-center leading-4">
         {label}
         {/* The visible short name stays first in the accessible name (WCAG 2.5.3). */}
         {fullLabel && fullLabel !== label ? <span className="sr-only"> ({fullLabel})</span> : null}
+        {badge ? <span className="sr-only">, {badge.label}</span> : null}
       </span>
     </>
   );
@@ -39,9 +44,10 @@ function TileBody({ icon: Icon, label, fullLabel }: TileProps & { fullLabel?: st
 
 function SectionTile({ item, current, className }: { item: AdminNavItem; current: boolean; className?: string }) {
   const label = item.shortLabel ?? item.label;
+  const waiting = useWaitingChatsBadge();
   return (
     <Link href={item.href} aria-current={current ? "page" : undefined} title={item.label} className={tile(current, className)}>
-      <TileBody icon={item.icon} label={label} fullLabel={item.label} />
+      <TileBody icon={item.icon} label={label} fullLabel={item.label} badge={item.href === "/admin/chats" ? waiting : null} />
     </Link>
   );
 }

@@ -20,6 +20,13 @@ const state = vi.hoisted(() => ({
   fetchCommerce: vi.fn(async () => ({ Commerce: { ok: "OK" } })),
 }));
 
+// Boundary components read the path to name the section; route wiring tests below replace this.
+const boundaryPath = vi.hoisted(() => ({ value: "/admin/nowhere" }));
+vi.mock("@/platform/navigation", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/platform/navigation")>()),
+  usePathname: () => boundaryPath.value,
+}));
+
 vi.mock("@/platform/link", () => ({
   default: ({ href, children, ...rest }: { href: string; children?: React.ReactNode; [key: string]: unknown }) =>
     React.createElement("a", { href, ...rest }, children),
@@ -83,6 +90,15 @@ describe("Start admin boundary components", () => {
     expect(html).toContain("This page could not be found.");
     expect(html).toContain('href="/admin/chats"');
     expect(html).toContain("Back to Chats");
+  });
+
+  it("keeps a stale Staff bookings link in its section with that section's pages (N06)", () => {
+    boundaryPath.value = "/admin/staff/old-tab";
+    const html = renderToStaticMarkup(React.createElement(StartAdminNotFound));
+    boundaryPath.value = "/admin/nowhere";
+    expect(html).toContain("This Staff bookings page doesn’t exist");
+    for (const href of ["/admin/staff/calendar", "/admin/staff/roster", "/admin/staff/staff", "/admin/staff/services"]) expect(html).toContain(`href="${href}"`);
+    expect(html).not.toContain("Back to Chats");
   });
 });
 
