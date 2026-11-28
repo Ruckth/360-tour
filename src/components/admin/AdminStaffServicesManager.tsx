@@ -199,7 +199,7 @@ export function AdminStaffServicesManager({ section }: { section: "staff" | "ser
 
   return (
     <section className="border border-border bg-card">
-      <Toast current={archiveNotice.current} busy={archiveNotice.busy} error={archiveNotice.error} run={archiveNotice.run} dismiss={archiveNotice.dismiss} />
+      {section === "staff" ? <Toast current={archiveNotice.current} busy={archiveNotice.busy} error={archiveNotice.error} run={archiveNotice.run} dismiss={archiveNotice.dismiss} /> : null}
       <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
         <p className="min-w-0 basis-full text-sm text-muted-foreground lg:basis-auto lg:flex-1">
           {section === "staff" ? (
