@@ -17,7 +17,6 @@ import {
   assignmentTabs,
   type AssignmentFilter,
   FILTER_DEFAULTS,
-  type FilterParam,
   readOption,
   dateTimeInputToMillis,
   dateTimeBadgeLabel,
@@ -31,8 +30,7 @@ import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import { isChatSessionActive } from "convex/shared/chatPresence";
 import { useMutation, usePaginatedQuery, useQueries, useQuery } from "convex/react";
-import { useRouter, useSearchParams } from "@/platform/navigation";
-import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState, type ReactNode } from "react";
 import { RemovableBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -47,6 +45,7 @@ import { SegmentedTabs } from "@/components/admin/SegmentedTabs";
 import { EmptyState, SkeletonRows } from "@/components/admin/admin-bulk";
 import { sourceLabel } from "@/components/admin/labels";
 import { TONES } from "@/components/admin/status-tones";
+import { useAdminChatNavigation } from "./useAdminChatNavigation";
 import { useAdminReplyComposer } from "@/components/admin/useAdminReplyComposer";
 import type { AdminFactProperty } from "@/components/admin/business-facts-form";
 import {
@@ -121,48 +120,11 @@ function useLatestDefined<T>(value: T | undefined, resetKey: string) {
 }
 
 export function ChatsView() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const navigationQueryRef = useRef(searchParams.toString());
-  const queueHistory = useRef<string | null>(null);
-  const queueTrigger = useRef<HTMLButtonElement>(null);
-  const closingQueue = useRef(false);
-  useEffect(() => {
-    navigationQueryRef.current = searchParams.toString();
-    closingQueue.current = false;
-    if (!searchParams.has("session")) queueHistory.current = null;
-  }, [searchParams]);
   const now = usePresenceClock();
   const presenceMinute = Math.floor(now / 60_000) * 60_000;
   const largeViewport = useMediaQuery("(min-width: 1024px)");
   const isLargeViewport = largeViewport === true;
-  // Filters and the open chat live in the URL so views can be shared and deep-linked (?session=<id>).
-  const leaveReply = useRef<() => Promise<boolean>>(async () => true);
-  const updateParams = useCallback(
-    (patch: Partial<Record<FilterParam | "session", string | null>>, push = false) => {
-      // Compose rapid filter changes against the latest requested URL, including an uncommitted navigation.
-      const params = new URLSearchParams(navigationQueryRef.current);
-      // A filter change must not leave a conversation from the previous queue open.
-      // Search is the exception: typing in it keeps the open chat (and its reply draft) where it is.
-      if (!Object.hasOwn(patch, "session") && Object.keys(patch).some((key) => key in FILTER_DEFAULTS && key !== "q"))
-        params.delete("session");
-      for (const [key, value] of Object.entries(patch)) {
-        const fallback = key in FILTER_DEFAULTS ? FILTER_DEFAULTS[key as FilterParam] : "";
-        if (!value || value === fallback) params.delete(key);
-        else params.set(key, value);
-      }
-      const query = params.toString();
-      const commit = () => {
-        navigationQueryRef.current = query;
-        const navigate = push ? router.push : router.replace;
-        navigate(`/admin/chats${query ? `?${query}` : ""}`, { scroll: false });
-      };
-      if (params.get("session") !== new URLSearchParams(navigationQueryRef.current).get("session")) {
-        void leaveReply.current().then(leave => { if (leave) commit(); });
-      } else commit();
-    },
-    [router],
-  );
+  const { searchParams, isCurrentQuery, setLeaveReply, selectedSessionId, updateParams, selectSession, openQueueSession, closeQueueSession, restoreQueueFocus } = useAdminChatNavigation(largeViewport === false);
   const adminStatus = readOption(searchParams.get("state"), adminStatusOptions, FILTER_DEFAULTS.state);
   // Older Done links omitted activity because All used to be the default.
   const status = readOption(
@@ -191,40 +153,9 @@ export function ChatsView() {
   const [pageCursors, setPageCursors] = useState<Array<string | null>>([null]);
   const [pageDepth, setPageDepth] = useState(1);
   const [retryKeys, setRetryKeys] = useState<Record<number, string>>({});
-  const selectedSessionId = searchParams.get("session") as Id<"conversations"> | null;
   const [incomingSessionId, setIncomingSessionId] = useState(() =>
     !searchParams.has("view") && !searchParams.has("state") ? selectedSessionId : null,
   );
-  function selectSession(sessionId: Id<"conversations"> | null) {
-    if (sessionId === selectedSessionId) return;
-    updateParams({ session: sessionId });
-  }
-  function openQueueSession(sessionId: Id<"conversations">, trigger: HTMLButtonElement) {
-    if (largeViewport !== false || selectedSessionId) {
-      selectSession(sessionId);
-      return;
-    }
-    if (new URLSearchParams(navigationQueryRef.current).has("session")) return;
-    queueHistory.current = navigationQueryRef.current;
-    queueTrigger.current = trigger;
-    updateParams({ session: sessionId }, true);
-  }
-  async function closeQueueSession() {
-    if (closingQueue.current) return;
-    const current = navigationQueryRef.current;
-    const query = new URLSearchParams(current);
-    query.delete("session");
-    if (queueHistory.current !== query.toString()) {
-      selectSession(null);
-      return;
-    }
-    closingQueue.current = true;
-    if (await leaveReply.current() && navigationQueryRef.current === current) {
-      window.history.back();
-    } else {
-      closingQueue.current = false;
-    }
-  }
   // Saved answers are retired: a guest question can seed a draft business fact instead.
   const [factTarget, setFactTarget] = useState<FactFormTarget | null>(null);
   const factProperties = useQuery(api.catalog.properties.adminList, factTarget ? {} : "skip") as
@@ -347,7 +278,7 @@ export function ChatsView() {
   ) as TranscriptPaginationResult;
   const sessionDetail = useLatestDefined(liveSessionDetail, selectedSessionId ?? "none");
   const reply = useAdminReplyComposer(selectedSessionId, sessionDetail?.session.latestGuestMessageId);
-  useEffect(() => { leaveReply.current = reply.confirmLeave; }, [reply.confirmLeave]);
+  useEffect(() => { setLeaveReply(reply.confirmLeave); }, [reply.confirmLeave, setLeaveReply]);
   const unqualifiedDeepLink =
     Boolean(selectedSessionId) &&
     incomingSessionId === selectedSessionId &&
@@ -357,7 +288,7 @@ export function ChatsView() {
   if (!unqualifiedDeepLink && incomingSessionId) setIncomingSessionId(null);
   useEffect(() => {
     // Links from staff alerts and Missing Information have no queue. Open their actual conversation.
-    if (!unqualifiedDeepLink || !sessionDetail?.session || navigationQueryRef.current !== searchParams.toString())
+    if (!unqualifiedDeepLink || !sessionDetail?.session || !isCurrentQuery(searchParams.toString()))
       return;
     const selectedStatus = sessionDetail.session.adminStatus ?? "open";
     if (selectedStatus === "open" && sessionDetail.session.needsReply) {
@@ -372,7 +303,7 @@ export function ChatsView() {
       state: selectedStatus === "open" ? "open" : "done",
       session: selectedSessionId,
     });
-  }, [incomingSessionId, unqualifiedDeepLink, sessionDetail, searchParams, selectedSessionId, updateParams]);
+  }, [incomingSessionId, unqualifiedDeepLink, sessionDetail, searchParams, selectedSessionId, updateParams, isCurrentQuery]);
   const transcriptMessages = useMemo(
     () => chronologicalTranscriptMessages(transcriptPagination.results),
     [transcriptPagination.results],
@@ -482,11 +413,11 @@ export function ChatsView() {
           selectedSession.latestGuestMessageId ?? sessionDetail?.session.latestGuestMessageId }}
         beforeLeave={reply.confirmLeave}
         onDeleted={() => {
-          if (navigationQueryRef.current === searchParams.toString()) selectSession(null);
+          if (isCurrentQuery(searchParams.toString())) selectSession(null);
         }}
         onStatusChanged={(nextStatus) => {
           // A completed mutation must not replace navigation requested while it was pending.
-          if (navigationQueryRef.current !== searchParams.toString()) return;
+          if (!isCurrentQuery(searchParams.toString())) return;
           if (nextStatus === "open") {
             updateParams({ ...queueParams("open"), session: selectedSession._id });
             return;
@@ -624,7 +555,7 @@ export function ChatsView() {
       const messageId = session.latestGuestMessageId ?? (session.latestMessage?.role === "user" ? session.latestMessage._id : undefined);
       if (!messageId) return;
       void settleGuestMessage(session, messageId, () => {
-        if (status === "needs_reply" && navigationQueryRef.current === searchParams.toString()) {
+        if (status === "needs_reply" && isCurrentQuery(searchParams.toString())) {
           moveSelection(selectedIndex < sessions.length - 1 ? 1 : -1);
         }
       });
@@ -1006,11 +937,7 @@ export function ChatsView() {
           data-testid="admin-chat-detail-dialog"
           className="flex h-dvh max-h-dvh w-full max-w-none flex-col gap-0 overflow-hidden rounded-none p-0 max-md:rounded-none max-md:border-0 max-md:max-h-dvh max-md:pb-0 sm:h-[calc(100dvh-2rem)] sm:max-h-[calc(100dvh-2rem)] sm:max-w-3xl sm:rounded-xl"
           showCloseButton={false}
-          onCloseAutoFocus={(event) => {
-            if (!queueTrigger.current?.isConnected) return;
-            event.preventDefault();
-            queueTrigger.current.focus({ preventScroll: true });
-          }}
+          onCloseAutoFocus={restoreQueueFocus}
         >
           <DialogTitle className="sr-only">
             {selectedSession ? `Chat details for ${visitorLabel(selectedSession)}` : "Chat details"}

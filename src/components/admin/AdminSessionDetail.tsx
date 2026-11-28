@@ -604,6 +604,7 @@ export function AdminSessionDetail({
         <div className="mt-2 border-t border-border pt-5">
           <dl className="mt-3 grid gap-x-4 gap-y-1.5 text-muted-foreground sm:grid-cols-[max-content_minmax(0,1fr)]">
             <DetailRow label="Assigned staff">{session.assignedAdminEmail ?? "None"}</DetailRow>
+            {session.propertyName || session.propertySlug ? <DetailRow label="Villa">{propertyLabel}</DetailRow> : null}
             <DetailRow label="Started">{formatDateTime(session.createdAt)}</DetailRow>
             <DetailRow label="Presence">
               {session.isActive ? "Online" : "Offline"} · last seen {relativeTime(session.lastSeenAt ?? session.createdAt, now)}

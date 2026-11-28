@@ -71,7 +71,8 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1180, height: 820 
     test('stay and edit sheet', async ({ page }) => {
       await openDesk(page);
       await page.locator('[data-slot=event-calendar-event]').filter({ hasText: 'Anna Schmidt' }).first().click();
-      await page.getByRole('button', { name: 'Details', exact: true }).click();
+      if (viewport.width >= 640) await page.getByRole('button', { name: 'Details', exact: true }).click();
+      await expect(page.getByRole('dialog', { name: 'Anna Schmidt', exact: true })).toBeVisible();
       await scrollTargets(page);
       await page.getByRole('button', { name: 'Edit stay' }).click();
       await scrollTargets(page);

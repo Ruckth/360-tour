@@ -1,4 +1,6 @@
 import hi from "../../messages/hi.json" with { type: "json" };
+import { addDaysIso } from "../../convex/shared/dates";
+import { resortTodayIso } from "../../convex/shared/time";
 import { expectServerReplies, expectInitialSuggestionsTracked } from "./backend";
 import { installMockVisualViewport } from "./chat-viewport";
 import { expect, test, type Locator, type Page } from "./fixtures";
@@ -246,19 +248,34 @@ test("localized mobile chat trigger keeps the locale on the chat page", async ({
   await expect(page).toHaveURL(/\/th$/);
 });
 
-test("mobile chat trigger stays in the same position on booking and home", async ({ page }) => {
+test("mobile home pairs Chat with Book and booking keeps Continue clear", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 760 });
 
   await page.goto("/");
-  const homeTrigger = page.getByRole("link", { name: "Open concierge chat" });
-  const homeBox = await getVisibleBoundingBox(homeTrigger);
+  const chatName = "Open concierge chat";
+  const form = page.getByTestId("home-quick-booking-form");
+  const homeBook = form.getByRole("button", { name: "Book", exact: true });
+  const homeChat = form.getByRole("link", { name: chatName, exact: true });
+  await expect(page.getByRole("link", { name: chatName, exact: true })).toHaveCount(1);
+  await expect(homeChat).toBeInViewport({ ratio: 1 });
+  const [bookBox, chatBox] = await Promise.all([getVisibleBoundingBox(homeBook), getVisibleBoundingBox(homeChat)]);
+  expect(chatBox.height).toBeGreaterThanOrEqual(44);
+  expect(chatBox.x).toBeGreaterThanOrEqual(bookBox.x + bookBox.width);
+  expect(Math.abs(chatBox.y - bookBox.y)).toBeLessThanOrEqual(1);
+  await homeChat.click();
+  await expect(page).toHaveURL((url) => url.pathname === "/chat" && url.searchParams.get("returnTo") === "/");
 
-  await page.goto("/booking");
-  const bookingTrigger = page.getByRole("link", { name: "Open concierge chat" });
-  const bookingBox = await getVisibleBoundingBox(bookingTrigger);
-
-  expect(Math.abs(bookingBox!.x - homeBox!.x)).toBeLessThanOrEqual(1);
-  expect(Math.abs(bookingBox!.y - homeBox!.y)).toBeLessThanOrEqual(1);
+  const checkIn = addDaysIso(resortTodayIso(), 128);
+  await page.goto(`/booking?checkin=${checkIn}&nights=2&unit=garden-suite`);
+  const actions = page.getByTestId("booking-actions");
+  const continueButton = actions.getByRole("button", { name: "Continue", exact: true });
+  await expect(actions).toHaveCSS("position", "sticky");
+  await expect(continueButton).toBeEnabled();
+  await expect(continueButton).toBeInViewport({ ratio: 1 });
+  await expect(page.getByRole("link", { name: chatName, exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: chatName, exact: true })).toHaveCount(0);
+  await continueButton.click();
+  await expect(page.getByRole("button", { name: "Guest details", exact: true })).toHaveAttribute("aria-current", "step");
 });
 
 test("mobile chat page keeps the composer visible while typing", async ({ page }) => {

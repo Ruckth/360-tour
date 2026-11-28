@@ -13,9 +13,11 @@ for (const { width, font } of [
     await page.evaluate(size => { document.documentElement.style.fontSize = `${size}px`; }, font);
     if (width < 640) {
       await expect(page.getByTestId("chat-header-meta").getByText("AI paused", { exact: true })).toBeVisible();
-      await expect(page.getByTestId("chat-header-meta").getByText(/ · /)).toBeAttached();
+      await expect(page.getByTestId("chat-header-meta").getByText("WhatsApp", { exact: true })).toBeVisible();
       await page.getByRole("button", { name: "Chat details", exact: true }).click();
-      await expect(page.getByRole("dialog", { name: "Chat details", exact: true }).getByText("AI paused", { exact: true })).toBeVisible();
+      const details = page.getByRole("dialog", { name: "Chat details", exact: true });
+      await expect(details.getByText("AI paused", { exact: true })).toBeVisible();
+      await expect(details.getByText("Tideglass Pool Residence", { exact: true })).toBeVisible();
       await page.keyboard.press("Escape");
     } else await expect(page.getByText("AI paused", { exact: true }).locator("visible=true")).toBeVisible();
     await expect(page.getByText("AI on", { exact: true })).toHaveCount(0);

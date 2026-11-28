@@ -78,19 +78,31 @@ test("moves focus into the chat panel when opened", async ({ page }) => {
 });
 
 test("carries villa property context into the chat", async ({ page }) => {
-  await page.goto("/rooms/garden-suite");
+  const roomPath = "/rooms/garden-suite";
+  await page.setViewportSize({ width: 390, height: 760 });
+  await page.goto(roomPath);
+  const villa = await page.getByRole("heading", { level: 1 }).innerText();
+  const restartLabel = `Restart chat - ${villa} concierge`;
+  const panel = page.locator(PANEL);
+  const roomChat = page.getByRole("link", { name: "Open concierge chat", exact: true });
 
-  // On a villa page the mobile launcher link points at /chat with the property context,
-  // and the desktop launcher opens the overlay with the same context available programmatically.
-  const link = page.locator('[data-testid="chat-launcher-link"]');
-  await expect
-    .poll(async () => (await link.getAttribute("href")) ?? "")
-    .toContain("property=garden-suite");
+  await expect(roomChat).toHaveCount(1);
+  await expect(roomChat).toBeInViewport({ ratio: 1 });
+  const roomBook = roomChat.locator("..").getByRole("link", { name: "Book", exact: true });
+  await expect(roomBook).toHaveAttribute("href", "/booking?unit=garden-suite");
+  await expect(roomBook).toBeInViewport({ ratio: 1 });
+  await roomChat.click();
+  await expect(page).toHaveURL((url) => url.pathname === "/chat" &&
+    url.searchParams.get("property") === "garden-suite" &&
+    url.searchParams.get("returnTo") === roomPath);
+  await expect(panel.getByRole("button", { name: restartLabel, exact: true })).toBeVisible();
+  await panel.getByRole("button", { name: "Close chat", exact: true }).click();
+  await expect(page).toHaveURL((url) => url.pathname === roomPath);
 
-  // Opening the overlay still works on the villa page.
-  const launcher = page.locator(LAUNCHER);
-  if (await launcher.count()) {
-    await launcher.click();
-    await expect(page.locator(PANEL)).toBeVisible();
-  }
+  await page.setViewportSize({ width: 1280, height: 840 });
+  await page.goto(roomPath);
+  await page.locator(LAUNCHER).click();
+  await expect(panel).toBeVisible();
+  await expect(panel.getByRole("button", { name: restartLabel, exact: true })).toBeVisible();
+  await expect(page).toHaveURL((url) => url.pathname === roomPath);
 });

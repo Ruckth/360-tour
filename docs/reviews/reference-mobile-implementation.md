@@ -86,6 +86,7 @@ The November 28 reference report has 65 entries. The implementation starts at `0
 ## Evidence
 
 - Seeded Chromium route audit passed 264 distinct scenario and viewport combinations at 360, 390 and 430 px. Public pages and guest states accounted for 72 checks. Signed-in staff pages, overlays and redirects accounted for 192 checks. The corrected layouts passed the landmark, horizontal overflow and uncaught runtime error checks.
+- The full local verification passed 5,138 checks in the unit suites and the production build. Follow-up runs passed 56 affected component browser cases, all 32 architecture checks, and the live local Inbox and guest Chat navigation cases.
 - Booking, consent, guest Pay and confirmation. [Guest integration suite](../../tests/e2e/guest-completion.spec.ts)
 - One-tap Hotel details and focus at 360, 390 and 430 px. [Hotel browser suite](../../tests/browser/booking-desk.spec.ts)
 - Checkout catalog, long totals, cash and printed receipt. [Checkout layout suite](../../tests/browser/checkout-layout.spec.ts) · [Receipt suite](../../tests/browser/ux-p4-receipt.spec.ts)
