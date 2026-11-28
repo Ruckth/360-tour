@@ -86,7 +86,7 @@ it('discovers historical 91/74-table monoliths and matches the assembled runtime
   const current = inspectSchema(schemaSourceReader('.'));
   expect(base.tables).toHaveLength(74);
   expect(BASE_TABLE_NAMES).toEqual(base.tables.map(t => t.name).sort());
-  expect(STOCK_TABLES).toHaveLength(33);
+  expect(STOCK_TABLES).toHaveLength(34);
   expect(current.tables.map(t => t.name).sort()).toEqual([
     ...BASE_TABLE_NAMES, ...COMMERCE_TABLE_NAMES, ...PROFITABILITY_TABLE_NAMES, ...STOCK_TABLES.map(t => t.name),
   ].sort());
