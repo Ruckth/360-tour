@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act, createElement } from 'react';
+import { act, createElement, Fragment } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { ConfirmProvider } from '@/components/admin/ConfirmDialog';
@@ -52,10 +52,10 @@ it('D44: restores the pressed tab on either confirmation outcome and leaves plai
     useUnsavedChangesGuard(true);
     return createElement('input', { 'aria-label': 'Draft' });
   }
-  const render = (layoutKey: string) =>
-    root.render(createElement(ConfirmProvider, {
-      children: createElement(AdminStaffTabs, { key: layoutKey, children: createElement(DirtyPanel) }),
-    }));
+  const render = (layoutKey: string) => {
+    const tabs = createElement(AdminStaffTabs, null, createElement(DirtyPanel));
+    root.render(createElement(ConfirmProvider, null, createElement(Fragment, { key: layoutKey }, tabs)));
+  };
   const draft = () => document.querySelector<HTMLInputElement>('input[aria-label="Draft"]')!;
   await act(async () => render('original'));
   draft().focus();
