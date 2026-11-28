@@ -117,9 +117,12 @@ describe("OTA row edit focus & form target heading (M37)", () => {
   it("focuses the nightly price input and names Agoda when activating row Edit, then updates Agoda on save", async () => {
     await render(createElement(OtaRatesPanel, { propertyId: "prop-1" as Id<"properties"> }));
     const editBtn = [...host.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Edit")!;
+    const rateInput = host.querySelector<HTMLInputElement>("#ota-rate")!;
+    const focusValues: string[] = [];
+    rateInput.addEventListener("focus", () => focusValues.push(rateInput.value));
     await act(async () => editBtn.click());
 
-    const rateInput = host.querySelector<HTMLInputElement>("#ota-rate")!;
+    expect(focusValues).toEqual(["4990"]);
     expect(host.querySelector("#ota-form-heading")?.textContent).toBe("Edit Agoda rate");
     expect(rateInput.value).toBe("4990");
     expect(document.activeElement).toBe(rateInput);

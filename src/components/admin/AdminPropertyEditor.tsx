@@ -38,6 +38,9 @@ export function AdminPropertyEditor({ propertyId, tab = "details" }: { propertyI
   const focusDirectPriceRef = useRef(false);
   const tabRefs = useRef<Array<HTMLAnchorElement | null>>([]);
   const priceInputRef = useRef<HTMLInputElement>(null);
+  const [visitedPricing, setVisitedPricing] = useState(tab === "pricing");
+  // Keep the OTA draft mounted while staff compare it with the direct price.
+  if (tab === "pricing" && !visitedPricing) setVisitedPricing(true);
 
   useEffect(() => {
     if (!focusDirectPriceRef.current || tab !== "details") return;
@@ -121,30 +124,33 @@ export function AdminPropertyEditor({ propertyId, tab = "details" }: { propertyI
               <DetailsForm property={data.property} priceInputRef={priceInputRef} />
               <SlugForm property={data.property} locked={data.slugLocked} />
             </div>
+            {visitedPricing ? (
+              <div hidden={tab !== "pricing"}>
+                <Section
+                  title="OTA rates"
+                  description="Nightly prices on Booking.com, Agoda, Airbnb and Expedia, shown to guests next to the direct price."
+                  actions={
+                    <Link
+                      href={adminPropertyTabPath(data.property._id, "details")}
+                      onClick={(event) => {
+                        if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+                        event.preventDefault();
+                        jumpToDirectPrice();
+                      }}
+                      className="inline-flex min-h-9 items-center rounded-md px-2 text-sm font-medium text-foreground underline underline-offset-4 hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      Edit direct price and discount
+                    </Link>
+                  }
+                >
+                  <OtaRatesPanel propertyId={data.property._id} />
+                </Section>
+              </div>
+            ) : null}
             {tab === "photos" ? (
               <PropertyPhotosEditor property={data.property} />
             ) : tab === "tourScenes" ? (
               <PropertyRoomsEditor propertyId={data.property._id} rooms={data.rooms} />
-            ) : tab === "pricing" ? (
-              <Section
-                title="OTA rates"
-                description="Nightly prices on Booking.com, Agoda, Airbnb and Expedia, shown to guests next to the direct price."
-                actions={
-                  <Link
-                    href={adminPropertyTabPath(data.property._id, "details")}
-                    onClick={(event) => {
-                      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
-                      event.preventDefault();
-                      jumpToDirectPrice();
-                    }}
-                    className="inline-flex min-h-9 items-center rounded-md px-2 text-sm font-medium text-foreground underline underline-offset-4 hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    Edit direct price and discount
-                  </Link>
-                }
-              >
-                <OtaRatesPanel propertyId={data.property._id} />
-              </Section>
             ) : tab === "reviews" ? (
               <PropertyReviewsEditor propertyId={data.property._id} />
             ) : tab === "calendar" ? (

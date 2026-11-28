@@ -32,7 +32,7 @@ vi.mock("@/components/admin/RecordHistoryPanel", () => ({
   HistoryDisclosure: ({ children }: { children: ReactNode }) => children,
 }));
 vi.mock("@/components/admin/OtaRatesDialog", () => ({
-  OtaRatesPanel: () => createElement("div", { "data-testid": "ota-panel" }, "OTA panel"),
+  OtaRatesPanel: () => createElement("input", { "data-testid": "ota-draft", defaultValue: "2000" }),
 }));
 vi.mock("@/components/admin/IcalSourcesDialog", () => ({
   IcalSourcesPanel: () => createElement("div", { "data-testid": "ical-panel" }, "iCal panel"),
@@ -205,6 +205,8 @@ describe("Addressable villa editor sections & OTA-to-direct jump (M32, M33)", ()
     await act(async () => host.querySelector<HTMLAnchorElement>("#villa-tab-pricing")!.click());
     state.tabParam = "pricing";
     await renderEditor();
+    const otaDraft = host.querySelector<HTMLInputElement>('[data-testid="ota-draft"]')!;
+    await setInput(otaDraft, "2750");
     const jumpLink = [...host.querySelectorAll<HTMLAnchorElement>("a")].find((a) =>
       a.textContent?.includes("Edit direct price and discount"),
     )!;
@@ -216,6 +218,11 @@ describe("Addressable villa editor sections & OTA-to-direct jump (M32, M33)", ()
     expect(host.querySelector('#villa-tab-details')?.getAttribute("aria-selected")).toBe("true");
     expect(document.activeElement).toBe(host.querySelector("#pr-price"));
     expect(nameInput.value).toBe("Unsaved Villa Title");
+    expect(otaDraft.closest("[hidden]")).not.toBeNull();
+    state.tabParam = "pricing";
+    await renderEditor();
+    expect(otaDraft.closest("[hidden]")).toBeNull();
+    expect(otaDraft.value).toBe("2750");
     expect(state.mutations).toEqual([]);
   });
 });

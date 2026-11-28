@@ -7,7 +7,7 @@ import { staffDateTime } from "@/lib/staff-time";
 import { useMutation, useQuery } from 'convex/react';
 import { api } from 'convex/_generated/api';
 import type { Doc, Id } from 'convex/_generated/dataModel';
-import { useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -72,6 +72,7 @@ export function OtaRatesPanel({ propertyId }: { propertyId: Id<'properties'> }) 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const rateInputRef = useRef<HTMLInputElement>(null);
+  const [rowEditRequest, setRowEditRequest] = useState(0);
   const confirm = useConfirm();
   const [now] = useState(() => Date.now());
   const rates = useQuery(api.catalog.properties.listOtaRates, { propertyId });
@@ -97,10 +98,14 @@ export function OtaRatesPanel({ propertyId }: { propertyId: Id<'properties'> }) 
     return true;
   }
 
-  async function startRowEdit(rate: OtaRate) {
-    if (!(await choosePlatform(rate.platform, rate))) return;
+  useEffect(() => {
+    if (!rowEditRequest) return;
     rateInputRef.current?.focus();
     rateInputRef.current?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+  }, [rowEditRequest]);
+
+  async function startRowEdit(rate: OtaRate) {
+    if (await choosePlatform(rate.platform, rate)) setRowEditRequest((request) => request + 1);
   }
 
   async function save(event: FormEvent) {
