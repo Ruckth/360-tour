@@ -69,3 +69,8 @@ Company owners who have claimed a deployment-admin grant from `auth/owners:grant
 Marketing grants do not grant booking, customer, POS, receipt or other operational administrator access. Server permissions enforce these rules in addition to the visible controls.
 
 Personal details means guest names, booking confirmation codes, POS customer names and partner contact emails. Viewer and marketer responses redact these on the server, including coupon redemptions, referral candidate snapshots and marketing record history. History contact fields and free-text notes are hidden; referral decision reasons show **Reason hidden**. Stored audit records remain unchanged. Finance, manager and system administrators retain full detail. CSV exports use the same role-appropriate report data.
+
+
+### Marketing dashboard exports and record access
+
+Users with Marketing view access can export the aggregate breakdown and operational sales fields. System administrators, Marketing managers and Marketing finance users also receive sale identifiers, references and permitted guest or customer names in the sales export. The export dialog identifies files that contain these fields. Marketer and viewer exports omit those columns. Their report responses use snapshot-local sale keys to reconcile payment and refund events, and omit the original identifiers, references and personal names. Spend notes are visible only to roles that can read personal detail and are omitted from every dashboard export. The linked Hotel, Staff bookings and receipt screens require their own staff permissions.

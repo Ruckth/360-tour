@@ -38,12 +38,17 @@ export function ruleLabel(rule: ProfitRule, options: Options) {
   return [labels[rule.field], rule.operator, value].join(' ');
 }
 // Only the finite filter vocabulary goes into the URL. Customer lookup text stays on the page.
-export function readGroup(value: string | null): ProfitFilters {
-  if (!value) return emptyFilters;
+export function readGroup(value: string | null): ProfitFilters | null {
+  if (value === null) return emptyFilters;
   try {
     const group = JSON.parse(value);
-    if (!group || !['and', 'or'].includes(group.join) || !Array.isArray(group.rules) || group.rules.length > 12)
-      return emptyFilters;
+    if (
+      !group ||
+      !['and', 'or'].includes(group.join) ||
+      !Array.isArray(group.rules) ||
+      group.rules.length > 12
+    )
+      return null;
     const valid = group.rules.every(
       (r: ProfitRule) =>
         r &&
@@ -51,15 +56,15 @@ export function readGroup(value: string | null): ProfitFilters {
         (r.field === 'revenue'
           ? ['at least', 'at most'].includes(r.operator) && Number.isSafeInteger(r.value)
           : ['is', 'is not'].includes(r.operator) &&
-            ((typeof r.value === 'string' && r.value.length > 0 && r.value.length <= 150) ||
+            ((typeof r.value === 'string' && !!r.value.trim() && r.value.length <= 150) ||
               (Array.isArray(r.value) &&
                 r.value.length > 0 &&
                 r.value.length <= 50 &&
                 r.value.every((v) => typeof v === 'string' && !!v.trim() && v.length <= 150)))),
     );
-    return valid ? group : emptyFilters;
+    return valid ? group : null;
   } catch {
-    return emptyFilters;
+    return null;
   }
 }
 
@@ -73,6 +78,7 @@ export function RuleEditor({
   onChange: (next: ProfitFilters) => void;
 }) {
   const trigger = useRef<HTMLButtonElement>(null);
+  const [lookup, setLookup] = useState('');
   const [selected, setSelected] = useState<string[]>([]);
   function close() {
     setOpen(false);
@@ -84,20 +90,30 @@ export function RuleEditor({
   const [raw, setRaw] = useState('');
   const available = choices(field, options);
   const value = raw;
-  const hasSelection = selected.length > 0 && selected.every((value) => available.some((option) => option.value === value));
+  const hasSelection =
+    selected.length > 0 && selected.every((value) => available.some((option) => option.value === value));
   function add() {
     let rule: ProfitRule;
     if (field === 'revenue') {
       const amount = parseMoneyInput(value.replace(/^-/, ''));
       if (!Number.isFinite(amount)) return;
-      rule = { field, operator: negate ? 'at most' : 'at least', value: value.startsWith('-') ? -amount : amount };
+      rule = {
+        field,
+        operator: negate ? 'at most' : 'at least',
+        value: value.startsWith('-') ? -amount : amount,
+      };
     } else {
       if (!hasSelection) return;
-      rule = { field, operator: negate ? 'is not' : 'is', value: selected.length === 1 ? selected[0] : selected };
+      rule = {
+        field,
+        operator: negate ? 'is not' : 'is',
+        value: selected.length === 1 ? selected[0] : selected,
+      };
     }
     onChange({ ...group, rules: [...group.rules, rule] });
     close();
     setSelected([]);
+    setLookup('');
     setRaw('');
   }
   return (
@@ -119,7 +135,12 @@ export function RuleEditor({
             aria-label="Combine rules"
             className={inputStyle}
             value={group.join}
-            onChange={(e) => onChange({ ...group, join: e.target.value === 'or' ? 'or' : 'and' })}
+            onChange={(e) =>
+              onChange({
+                ...group,
+                join: e.target.value === 'or' ? 'or' : 'and',
+              })
+            }
           >
             <option value="and">Match all (AND)</option>
             <option value="or">Match any (OR)</option>
@@ -135,7 +156,12 @@ export function RuleEditor({
               type="button"
               className="grid size-11 shrink-0 place-items-center rounded-full"
               aria-label={'Remove ' + ruleLabel(rule, options)}
-              onClick={() => onChange({ ...group, rules: group.rules.filter((_, i) => i !== index) })}
+              onClick={() =>
+                onChange({
+                  ...group,
+                  rules: group.rules.filter((_, i) => i !== index),
+                })
+              }
             >
               <X size={14} />
             </button>
@@ -163,6 +189,7 @@ export function RuleEditor({
               value={field}
               onChange={(e) => {
                 setField(e.target.value as ProfitRule['field']);
+                setLookup('');
                 setRaw('');
                 setNegate(false);
                 setSelected([]);
@@ -186,37 +213,72 @@ export function RuleEditor({
               <option value="1">{field === 'revenue' ? 'at most' : 'is not'}</option>
             </select>
           </label>
-          <label className="grid min-w-24 max-w-full gap-1 text-xs">
-            Value
-            {field === 'revenue' ? (
+          {field === 'revenue' ? (
+            <label className="grid min-w-24 max-w-full gap-1 text-xs">
+              Revenue in baht
               <input
                 required
-                aria-label="Revenue in baht"
                 type="number"
                 step=".01"
                 className={inputStyle}
                 value={raw}
                 onChange={(e) => setRaw(e.target.value)}
               />
-            ) : (
-              <select
-                aria-label="Filter values"
-                className={inputStyle}
-                multiple
-                size={Math.min(4, Math.max(2, available.length))}
-                value={selected}
-                onChange={(e) => setSelected([...e.target.selectedOptions].map((o) => o.value))}
-              >
-                <option disabled value="">Choose a value</option>
-                {available.map((v) => (
-                  <option key={v.value} value={v.value}>
-                    {v.label}
-                  </option>
-                ))}
-              </select>
-            )}
-          </label>
-          <Button size="sm" type="submit" disabled={field === "revenue" ? !value : !hasSelection}>
+            </label>
+          ) : (
+            <fieldset className="grid min-w-0 basis-full gap-2">
+              <legend className="text-xs">Filter values</legend>
+              {(field === 'service' || field === 'source') && (
+                <label className="grid gap-1 text-xs">
+                  Search {labels[field].toLowerCase()} values
+                  <input
+                    type="search"
+                    className={inputStyle}
+                    value={lookup}
+                    onChange={(e) => setLookup(e.target.value)}
+                  />
+                </label>
+              )}
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <span role="status">{selected.length} selected</span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={!selected.length}
+                  onClick={() => setSelected([])}
+                >
+                  Clear selection
+                </Button>
+              </div>
+              <div className="grid max-h-56 gap-1 overflow-y-auto sm:grid-cols-2">
+                {available
+                  .filter(
+                    (item) =>
+                      selected.includes(item.value) ||
+                      item.label.toLowerCase().includes(lookup.trim().toLowerCase()),
+                  )
+                  .map((item) => (
+                    <label key={item.value} className="flex min-h-11 items-center gap-2 break-all text-sm">
+                      <input
+                        type="checkbox"
+                        checked={selected.includes(item.value)}
+                        disabled={selected.length >= 50 && !selected.includes(item.value)}
+                        onChange={(e) =>
+                          setSelected(
+                            e.target.checked
+                              ? [...selected, item.value]
+                              : selected.filter((value) => value !== item.value),
+                          )
+                        }
+                      />
+                      {item.label}
+                    </label>
+                  ))}
+              </div>
+            </fieldset>
+          )}
+          <Button size="sm" type="submit" disabled={field === 'revenue' ? !value : !hasSelection}>
             <Plus size={15} />
             Apply rule
           </Button>

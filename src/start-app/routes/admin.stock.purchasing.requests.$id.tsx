@@ -9,5 +9,5 @@ export const Route = createFileRoute("/admin/stock/purchasing/requests/$id")({
 
 function StartAdminStockRequestRoute() {
   const { id } = Route.useParams();
-  return <PurchaseRequestDetailView requestId={id} />;
+  return <PurchaseRequestDetailView key={id} requestId={id} />;
 }

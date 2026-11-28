@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { clerk } from '@clerk/testing/playwright';
 import { ConvexHttpClient } from 'convex/browser';
 import { api } from '../../convex/_generated/api';
@@ -62,6 +63,20 @@ test('@smoke finance enters historical costs and expenses and reconciles the fil
         .first();
     await expect(card('Revenue')).toContainText('฿1,000');
     await expect(card('Net profit')).toContainText('Unavailable');
+    await page.getByLabel('Through').fill('2024-08-30');
+    await expect(page.getByText('Applied dates · 2024-08-01 – 2024-08-31 · Date edits pending')).toBeVisible();
+    await page.getByLabel('Through').fill(to);
+    const invalid = ['{broken', JSON.stringify({
+      join: 'and',
+      rules: Array.from({ length: 13 }, () => ({ field: 'service', operator: 'is', value: serviceId })),
+    })];
+    for (const rules of invalid) {
+      await page.goto(path + '&rules=' + encodeURIComponent(rules));
+      await expect(page.getByRole('alert').filter({ hasText: 'contains invalid filter rules' })).toBeVisible();
+      await expect(card('Revenue')).toHaveCount(0);
+      await page.getByRole('button', { name: 'Clear invalid filters' }).click();
+      await expect(card('Revenue')).toContainText('฿1,000');
+    }
     const cogs = page.getByRole('heading', { name: 'Service COGS', exact: true }).locator('..');
     await expect(cogs).toContainText('Unavailable');
     await cogs.getByRole('link', { name: /missing costs/ }).click();
@@ -129,6 +144,7 @@ test('@smoke finance enters historical costs and expenses and reconciles the fil
     await expect(card('Acquisition cost')).toContainText('฿0');
     const dimensions = [
       [360, 800],
+      [390, 844],
       [820, 1180],
       [1180, 820],
       [1440, 900],
@@ -152,9 +168,13 @@ test('@smoke finance enters historical costs and expenses and reconciles the fil
       await expect(page.getByRole('button', { name: 'Apply rule' })).toBeVisible();
       await page.getByRole('button', { name: 'Cancel', exact: true }).click();
     }
+    await page.setViewportSize({ width: 390, height: 844 });
     await page.getByRole('button', { name: 'Add filter' }).click();
     await expect(page.getByRole('button', { name: 'Apply rule' })).toBeDisabled();
-    await page.getByLabel('Filter values').selectOption(serviceId);
+    await page.getByLabel('Search service values').fill(service);
+    await page.getByRole('checkbox', { name: service, exact: true }).focus();
+    await page.keyboard.press('Space');
+    await expect(page.getByText('1 selected', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Apply rule' }).click();
     await expect(card('Net profit')).toContainText('Unavailable');
     await card('Revenue').click();
@@ -165,13 +185,45 @@ test('@smoke finance enters historical costs and expenses and reconciles the fil
     expect(page.url()).not.toContain(visit.confirmationCode);
     await page.reload();
     await expect(page.getByLabel('Search records')).toHaveValue(visit.confirmationCode);
-    await page.getByRole('button', { name: 'Newest first' }).click();
-    await expect(page.getByRole('button', { name: 'Oldest first' })).toBeVisible();
+    const order = page.getByRole('combobox', { name: 'Transaction sort' });
+    await order.selectOption('asc');
+    await expect(order).toHaveValue('asc');
     await page.goBack();
-    await expect(page.getByRole('button', { name: 'Newest first' })).toBeVisible();
+    await expect(order).toHaveValue('desc');
+    await page.getByRole('button', { name: 'Record actual costs' }).click();
+    await page.getByLabel('Reason', { exact: true }).fill('Unsaved correction');
+    await page.getByLabel('Record category').selectOption('Service');
+    await expect(page.getByText('Discard this correction?')).toBeVisible();
+    await page.getByRole('button', { name: 'Discard changes' }).click();
+    await expect(page.getByRole('heading', { name: /Actual costs for/ })).toHaveCount(0);
+    await expect(page.getByText(/Matching evidence · Service · Search/)).toBeVisible();
     const download = page.waitForEvent('download');
     await page.getByRole('button', { name: 'Export CSV' }).click();
-    expect((await download).suggestedFilename()).toBe('service-revenue-' + from + '-' + to + '.csv');
+    const operational = await download;
+    expect(operational.suggestedFilename()).toBe('service-revenue-' + from + '-' + to + '.csv');
+    const operationalCsv = await readFile((await operational.path())!, 'utf8');
+    expect(operationalCsv).toContain('Asia/Bangkok');
+    expect(operationalCsv).toContain('Evidence basis');
+    expect(operationalCsv).toContain('Applied (private)');
+    expect(operationalCsv).not.toContain(name);
+    expect(operationalCsv).not.toContain(visit.confirmationCode);
+    expect(operationalCsv).toContain('Date,Reference,Service,Category,Evidence basis,Amount (THB)');
+    await page.getByLabel('CSV export scope').selectOption('identifiable');
+    const identifiable = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'Export CSV' }).click();
+    const identifiableCsv = await readFile((await (await identifiable).path())!, 'utf8');
+    expect(identifiableCsv).toContain(name);
+    expect(identifiableCsv).toContain(visit.confirmationCode);
+    expect(identifiableCsv).toContain('Date,Reference,Service,Customer,Category,Evidence basis,Amount (THB)');
+    await page.getByLabel('Record category').selectOption('');
+    await expect(page.getByRole('button', { name: 'Export CSV' })).toBeEnabled();
+    await expect(page.getByLabel('CSV export scope')).toHaveValue('operational');
+    const resetDownload = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'Export CSV' }).click();
+    const resetCsv = await readFile((await (await resetDownload).path())!, 'utf8');
+    expect(resetCsv).toContain('Date,Reference,Service,Category,Evidence basis,Amount (THB)');
+    expect(resetCsv).not.toContain(name);
+    expect(resetCsv).not.toContain(visit.confirmationCode);
     for (const [width, height] of dimensions) {
       await page.setViewportSize({ width, height });
       await expect(page.getByRole('table')).toBeVisible();

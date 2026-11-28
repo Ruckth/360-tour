@@ -8,7 +8,7 @@ import type { MutationCtx } from '../_generated/server';
 import { readStockAvailability, resolveCommerceSettings, writeStockMovement } from '../commerce/model';
 import * as budgets from '../lib/readBudget';
 import schema from '../schema';
-import { profitVisits, recordReturnDestination } from '../services/model';
+import { profitVisitPage, profitVisits, recordReturnDestination } from '../services/model';
 import { calculateProfit } from '../shared/profitability';
 import { projectTender } from '../shared/tenderProjection';
 import { termsOf } from './private/paymentCommerce';
@@ -716,6 +716,9 @@ it('includes the first paid package settlement after delivery in the paying mont
     await ctx.db.patch(c.useId,{createdAt:paid});
   });
   const {lines,customers}=await t.run(ctx=>profitVisits(ctx,paid-4*3600000,paid+day));
+  await expect(t.run(ctx=>profitVisitPage(ctx,paid-4*3600000,paid+day,null))).resolves.toEqual({
+    lines, customers, excludedCurrency: 0, cursor: null,
+  });
   expect(lines).toMatchObject([{kind:'Settlement',revenue:0,cost:{staff:0,tools:0,materials:0}}]);
   const result=calculateProfit({lines,customers,expenses:[],missingMonths:[]},lines,'2026-11-01','2026-11-02',false);
   expect(result).toMatchObject({newCount:1,customerCount:1,ltv:10000,cac:0,revenue:0});

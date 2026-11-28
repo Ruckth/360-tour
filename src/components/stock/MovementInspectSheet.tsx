@@ -1,11 +1,11 @@
 "use client";
 
 import { useMutation, usePaginatedQuery, useQueries, useQuery, type RequestForQueries } from "convex/react";
-import type { FunctionReturnType } from "convex/server";
+import type { FunctionArgs, FunctionReturnType } from "convex/server";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import { AlertTriangle, CheckCircle2, ExternalLink, Flag, RotateCcw } from "lucide-react";
-import { useMemo, useState, type FormEvent } from "react";
+import { useMemo, useRef, useState, type FormEvent } from "react";
 import { SkeletonRows } from "@/components/admin/admin-bulk";
 import { Callout, EditorSheet, FieldError, NumberField, SheetForm } from "@/components/admin/marketing/MarketingBits";
 import { StatusBadge } from "@/components/admin/StatusBadge";
@@ -20,6 +20,7 @@ import {
   createOperationKey,
   formatSignedDelta,
   MOVEMENT_KIND_META,
+  movementProblemReasons,
   parseStockError,
   parseWholeQuantity,
   PROBLEM_STATUS_META,
@@ -72,18 +73,12 @@ export function MovementInspectSheet({
   const reportProblem = useMutation(api.commerce.stock.reportProblem);
   const resolveReport = useMutation(api.commerce.stock.resolveReport);
 
-  const [mode, setMode] = useState<"view" | "correct" | "report" | "resolve">(
-    reportContext?.requestedQuantity ? "correct" : "view",
-  );
+  const [mode, setMode] = useState<"view" | "correct" | "report" | "resolve">("view");
 
   // Correction state (preserved on error / reconciliation)
-  const [qtyText, setQtyText] = useState(
-    reportContext?.requestedQuantity ? String(reportContext.requestedQuantity) : "",
-  );
+  const [qtyText, setQtyText] = useState("");
   const [reason, setReason] = useState(reportContext?.reason ?? "");
-  const [reconciliationReportId, setReconciliationReportId] = useState<Id<"stockProblemReports"> | null>(
-    reportContext?.status === "open" ? reportContext._id : null,
-  );
+  const reconciliationReportId = reportContext?.status === "open" ? reportContext._id : null;
   const [physicalCountText, setPhysicalCountText] = useState("");
   const [confirmNegative, setConfirmNegative] = useState(false);
   const [reviewedBalance, setReviewedBalance] = useState<{ revision: number; onHand: number } | null>(null);
@@ -97,11 +92,12 @@ export function MovementInspectSheet({
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const correctionAttempt = useRef<FunctionArgs<typeof api.commerce.stock.postCorrection> | null>(null);
   const [operationKey, setOperationKey] = useState(() => createOperationKey("stock-act"));
 
   const isDirty =
     (mode === "correct" &&
-      (qtyText.trim() !== (reportContext?.requestedQuantity ? String(reportContext.requestedQuantity) : "") ||
+      (qtyText.trim() !== "" ||
         reason.trim() !== (reportContext?.reason ?? "").trim() ||
         physicalCountText.trim() !== "" ||
         confirmNegative)) ||
@@ -163,6 +159,11 @@ export function MovementInspectSheet({
   async function submitCorrection(event: FormEvent) {
     event.preventDefault();
     setError("");
+    const previous = correctionAttempt.current;
+    if (previous?.operationKey === operationKey) {
+      await sendCorrection(previous);
+      return;
+    }
     if (!parsedQty.ok || !parsedQty.value) {
       setError(parsedQty.ok ? "Enter a correction quantity." : parsedQty.error);
       document.getElementById("corr-qty")?.focus();
@@ -188,42 +189,49 @@ export function MovementInspectSheet({
     }
 
     let physicalCount: number | undefined;
-    if (preview.requiresReconciliation && confirmNegative) {
+    if (preview.requiresReconciliation) {
       const parsedCount = parseWholeQuantity(physicalCountText, { allowZero: true, label: "Physical count" });
       if (!parsedCount.ok || parsedCount.value === undefined) {
         setError(parsedCount.ok ? "Enter the physical count." : parsedCount.error);
         document.getElementById("corr-physical-count")?.focus();
         return;
       }
+      if (!confirmNegative) {
+        setError("Confirm the negative balance after checking the physical count.");
+        return;
+      }
       physicalCount = parsedCount.value;
     }
 
+    await sendCorrection({
+      branchId,
+      movementId,
+      quantity: parsedQty.value,
+      operationKey,
+      expectedRevision: reviewedBalance?.revision ?? preview.line.revision,
+      reason: reason.trim(),
+      ...(reconciliationReportId ? { reportId: reconciliationReportId } : {}),
+      ...(physicalCount !== undefined ? { physicalCount } : {}),
+      ...(preview.requiresReconciliation && confirmNegative ? { confirmNegative: true } : {}),
+    });
+  }
+
+  async function sendCorrection(input: FunctionArgs<typeof api.commerce.stock.postCorrection>) {
+    correctionAttempt.current = input;
     setSaving(true);
     try {
-      const result = await postCorrection({
-        branchId,
-        movementId,
-        quantity: parsedQty.value,
-        operationKey,
-        expectedRevision: reviewedBalance?.revision ?? preview.line.revision,
-        reason: reason.trim(),
-        ...(reconciliationReportId ? { reportId: reconciliationReportId } : {}),
-        ...(physicalCount !== undefined ? { physicalCount } : {}),
-        ...(preview.requiresReconciliation && confirmNegative ? { confirmNegative: true } : {}),
-      });
-      setOperationKey(createOperationKey("stock-corr"));
-      if (result.reportId && !result.operationId) {
-        setReconciliationReportId(result.reportId);
+      const result = await postCorrection(input);
+      if (!result.operationId && !result.reportId) {
+        setError("The server returned no correction or report. Retry to recover the result.");
         setSaving(false);
-        onSuccess("Reconciliation report opened. Record the physical count to confirm a negative correction.");
         return;
       }
-      onSuccess("Linked stock correction posted.");
+      correctionAttempt.current = null;
+      onSuccess(result.operationId ? "Linked stock correction posted." : "Reconciliation report opened in Needs review.");
       onClose();
     } catch (cause) {
-      const parsed = parseStockError(cause, "Could not post correction. Review the latest balance and try again.");
+      const parsed = parseStockError(cause, "Could not confirm the correction. Retry to recover the result.");
       setError(parsed.message);
-      setOperationKey(createOperationKey("stock-corr"));
       setSaving(false);
     }
   }
@@ -291,7 +299,7 @@ export function MovementInspectSheet({
       onClose={requestClose}
       header={
         <>
-          <SheetTitle>Movement details</SheetTitle>
+          <SheetTitle>{mode === "report" ? "Report a problem" : "Movement details"}</SheetTitle>
           <SheetDescription>
             {detail ? `${detail.itemLabel} · ${staffDateTime(detail.createdAt)}` : "Loading movement…"}
           </SheetDescription>
@@ -308,13 +316,7 @@ export function MovementInspectSheet({
           onCancel={cancelSubMode}
           saving={saving}
           error={error}
-          submitLabel={
-            preview?.requiresReconciliation
-              ? confirmNegative
-                ? "Confirm negative correction"
-                : "Open reconciliation report"
-              : "Post correction"
-          }
+          submitLabel={preview?.requiresReconciliation ? "Confirm negative correction" : "Post correction"}
         >
           {isCorrectionStale && preview && reviewedBalance ? (
             <StockStaleBanner
@@ -347,6 +349,12 @@ export function MovementInspectSheet({
               }}
               placeholder={String(detail.reversibleQuantity)}
             />
+            <Button type="button" variant="outline" size="sm" className="justify-self-start" onClick={() => {
+              setQtyText(String(reportContext?.requestedQuantity ?? detail.reversibleQuantity));
+              setOperationKey(createOperationKey("stock-corr"));
+            }}>
+              {reportContext?.requestedQuantity ? "Use reported quantity" : "Use all reversible units"}
+            </Button>
             <FieldError id="corr-qty-error">{inlineQtyError}</FieldError>
           </div>
 
@@ -369,7 +377,7 @@ export function MovementInspectSheet({
               </p>
               {preview.requiresReconciliation ? (
                 <p className="mt-1">
-                  Open a reconciliation report first, record the physical shelf count, then confirm the negative-balance override. This sets <strong>Needs recount</strong> until a verified count posts.
+                  Record the physical shelf count and confirm the negative balance. Posting sets <strong>Needs recount</strong> until a verified count posts.
                 </p>
               ) : null}
             </Callout>
@@ -386,7 +394,7 @@ export function MovementInspectSheet({
             chips={CORRECTION_REASON_CHIPS}
           />
 
-          {preview?.requiresReconciliation && reconciliationReportId ? (
+          {preview?.requiresReconciliation ? (
             <div className="grid gap-3 rounded-lg border border-amber-300/60 bg-amber-50/60 p-4 dark:border-amber-500/30 dark:bg-amber-950/20">
               <div className="flex items-start gap-2 text-sm font-medium text-amber-900 dark:text-amber-200">
                 <AlertTriangle aria-hidden className="mt-0.5 size-4 shrink-0" />
@@ -429,15 +437,15 @@ export function MovementInspectSheet({
           error={error}
           submitLabel="Submit report"
         >
-          <Callout tone="info" title="Report a stock discrepancy">
-            This flags the movement in <strong>Activity › Needs review</strong> for your branch stock lead.
-          </Callout>
+          <p className="text-sm text-muted-foreground">
+            {detail.itemLabel} · {MOVEMENT_KIND_META[detail.kind].label} · {formatSignedDelta(detail.delta)}
+          </p>
           <ReasonField
             id="report-reason"
             label="What looks wrong?"
             value={problemReason}
             onChange={setProblemReason}
-            chips={CORRECTION_REASON_CHIPS}
+            chips={movementProblemReasons(detail.kind)}
             placeholder="Describe the quantity or item issue…"
           />
         </SheetForm>
@@ -477,8 +485,13 @@ export function MovementInspectSheet({
         </SheetForm>
       ) : (
         <div className="flex min-h-0 flex-1 flex-col">
-          <div className="grid min-h-0 flex-1 gap-5 overflow-y-auto px-5 py-5 sm:px-6">
-            <dl className="grid grid-cols-2 gap-3 rounded-lg border border-border bg-muted/30 p-4 text-sm">
+          <div className="grid min-h-0 flex-1 content-start gap-4 overflow-y-auto px-5 py-5 sm:px-6">
+            {reportContext ? (
+              <Callout tone="info" title="Reported problem">
+                <p className="break-words">{reportContext.reason}</p>
+              </Callout>
+            ) : null}
+            <dl className="grid grid-cols-2 gap-2 rounded-lg border border-border bg-muted/30 p-3 text-sm [&>div]:min-w-0 [&_dd]:wrap-anywhere">
               <div>
                 <dt className="text-xs text-muted-foreground">Type</dt>
                 <dd className="mt-1">
@@ -514,12 +527,15 @@ export function MovementInspectSheet({
               ) : null}
               {detail.receiptId ? (
                 <ButtonLink
-                  href={`/admin/stock/purchasing/receipts/${detail.receiptId}?returnTo=${encodeURIComponent("/admin/stock/activity")}`}
+                  href={`/admin/stock/purchasing/receipts/${detail.receiptId}?${new URLSearchParams({
+                    returnTo: reportContext ? "/admin/stock/activity?view=needs-review" : "/admin/stock/activity",
+                    ...(reportContext && access.lead ? { focusMovement: detail.originalMovementId ?? movementId } : {}),
+                  })}`}
                   variant="outline"
                   size="sm"
                 >
                   <ExternalLink aria-hidden className="size-4" />
-                  Open supplier receipt
+                  {reportContext && access.lead ? "Correct on receipt" : "Open supplier receipt"}
                 </ButtonLink>
               ) : null}
               {detail.kind === "count" ? (
@@ -536,7 +552,11 @@ export function MovementInspectSheet({
                   type="button"
                   size="sm"
                   onClick={() => {
-                    setQtyText(String(detail.reversibleQuantity));
+                    correctionAttempt.current = null;
+                    setOperationKey(createOperationKey("stock-corr"));
+                    setQtyText("");
+                    setPhysicalCountText("");
+                    setConfirmNegative(false);
                     setReviewedBalance(null);
                     setError("");
                     setMode("correct");
@@ -559,6 +579,37 @@ export function MovementInspectSheet({
                 </Button>
               ) : null}
             </div>
+
+            {relatedMovements.length > 1 ? (
+              <section aria-label="Movements from same source" className="grid gap-2">
+                <h3 className="text-sm font-semibold text-foreground">
+                  All movements in this source ({relatedMovements.length})
+                </h3>
+                <ul className="divide-y divide-border rounded-lg border border-border">
+                  {relatedMovements.map((rel) => (
+                    <li key={rel._id} className="flex items-center justify-between gap-2 p-3 text-xs">
+                      <span className="min-w-0 truncate font-medium text-foreground">
+                        {rel.itemLabel}
+                        {rel.sku ? ` (${rel.sku})` : ""}
+                      </span>
+                      <span className="shrink-0 font-mono tabular-nums text-muted-foreground">
+                        {formatSignedDelta(rel.delta)} ({rel.before} → {rel.after})
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                {sourceActivityStatus === "CanLoadMore" ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => loadMoreSourceActivity(10)}
+                  >
+                    Load more source lines
+                  </Button>
+                ) : null}
+              </section>
+            ) : null}
 
             {detail.reports.length > 0 ? (
               <section aria-label="Your reports" className="grid gap-2">
@@ -613,37 +664,6 @@ export function MovementInspectSheet({
                     <p className="mt-1 text-foreground">Reason: {operationDetail.reason}</p>
                   ) : null}
                 </div>
-              </section>
-            ) : null}
-
-            {relatedMovements.length > 1 ? (
-              <section aria-label="Movements from same source" className="grid gap-2">
-                <h3 className="text-sm font-semibold text-foreground">
-                  All movements in this source ({relatedMovements.length})
-                </h3>
-                <ul className="divide-y divide-border rounded-lg border border-border">
-                  {relatedMovements.map((rel) => (
-                    <li key={rel._id} className="flex items-center justify-between gap-2 p-3 text-xs">
-                      <span className="min-w-0 truncate font-medium text-foreground">
-                        {rel.itemLabel}
-                        {rel.sku ? ` (${rel.sku})` : ""}
-                      </span>
-                      <span className="shrink-0 font-mono tabular-nums text-muted-foreground">
-                        {formatSignedDelta(rel.delta)} ({rel.before} → {rel.after})
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-                {sourceActivityStatus === "CanLoadMore" ? (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => loadMoreSourceActivity(10)}
-                  >
-                    Load more source lines
-                  </Button>
-                ) : null}
               </section>
             ) : null}
 

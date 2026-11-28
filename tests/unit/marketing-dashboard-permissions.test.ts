@@ -5,7 +5,7 @@ import { getFunctionName } from "convex/server";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { marketingCapabilities } from 'convex/shared/marketingAccess';
 import { MarketingAccessProvider, type MarketingRole } from "@/components/admin/marketing/MarketingAccess";
-import { DashboardScreen } from "@/components/admin/marketing/dashboard/DashboardScreen";
+import { dashboardRequest, DashboardScreen } from "@/components/admin/marketing/dashboard/DashboardScreen";
 import type { DashboardViewProps } from "@/components/admin/marketing/dashboard/DashboardView";
 import { firstRunReport } from "../browser/marketing-dashboard-data";
 
@@ -17,6 +17,7 @@ vi.mock("convex/react", () => ({
 }));
 vi.mock("@/components/admin/BookingSheet", () => ({ BookingSheet: (props: unknown) => { mocked.bookingSheet(props); return null; } }));
 vi.mock("@/components/admin/marketing/dashboard/DashboardView", () => ({
+  DEFAULT_REQUEST: (today: string) => ({ basis: "cohort", range: { preset: "last30", from: `${today.slice(0, 7)}-01`, to: today } }),
   initialRequest: (today: string) => ({ basis: "cohort", range: { preset: "custom", from: today, to: today } }),
   DashboardView: (props: DashboardViewProps) => { mocked.view = props; return createElement("p", null, "Report"); },
 }));
@@ -73,4 +74,19 @@ it("retains figures for a same-scope refresh and preserves them on failure", asy
   if (initial.status === "ready") expect(mocked.view!.state).toHaveProperty("report", initial.report);
   await act(async () => fail(new Error("Refresh unavailable")));
   expect(mocked.view!.state).toMatchObject({ status: "ready", refreshError: "Refresh unavailable" });
+});
+
+it("reopens a validated copied scope and falls back safely for invalid fields", () => {
+  const today = "2026-11-10";
+  const fallback = { range: { preset: "custom", from: "2026-10-01", to: "2026-10-09" }, basis: "cohort" } as const;
+  const property = "123456789abcdefghijklmnopqrstuvw";
+  expect(dashboardRequest(new URLSearchParams(`from=2026-11-01&to=2026-11-09&basis=cash&property=${property}&touch=first&breakdown=campaign`), today, fallback)).toEqual({
+    range: { preset: "custom", from: "2026-11-01", to: "2026-11-09" }, basis: "cash", property, touch: "first", breakdown: "campaign",
+  });
+  expect(dashboardRequest(new URLSearchParams("from=invalid&basis=other&property=bad&touch=none&breakdown=unknown"), today, fallback)).toEqual({
+    basis: "cohort", range: { preset: "last30", from: "2026-11-01", to: "2026-11-10" }, property: "all", touch: "last", breakdown: "source",
+  });
+  expect(dashboardRequest(new URLSearchParams(), today, fallback).range).toEqual(fallback.range);
+  expect(dashboardRequest(new URLSearchParams("from=2026-11-01&to=2026-11-09&preset=last7"), today, fallback).range.preset).toBe("custom");
+  expect(dashboardRequest(new URLSearchParams("from=2026-11-03&to=2026-11-09&preset=last7"), today, fallback).range.preset).toBe("last7");
 });

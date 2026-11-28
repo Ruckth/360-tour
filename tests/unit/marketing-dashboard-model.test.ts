@@ -17,7 +17,7 @@ import {
   type ReportFilters,
   type Sort,
 } from "@/components/admin/marketing/dashboard/report-model";
-import { salesCsv, summaryCsv } from "@/components/admin/marketing/dashboard/report-csv";
+import { salesCsv, summaryCsv, salesCsvModel } from "@/components/admin/marketing/dashboard/report-csv";
 import { dashboardReport, FIXTURE_FROM, FIXTURE_TO, FIXTURE_TODAY } from "../browser/marketing-dashboard-data";
 
 const LAST: ReportFilters = { property: "all", touch: "last" };
@@ -551,4 +551,54 @@ it('uses separate session conversion evidence without adding cross-day sales to 
     expect(linkRow).toMatchObject({ convertedSessions: 1, conv: 1, collected: 0 });
     expect(businessTotals(prepareReport({ ...data, convertedSessions: [] }, LAST)).convertedSessions).toBe(0);
   }
+});
+
+describe("signed chart events", () => {
+  const facebook = sale({ id: "fb", last: A, createdDay: "2026-11-04", paidDay: "2026-11-04", collected: 50000 });
+  const instagram = sale({ id: "ig", last: B, createdDay: "2026-11-04", paidDay: "2026-11-04", collected: 0, refunded: 20000 });
+  const data = report({ from: "2026-11-04", to: "2026-11-08", sales: [facebook, instagram] });
+
+  it("retains negative source values and sums signed Marketing totals", () => {
+    const p = prepareReport(data, LAST);
+    const chart = chartData(p, "net");
+    expect(chart.buckets[0]).toMatchObject({ values: { facebook: 50000, instagram: -20000 }, total: 30000 });
+    expect(chart.buckets.reduce((sum, bucket) => sum + bucket.total, 0)).toBe(businessTotals(p).all.net);
+  });
+
+  it("uses each Finance event's business date and reconciles all source net with the headline", () => {
+    const p = prepareReport({
+      ...data, basis: "cash", events: [
+        { saleId: "fb", kind: "payment", day: "2026-11-04", amount: 50000 },
+        { saleId: "ig", kind: "refund", day: "2026-11-05", amount: 12501 },
+        { saleId: "ig", kind: "refund", day: "2026-11-06", amount: 7501 },
+      ],
+    }, LAST);
+    expect(chartData(p, "collected").buckets.map((bucket) => bucket.total)).toEqual([50000, 0, 0, 0, 0]);
+    expect(chartData(p, "refunds").buckets.map((bucket) => bucket.total)).toEqual([0, 12501, 7501, 0, 0]);
+    expect(chartData(p, "refunds").buckets[1].values.instagram).toBe(12501);
+    expect(chartData(p, "paid").buckets[0].values.facebook).toBe(1);
+    expect(chartData(p, "net").buckets.map((bucket) => bucket.total)).toEqual([50000, -12501, -7501, 0, 0]);
+    expect(chartData(p, "net").buckets.reduce((sum, bucket) => sum + bucket.total, 0)).toBe(businessTotals(p).all.net);
+    const csv = salesCsvModel(p, "All properties");
+    expect(csv.rows.reduce((sum, row) => sum + Number(row[csv.header.indexOf("Net")]), 0)).toBeCloseTo(businessTotals(p).all.net / 100);
+  });
+});
+
+it("removes unavailable sorts after applying a property, changing to Finance or drilling to links", () => {
+  const source = { level: "source", id: "facebook" } as const;
+  const campaign = { level: "campaign", id: "ca" } as const;
+  const data = report({ sales: [sale({ last: A })] });
+  const r = prepareReport(data, LAST);
+  const links = buildBreakdown(r, "source", [source, campaign], { key: "roas", dir: "asc" });
+  expect(links.path).toEqual([source, campaign]);
+  expect(links.showRoas).toBe(false);
+  expect(links.sort).toEqual(BY_NET);
+  const scoped = buildBreakdown(prepareReport(data, { ...LAST, property: "missing-property" }), "source", [source, campaign], { key: "sessions", dir: "asc" });
+  expect(scoped.path).toEqual([]);
+  expect(scoped.showRoas).toBe(false);
+  expect(scoped.showSessions).toBe(false);
+  expect(scoped.sort).toEqual(BY_NET);
+  const cash = buildBreakdown(prepareReport({ ...data, basis: "cash" }, LAST), "source", [], { key: "conv", dir: "asc" });
+  expect(cash.showSessions).toBe(false);
+  expect(cash.sort).toEqual(BY_NET);
 });

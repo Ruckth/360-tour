@@ -84,10 +84,10 @@ export async function prepareCommercePayment(
   ctx: PaymentCtx,
   input: {
     order: Doc<'orders'>; lines: Line[]; settings: CommerceSettings; actor: StaffActor; vouchers: FundingVoucher[];
-    frozen?: FrozenCatalogue; planning?: true; tenders: Tender[]; appointment: (id: Id<'appointments'>) => Promise<Doc<'appointments'> | null>; now: number;
+    frozen?: FrozenCatalogue; planning?: true; stockHoldUntil?: number; tenders: Tender[]; appointment: (id: Id<'appointments'>) => Promise<Doc<'appointments'> | null>; now: number;
   },
 ) {
-  const { order, lines, settings, actor, vouchers, tenders, appointment, now, frozen, planning } = input;
+  const { order, lines, settings, actor, vouchers, tenders, appointment, now, frozen, planning, stockHoldUntil } = input;
   const terms = frozen?.terms ?? termsOf(settings);
   const settingsRevision = frozen?.settingsRevision ?? settings.revision;
   const rules = {
@@ -285,6 +285,22 @@ export async function prepareCommercePayment(
     productQuantities: parts.flatMap(part => part.variant ? [part.units] : []), rowSnapshotBytes: [],
   });
 
+  const packedByVariant = new Map<Id<'productVariants'>, Map<Id<'stockLots'>, number>>();
+  for (const { line, parts, handover } of rows) {
+    if (handover) continue;
+    for (const packed of line.packing ?? []) {
+      const part = parts.find(candidate => candidate.contentKey === packed.contentKey);
+      if (!part?.variant || packed.allocations.reduce((sum, entry) => sum + entry.quantity, 0) !== part.units) {
+        paymentError('packing_changed', 'Review the packed lot quantities for this row.');
+      }
+      const lots = packedByVariant.get(part.variant.id) ?? new Map<Id<'stockLots'>, number>();
+      for (const { lotId, quantity } of packed.allocations) lots.set(lotId, (lots.get(lotId) ?? 0) + quantity);
+      packedByVariant.set(part.variant.id, lots);
+    }
+  }
+
+  if (packedByVariant.size && branch) await requireBranchAccess(ctx, actor, branch._id);
+
   // Check the live counts at arm (or at settlement for a zero-leg sale).
   const restock = planning ? [] : await Promise.all([...demandByVariant(rows).values()].map(async ({ variant, quantity }) => {
     const stocks = await paymentRange(ctx, () => ctx.db.query('stockLevels').withIndex('by_variantId_and_branchId',
@@ -293,12 +309,37 @@ export async function prepareCommercePayment(
     const stock = stocks[0] ?? null;
     const before = stock?.onHand ?? 0;
     const availability = await readStockAvailability(ctx, { branchId: branch!._id, variantId: variant.id, onHand: before, orderId: order._id, checkOrderHoldHistory: before < quantity });
+    const { unassigned } = availability;
+    if (unassigned !== null && quantity + availability.held > unassigned) {
+      paymentError('stock_unavailable', `${variant.label}: move the picked units to Unassigned before taking payment.`);
+    }
+    const packed = packedByVariant.get(variant.id);
+    const lotAllocations = packed && Array.from(packed, ([lotId, quantity]) => ({ lotId, quantity }));
+    if (lotAllocations) {
+      if (!availability.tracking || lotAllocations.reduce((sum, lot) => sum + lot.quantity, 0) !== quantity) {
+        paymentError('packing_changed', 'Confirm packed lots for every row containing this variant.');
+      }
+      const held = availability.reservationAllocations;
+      const valid = held
+        ? held.length === lotAllocations.length && held.every(lot => packed?.get(lot.lotId) === lot.quantity)
+        : lotAllocations.every(lot => availability.lots.some(position =>
+          position.lotId === lot.lotId && position.available >= lot.quantity && position.expiresAt > now));
+      if (!valid) paymentError('packing_changed', 'A selected packed lot is no longer available or differs from the order hold.');
+    }
     const protectedStock = availability.tracking || availability.hadOrderHold || availability.held > 0 || availability.reservationId !== undefined;
     if (protectedStock && (quantity > availability.sellable || availability.reservationQuantity !== undefined && availability.reservationQuantity !== quantity)) {
       paymentError('stock_unavailable', `${variant.label} has insufficient sellable stock or its reserved quantity changed. Review the order.`);
     }
+    if (stockHoldUntil !== undefined && availability.tracking && !availability.reservationId) {
+      const survivesHold = new Map(availability.lots.filter(lot => lot.expiresAt > stockHoldUntil).map(lot => [lot.lotId, lot.available]));
+      const covered = lotAllocations
+        ? lotAllocations.every(lot => (survivesHold.get(lot.lotId) ?? 0) >= lot.quantity)
+        : [...survivesHold.values()].reduce((sum, units) => sum + units, 0) >= quantity;
+      if (!covered) paymentError('STOCK_HOLD_LOT_EXPIRY',
+        `${variant.label}: some units expire before the ten-minute checkout hold ends. Use a later-expiring lot or reduce the quantity.`);
+    }
     return {
-      variant, quantity, stock, before, allowNegative: !protectedStock, reservationId: availability.reservationId,
+      variant, quantity, stock, before, lotAllocations, reservationExpiresAt: availability.reservationExpiresAt, allowNegative: !protectedStock, reservationId: availability.reservationId,
       holdAtArm: Boolean(order.stockBranchId || protectedStock) && before >= quantity && !availability.reservationId,
     };
   }));
@@ -357,11 +398,13 @@ export async function prepareCommercePayment(
   const allocation = allocateSalePayments(paymentRows.map((row, index) => ({
     ...row, contentPaidShares: rows[index].parts.length ? rows[index].parts.map((part, item) => part.paidShare - shares[index][item]) : undefined,
   })), payments);
-  const snapshots = rows.map(({ line, parts }, index): Snapshot => {
+  const snapshots = rows.map(({ line, parts, handover }, index): Snapshot => {
     const allocated = allocation.rows[index];
     const contents = parts.map((part, item): Part => {
       const paidShare = part.paidShare - shares[index][item];
+      const packing = !handover && line.packing?.find(packed => packed.contentKey === part.contentKey);
       return { contentKey: part.contentKey, label: part.label, units: part.units, vatProfile: part.vatProfile, paidShare,
+        ...(packing ? { packedLots: packing.allocations } : {}),
         ...(shares[index][item] ? { goodwillShare: shares[index][item] } : {}),
         vatBase: part.vatBase > 0 ? freezeRowVatBase({ kind: 'taxable', net: paidShare }).vatBase : 0,
         tenderCells: storedCells(allocated.contents![item], voucherTenders), ...blankReturn };
@@ -386,6 +429,7 @@ export async function prepareCommercePayment(
     row.line._id, row.line.name, row.catalogEvidence,
     row.parts.map(({ contentKey, label, units, paidShare, variant, benefit }) =>
       [contentKey, label, units, paidShare, variant && [variant.id, variant.productId, variant.price], benefit?.kind]),
+    ...(row.line.packing?.length && !row.handover ? [row.line.packing] : []),
   ])));
   const frozenCatalogue: FrozenCatalogue = {
     terms, settingsRevision, variants: [...variants.values()], versions: [...versions.values()], servicePrices: [...servicePrices],
@@ -418,11 +462,11 @@ export async function writeCommercePayment(ctx: MutationCtx, sale: SalePlan, act
   const changedOrders = new Set<Id<'orders'>>([rows[0].line.orderId]);
   const settingsRevision = snapshots[0].settingsRevision;
   const branchId = branch?._id;
-  for (const { variant, quantity, stock, allowNegative, reservationId } of restock) {
+  for (const { variant, quantity, stock, allowNegative, reservationId, lotAllocations } of restock) {
     const orderId = rows[0].line.orderId;
     const { movementId } = await writeStockMovement(ctx, {
       branchId: branchId!, variantId: variant.id, delta: -quantity, kind: 'sale',
-      sourceKey: `sale:${orderId}:${variant.id}`, sourceId: orderId, actor, createdAt: now, allowNegative, reservationId,
+      sourceKey: `sale:${orderId}:${variant.id}`, sourceId: orderId, actor, createdAt: now, allowNegative, reservationId, lotAllocations,
     }, stock);
     movementIds.set(variant.id, movementId);
   }
@@ -505,7 +549,8 @@ export async function writeCommercePayment(ctx: MutationCtx, sale: SalePlan, act
     }
     reserveWrites(ctx, handover ? 2 : 1);
     const paidCoverage = coverage.get(line._id);
-    await ctx.db.patch(line._id, { saleSnapshot: snapshot, ...(paidCoverage ? { coverage: paidCoverage } : {}) });
+    await ctx.db.patch(line._id, { saleSnapshot: snapshot, ...(line.packing ? { packing: undefined } : {}),
+      ...(paidCoverage ? { coverage: paidCoverage } : {}) });
     if (handover) {
       changedOrders.add(handover.orderId);
       if (handover.successorOrderId) changedOrders.add(handover.successorOrderId);

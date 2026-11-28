@@ -1,29 +1,25 @@
 "use client";
 
-import { MapPin } from "lucide-react";
 import type { ReactNode } from "react";
 import { ADMIN_STOCK_PAGES, adminStockPath } from "@/components/admin/admin-routes";
 import { useAdminBranch } from "@/components/admin/branch/branch-context";
-import { BranchStatePill } from "@/components/admin/branch/branch-pills";
-import { Callout } from "@/components/admin/marketing/MarketingBits";
+import { BranchChoices } from "@/components/admin/branch/BranchScreens";
+import { OpenHoldBadge } from "./open-hold-count";
 import { cn } from "@/lib/utils";
 import Link from "@/platform/link";
 import { useSelectedLayoutSegment } from "@/platform/navigation";
 
-/**
- * Shared Stock section shell: displays the active working branch context and underlined
- * navigation row for Balances, Activity, Products, Purchasing, and Transfers & Lots.
- */
+/** The local links are visible wherever the sidebar does not already show Stock pages. */
 export function StockSectionShell({ children }: { children: ReactNode }) {
   const segment = useSelectedLayoutSegment("/admin/stock");
-  const { current: branch } = useAdminBranch();
+  const { current: branch, branches } = useAdminBranch();
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="border-b border-border bg-card/50">
-        <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center justify-between gap-x-6 gap-y-2 px-4 pt-3 sm:px-6">
-          <nav aria-label="Stock pages" className="min-w-0 basis-full sm:flex-1">
-            <ul className="flex max-w-full flex-wrap gap-x-3 sm:gap-x-6">
+      <div className="border-b border-border xl:group-has-[[data-stock-pages]]/sidebar-wrapper:hidden">
+        <div className="mx-auto flex w-full max-w-7xl px-4 sm:px-6">
+          <nav aria-label="Stock pages" className="min-w-0 w-full">
+            <ul className="flex max-w-full flex-wrap justify-between sm:justify-start sm:gap-x-6">
               {ADMIN_STOCK_PAGES.map(({ id, label }) => {
                 const current = segment === id;
                 return (
@@ -32,37 +28,32 @@ export function StockSectionShell({ children }: { children: ReactNode }) {
                       href={adminStockPath(id)}
                       aria-current={current ? "page" : undefined}
                       className={cn(
-                        "inline-flex items-center whitespace-nowrap border-b-2 min-h-11 px-1 sm:pb-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                        "inline-flex items-center justify-center whitespace-nowrap border-b-2 min-h-11 min-w-11 px-0.5 text-xs sm:px-1 sm:text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                         current
                           ? "border-foreground text-foreground"
                           : "border-transparent text-muted-foreground hover:text-foreground",
                       )}
                     >
-                      {label}
+                      {id === "expansion" ? <><span className="max-sm:sr-only">Transfers &amp; </span>Lots</> : label}
+                      {id === "purchasing" ? <OpenHoldBadge compact /> : null}
                     </Link>
                   </li>
                 );
               })}
             </ul>
           </nav>
-          {branch ? (
-            <div className="flex shrink-0 items-center gap-2 pb-2 text-xs text-muted-foreground">
-              <MapPin aria-hidden className="size-3.5 shrink-0" />
-              <span className="font-medium text-foreground">{branch.name}</span>
-              <BranchStatePill state={branch.state} />
-            </div>
-          ) : null}
         </div>
       </div>
 
       {!branch ? (
-        <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6">
-          <Callout tone="warning" title="Select a working branch">
-            Stock balances, movements, receiving, and purchasing are scoped to a branch. Choose a branch in the sidebar or header to continue.
-          </Callout>
-        </div>
+        <section aria-labelledby="stock-choose-branch" className="mx-auto grid w-full max-w-7xl gap-2 px-4 py-5 sm:px-6">
+          <h2 id="stock-choose-branch" className="text-lg font-semibold">Select a working branch</h2>
+          {branches.length ? <div className="max-w-md"><BranchChoices /></div> : (
+            <p className="text-sm text-muted-foreground">Ask a company owner to assign you a branch to use Stock.</p>
+          )}
+        </section>
       ) : (
-        <div className="mx-auto w-full max-w-7xl flex-1 px-4 py-5 pb-20 sm:px-6 md:pb-8">
+        <div className="mx-auto w-full max-w-7xl flex-1 px-4 pt-3 pb-5 sm:px-6 sm:pt-5">
           {children}
         </div>
       )}

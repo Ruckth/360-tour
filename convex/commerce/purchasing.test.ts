@@ -3,7 +3,7 @@ import { omit } from 'convex-helpers';
 import { convexTest } from 'convex-test';
 import { ConvexError } from 'convex/values';
 import { expect, it } from 'vitest';
-import { api } from '../_generated/api';
+import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { readBudget } from '../lib/readBudget';
 import schema from '../schema';
@@ -60,7 +60,7 @@ async function setup() {
 
   async function directOrder(quantity: number, lines?: { variantId: Id<'productVariants'>; quantity: number }[]) {
     const draft = await ann.mutation(p.saveOrder, {
-      branchId: ids.branchId, supplierId, lines: lines ?? [{ variantId: ids.variantId, quantity, unitCost: 5_000 }], operationKey: key(),
+      branchId: ids.branchId, supplierId, lines: lines?.map(line => ({ unitCost: 5_000, ...line })) ?? [{ variantId: ids.variantId, quantity, unitCost: 5_000 }], operationKey: key(),
     });
     const orderId = draft.id as Id<'purchaseOrders'>;
     await ann.mutation(p.issuePurchaseOrder, { orderId, expectedRevision: draft.revision!, operationKey: key() });
@@ -120,7 +120,7 @@ it('allocates one approval across competing orders and releases cancelled units 
   const { ann, branchId, variantId, supplierId, receive, approvedRequest } = await setup();
   const requestId = await approvedRequest(10);
   const requestLineId = (await ann.query(p.request, { requestId })).lines[0]._id;
-  const draft = () => ann.mutation(p.saveOrder, { branchId, supplierId, requestId, lines: [{ variantId, quantity: 6, requestLineId }], operationKey: key() });
+  const draft = () => ann.mutation(p.saveOrder, { branchId, supplierId, requestId, lines: [{ variantId, quantity: 6, requestLineId, unitCost: 5_000 }], operationKey: key() });
   const [first, second] = [await draft(), await draft()];
   await ann.mutation(p.issuePurchaseOrder, { orderId: first.id as Id<'purchaseOrders'>, expectedRevision: first.revision!, operationKey: key() });
   const secondOrderId = second.id as Id<'purchaseOrders'>;
@@ -283,7 +283,7 @@ it('bounds supplier returns, reverses them, and confirms duplicate delivery refe
   expect(await code(receive(orderId, 1, { deliveryReference: 'inv 77' }))).toBe('DUPLICATE_DELIVERY');
   await receive(orderId, 1, { deliveryReference: 'inv 77', confirmDuplicate: { receiptId: receipt.id as Id<'supplierReceipts'>, reason: 'Second truck' } });
   const receiptLineId = (await ann.query(p.receipt, { receiptId: receipt.id as Id<'supplierReceipts'> })).lines[0]._id;
-  const ret = await ann.mutation(p.supplierReturn, { receiptLineId, quantity: 2, reason: 'Damaged', operationKey: key() });
+  const ret = await ann.mutation(p.supplierReturn, { receiptLineId, quantity: 2, outcome: 'credit_expected', reason: 'Damaged', operationKey: key() });
   expect(await onHand()).toBe(4);
   const order = await ann.query(p.order, { orderId });
   expect(order.lines[0]).toMatchObject({ accepted: 6, returned: 2, due: 6 });
@@ -296,18 +296,93 @@ it('bounds supplier returns, reverses them, and confirms duplicate delivery refe
   expect(adjustments.page.map(a => a.kind).sort()).toEqual(['return_reversal', 'supplier_return']);
 });
 
+it('reverses part of a pre-conversion supplier return without making unknown lots sellable', async () => {
+  const { t, ann, branchId, variantId, directOrder, receive } = await setup();
+  const orderId = await directOrder(8);
+  const receipt = await receive(orderId, 5);
+  const receiptId = receipt.id as Id<'supplierReceipts'>;
+  const receiptLineId = (await ann.query(p.receipt, { receiptId })).lines[0]._id;
+  const original = await ann.mutation(p.supplierReturn, {
+    receiptLineId, quantity: 2, outcome: 'credit_expected', reason: 'Counted as sent', operationKey: key(),
+  });
+  const { lotId, otherLotId } = await t.run(async ctx => {
+    const now = Date.now();
+    await ctx.db.insert('stockTracking', { variantId, enabledBy: 'cutover', enabledAt: now, convertedAt: now });
+    await ctx.db.patch(variantId, { lotTracked: true });
+    const expiresAt = now + 86_400_000;
+    const lotId = await ctx.db.insert('stockLots', { variantId, code: 'Verified batch', expiresAt });
+    await ctx.db.insert('stockLotBalances', { branchId, variantId, lotId, expiresAt, onHand: 3, inStock: true });
+    const otherLotId = await ctx.db.insert('stockLots', { variantId, code: 'Unknown at branch', expiresAt });
+    return { lotId, otherLotId };
+  });
+  const args = { adjustmentId: original.id as Id<'supplierReceiptAdjustments'>, quantity: 1, reason: 'Found one on site', operationKey: key() };
+  const first = await ann.mutation(p.reverseReturn, args);
+  expect(await ann.mutation(p.reverseReturn, args)).toEqual(first);
+  expect((await ann.query(p.receipt, { receiptId })).lines[0]).toMatchObject({ returned: 1, eligible: 4 });
+  expect((await ann.query(p.order, { orderId })).lines[0]).toMatchObject({ returned: 1 });
+  await expect(ann.query(api.commerce.stockExpansion.lotBalances, { branchId, variantId })).resolves.toMatchObject({
+    onHand: 4, sellable: 3, expired: 1, lots: expect.arrayContaining([expect.objectContaining({ code: 'Pre-tracking stock (verify lot)', onHand: 1 })]),
+  });
+  const verification = { ...args, operationKey: key() };
+  await expect(ann.mutation(p.reverseReturn, { ...verification, lotAllocations: [{ lotId: otherLotId, quantity: 1 }] }))
+    .rejects.toMatchObject({ data: { code: 'INVALID_STOCK_LOT' } });
+  await ann.mutation(p.reverseReturn, { ...verification, lotAllocations: [{ lotId, quantity: 1 }] });
+  expect((await ann.query(p.receipt, { receiptId })).lines[0]).toMatchObject({ returned: 0, eligible: 5 });
+  expect((await ann.query(p.order, { orderId })).lines[0]).toMatchObject({ returned: 0 });
+  await expect(ann.query(api.commerce.stockExpansion.lotBalances, { branchId, variantId })).resolves.toMatchObject({
+    onHand: 5, sellable: 4, expired: 1,
+  });
+});
+
 it('blocks new issues for archived items or inactive suppliers while issued orders stay receivable', async () => {
-  const { t, ann, branchId, variantId, supplierId, directOrder, receive, onHand } = await setup();
+  const { t, ann, branchId, otherBranchId, variantId, supplierId, directOrder, onHand } = await setup();
   const issued = await directOrder(3);
-  const draft = await ann.mutation(p.saveOrder, { branchId, supplierId, lines: [{ variantId, quantity: 1 }], operationKey: key() });
+  const draft = await ann.mutation(p.saveOrder, { branchId, supplierId, lines: [{ variantId, quantity: 1, unitCost: 5000 }], operationKey: key() });
   await t.run(ctx => ctx.db.patch(variantId, { status: 'archived' }));
   expect(await code(ann.mutation(p.issuePurchaseOrder, { orderId: draft.id as Id<'purchaseOrders'>, expectedRevision: draft.revision!, operationKey: key() }))).toBe('ITEM_INACTIVE');
   await t.run(ctx => ctx.db.patch(variantId, { status: 'active' }));
   const supplier = (await ann.query(p.suppliers, { branchId, status: 'active', ...page })).page[0];
-  await ann.mutation(p.editSupplier, { branchId, supplierId, expectedRevision: supplier.revision, name: supplier.name, status: 'inactive', operationKey: key() });
+  const deactivate = { branchId, supplierId, expectedRevision: supplier.revision, name: supplier.name,
+    status: 'inactive' as const, statusReason: 'Supplier stopped trading' };
+  expect(await code(ann.mutation(p.editSupplier, { ...deactivate, operationKey: key() }))).toBe('STOCK_FORBIDDEN');
+  await ann.mutation(p.editSupplier, { ...deactivate, requestDeactivation: true, operationKey: key() });
+  expect((await ann.query(p.history, { branchId, entity: 'supplier', entityId: supplierId, ...page })).page
+    .some(event => event.action === 'deactivation_requested')).toBe(true);
+  await t.run(async ctx => {
+    const issuedOrder = (await ctx.db.get(issued))!;
+    const { _id: ignoredId, _creationTime: ignoredTime, ...order } = issuedOrder;
+    void ignoredId;
+    void ignoredTime;
+    await ctx.db.insert('purchaseOrders', { ...order, branchId: otherBranchId, supplierActivityApplied: undefined });
+    await ctx.db.insert('purchaseEvents', {
+      entity: 'supplier', entityId: supplierId, action: 'deactivation_requested', relatedId: otherBranchId,
+      reason: 'Private branch reason', actorKey: 'private', actorLabel: 'Private buyer', createdAt: Date.now(),
+    });
+    const staffGrantId = await ctx.db.insert('staffGrants', {
+      email: 'supplier-owner@example.com', tokenIdentifier: 'supplier-owner', role: 'owner',
+      branchIds: [], createdAt: Date.now(), updatedAt: Date.now(), updatedByEmail: 'owner@example.com',
+    });
+    await ctx.db.insert('stockGrants', { staffGrantId, branchId, roles: all, revision: 1, changedBy: 'owner', changedAt: Date.now() });
+  });
+  const owner = t.withIdentity({ email: 'supplier-owner@example.com', emailVerified: true, tokenIdentifier: 'supplier-owner' });
+  const history = { branchId, entity: 'supplier' as const, entityId: supplierId, ...page };
+  expect((await ann.query(p.history, history)).page.some(event => event.reason === 'Private branch reason')).toBe(false);
+  expect((await owner.query(p.history, history)).page.some(event => event.reason === 'Private branch reason')).toBe(true);
+  expect((await owner.query(p.supplierImpact, { branchId, supplierId })).openOrders).toBeUndefined();
+  expect(await code(owner.mutation(p.editSupplier, { ...deactivate, operationKey: key() }))).toBe('SUPPLIER_IMPACT_UPDATING');
+  await t.mutation(internal.commerce.purchasing.backfillSupplierData, { source: 'orders' });
+  expect(await owner.query(p.supplierImpact, { branchId, supplierId })).toMatchObject({ organizationWide: true, openOrders: 2 });
+  expect(await ann.query(p.supplierImpact, { branchId, supplierId })).toMatchObject({ organizationWide: false, openOrders: 1 });
+  await owner.mutation(p.editSupplier, { ...deactivate, operationKey: key() });
+  expect((await ann.query(p.suppliers, { branchId, status: 'all', search: 'Coastal Supply', ...page })).page[0].status).toBe('inactive');
   expect(await code(ann.mutation(p.issuePurchaseOrder, { orderId: draft.id as Id<'purchaseOrders'>, expectedRevision: draft.revision!, operationKey: key() }))).toBe('SUPPLIER_INACTIVE');
-  await receive(issued, 3);
+  const [line] = await t.run(ctx => ctx.db.query('purchaseOrderLines').withIndex('by_orderId_and_sort', q => q.eq('orderId', issued)).take(1));
+  await ann.mutation(p.receivePurchaseOrder, {
+    orderId: issued, expectedIssuedRevision: 1, lines: [{ orderLineId: line._id, accepted: 3 }], operationKey: key(),
+  });
   expect(await onHand()).toBe(3);
+  expect((await ann.query(p.supplierImpact, { branchId, supplierId })).openOrders).toBe(0);
+  expect((await owner.query(p.supplierImpact, { branchId, supplierId })).openOrders).toBe(1);
 });
 
 it('requires a reason and an explicit bypass to receive without an order while orders are open', async () => {
@@ -327,12 +402,12 @@ it('keys each return and reversal by its own command, so return → reverse → 
   const orderId = await directOrder(5);
   const receipt = await receive(orderId, 5);
   const receiptLineId = (await ann.query(p.receipt, { receiptId: receipt.id as Id<'supplierReceipts'> })).lines[0]._id;
-  const first = await ann.mutation(p.supplierReturn, { receiptLineId, quantity: 2, reason: 'Damaged', operationKey: key() });
+  const first = await ann.mutation(p.supplierReturn, { receiptLineId, quantity: 2, outcome: 'credit_expected', reason: 'Damaged', operationKey: key() });
   expect(await onHand()).toBe(3);
   await ann.mutation(p.reverseReturn, { adjustmentId: first.id as Id<'supplierReceiptAdjustments'>, quantity: 2, reason: 'Never left', operationKey: key() });
   expect(await onHand()).toBe(5);
   // Same quantity and reason as the first return: a counter-derived key would collide and silently replay it.
-  const args = { receiptLineId, quantity: 2, reason: 'Damaged', operationKey: key() };
+  const args = { receiptLineId, quantity: 2, outcome: 'credit_expected' as const, reason: 'Damaged', operationKey: key() };
   const second = await ann.mutation(p.supplierReturn, args);
   expect(second.movementIds![0]).not.toBe(first.movementIds![0]);
   expect(await onHand()).toBe(3);
@@ -398,7 +473,7 @@ it('posts per-line lot evidence for tracked receipts and traces returns, reversa
   const base = { orderId, expectedIssuedRevision: 1 };
   expect(await code(ann.mutation(p.receivePurchaseOrder, { ...base, lines: [{ orderLineId, accepted: 4 }], operationKey: key() }))).toBe('STOCK_LOT_REQUIRED');
   expect(await code(ann.mutation(p.receivePurchaseOrder, {
-    ...base, lines: [{ orderLineId, accepted: 0, rejected: 1, rejectReason: 'Torn', lotReceipt: { code: 'A1', expiresAt: Date.now() + 86_400_000 } }], operationKey: key(),
+    ...base, lines: [{ orderLineId, accepted: 0, rejected: 1, rejectReasonCode: 'damaged', rejectReason: 'Torn', lotReceipt: { code: 'A1', expiresAt: Date.now() + 86_400_000 } }], operationKey: key(),
   }))).toBe('INVALID_LOT_EVIDENCE');
   const expiresAt = Date.now() + 30 * 86_400_000;
   const receipt = await ann.mutation(p.receivePurchaseOrder, { ...base, lines: [{ orderLineId, accepted: 4, lotReceipt: { code: ' A1 ', expiresAt } }], operationKey: key() });
@@ -408,9 +483,9 @@ it('posts per-line lot evidence for tracked receipts and traces returns, reversa
   expect(await lotOnHand()).toBe(4);
 
   const receiptLineId = (await ann.query(p.receipt, { receiptId: receipt.id as Id<'supplierReceipts'> })).lines[0]._id;
-  expect(await code(ann.mutation(p.supplierReturn, { receiptLineId, quantity: 2, reason: 'Damaged', lotAllocations: [{ lotId: lot._id, quantity: 1 }], operationKey: key() })))
+  expect(await code(ann.mutation(p.supplierReturn, { receiptLineId, quantity: 2, outcome: 'credit_expected', reason: 'Damaged', lotAllocations: [{ lotId: lot._id, quantity: 1 }], operationKey: key() })))
     .toBe('INVALID_LOT_EVIDENCE');
-  const ret = await ann.mutation(p.supplierReturn, { receiptLineId, quantity: 2, reason: 'Damaged', lotAllocations: [{ lotId: lot._id, quantity: 2 }], operationKey: key() });
+  const ret = await ann.mutation(p.supplierReturn, { receiptLineId, quantity: 2, outcome: 'credit_expected', reason: 'Damaged', lotAllocations: [{ lotId: lot._id, quantity: 2 }], operationKey: key() });
   expect(await lotOnHand()).toBe(2);
   await ann.mutation(p.reverseReturn, { adjustmentId: ret.id as Id<'supplierReceiptAdjustments'>, quantity: 2, reason: 'Never left', operationKey: key() });
   expect(await lotOnHand()).toBe(4);
@@ -458,7 +533,7 @@ it('links a follow-up receipt only for the explicitly chosen item and the correc
   const base = { orderId, expectedIssuedRevision: 1 };
   // Reject-only, unrelated positive lines on the same order, short or mismatched quantities cannot close it.
   expect(await code(ann.mutation(p.receivePurchaseOrder, {
-    ...base, followUp, reason: 'Still wrong', lines: [{ orderLineId: lineA._id, accepted: 0, rejected: 2, rejectReason: 'Still wrong' }], operationKey: key(),
+    ...base, followUp, reason: 'Still wrong', lines: [{ orderLineId: lineA._id, accepted: 0, rejected: 2, rejectReasonCode: 'wrong_item', rejectReason: 'Still wrong' }], operationKey: key(),
   }))).toBe('FOLLOW_UP_EMPTY');
   expect(await code(ann.mutation(p.receivePurchaseOrder, { ...base, followUp, lines: [{ orderLineId: lineB._id, accepted: 3 }], operationKey: key() })))
     .toBe('FOLLOW_UP_EMPTY');
@@ -652,7 +727,7 @@ it('pages printable revisions and receipt adjustments', async () => {
   expect(second.page.map(row => row.revision)).toEqual([1]);
   const receipt = await receive(orderId, 5);
   const receiptLineId = (await ann.query(p.receipt, { receiptId: receipt.id as Id<'supplierReceipts'> })).lines[0]._id;
-  for (let i = 0; i < 3; i++) await ann.mutation(p.supplierReturn, { receiptLineId, quantity: 1, reason: `Damaged ${i}`, operationKey: key() });
+  for (let i = 0; i < 3; i++) await ann.mutation(p.supplierReturn, { receiptLineId, quantity: 1, outcome: 'credit_expected', reason: `Damaged ${i}`, operationKey: key() });
   const adjustments = await ann.query(p.receiptAdjustments, { receiptId: receipt.id as Id<'supplierReceipts'>, paginationOpts: { numItems: 2, cursor: null } });
   expect(adjustments.page.map(row => row.reason)).toEqual(['Damaged 2', 'Damaged 1']);
   expect(adjustments.isDone).toBe(false);
@@ -960,8 +1035,15 @@ it('finds an older request and order by reference with branch and requester visi
     .toMatchObject({ request: { _id: requestId }, order: null });
   expect(await ann.query(p.purchaseReference, { branchId, reference: order.reference }))
     .toMatchObject({ request: null, order: { _id: orderId } });
-  expect(await cat.query(p.purchaseReference, { branchId, reference: request.reference })).toEqual({ request: null, order: null });
-  expect(await ann.query(p.purchaseReference, { branchId, reference: 'PO-HIDDEN' })).toEqual({ request: null, order: null });
+  expect(await cat.query(p.purchaseReference, { branchId, reference: request.reference })).toEqual({ request: null, order: null, requests: [], orders: [] });
+  expect(await ann.query(p.purchaseReference, { branchId, reference: 'PO-HIDDEN' })).toEqual({ request: null, order: null, requests: [], orders: [] });
+  // P38: the 5-character code at the end of a printed reference, or the reference start, lists matches (≤ 10) at the branch.
+  const byCode = await ann.query(p.purchaseReference, { branchId, reference: order.reference.slice(-5).toLowerCase() });
+  expect(byCode.orders.map(row => row._id)).toContain(orderId);
+  const byPrefix = await ann.query(p.purchaseReference, { branchId, reference: 'PO-NEW' });
+  expect(byPrefix.orders).toHaveLength(10);
+  expect(byPrefix.orders.every(row => row.reference.startsWith('PO-NEW'))).toBe(true);
+  expect((await ann.query(p.purchaseReference, { branchId, reference: 'PO-HID' })).orders).toEqual([]);
   expect(await code(ann.query(p.purchaseReference, { branchId: otherBranchId, reference: 'PO-HIDDEN' }))).toBe('STOCK_FORBIDDEN');
 
   const searchOrders = (search: string) => ann.query(p.orders, { branchId, view: { kind: 'openSearch', search }, ...page });
@@ -1013,4 +1095,71 @@ it('normalizes URL filter IDs and resolves the supplier name independently of or
   expect(await resolve(supplierId, variantId)).toEqual({ variantId: null, supplier: null });
   expect(await resolve(variantId, supplierId)).toEqual({ variantId, supplier: { id: supplierId, name: 'Coastal Supply' } });
   expect(await code(ann.query(p.queueFilter, { branchId: otherBranchId, supplier: supplierId }))).toBe('STOCK_FORBIDDEN');
+});
+
+it('finds supplier terms and activity, defaults dates, and snapshots the terms on issue', async () => {
+  const { t, ann, cat, branchId, supplierId, variantId } = await setup();
+  const current = (await ann.query(p.suppliers, { branchId, status: 'active', search: 'supply', ...page })).page[0];
+  await ann.mutation(p.editSupplier, { branchId, supplierId, expectedRevision: current.revision,
+    name: current.name, phone: '081-234-5678', email: 'Orders@Example.com', leadTimeDays: 0, paymentTerms: 'Net 30', operationKey: key() });
+  const matches = await ann.query(p.supplierMatches, { branchId, name: 'Coastal Supply Co.' });
+  expect(matches.map(row => row._id)).toContain(supplierId);
+  expect(await code(ann.mutation(p.addSupplier, {
+    branchId, name: 'Another Company', phone: '+66 (81) 234 5678', operationKey: key(),
+  }))).toBe('SIMILAR_SUPPLIER');
+  const emailMatches = await ann.query(p.supplierMatches, { branchId, name: '', email: 'orders@example.COM' });
+  expect(emailMatches.map(row => row._id)).toContain(supplierId);
+  expect(emailMatches[0]).not.toHaveProperty('emailKey');
+  const draft = await ann.mutation(p.saveOrder, { branchId, supplierId, operationKey: key(),
+    lines: [{ variantId, quantity: 2, unitCost: 5000 }] });
+  const orderId = draft.id as Id<'purchaseOrders'>;
+  expect((await t.run(ctx => ctx.db.get(orderId)))?.expectedDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  await ann.mutation(p.issuePurchaseOrder, { orderId, expectedRevision: draft.revision!, operationKey: key() });
+  expect((await ann.query(p.orderRevision, { orderId, revision: 1 })).supplier.paymentTerms).toBe('Net 30');
+  const [line] = await t.run(ctx => ctx.db.query('purchaseOrderLines').withIndex('by_orderId_and_sort', q => q.eq('orderId', orderId)).take(1));
+  const receipt = await ann.mutation(p.receivePurchaseOrder, {
+    orderId, expectedIssuedRevision: 1, lines: [{ orderLineId: line._id, accepted: 1, rejected: 1, rejectReasonCode: 'damaged', rejectReason: 'Damaged' }], operationKey: key(),
+  });
+  expect((await ann.query(p.receipts, { branchId, supplierId, ...page })).page[0]._id).toBe(receipt.id);
+  const summary = (await cat.query(p.suppliers, { branchId, status: 'active', includeActivity: true, ...page })).page[0];
+  expect(summary.openOrders).toBe(1);
+  expect(summary.lastDeliveryAt).toBeGreaterThan(0);
+  expect(summary).toMatchObject({ datedDeliveries: 1, onTimeDeliveries: 1, rejectedUnits: 1 });
+  expect(summary).not.toHaveProperty('paymentTerms');
+});
+
+
+it('backfills supplier activity and contacts in bounded, repeatable batches', async () => {
+  const { t, ann, branchId, supplierId, directOrder } = await setup();
+  const source = internal.commerce.purchasing.backfillSupplierData;
+  const orderId = await directOrder(2);
+  await t.run(async ctx => {
+    const order = omit((await ctx.db.get(orderId))!, ['_id', '_creationTime', 'supplierActivityApplied']);
+    for (let index = 0; index < 104; index++) {
+      await ctx.db.insert('purchaseOrders', { ...order, note: 'x'.repeat(100_000) });
+    }
+    await ctx.db.patch(supplierId, { phone: '081 234 5678', phoneKey: undefined, contactKeysApplied: undefined });
+    await ctx.db.insert('supplierReceipts', {
+      branchId, supplierId, kind: 'direct', reference: 'GR-legacy', createdAt: Date.now(),
+      lineCount: 1, acceptedUnits: 2, rejectedUnits: 3, heldUnits: 0, actorKey: 'ann', actorLabel: 'Ann', revision: 1,
+    });
+  });
+  const directory = { branchId, status: 'active' as const, includeActivity: true, ...page };
+  const pending = (await ann.query(p.suppliers, directory)).page[0];
+  expect(pending.activityPending).toBe(true);
+  expect(pending.openOrders).toBeUndefined();
+  expect(await t.mutation(source, { source: 'orders', dryRun: true })).toEqual({ processed: 5, isDone: false });
+  expect((await ann.query(p.suppliers, directory)).page[0].openOrders).toBeUndefined();
+  for (let index = 0; index < 21; index++) {
+    expect((await t.mutation(source, { source: 'orders' })).isDone).toBe(index === 20);
+  }
+  expect(await t.mutation(source, { source: 'orders' })).toEqual({ processed: 0, isDone: true });
+  expect(await t.mutation(source, { source: 'receipts' })).toEqual({ processed: 1, isDone: true });
+  expect(await t.mutation(source, { source: 'receipts' })).toEqual({ processed: 0, isDone: true });
+  expect(await t.mutation(source, { source: 'contacts' })).toEqual({ processed: 1, isDone: true });
+  const ready = (await ann.query(p.suppliers, directory)).page[0];
+  expect(ready).toMatchObject({ activityPending: false, openOrders: 105, rejectedUnits: 3, datedDeliveries: 0 });
+  expect(ready.lastDeliveryAt).toBeGreaterThan(0);
+  expect((await ann.query(p.supplierMatches, { branchId, name: '', phone: '+66812345678' })).map(row => row._id))
+    .toContain(supplierId);
 });

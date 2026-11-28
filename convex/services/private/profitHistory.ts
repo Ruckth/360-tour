@@ -66,7 +66,7 @@ export async function periodCustomerHistory(
       children.set(row.mergedInto, group);
     }
     for (const id of aliases) for (const source of children.get(id) ?? []) aliases.add(source);
-    const limit = Math.min(1000, 2 * ids.size);
+    const limit = Math.min(4_000, 2 * ids.size);
     const budget = readBudget(ctx);
     if (!budget.range()) throw new ReadBudgetExceeded();
     const past = await ctx.db

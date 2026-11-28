@@ -20,6 +20,7 @@ export type DeskPart = ReturnablePart & {
   voucherSale: boolean;
   /** Goods on an open room-charge handover: what stays with the guest stays charged (D17). */
   custody: boolean;
+  packed?: boolean;
 };
 
 const left = (item: { units: number; returnedUnits: number }) => Math.max(0, item.units - item.returnedUnits);
@@ -86,7 +87,7 @@ export function returnableParts(view: OrderView): DeskPart[] {
         part: { kind: "cancelPackage", lineId: line._id }, maxUnits: 1, needsDisposition: false,
       };
       return [whole, ...contents.map(({ content, kind, units }): DeskPart => ({
-        ...base, kind, partKey: `${line._id}:${content.contentKey}`, label: content.label, contentKey: content.contentKey,
+        ...base, kind, packed: Boolean(content.packedLots), partKey: `${line._id}:${content.contentKey}`, label: content.label, contentKey: content.contentKey,
         part: { kind: "content", lineId: line._id, contentKey: content.contentKey, units }, maxUnits: units, needsDisposition: kind === "goods",
       }))];
     }
@@ -98,7 +99,7 @@ export function returnableParts(view: OrderView): DeskPart[] {
     return [{
       ...base, kind: goods ? "goods" : voucher ? "voucher" : "units", partKey: line._id, label: snapshot.label, contentKey: null,
       part: { kind: "line", lineId: line._id, units: voucher ? 1 : units }, maxUnits: voucher ? 1 : units, needsDisposition: goods,
-      voucherSale: voucher,
+      voucherSale: voucher, packed: Boolean(snapshot.contents[0]?.packedLots),
     }];
   });
 }

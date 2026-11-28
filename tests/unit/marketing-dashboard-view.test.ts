@@ -7,6 +7,7 @@ import { DashboardView, DEFAULT_REQUEST, type DashboardViewProps, type ReportSta
 import { MarketingAccessProvider, type MarketingRole } from "@/components/admin/marketing/MarketingAccess";
 import { marketingCapabilities } from 'convex/shared/marketingAccess';
 import { csvMeta, salesCsv, summaryCsv } from "@/components/admin/marketing/dashboard/report-csv";
+import { exportStamp } from "@/components/admin/marketing/marketing-format";
 import { buildBreakdown, businessTotals, prepareReport } from "@/components/admin/marketing/dashboard/report-model";
 import type { ReportData, ReportSale } from "convex/shared/marketingReport";
 import { dashboardReport, FIXTURE_TODAY, firstRunReport, emptyRangeReport, PROPERTIES, untrackedReport } from "../browser/marketing-dashboard-data";
@@ -207,7 +208,7 @@ describe("dashboard view", () => {
     click(buttons(/^Facebook · November escape.*Show links$/)[0]);
     expect(document.querySelector('nav[aria-label="Drill-down"]')?.textContent).toContain("Facebook · November escape");
     click(buttons(/^\/a1.*Show sales$/)[0]);
-    expect(text()).toContain("2 refunds reduced net by ฿9,600.");
+    expect(text()).toContain("2 sales with refunds reduced net by ฿9,600.");
     // /a1 is one of the campaign's two links: the list shows the whole campaign's ROAS, not /a1's net over the campaign's spend.
     expect(text()).toContain("Whole campaign ROAS 8.10× · ฿364,600 net ÷ ฿45,000 spend.");
     click(buttons("Open booking")[0]);
@@ -223,7 +224,7 @@ describe("dashboard view", () => {
     expect(text()).not.toContain("left out of conversion");
     click(buttons("About booked rate")[0]);
     const tip = document.querySelector('[role="tooltip"]')!;
-    expect(tip.textContent).toContain("Paid bookings from tracked visits ÷ tracked visits in these dates, including consented direct visits.");
+    expect(tip.textContent).toContain("Distinct consented sessions behind paid web stays ÷ consented sessions started in the range, including direct visits.");
     expect(tip.textContent).not.toContain("never in conversion");
   });
 
@@ -245,11 +246,11 @@ describe("dashboard view", () => {
 
   it("opens attribution options directly from the touch model label", () => {
     render(ready());
-    const shortcut = buttons("Last touch")[0];
+    const shortcut = buttons("Attribution · Last touch")[0];
     click(shortcut);
     expect(text()).toContain("Attribution");
     click(buttons("First touch")[0]);
-    expect(shortcut.textContent).toBe("First touch");
+    expect(shortcut.textContent).toBe("Attribution · First touch");
   });
 
   it("asks for a new read when the basis changes", () => {
@@ -267,12 +268,119 @@ describe("dashboard view", () => {
     expect(text()).not.toContain("Consented sessions");
   });
 
+  it("keeps a 200-sale drill on its original cash snapshot and reveals 25 rows at a time", () => {
+    const data = dashboardReport({ basis: "cash" });
+    const template = data.sales.find((sale) => sale.last)!;
+    const sales = Array.from({ length: 200 }, (_, index) => ({ ...template, id: `receipt-${index}` }));
+    const range = { ...DEFAULT_REQUEST(FIXTURE_TODAY), basis: "cash" as const, breakdown: "link" as const };
+    const report: ReportData = { ...data, asOf: Date.UTC(2026, 10, 9, 12), sales, events: sales.map((sale) => ({ saleId: sale.id, day: data.from, amount: 10000, kind: "payment" })) };
+    render(ready(report), { request: range }, "viewer");
+    click(buttons(/Show sales$/).find((button) => button.textContent?.includes(`/${template.last?.slug}`))!);
+    const sheet = () => [...document.querySelectorAll('[role="dialog"]')].at(-1)!;
+    expect(sheet().querySelectorAll("li")).toHaveLength(25);
+    expect(sheet().textContent).toContain("Showing 25 of 200 sales");
+    expect(sheet().textContent).toContain(exportStamp(report.asOf));
+    expect(sheet().textContent?.match(/Read-only sale details/g)).toHaveLength(1);
+    expect(sheet().querySelector('a[href^="/admin/hotel"]')).toBeNull();
+    const next = buttons("Show next 25 sales")[0];
+    next.focus();
+    click(next);
+    expect(sheet().querySelectorAll("li")).toHaveLength(50);
+    expect(document.activeElement).toBe(next);
+
+    const newer = { ...report, asOf: report.asOf + 60_000, events: [...report.events, { saleId: sales[0].id, kind: "refund" as const, day: data.to, amount: 5000 }] };
+    render(ready(newer), { request: range }, "viewer");
+    expect(sheet().textContent).toContain(exportStamp(report.asOf));
+    expect(sheet().textContent).toContain("Showing 50 of 200 sales");
+    expect(sheet().textContent).not.toContain(exportStamp(newer.asOf));
+    expect(sheet().textContent).not.toContain("with refunds reduced net");
+    for (let index = 0; index < 6; index++) click(next);
+    expect(sheet().querySelectorAll("li")).toHaveLength(200);
+    expect(sheet().textContent).toContain("Showing 200 of 200 sales");
+    expect(document.activeElement).toBe(next);
+  });
+
+  it.each(["admin", "manager", "finance", "marketer", "viewer"] as const)("applies the sales export policy for %s", async (role) => {
+    const report = dashboardReport();
+    const first = report.sales[0];
+    first.label = "Private guest name";
+    first.ref = "Private booking reference";
+    render(ready(report), {}, role);
+    click(buttons("Export CSV")[0]);
+    const choice = [...document.querySelectorAll("label")].find((label) => label.textContent?.includes("All filtered sales"));
+    click(choice!);
+    const preview = document.querySelector('[data-testid="csv-preview"]')!;
+    const columns = [...preview.querySelectorAll("th")].map((cell) => cell.textContent);
+    const identifiable = role === "admin" || role === "manager" || role === "finance";
+    expect(columns.includes("Id")).toBe(identifiable);
+    expect(columns.includes("Guest or customer")).toBe(identifiable);
+    expect(text()).toContain(identifiable ? "This export includes sale identifiers" : "This export contains operational fields only");
+    const url = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:report");
+    const anchor = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    try {
+      click(buttons("Download CSV")[0]);
+      const file = url.mock.calls[0]?.[0];
+      if (!(file instanceof Blob)) throw new Error("The CSV download was not created.");
+      const contents = await file.text();
+      expect(contents.includes("Private guest name")).toBe(identifiable);
+      expect(contents.includes("Private booking reference")).toBe(identifiable);
+      expect(contents.includes("Kind,Id,Reference,Guest or customer")).toBe(identifiable);
+    } finally {
+      anchor.mockRestore();
+      url.mockRestore();
+    }
+  });
+
+  it("moves the date inspector with ArrowDown and ArrowUp and updates its totals", () => {
+    const data = dashboardReport({ basis: "cash" });
+    const first = data.sales[0];
+    const report: ReportData = { ...data, sales: [first], events: [{ saleId: first.id, kind: "payment", day: data.from, amount: 101 }] };
+    render(ready(report), { request: { ...DEFAULT_REQUEST(FIXTURE_TODAY), basis: "cash" } });
+    click(buttons("Inspect dates")[0]);
+    const chart = document.querySelector('[aria-labelledby="chart-title"]')!;
+    const select = chart.querySelector("select")!;
+    const total = () => chart.querySelector('[role="status"]')?.textContent;
+    expect(select.value).toBe(data.from);
+    expect(total()).toContain("฿1.01");
+    act(() => { select.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true })); });
+    expect(select.value).toBe(select.options[1].value);
+    expect(total()).toBe("Total ฿0");
+    act(() => { select.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true, cancelable: true })); });
+    expect(select.value).toBe(data.from);
+    expect(total()).toContain("฿1.01");
+  });
+
+  it("keeps fractional signed Finance values when rendering the chart's data table", () => {
+    const data = dashboardReport({ basis: "cash" });
+    const first = data.sales[0];
+    const report: ReportData = { ...data, sales: [first], events: [
+      { saleId: first.id, kind: "payment", day: data.from, amount: 101 },
+      { saleId: first.id, kind: "refund", day: data.to, amount: 1 },
+    ] };
+    render(ready(report), { request: { ...DEFAULT_REQUEST(FIXTURE_TODAY), basis: "cash" } });
+    const chart = document.querySelector('[aria-labelledby="chart-title"]')!;
+    const chartButton = (label: string) => [...chart.querySelectorAll("button")].find((button) => button.textContent?.trim() === label)!;
+    click(chartButton("Net"));
+    click(chartButton("Show as table"));
+    expect(chart.textContent).toContain("฿1.01");
+    expect(chart.textContent).toContain("-฿0.01");
+  });
+
+  it("offers campaign setup when the report has no active spend campaign", () => {
+    const report = dashboardReport({ spend: false });
+    render(ready({ ...report, campaigns: report.campaigns.map((campaign) => ({ ...campaign, status: "paused" })) }));
+    expect(buttons("Add spend")).toHaveLength(0);
+    expect(text()).toContain("Add spend is available for active campaigns");
+  });
+
   it("previews the CSV in the export dialog", () => {
     render(ready());
     click(buttons("Export CSV")[0]);
-    const preview = document.querySelector('[data-testid="csv-preview"]')?.textContent ?? "";
-    expect(preview).toContain("# Time zone: Asia/Bangkok");
-    expect(preview).toContain("Row,Source,");
+    const preview = document.querySelector('[data-testid="csv-preview"]')!;
+    expect([...preview.querySelectorAll("th")].slice(0, 2).map(cell => cell.textContent)).toEqual(["Row", "Source"]);
+    expect(preview.querySelectorAll("tbody tr")).toHaveLength(3);
+    expect(document.querySelector("details:has(summary)")?.textContent).toBeDefined();
+    expect(text()).toContain("# Time zone: Asia/Bangkok");
   });
 
   it("shows loading, error with retry, first run, empty range, truncated and non-THB states", () => {
@@ -287,7 +395,7 @@ describe("dashboard view", () => {
     expect(calls.retry).toBe(1);
 
     render(ready(firstRunReport()));
-    expect(text()).toContain("See which links bring paid bookings");
+    expect(text()).toContain("No marketing activity in the selected dates");
     expect(document.querySelector('a[href="/admin/marketing/campaigns"]')).not.toBeNull();
 
     render(ready(emptyRangeReport()));
@@ -323,7 +431,7 @@ describe("dashboard view", () => {
       ...overrides,
     });
     const exportButton = () => buttons("Export CSV")[0];
-    const onboardingOnly = "Paid bookings and money from those links show up here";
+    const onboardingOnly = "No marketing activity in the selected dates";
     const baht = (n: number) => `฿${(n / 100).toLocaleString("en-US")}`;
 
     it("shows the business totals and export, with setup guidance alongside", () => {
@@ -344,8 +452,9 @@ describe("dashboard view", () => {
       expect(text()).toContain(baht(net));
       expect(exportButton().disabled).toBe(false);
       click(exportButton());
-      const preview = document.querySelector('[data-testid="csv-preview"]')?.textContent ?? "";
-      expect(preview.split(/\r?\n/).find((line) => line.startsWith("total,Business total"))).toMatch(new RegExp(`,${net / 100}(,|$)`));
+      const preview = document.querySelector('[data-testid="csv-preview"]')!;
+      const total = [...preview.querySelectorAll<HTMLTableRowElement>("tbody tr")].find((row) => row.cells[1]?.textContent === "Business total");
+      expect(total?.cells[preview.querySelectorAll("th").length - 3].textContent).toBe(String(net / 100));
     });
 
     it("counts a Finance range with only a refund as activity", () => {
@@ -369,7 +478,7 @@ describe("dashboard view", () => {
       expect(exportButton().disabled).toBe(false);
     });
 
-    it("keeps the setup-only welcome for a business with no activity at all", () => {
+    it("describes no activity in the selected dates with independent setup guidance", () => {
       render(ready(firstRunReport()));
       expect(text()).toContain(onboardingOnly);
       expect(text()).not.toContain("Business total");
@@ -412,7 +521,7 @@ describe("dashboard view", () => {
       render(ready(report));
       expect(text()).toContain("These figures are incomplete");
       expect(text()).not.toContain("No sales or tracked visits in these dates.");
-      expect(text()).not.toContain("Paid bookings and money from those links show up here");
+      expect(text()).not.toContain("No marketing activity in the selected dates");
       expect(text()).toContain("may still have sales");
       // Its CSV says it is incomplete, so it can still be exported.
       expect(buttons("Export CSV")[0].disabled).toBe(false);

@@ -3,6 +3,7 @@ import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
 import { readBudget, reserveWrites } from '../../lib/readBudget';
 import { sha256 } from '../../shared/displayTokens';
+import { readBinPositions } from './stockAvailability';
 import { prepareStockExpansionMovement } from './stockExpansionLedger';
 
 export type StockMovementInput = {
@@ -152,7 +153,12 @@ async function applyStockMovement(ctx: MutationCtx, input: StockMovementInput, f
   if (input.clearRecount && (kind !== 'count' || after < 0)) {
     stockError('INVALID_RECOUNT', 'Only a verified count can clear Needs recount.');
   }
-  const finalizeExpansion = await prepareStockExpansionMovement(ctx, input, before, after);
+  const bins = delta < 0 ? await readBinPositions(ctx, { branchId, variantId }) : undefined;
+  const unassigned = bins?.length ? before - bins.reduce((sum, position) => sum + position.quantity, 0) : null;
+  if (unassigned !== null && unassigned + delta < 0) {
+    stockError('STOCK_BIN_SHORTAGE', 'Move the affected units to Unassigned before posting this movement.');
+  }
+  const finalizeExpansion = await prepareStockExpansionMovement(ctx, input, before, after, bins);
   const needsRecount = input.clearRecount ? false : input.markRecount || after < 0 || stock?.needsRecount;
   if (delta || input.clearRecount || input.markRecount || !stock) {
     const patch = { onHand: after, revision: (stock?.revision ?? 0) + 1, needsRecount };

@@ -243,6 +243,7 @@ export function EditorSheet({
   header,
   children,
   onOpenAutoFocus,
+  onCloseAutoFocus,
 }: {
   open: boolean;
   onClose: () => void;
@@ -250,10 +251,11 @@ export function EditorSheet({
   header: ReactNode;
   children: ReactNode;
   onOpenAutoFocus?: (event: Event) => void;
+  onCloseAutoFocus?: (event: Event) => void;
 }) {
   return (
     <Sheet open={open} onOpenChange={(next) => !next && onClose()}>
-      <SheetContent side="right" onOpenAutoFocus={onOpenAutoFocus} className={wide ? "w-full max-w-none gap-0 p-0 pt-0 pb-0 sm:max-w-2xl" : "w-full max-w-none gap-0 p-0 pt-0 pb-0 sm:max-w-xl"}>
+      <SheetContent side="right" onOpenAutoFocus={onOpenAutoFocus} onCloseAutoFocus={onCloseAutoFocus} className={wide ? "w-full max-w-none gap-0 p-0 pt-0 pb-0 sm:max-w-2xl" : "w-full max-w-none gap-0 p-0 pt-0 pb-0 sm:max-w-xl"}>
         <SheetHeader className="border-b border-border px-5 pb-4 pt-[max(1rem,env(safe-area-inset-top))] sm:px-6">{header}</SheetHeader>
         {children}
       </SheetContent>
@@ -305,6 +307,9 @@ export function SheetForm({
   error,
   submitLabel,
   readOnly = false,
+  compact = false,
+  footerSummary,
+  submitDisabled = false,
   children,
 }: {
   onSubmit: (event: FormEvent) => void;
@@ -313,27 +318,34 @@ export function SheetForm({
   error: string;
   submitLabel: string;
   readOnly?: boolean;
+  compact?: boolean;
+  footerSummary?: ReactNode;
+  /** Keep the submit button disabled (e.g. until something changed). */
+  submitDisabled?: boolean;
   children: ReactNode;
 }) {
   return (
     <form noValidate onSubmit={event => { if (readOnly) event.preventDefault(); else onSubmit(event); }} className="flex min-h-0 flex-1 flex-col">
-      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6">
-        <div className="grid gap-6">{children}</div>
+      <div className={cn("min-h-0 flex-1 overflow-y-auto px-5 sm:px-6", compact ? "py-4" : "py-5")}>
+        <div className={cn("grid", compact ? "gap-4" : "gap-6")}>{children}</div>
       </div>
-      <div className="grid gap-2 border-t border-border px-5 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-6">
+      <div className="grid gap-2 border-t border-border px-5 pt-3.5 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-6">
         {error ? (
           <p role="alert" className="text-sm font-medium text-destructive">
             {error}
           </p>
         ) : null}
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <Button type="button" variant="outline" onClick={onCancel} className="flex-1 sm:flex-none">
-            {readOnly ? "Close" : "Cancel"}
-          </Button>
-          {!readOnly ? <Button type="submit" disabled={saving} className="flex-1 sm:flex-none">
-            {saving ? <Spinner label="Saving" className="text-current" /> : null}
-            {submitLabel}
-          </Button> : null}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          {footerSummary ? <div className="min-w-0 text-xs text-muted-foreground">{footerSummary}</div> : <span />}
+          <div className="flex flex-1 flex-wrap items-center justify-end gap-2 sm:flex-none">
+            <Button type="button" variant="outline" onClick={onCancel} className="flex-1 sm:flex-none">
+              {readOnly ? "Close" : "Cancel"}
+            </Button>
+            {!readOnly ? <Button type="submit" disabled={saving || submitDisabled} className="flex-1 sm:flex-none">
+              {saving ? <Spinner label="Saving" className="text-current" /> : null}
+              {submitLabel}
+            </Button> : null}
+          </div>
         </div>
       </div>
     </form>

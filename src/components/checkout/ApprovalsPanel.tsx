@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "@/platform/link";
 import { useNow } from "@/lib/staff-bookings";
 import { ShieldCheck } from "lucide-react";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
@@ -28,10 +29,10 @@ export const APPROVALS_AREA = "data-approvals";
  * The admin header's staff controls: a Cashier badge for cashiers; for managers and owners, the
  * Approvals button with the number waiting, which opens the approvals panel over the current page.
  */
-export function CheckoutStaffControls() {
+export function CheckoutStaffControls({ heldGoods = null }: { heldGoods?: string | null } = {}) {
   const access = useStaffAccess();
   if (access.role === "cashier") return <Badge variant="outline" data-testid="cashier-badge">Cashier</Badge>;
-  if (access.capabilities.approve) return <ApprovalsButton />;
+  if (access.capabilities.approve) return <ApprovalsButton heldGoods={heldGoods} />;
   return null;
 }
 
@@ -58,7 +59,7 @@ export const AUTO_PAGES = 5;
  * Only the selected request reads its detail, so the panel never fans out to orders or details.
  * "Nothing waiting" shows only once the server says there are no more pages.
  */
-function ApprovalsButton() {
+function ApprovalsButton({ heldGoods }: { heldGoods: string | null }) {
   const backend = useCheckoutBackend();
   const page = backend.usePendingApprovals();
   // Returns and edits need the commerce readers; without them only today's requests show.
@@ -135,6 +136,7 @@ function ApprovalsButton() {
           >
             <ShieldCheck aria-hidden className="size-4" />
             Approvals
+            {heldGoods ? <span className="sr-only">, {heldGoods}</span> : null}
             {count ? (
               <span data-approval-count="" className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-gold px-1.5 text-xs font-semibold text-navy font-sans tabular-nums">
                 {count}{more ? "+" : ""}
@@ -161,6 +163,7 @@ function ApprovalsButton() {
             <DialogTitle data-approvals-title="" tabIndex={-1} className="outline-none">Approvals</DialogTitle>
             <DialogDescription className="sr-only">Requests from cashiers waiting for a manager.</DialogDescription>
           </DialogHeader>
+          {heldGoods ? <Link href="/admin/stock/purchasing?tab=holds&holdStatus=open" onClick={() => setOpen(false)} className="min-h-11 content-center text-sm font-medium underline">Held goods · {heldGoods}</Link> : null}
           <p role="status" className={notice ? "rounded-lg bg-muted/60 px-3 py-2 text-sm" : "sr-only"}>{notice}</p>
           {page.status === "LoadingFirstPage" ? (
             <Spinner label="Loading approvals" />

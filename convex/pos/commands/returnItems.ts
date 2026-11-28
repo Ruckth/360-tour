@@ -23,7 +23,7 @@ export const lots = staffQuery({
   },
   returns: v.array(v.object({
     lineId: v.id('orderLines'), contentKey: v.optional(v.string()), tracked: v.boolean(),
-    lots: v.array(returnLotOption), unavailable: v.optional(v.literal(true)),
+    lots: v.array(returnLotOption), packed: v.optional(v.literal(true)), unavailable: v.optional(v.literal(true)),
   })),
   handler: (ctx, { orderId, parts }) => readReturnLots(ctx, ctx.staff, orderId, parts),
 });

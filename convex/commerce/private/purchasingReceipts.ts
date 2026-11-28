@@ -2,20 +2,23 @@
  * Supplier receipts post accepted units only. Rejections stay due; excess or substitute goods are held outside On hand.
  * Corrections and supplier returns are linked records; together they never exceed a line's accepted quantity.
  */
+import { projectSupplierDelivery, projectSupplierOrder } from './supplierActivity';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
 import type { StaffActor } from '../../auth/model';
 import { reserveWrites } from '../../lib/readBudget';
 import {
-  PURCHASING_MAX_LINES, PURCHASING_MOVEMENT_KINDS, type CorrectionBlock, type CorrectionResult, type FollowUpLink, type PurchasingResult, type ReceiptLotEvidence,
-  type UndercountLink,
+  PURCHASING_MAX_LINES, PURCHASING_MOVEMENT_KINDS, PURCHASING_TEXT_LIMITS, type CorrectionBlock, type CorrectionResult, type FollowUpLink, type PurchasingResult, type ReceiptLotEvidence,
+  type RejectReasonCode, type UndercountLink,
 } from '../purchasingTables';
+import type { Infer } from 'convex/values';
+import type { holdHandoff, returnOutcome } from '../purchasingTables';
 import {
-  actorOf, adjustIncoming, correctionClosesRemainder, deliveryKey, expectRevision, fail, ISSUED_OPEN, lineDue, lotEvidence, newReference,
+  actorOf, adjustIncoming, correctionClosesRemainder, deliveryKey, expectRevision, fail, ISSUED_OPEN, lineAcceptedValue, lineDue, lotEvidence, newReference,
   orderSummary, purchasingAccess, quantity, readItem, readOrderLines, reason, receiptEntryCount, receiptLotCount, recordEvent, requireActiveItems,
-  requireSupplier, runOnce, shiftCommitment, supplierSnapshot, text, uniqueBy, unitCost, type Actor,
+  refreshFullyOrdered, requireSupplier, seedLegacyLine, runOnce, shiftCommitment, supplierSnapshot, text, uniqueBy, unitCost, type Actor,
 } from './purchasingCore';
-import { readStockAccess } from './stockAccess';
+import { readStockAccess, type StockPermission } from './stockAccess';
 import { allocationCounts, stockAvailability, type Allocation } from './stockAvailability';
 import { readLotMovement } from './stockExpansionLedger';
 import { readStockLevel, stockRead, writeNewReceiptMovement, writeStockMovement } from './stockLedger';
@@ -26,6 +29,8 @@ type DuplicateConfirmation = { receiptId: Id<'supplierReceipts'>; reason: string
 type ReceiptCommon = {
   deliveryReference?: string; note?: string; confirmDuplicate?: DuplicateConfirmation;
   followUp?: FollowUpLink; undercount?: UndercountLink; held?: HeldInput[]; operationKey: string;
+  /** Supplier invoice total in satang, for a price-variance check against Σ accepted × recorded unit cost. Stock is unchanged. */
+  invoiceTotal?: number;
 };
 
 export type ReceiveOrderArgs = ReceiptCommon & {
@@ -34,7 +39,10 @@ export type ReceiveOrderArgs = ReceiptCommon & {
   expectedIssuedRevision: number;
   reason?: string;
   lines: ({
-    orderLineId: Id<'purchaseOrderLines'>; accepted: number; rejected?: number; rejectReason?: string; holdId?: Id<'purchaseHolds'>;
+    orderLineId: Id<'purchaseOrderLines'>; accepted: number; rejected?: number; rejectReason?: string;
+    /** Fixed rejection cause; required with rejected units. */
+    rejectReasonCode?: RejectReasonCode;
+    holdId?: Id<'purchaseHolds'>;
   } & ReceiptLotEvidence)[];
 };
 
@@ -156,6 +164,16 @@ async function planHeld(ctx: MutationCtx, held: HeldInput[] | undefined): Promis
   })));
 }
 
+/** Optional supplier invoice total (satang) on the receipt header. */
+function invoiceField(value: number | undefined) {
+  if (value === undefined) return {};
+  if (!Number.isSafeInteger(value) || value < 0 || value > PURCHASING_MAX_INVOICE_TOTAL) {
+    fail('INVALID_INVOICE_TOTAL', 'Enter the invoice total as an amount from ฿0.');
+  }
+  return { invoiceTotal: value };
+}
+const PURCHASING_MAX_INVOICE_TOTAL = 1_000_000_000_000_00;
+
 type ReceiptHeader = Omit<Doc<'supplierReceipts'>, '_id' | '_creationTime' | 'reference' | 'lineCount' | 'acceptedUnits' | 'rejectedUnits' | 'heldUnits' | 'actorKey' | 'actorLabel' | 'createdAt' | 'revision'>;
 type ReceiptLinePlan = Omit<Doc<'supplierReceiptLines'>, '_id' | '_creationTime' | 'receiptId' | 'movementId' | 'corrected' | 'returned'> & {
   lot: ReceiptLotEvidence;
@@ -165,6 +183,7 @@ type ReceiptLinePlan = Omit<Doc<'supplierReceiptLines'>, '_id' | '_creationTime'
 async function postReceipt(
   ctx: MutationCtx, actor: Actor, header: ReceiptHeader, lines: ReceiptLinePlan[], held: HeldPlan[],
   followUp: FollowUp | undefined, movementKind: 'purchase_receipt' | 'direct_receipt', undercount?: Doc<'supplierReceipts'>,
+  issuedExpectedDate?: string,
 ) {
   const now = Date.now();
   const reference = await newReference(ctx, 'supplierReceipts', 'GR', now);
@@ -173,13 +192,19 @@ async function postReceipt(
   const heldUnits = held.reduce((sum, line) => sum + line.quantity, 0);
   if (acceptedUnits + rejectedUnits + heldUnits === 0) fail('EMPTY_RECEIPT', 'Enter accepted, rejected or held units.');
   const kind = header.kind === 'order' && acceptedUnits === 0 && heldUnits === 0 ? 'rejected' : header.kind;
-  if (kind === 'rejected' && !header.reason && !lines.some(line => line.rejectReason)) fail('REASON_REQUIRED', 'Enter why the delivery was rejected.');
+  if (kind === 'rejected' && !header.reason && !lines.some(line => line.rejectReason || line.rejectReasonCode)) fail('REASON_REQUIRED', 'Enter why the delivery was rejected.');
   reserveWrites(ctx, 2 + lines.length * 2 + held.length);
+  // Value at each line's recorded unit cost; absent when no accepted line is priced.
+  const priced = lines.filter(line => line.accepted > 0 && line.unitCost !== undefined);
+  const acceptedValue = priced.length ? priced.reduce((sum, line) => sum + line.accepted * line.unitCost!, 0) : undefined;
   const receiptId = await ctx.db.insert('supplierReceipts', {
     ...header, kind, reference, lineCount: lines.length, acceptedUnits, rejectedUnits, heldUnits,
+    ...(acceptedValue !== undefined ? { acceptedValue } : {}),
+    hasExceptions: rejectedUnits > 0 || heldUnits > 0,
     followUp: followUp?.link, ...(undercount ? { undercountOf: undercount._id, undercountOfReference: undercount.reference } : {}),
-    ...actor, createdAt: now, revision: 1,
+    ...actor, createdAt: now, revision: 1, supplierActivityApplied: true,
   });
+  await projectSupplierDelivery(ctx, { ...header, createdAt: now, rejectedUnits, undercountOf: undercount?._id }, issuedExpectedDate);
   // Each line is a distinct item with a fresh source key (the new line id; retries replay through runOnce), so line
   // inserts, their movements and per-item balances run concurrently; holds too. Promise.all keeps line order.
   const posted = await Promise.all(lines.map(async ({ lot, ...line }) => {
@@ -197,6 +222,7 @@ async function postReceipt(
     branchId: header.branchId, status: 'open', receiptId, receiptReference: reference,
     orderId: header.orderId, orderReference: header.orderReference, variantId: line.variantId, item: line.item,
     quantity: line.quantity, acceptedQuantity: 0, reason: line.reason, createdAt: now, revision: 1,
+    ...(header.supplierId ? { supplierId: header.supplierId } : {}), ...(header.supplier ? { supplierName: header.supplier.name } : {}),
   })));
   if (undercount) {
     await recordEvent(ctx, actor, {
@@ -223,10 +249,35 @@ async function postReceipt(
   return { id: receiptId, reference, movementIds } satisfies PurchasingResult;
 }
 
-export async function receiveOrder(ctx: MutationCtx, staff: StaffActor, args: ReceiveOrderArgs) {
+/**
+ * Separation of duties: the issuer of the order's current revision receiving it. With the branch policy on, that person
+ * cannot post the receipt (even when someone else created the draft); with it off the receipt posts and is flagged.
+ */
+async function checkSeparation(ctx: MutationCtx, order: Doc<'purchaseOrders'>, actor: Actor, separate: boolean) {
+  const revision = await stockRead(ctx, () => ctx.db.query('purchaseOrderRevisions').withIndex('by_orderId_and_revision', q =>
+    q.eq('orderId', order._id).eq('revision', order.issuedRevision)).unique());
+  const issuer = revision?.actorKey ?? order.createdByKey;
+  if (issuer !== actor.actorKey) return false;
+  if (separate) fail('SELF_RECEIPT', 'This branch separates ordering and receiving. Ask another receiver to post this delivery.');
+  return true;
+}
+
+/**
+ * Units a line may accept beyond due under the branch over-delivery tolerance: a whole percent of its net ordered
+ * quantity, less any overage already accepted. Only a line with units still due can take an overage, and ordered and
+ * request commitments never change, so source-request approvals stay the limit. 0 when the policy is off.
+ */
+export function overReceiptAllowance(line: Pick<Doc<'purchaseOrderLines'>, 'ordered' | 'cancelled' | 'accepted'>, tolerancePct: number) {
+  const net = line.ordered - line.cancelled;
+  if (tolerancePct <= 0 || lineDue(line) <= 0) return 0;
+  return Math.max(0, Math.floor((net * tolerancePct) / 100) - Math.max(0, line.accepted - net));
+}
+
+/** Receive against an order. Held goods accepted from the queue post through here under the buyer permission. */
+export async function receiveOrder(ctx: MutationCtx, staff: StaffActor, args: ReceiveOrderArgs, permission: StockPermission = 'receiver') {
   const order = await ctx.db.get(args.orderId);
   if (!order || order.status === 'deleted' || order.status === 'draft') fail('ORDER_NOT_FOUND', 'This order is not open for receiving.');
-  await purchasingAccess(ctx, staff, order.branchId, 'receiver');
+  const access = await purchasingAccess(ctx, staff, order.branchId, permission);
   const sourceAdjustment = await authorizeFollowUp(ctx, staff, order.branchId, args.followUp);
   const actor = actorOf(staff);
   const { operationKey, ...payload } = args;
@@ -235,22 +286,36 @@ export async function receiveOrder(ctx: MutationCtx, staff: StaffActor, args: Re
     if (order.issuedRevision !== args.expectedIssuedRevision) {
       fail('STALE', 'The order was amended. Review the latest quantities.', { issuedRevision: order.issuedRevision });
     }
+    const selfReceipt = await checkSeparation(ctx, order, actor, access.policy.separateReceiving);
     receiptEntryCount(args.lines, args.held);
     receiptLotCount(args.lines);
     uniqueBy(args.lines, line => line.orderLineId, 'Each order line can appear once per receipt.');
     const orderLines = new Map((await readOrderLines(ctx, order._id)).map(line => [line._id, line]));
     const headerReason = text(args.reason, 'Reason', 'reason');
     const plans: ReceiptLinePlan[] = [];
-    const overs: { orderLineId: Id<'purchaseOrderLines'>; due: number }[] = [];
+    const overs: { orderLineId: Id<'purchaseOrderLines'>; due: number; allowance: number }[] = [];
+    const tolerancePct = access.policy.overReceiptTolerancePct;
+    let overDeliveredUnits = 0;
+    const overDelivered: { field: string; before: number; after: number }[] = [];
     const holds = new Map<Id<'purchaseHolds'>, Doc<'purchaseHolds'>>();
     for (const input of args.lines) {
       const line = orderLines.get(input.orderLineId);
       if (!line) fail('ORDER_LINE_NOT_FOUND', 'A line is not on this order.');
       quantity(input.accepted, 'Accepted quantity', 0);
       const rejected = quantity(input.rejected ?? 0, 'Rejected quantity', 0);
-      const rejectReason = text(input.rejectReason, 'Rejection reason', 'reason') ?? (rejected ? headerReason : undefined);
-      if (rejected && !rejectReason) fail('REASON_REQUIRED', 'Enter why goods were rejected.', { orderLineId: line._id });
-      if (input.accepted > lineDue(line)) overs.push({ orderLineId: line._id, due: lineDue(line) });
+      // Every new rejection records a fixed code so supplier quality can be counted; free text stays optional detail.
+      const rejectReasonCode = rejected ? input.rejectReasonCode : undefined;
+      const rejectReason = text(input.rejectReason, 'Rejection reason', 'reason');
+      if (rejected && !rejectReasonCode) fail('REASON_REQUIRED', 'Choose why goods were rejected.', { orderLineId: line._id });
+      const due = lineDue(line);
+      if (input.accepted > due) {
+        const allowance = overReceiptAllowance(line, tolerancePct);
+        if (input.accepted > due + allowance) overs.push({ orderLineId: line._id, due, allowance });
+        else {
+          overDeliveredUnits += input.accepted - due;
+          overDelivered.push({ field: `lines[${line.item.productName}].overDelivered`, before: due, after: input.accepted });
+        }
+      }
       if (input.holdId) {
         if (holds.has(input.holdId)) fail('DUPLICATE_LINE', 'Each held goods record can be accepted once per receipt.');
         const hold = await ctx.db.get(input.holdId);
@@ -267,12 +332,17 @@ export async function receiveOrder(ctx: MutationCtx, staff: StaffActor, args: Re
       plans.push({
         branchId: order.branchId, orderId: order._id, orderLineId: line._id, holdId: input.holdId,
         ...(input.holdId && input.accepted > 0 ? { holdQuantity: input.accepted } : {}),
-        variantId: line.variantId, item: line.item, accepted: input.accepted, rejected, rejectReason, unitCost: line.unitCost,
+        variantId: line.variantId, item: line.item, accepted: input.accepted, rejected, rejectReason,
+        ...(rejectReasonCode ? { rejectReasonCode } : {}), unitCost: line.unitCost,
         lot: lotEvidence(input, input.accepted),
       });
     }
     // Competing receipts: whoever commits second sees the reduced due quantity here.
-    if (overs.length) fail('OVER_RECEIPT', 'More units than are still due. Review the latest quantities or hold the excess.', { lines: overs });
+    if (overs.length) {
+      fail('OVER_RECEIPT', tolerancePct > 0
+        ? 'More units than the over-delivery tolerance allows. Hold the excess for the buyer.'
+        : 'More units than are still due. Review the latest quantities or hold the excess.', { lines: overs, tolerancePct });
+    }
     // A replacement order owns its hold: units accepted for the held item come out of the hold first, even when the
     // client did not name it, so held goods are never posted twice. The rest of the line counts as new goods.
     if (order.forHoldId && !holds.has(order.forHoldId)) {
@@ -285,6 +355,13 @@ export async function receiveOrder(ctx: MutationCtx, staff: StaffActor, args: Re
         holds.set(hold._id, hold);
       }
     }
+    // Pre-feature lines get their accepted value and rejections from receipt evidence before this receipt adds to them.
+    for (const plan of plans) {
+      const line = orderLines.get(plan.orderLineId!)!;
+      if ((plan.accepted > 0 || plan.rejected > 0) && (line.acceptedValue === undefined || line.rejected === undefined)) {
+        orderLines.set(line._id, await seedLegacyLine(ctx, line));
+      }
+    }
     const held = await planHeld(ctx, args.held);
     const undercount = await checkUndercount(ctx, order.branchId, args.undercount, { orderId: order._id, lines: plans }, args.followUp);
     const key = deliveryKey(args.deliveryReference);
@@ -292,23 +369,41 @@ export async function receiveOrder(ctx: MutationCtx, staff: StaffActor, args: Re
     const followUp = await checkFollowUp(ctx, order.branchId, args.followUp, sourceAdjustment, { supplierId: order.supplierId, orderId: order._id, lines: plans });
     const result = await postReceipt(ctx, actor, {
       branchId: order.branchId, kind: 'order', orderId: order._id, orderReference: order.reference, orderRevision: order.issuedRevision,
-      supplierId: order.supplierId, supplier: order.supplier,
+      supplierId: order.supplierId, supplier: order.supplier, ...(selfReceipt ? { selfReceipt: true } : {}),
       deliveryReference: text(args.deliveryReference, 'Delivery reference', 'reference'), deliveryKey: key,
       ...duplicate, reason: duplicate ? `${duplicate.duplicateReason}${headerReason ? ` · ${headerReason}` : ''}` : headerReason,
-      note: text(args.note, 'Note', 'note'),
-    }, plans, held, followUp, PURCHASING_MOVEMENT_KINDS.receive, undercount);
+      note: text(args.note, 'Note', 'note'), ...invoiceField(args.invoiceTotal),
+      ...(overDeliveredUnits ? { overDeliveredUnits } : {}),
+    }, plans, held, followUp, PURCHASING_MOVEMENT_KINDS.receive, undercount, order.expectedDate);
+    if (overDeliveredUnits) {
+      await recordEvent(ctx, actor, {
+        entity: 'order', entityId: order._id, branchId: order.branchId, action: 'over_delivered', relatedId: result.id,
+        reason: `${overDeliveredUnits} over-delivered unit${overDeliveredUnits === 1 ? '' : 's'} accepted within the ${tolerancePct}% tolerance`,
+        changes: overDelivered.slice(0, 20),
+      });
+    }
 
-    reserveWrites(ctx, plans.length + holds.size + 1);
+    reserveWrites(ctx, plans.length + holds.size + 2);
     const accepted = plans.filter(plan => plan.accepted > 0);
-    // Each plan is a distinct order line and item, so line and On order updates are independent.
-    await Promise.all(accepted.map(async plan => {
+    // Each plan is a distinct order line and item, so line and On order updates are independent. Accepted value is
+    // kept at this receipt's recorded unit cost (P18); rejections are counted on the line and stay due (P15).
+    await Promise.all(plans.filter(plan => plan.accepted > 0 || plan.rejected > 0).map(async plan => {
       const line = orderLines.get(plan.orderLineId!)!;
       const total = line.accepted + plan.accepted;
       const open = lineDue({ ...line, accepted: total }) > 0;
-      orderLines.set(line._id, { ...line, accepted: total, open });
-      await ctx.db.patch(line._id, { accepted: total, open });
-      await adjustIncoming(ctx, order.branchId, line.variantId, -plan.accepted);
+      const patch = {
+        accepted: total, open, rejected: (line.rejected ?? 0) + plan.rejected,
+        acceptedValue: lineAcceptedValue(line) + plan.accepted * (plan.unitCost ?? 0),
+      };
+      orderLines.set(line._id, { ...line, ...patch });
+      await ctx.db.patch(line._id, patch);
+      // On order falls only by units that were due; a tolerated overage was never on order.
+      if (plan.accepted > 0) await adjustIncoming(ctx, order.branchId, line.variantId, -Math.min(plan.accepted, lineDue(line)));
     }));
+    if (selfReceipt) {
+      await recordEvent(ctx, actor, { entity: 'order', entityId: order._id, branchId: order.branchId, action: 'self_received', relatedId: result.id,
+        changes: [{ field: 'issuedRevision', before: null, after: order.issuedRevision }] });
+    }
     for (const plan of accepted) {
       if (plan.holdId && plan.holdQuantity) {
         const hold = holds.get(plan.holdId)!;
@@ -332,7 +427,7 @@ export async function receiveOrder(ctx: MutationCtx, staff: StaffActor, args: Re
     }
     // The order's lines were read once (≤ 50) and updated in memory; no second range for the summary.
     const summary = orderSummary(order, [...orderLines.values()]);
-    await ctx.db.patch(order._id, { ...summary, revision: order.revision + 1, updatedAt: Date.now() });
+    await ctx.db.patch(order._id, { ...summary, ...await projectSupplierOrder(ctx, order, summary.phase), revision: order.revision + 1, updatedAt: Date.now() });
     return result;
   });
 }
@@ -371,6 +466,7 @@ export async function receiveDirect(ctx: MutationCtx, staff: StaffActor, args: R
       deliveryReference: text(args.deliveryReference, 'Delivery reference', 'reference'), deliveryKey: key,
       ...duplicate,
       reason: duplicate ? `${why} · ${duplicate.duplicateReason}` : why, note: text(args.note, 'Note', 'note'),
+      ...invoiceField(args.invoiceTotal),
     }, args.lines.map((line, i) => ({
       branchId: args.branchId, variantId: line.variantId, item: reads[i].item, accepted: line.accepted, rejected: 0, unitCost: line.unitCost,
       lot: lots[i],
@@ -573,15 +669,23 @@ export async function correctReceiptLine(ctx: MutationCtx, staff: StaffActor, ar
       const orderLine = (await ctx.db.get(line.orderLineId))!;
       const closed = await correctionClosesRemainder(ctx, order);
       const accepted = orderLine.accepted - args.quantity;
+      // Units that become due again: a tolerated overage was never due, so removing it reopens nothing.
+      const reopened = lineDue({ ...orderLine, accepted }) - lineDue(orderLine);
+      // Removed units leave the accepted value at the cost the receipt recorded for them (zero if it recorded none). A
+      // pre-feature line is reconstructed from its receipt lines, which already include this correction.
+      const acceptedValue = orderLine.acceptedValue === undefined
+        ? (await seedLegacyLine(ctx, orderLine)).acceptedValue!
+        : Math.max(0, orderLine.acceptedValue - args.quantity * (line.unitCost ?? 0));
       if (closed) {
-        await ctx.db.patch(orderLine._id, { accepted, corrected: orderLine.corrected + args.quantity, cancelled: orderLine.cancelled + args.quantity });
-        await shiftCommitment(ctx, orderLine.requestLineId, -args.quantity);
+        await ctx.db.patch(orderLine._id, { accepted, acceptedValue, corrected: orderLine.corrected + args.quantity, cancelled: orderLine.cancelled + reopened });
+        await shiftCommitment(ctx, orderLine.requestLineId, -reopened);
+        await refreshFullyOrdered(ctx, order.requestId);
       } else {
-        await ctx.db.patch(orderLine._id, { accepted, corrected: orderLine.corrected + args.quantity, open: true });
-        await adjustIncoming(ctx, order.branchId, orderLine.variantId, args.quantity);
+        await ctx.db.patch(orderLine._id, { accepted, acceptedValue, corrected: orderLine.corrected + args.quantity, open: reopened > 0 || orderLine.open });
+        if (reopened) await adjustIncoming(ctx, order.branchId, orderLine.variantId, reopened);
       }
       const summary = orderSummary(order, await readOrderLines(ctx, order._id));
-      await ctx.db.patch(order._id, { ...summary, revision: order.revision + 1, updatedAt: Date.now() });
+      await ctx.db.patch(order._id, { ...summary, ...await projectSupplierOrder(ctx, order, summary.phase), revision: order.revision + 1, updatedAt: Date.now() });
       await recordEvent(ctx, actor, { entity: 'order', entityId: order._id, branchId: order.branchId, action: 'receipt_corrected', reason: why,
         relatedId: adjustmentId, changes: [
           { field: 'status', before: order.status, after: summary.status },
@@ -596,8 +700,11 @@ export async function correctReceiptLine(ctx: MutationCtx, staff: StaffActor, ar
   });
 }
 
+export type ReturnOutcome = Infer<typeof returnOutcome>;
 export type SupplierReturnArgs = {
   receiptLineId: Id<'supplierReceiptLines'>; quantity: number; reason: string; supplierReference?: string;
+  /** What the supplier will do: credit note, replacement (a linked order follows) or nothing. */
+  outcome: ReturnOutcome;
   lotAllocations?: ReceiptLotEvidence['lotAllocations']; operationKey: string;
 };
 
@@ -627,9 +734,12 @@ export async function returnToSupplier(ctx: MutationCtx, staff: StaffActor, args
       kind: 'supplier_return', branchId: line.branchId, receiptId: receipt._id, receiptLineId: line._id,
       orderId: line.orderId, orderLineId: line.orderLineId, variantId: line.variantId, item: line.item,
       quantity: args.quantity, reason: why, supplierReference: text(args.supplierReference, 'Supplier reference', 'reference'),
-      reversedQuantity: 0, movementId, ...actor, createdAt: Date.now(),
+      returnOutcome: args.outcome, reversedQuantity: 0, movementId, ...actor, createdAt: Date.now(),
     });
-    await recordEvent(ctx, actor, { entity: 'receipt', entityId: receipt._id, branchId: receipt.branchId, action: 'returned_to_supplier', reason: why, relatedId: adjustmentId });
+    await recordEvent(ctx, actor, {
+      entity: 'receipt', entityId: receipt._id, branchId: receipt.branchId, action: 'returned_to_supplier', reason: why, relatedId: adjustmentId,
+      changes: [{ field: 'returnOutcome', before: null, after: args.outcome }],
+    });
     return { id: adjustmentId, reference: receipt.reference, movementIds: [movementId] };
   });
 }
@@ -666,6 +776,15 @@ export async function reverseSupplierReturn(ctx: MutationCtx, staff: StaffActor,
     quantity(args.quantity, 'Reversal quantity');
     const why = reason(args.reason);
     if (args.quantity > original.quantity - original.reversedQuantity) fail('EXCEEDS_ELIGIBLE', 'Reverse at most the units returned.');
+    // Goods that never left cannot also be replaced: a live replacement order must be cancelled or closed first.
+    const replacements = await stockRead(ctx, () => ctx.db.query('purchaseOrders').withIndex('by_replacesReturnId', q =>
+      q.eq('replacesReturnId', original._id)).take(5));
+    const replacement = replacements.find(order => order.status !== 'deleted' && order.status !== 'cancelled');
+    if (replacement) {
+      fail('REPLACEMENT_EXISTS', `Replacement order ${replacement.reference} exists for this return. Cancel or close it before reversing the return.`, {
+        orderId: replacement._id, reference: replacement.reference,
+      });
+    }
     const { line, receipt } = await loadReceiptLine(ctx, original.receiptLineId);
     const { movementId } = await writeStockMovement(ctx, {
       branchId: original.branchId, variantId: original.variantId, delta: args.quantity, kind: PURCHASING_MOVEMENT_KINDS.returnReversal,
@@ -730,7 +849,31 @@ export async function updateReceiptDetails(ctx: MutationCtx, staff: StaffActor, 
   });
 }
 
-export type DeclineHoldArgs = { holdId: Id<'purchaseHolds'>; expectedRevision: number; reason: string; operationKey: string };
+export type HoldHandoff = Infer<typeof holdHandoff>;
+export type DeclineHoldArgs = {
+  holdId: Id<'purchaseHolds'>; expectedRevision: number; reason: string; operationKey: string;
+  /** Optional: carrier, supplier return reference, collection note; `collected` stamps the pickup time now. */
+  handoff?: { carrier?: string; returnReference?: string; note?: string; collected?: boolean };
+};
+
+/** Bounded handoff evidence; `undefined` when nothing was entered. Keeps an earlier pickup time. */
+function handoffOf(input: DeclineHoldArgs['handoff'], previous?: HoldHandoff): HoldHandoff | undefined {
+  if (!input) return previous;
+  const next: HoldHandoff = {
+    ...previous,
+    ...(input.carrier !== undefined ? { carrier: text(input.carrier, 'Carrier', 'contact') } : {}),
+    ...(input.returnReference !== undefined ? { returnReference: text(input.returnReference, 'Return reference', 'reference') } : {}),
+    ...(input.note !== undefined ? { note: text(input.note, 'Collection note', 'note') } : {}),
+  };
+  if (input.collected && !next.collectedAt) next.collectedAt = Date.now();
+  const kept = Object.fromEntries(Object.entries(next).filter(([, value]) => value !== undefined)) as HoldHandoff;
+  return Object.keys(kept).length ? kept : undefined;
+}
+
+const handoffChanges = (before: HoldHandoff | undefined, after: HoldHandoff | undefined) =>
+  (['carrier', 'returnReference', 'note', 'collectedAt'] as const)
+    .filter(field => before?.[field] !== after?.[field])
+    .map(field => ({ field: `handoff.${field}`, before: before?.[field] ?? null, after: after?.[field] ?? null }));
 
 /** The buyer records that held goods were declined and returned before acceptance. On hand is unchanged. */
 export async function declineHold(ctx: MutationCtx, staff: StaffActor, args: DeclineHoldArgs) {
@@ -743,12 +886,91 @@ export async function declineHold(ctx: MutationCtx, staff: StaffActor, args: Dec
     expectRevision(hold.revision, args.expectedRevision, 'held goods record');
     if (hold.status !== 'open') fail('HOLD_NOT_OPEN', 'These held goods were already resolved.');
     const why = reason(args.reason);
+    const handoff = handoffOf(args.handoff);
     reserveWrites(ctx, 1);
     await ctx.db.patch(hold._id, {
       status: 'declined', resolution: why, resolvedByKey: actor.actorKey, resolvedByLabel: actor.actorLabel,
-      resolvedAt: Date.now(), revision: hold.revision + 1,
+      resolvedAt: Date.now(), revision: hold.revision + 1, ...(handoff ? { handoff } : {}),
     });
-    await recordEvent(ctx, actor, { entity: 'hold', entityId: hold._id, branchId: hold.branchId, action: 'declined', reason: why });
+    await recordEvent(ctx, actor, {
+      entity: 'hold', entityId: hold._id, branchId: hold.branchId, action: 'declined', reason: why,
+      ...(handoff ? { changes: handoffChanges(undefined, handoff) } : {}),
+    });
     return { id: hold._id, revision: hold.revision + 1 };
+  });
+}
+
+export type RecordHoldHandoffArgs = {
+  holdId: Id<'purchaseHolds'>; expectedRevision: number; operationKey: string;
+  handoff: NonNullable<DeclineHoldArgs['handoff']>;
+};
+
+/** Record or complete the pickup evidence of declined goods (the decision and the pickup can be separate handoffs). */
+export async function recordHoldHandoff(ctx: MutationCtx, staff: StaffActor, args: RecordHoldHandoffArgs) {
+  const hold = await ctx.db.get(args.holdId);
+  if (!hold) fail('HOLD_NOT_FOUND', 'These held goods no longer exist.');
+  await purchasingAccess(ctx, staff, hold.branchId, 'buyer');
+  const actor = actorOf(staff);
+  const { operationKey, ...payload } = args;
+  return runOnce(ctx, actor, hold.branchId, 'hold.handoff', operationKey, payload, async () => {
+    expectRevision(hold.revision, args.expectedRevision, 'held goods record');
+    if (hold.status !== 'declined') fail('HOLD_STATE', 'Handoff details apply to declined held goods.');
+    const handoff = handoffOf(args.handoff, hold.handoff);
+    const changes = handoffChanges(hold.handoff, handoff);
+    if (!changes.length) fail('NO_CHANGES', 'Enter the carrier, return reference, note or pickup.');
+    reserveWrites(ctx, 1);
+    await ctx.db.patch(hold._id, { handoff, revision: hold.revision + 1 });
+    await recordEvent(ctx, actor, { entity: 'hold', entityId: hold._id, branchId: hold.branchId, action: 'handoff_recorded', changes });
+    return { id: hold._id, revision: hold.revision + 1 };
+  });
+}
+
+export type AcceptHoldArgs = {
+  holdId: Id<'purchaseHolds'>; expectedRevision: number; operationKey: string;
+  /** Units to accept; defaults to the hold's unresolved units capped by the order line's due units. */
+  quantity?: number;
+  lotReceipt?: ReceiptLotEvidence['lotReceipt'];
+};
+
+/** The open line of a hold's own order that can still take its units, or null. */
+export async function openLineForHold(ctx: QueryCtx, hold: Doc<'purchaseHolds'>) {
+  if (!hold.orderId || hold.status !== 'open') return null;
+  const order = await stockRead(ctx, () => ctx.db.get(hold.orderId!));
+  if (!order || order.branchId !== hold.branchId) return null;
+  if (!ISSUED_OPEN.includes(order.status)) return { order, line: null };
+  const lines = await stockRead(ctx, () => ctx.db.query('purchaseOrderLines').withIndex('by_orderId_and_variantId', q =>
+    q.eq('orderId', order._id).eq('variantId', hold.variantId)).take(5));
+  return { order, line: lines.find(row => lineDue(row) > 0) ?? null };
+}
+
+/**
+ * Accept held goods from the queue onto their own open order: the buyer's decision posts the units into On hand on a
+ * receipt against the order line still due (the same path as receiving with the hold selected), and the hold closes as
+ * accepted once all its units are in. Closed orders or lines with nothing due must use an amendment or a linked order.
+ */
+export async function acceptHoldOnOrder(ctx: MutationCtx, staff: StaffActor, args: AcceptHoldArgs) {
+  const hold = await ctx.db.get(args.holdId);
+  if (!hold) fail('HOLD_NOT_OPEN', 'These held goods no longer exist.');
+  await purchasingAccess(ctx, staff, hold.branchId, 'buyer');
+  const actor = actorOf(staff);
+  const { operationKey, ...payload } = args;
+  return runOnce(ctx, actor, hold.branchId, 'hold.accept', operationKey, payload, async commandId => {
+    expectRevision(hold.revision, args.expectedRevision, 'held goods record');
+    if (hold.status !== 'open') fail('HOLD_NOT_OPEN', 'These held goods were already resolved.');
+    const target = await openLineForHold(ctx, hold);
+    if (!target) fail('HOLD_NO_ORDER', 'These held goods have no order. Create a linked order or decline them.');
+    if (!target.line) {
+      fail('HOLD_NO_DUE', 'The order has no units of this item still due. Amend the order or create a linked order.', { orderId: target.order._id });
+    }
+    const remaining = hold.quantity - hold.acceptedQuantity;
+    const units = args.quantity ?? Math.min(remaining, lineDue(target.line));
+    quantity(units, 'Accepted quantity');
+    if (units > remaining) fail('HOLD_EXCEEDED', 'Accept at most the held units.');
+    return receiveOrder(ctx, staff, {
+      orderId: target.order._id, expectedIssuedRevision: target.order.issuedRevision,
+      reason: `Accepted from held goods ${hold.receiptReference}`.slice(0, PURCHASING_TEXT_LIMITS.reason),
+      lines: [{ orderLineId: target.line._id, accepted: units, holdId: hold._id, ...(args.lotReceipt ? { lotReceipt: args.lotReceipt } : {}) }],
+      operationKey: `hold-accept:${commandId}`,
+    }, 'buyer');
   });
 }

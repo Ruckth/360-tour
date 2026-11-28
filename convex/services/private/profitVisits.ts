@@ -14,20 +14,19 @@ const zeroCosts = { staff: 0, materials: 0, tools: 0 };
 // Share single gets and index ranges across the period and the histories of its active customers.
 export async function profitVisits(ctx: QueryCtx, start: number, end: number) {
   const budget = readBudget(ctx);
-  const receipt = profitReceiptReader(ctx);
-  async function get<
-    T extends
-      | 'appointments'
-      | 'sessionUses'
-      | 'sessionGrants'
-      | 'orderLines'
-      | 'customers'
-      | 'serviceCostSchedules',
-  >(id: Id<T>) {
+  const get = budgetedGet(ctx);
+  async function lateCollections() {
     if (!budget.range()) throw new ReadBudgetExceeded();
-    const doc = await ctx.db.get(id);
-    if (doc && !budget.document(doc)) throw new ReadBudgetExceeded();
-    return doc;
+    const probe = await ctx.db.query('appointments').withIndex('by_status_and_end', (q) =>
+      q.eq('status', 'completed').lt('end', start),
+    ).take(1_001);
+    for (const visit of probe) if (!budget.document(visit)) throw new ReadBudgetExceeded();
+    if (probe.length < 1_001)
+      return probe.filter((visit) => visit.paidAt !== undefined && visit.paidAt >= start && visit.paidAt < end);
+    const paidInPeriod = await readRangeWithinBudget(
+      ctx, ctx.db.query('appointments').withIndex('by_paidAt', (q) => q.gte('paidAt', start).lt('paidAt', end)),
+    );
+    return paidInPeriod.filter((visit) => visit.end < start);
   }
   const visits = new Map<Id<'appointments'>, Visit>();
   const [delivered, adjustments, refundedVisits, restores, collections, completedReturns, redemptions] =
@@ -58,10 +57,7 @@ export async function profitVisits(ctx: QueryCtx, start: number, end: number) {
             q.gte('restoredCoverageAt', start).lt('restoredCoverageAt', end),
           ),
       ),
-      readRangeWithinBudget(
-        ctx,
-        ctx.db.query('appointments').withIndex('by_paidAt', (q) => q.gte('paidAt', start).lt('paidAt', end)),
-      ),
+      lateCollections(),
       readRangeWithinBudget(
         ctx,
         ctx.db
@@ -100,6 +96,63 @@ export async function profitVisits(ctx: QueryCtx, start: number, end: number) {
     if (visit && visit.status === 'completed' && visit.end < end) visits.set(visit._id, visit);
   }
 
+  return projectVisitFinance(ctx, start, end, visits);
+}
+
+/** Read one disjoint slice of completed visits and project its period evidence and history contributions. */
+export async function profitVisitPage(
+  ctx: QueryCtx,
+  start: number,
+  end: number,
+  cursor: string | null,
+  scan: { from?: number; to: number } = { to: end },
+) {
+  const budget = readBudget(ctx);
+  if (!budget.range()) throw new ReadBudgetExceeded();
+  const { page, isDone, continueCursor } = await ctx.db
+    .query('appointments')
+    .withIndex('by_status_and_end', (q) => {
+      const completed = q.eq('status', 'completed');
+      return scan.from === undefined ? completed.lt('end', scan.to) : completed.gte('end', scan.from).lt('end', scan.to);
+    })
+    .paginate({ cursor, numItems: 64, maximumRowsRead: 128, maximumBytesRead: 4 * 1024 * 1024 });
+  if (!isDone && (!page.length || continueCursor === cursor)) throw new ReadBudgetExceeded();
+  const visits = new Map<Id<'appointments'>, Visit>();
+  for (const visit of page) {
+    if (!budget.document(visit)) throw new ReadBudgetExceeded();
+    visits.set(visit._id, visit);
+  }
+  return { ...await projectVisitFinance(ctx, start, end, visits, true), cursor: isDone ? null : continueCursor };
+}
+
+function budgetedGet(ctx: QueryCtx) {
+  const budget = readBudget(ctx);
+  return async function get<
+    T extends
+      | 'appointments'
+      | 'sessionUses'
+      | 'sessionGrants'
+      | 'orderLines'
+      | 'customers'
+      | 'serviceCostSchedules',
+  >(id: Id<T>) {
+    if (!budget.range()) throw new ReadBudgetExceeded();
+    const doc = await ctx.db.get(id);
+    if (doc && !budget.document(doc)) throw new ReadBudgetExceeded();
+    return doc;
+  };
+}
+
+async function projectVisitFinance(
+  ctx: QueryCtx,
+  start: number,
+  end: number,
+  visits: Map<Id<'appointments'>, Visit>,
+  partialHistory = false,
+) {
+  const budget = readBudget(ctx);
+  const get = budgetedGet(ctx);
+  const receipt = profitReceiptReader(ctx);
   const people = new Map<Id<'customers'>, Doc<'customers'>>();
   async function person(id: Id<'customers'>) {
     const cached = people.get(id);
@@ -108,6 +161,21 @@ export async function profitVisits(ctx: QueryCtx, start: number, end: number) {
     if (!doc) throw new Error('A linked attendee is missing. Review the customer record.');
     people.set(id, doc);
     return doc;
+  }
+  const attendees = new Set<Id<'customers'>>();
+  for (const visit of visits.values()) {
+    const attendee = visit.attendeeId ?? visit.reportCustomerId;
+    if (attendee && visit.currency === 'THB') attendees.add(attendee);
+  }
+  // For large cohorts, replace thousands of single gets with one bounded scan.
+  // The remaining IDs still use exact gets so a partial probe cannot omit an attendee.
+  if (attendees.size >= 256) {
+    if (!budget.range()) throw new ReadBudgetExceeded();
+    const candidates = await ctx.db.query('customers').take(Math.min(4_000, attendees.size * 2));
+    for (const customer of candidates) {
+      if (!budget.document(customer)) throw new ReadBudgetExceeded();
+      if (attendees.has(customer._id)) people.set(customer._id, customer);
+    }
   }
   const mergedBy = mergeEligibility(ctx, end);
   async function canonical(id: Id<'customers'>) {
@@ -123,16 +191,15 @@ export async function profitVisits(ctx: QueryCtx, start: number, end: number) {
 
   // Only the attendee identifies a service customer. A payer or a matching name can belong to someone else.
   const customerIds = new Set<Id<'customers'>>();
-  for (const visit of visits.values()) {
-    const attendee = visit.attendeeId ?? visit.reportCustomerId;
-    if (attendee && visit.currency === 'THB') customerIds.add((await canonical(attendee))._id);
-  }
+  for (const attendee of attendees) customerIds.add((await canonical(attendee))._id);
   const histories = new Map<string, CustomerHistory>();
   for (const id of customerIds) {
     histories.set(id, { id, name: (await person(id)).name, lifetime: 0, firstDay: null });
   }
-  for (const visit of await periodCustomerHistory(ctx, customerIds, start, mergedBy, people))
-    visits.set(visit._id, visit);
+  if (!partialHistory) {
+    for (const visit of await periodCustomerHistory(ctx, customerIds, start, mergedBy, people))
+      visits.set(visit._id, visit);
+  }
   const schedules = new Map<string, Doc<'serviceCostSchedules'>[]>();
   const frozen = new Map<string, Doc<'serviceCostSchedules'>>();
   async function directCosts(visit: Visit, day: string): Promise<DirectCosts | null> {

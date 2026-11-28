@@ -11,7 +11,15 @@ export const marketingTables = {
 	// Marketing R4: grants bind an explicit email invitation to the authenticated canonical identity.
   serviceProfitViews: defineTable({
     owner: v.string(), from: v.string(), to: v.string(), named: v.boolean(), expiresAt: v.number(),
-  }).index('by_owner_range', ['owner', 'from', 'to', 'named']),
+    parentViewId: v.optional(v.id('serviceProfitViews')), scope: v.optional(v.string()),
+    assemblyState: v.optional(v.union(v.literal('building'), v.literal('failed'))),
+    assemblyKey: v.optional(v.string()),
+  }).index('by_owner_range', ['owner', 'from', 'to', 'named'])
+    .index('by_owner_range_parent', ['owner', 'from', 'to', 'named', 'parentViewId'])
+    .index('by_parent_scope', ['parentViewId', 'scope'])
+    .index('by_parent_expiry', ['parentViewId', 'expiresAt'])
+    .index('by_assembly_state', ['assemblyState'])
+    .index('by_owner_parent_expiry', ['owner', 'parentViewId', 'expiresAt']),
   serviceProfitViewChunks: defineTable({
     viewId: v.id('serviceProfitViews'), sequence: v.number(), payload: v.string(),
   }).index('by_view', ['viewId', 'sequence']),

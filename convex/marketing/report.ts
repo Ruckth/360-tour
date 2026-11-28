@@ -3,7 +3,7 @@ import { ConvexError, v } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
 import { marketingMutation, marketingQuery, publicMutation } from '../auth/model';
 import { canReadMarketingPersonalData } from '../shared/marketingPrivacy';
-import { couponRefusalProblemValidator, couponRefusalSurfaceValidator, reportBasisValidator, validateSpend, type CouponRefusalSummary, type ReportData, type ReportSpend } from '../shared/marketingReport';
+import { couponRefusalProblemValidator, couponRefusalSurfaceValidator, reportBasisValidator, reportDataValidator, validateSpend, type CouponRefusalSummary, type ReportSpend } from '../shared/marketingReport';
 import { normalizeCouponCode } from '../shared/offers';
 import { readRangeWithinBudget } from '../lib/readBudget';
 import { resortLocalParts } from '../shared/time';
@@ -14,14 +14,26 @@ import { readMarketingReport, reportSpend } from './reportRead';
 
 export const getReport = marketingQuery({
   permission: 'view',
+  returns: reportDataValidator,
 	args: { from: v.string(), to: v.string(), basis: reportBasisValidator },
-	handler: async (ctx, args): Promise<ReportData> => {
+	handler: async (ctx, args) => {
 		const access = ctx.marketing;
 		const report = await readMarketingReport(ctx, args);
-		if (!canReadMarketingPersonalData(access)) for (const sale of report.sales) {
-			sale.label = 'Guest';
-			if (sale.kind === 'stay') delete sale.ref;
-		}
+    if (!canReadMarketingPersonalData(access)) {
+      const ids = new Map<string, string>();
+      for (const [index, sale] of report.sales.entries()) {
+        const anonymousId = `sale-${index + 1}`;
+        ids.set(sale.id, anonymousId);
+        sale.id = anonymousId;
+        sale.label = 'Guest';
+        delete sale.ref;
+      }
+      report.events = report.events.flatMap(event => {
+        const saleId = ids.get(event.saleId);
+        return saleId ? [{ ...event, saleId }] : [];
+      });
+      for (const entry of report.spend) delete entry.note;
+    }
 		return report;
 	}
 });
@@ -31,7 +43,11 @@ export const listSpend = marketingQuery({
 	args: { campaignId: v.id('marketingCampaigns') },
 	handler: async (ctx, args): Promise<ReportSpend[]> => {
 		const rows = await readRangeWithinBudget(ctx, ctx.db.query('marketingSpend').withIndex('by_campaignId_and_from', q => q.eq('campaignId', args.campaignId)).order('desc'));
-		return rows.filter(r => r.deletedAt === undefined).sort((a, b) => b.createdAt - a.createdAt || b._creationTime - a._creationTime).map(reportSpend);
+		return rows.filter(r => r.deletedAt === undefined).sort((a, b) => b.createdAt - a.createdAt || b._creationTime - a._creationTime).map(row => {
+      const entry = reportSpend(row);
+      if (!canReadMarketingPersonalData(ctx.marketing)) delete entry.note;
+      return entry;
+    });
 	}
 });
 

@@ -44,33 +44,41 @@ export function NoAccessCard({ email, changed }: { email: string | null; changed
   );
 }
 
+/** Shares the authorized choices and branch-switch guard with the Stock workspace. */
+export function BranchChoices() {
+  const { branches, select } = useAdminBranch();
+  return (
+    <div className="grid gap-2" role="list">
+      {branches.map((branch) => (
+        <div role="listitem" key={branch.id}>
+          <button
+            type="button"
+            onClick={() => void select(branch.id)}
+            className="flex min-h-16 w-full items-center gap-3 rounded-xl border border-border bg-background px-4 py-3 text-left text-foreground transition-colors hover:border-gold/60 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <MapPin aria-hidden className="size-5 shrink-0 text-gold-text" />
+            <span className="grid min-w-0 flex-1 grid-cols-1 justify-items-start gap-1">
+              <span className="text-[15px] font-semibold">{branch.name}</span>
+              <BranchStatePill state={branch.state} className="max-w-full whitespace-normal" />
+            </span>
+            <ChevronRight aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /** First visit with two or more branches and no valid saved choice: choose once. */
 export function BranchChooser({ email }: { email: string | null }) {
-  const { branches, select } = useAdminBranch();
+  const { branches } = useAdminBranch();
   return (
     <GateCard title="Choose a branch to start">
       <p>
         You work at {branches.length} branches. Pick where to start. You can switch any time from the branch button in the
         sidebar or at the top of the screen.
       </p>
-      <div className="grid gap-2" role="list">
-        {branches.map((branch) => (
-          <div role="listitem" key={branch.id}>
-            <button
-              type="button"
-              onClick={() => void select(branch.id)}
-              className="flex min-h-16 w-full items-center gap-3 rounded-xl border border-border bg-background px-4 py-3 text-left text-foreground transition-colors hover:border-gold/60 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <MapPin aria-hidden className="size-5 shrink-0 text-gold-text" />
-              <span className="grid min-w-0 flex-1 grid-cols-1 justify-items-start gap-1">
-                <span className="text-[15px] font-semibold">{branch.name}</span>
-                <BranchStatePill state={branch.state} className="max-w-full whitespace-normal" />
-              </span>
-              <ChevronRight aria-hidden className="size-4 shrink-0 text-muted-foreground" />
-            </button>
-          </div>
-        ))}
-      </div>
+      <BranchChoices />
       <p className="text-xs">{email ? `Signed in as ${email}. ` : ""}We remember your choice on this device only.</p>
       <SignOutButton redirectUrl="/admin"><Button variant="ghost">Sign out</Button></SignOutButton>
     </GateCard>

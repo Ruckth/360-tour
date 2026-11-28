@@ -203,7 +203,7 @@ function AdminFrameBody({ userEmail, checkoutBackend = convexCheckoutBackend, ch
   }, []);
 
   // A first-time person with two or more branches chooses once before any page.
-  if (branch.needsChoice && !redirect) return <BranchChooser email={access.email ?? userEmail ?? null} />;
+  if (branch.needsChoice && !redirect && !pathname.startsWith("/admin/stock/") && pathname !== "/admin/stock") return <BranchChooser email={access.email ?? userEmail ?? null} />;
 
   return (
     <SidebarProvider

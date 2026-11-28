@@ -5,8 +5,9 @@ import type { FunctionReturnType } from "convex/server";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import { ArrowLeft, ExternalLink, Flag, PackagePlus, Pencil, RotateCcw, Undo2 } from "lucide-react";
-import { useState, type FormEvent } from "react";
-import { SkeletonRows, STACKED_TABLE } from "@/components/admin/admin-bulk";
+import { useEffect, useState, type FormEvent } from "react";
+import { SkeletonRows } from "@/components/admin/admin-bulk";
+import { STOCK_TABLE } from "./stock-table";
 import { useAdminBranch } from "@/components/admin/branch/branch-context";
 import {
   Callout,
@@ -33,10 +34,14 @@ import { ReceiveDeliverySheet } from "./ReceiveDeliverySheet";
 import {
   CORRECTION_REASON_CHIPS,
   createOperationKey,
+  formatSatang,
   HOLD_STATUS_META,
+  invoiceVariance,
   parseStockError,
   PROBLEM_STATUS_META,
   RECEIPT_KIND_META,
+  rejectReasonLabel,
+  returnOutcomeLabel,
   sanitizeStockReturnTo,
   stockReturnLabel,
 } from "./stock-format";
@@ -52,6 +57,7 @@ export function SupplierReceiptDetailView({ receiptId }: { receiptId: string }) 
   const { current: branch, branches, select: selectBranch } = useAdminBranch();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const focusMovement = searchParams.get("focusMovement");
   const returnTo = sanitizeStockReturnTo(searchParams.get("returnTo"));
   const { notice, show, clear } = useNotice();
 
@@ -77,7 +83,17 @@ export function SupplierReceiptDetailView({ receiptId }: { receiptId: string }) 
   const [reversingAdjustment, setReversingAdjustment] = useState<AdjustmentRow | null>(null);
   const [followUpAdjustment, setFollowUpAdjustment] = useState<AdjustmentRow | null>(null);
   const [receivingMissing, setReceivingMissing] = useState(false);
-  const [replacementReturn, setReplacementReturn] = useState<AdjustmentRow | null>(null);
+  const [replacementReturn, setReplacementReturn] = useState<Pick<AdjustmentRow, "_id" | "variantId" | "item" | "quantity"> | null>(null);
+
+  const focusedLine = detail?.receipt.branchId === branch?.id && focusMovement
+    ? detail?.lines.find(line => line.movementId === focusMovement)
+    : undefined;
+  const focusedLineId = focusedLine?._id;
+  useEffect(() => {
+    if (tab !== "overview" || !focusedLineId) return;
+    const target = document.getElementById(`receipt-stock-line-${focusedLineId}`);
+    target?.focus();
+  }, [focusedLineId, tab]);
 
   if (!branch) return null;
   if (detail === undefined) return <SkeletonRows label="Loading supplier receipt" rows={5} />;
@@ -115,6 +131,9 @@ export function SupplierReceiptDetailView({ receiptId }: { receiptId: string }) 
     : "/admin/stock/purchasing?tab=receipts";
   const defaultBackLabel = receipt.orderId ? (receipt.orderReference ? `Order ${receipt.orderReference}` : "Order") : "Receipts";
   const currentReceiptHref = `/admin/stock/purchasing/receipts/${receipt._id}`;
+  // Cost columns and the receipt total are for buyers and stock leads; the server omits them for everyone else.
+  const seeCost = permissions.buyer || permissions.lead;
+  const variance = invoiceVariance(receipt.invoiceTotal, receipt.acceptedValue);
 
   return (
     <div className="grid gap-5">
@@ -143,6 +162,17 @@ export function SupplierReceiptDetailView({ receiptId }: { receiptId: string }) 
             {receipt.deliveryReference ? `Delivery ref ${receipt.deliveryReference} · ` : ""}
             Posted by {receipt.actorLabel} · {staffDateTime(receipt.createdAt)}
           </p>
+          {seeCost && (receipt.acceptedValue !== undefined || receipt.invoiceTotal !== undefined) ? (
+            <p className="text-sm tabular-nums text-foreground">
+              Receipt total <strong>{formatSatang(receipt.acceptedValue ?? 0)}</strong>
+              {receipt.invoiceTotal !== undefined ? <> · Invoice <strong>{formatSatang(receipt.invoiceTotal)}</strong></> : null}
+            </p>
+          ) : null}
+          {receipt.overDeliveredUnits ? (
+            <p className="text-xs text-muted-foreground">
+              Includes {receipt.overDeliveredUnits} over-delivered {receipt.overDeliveredUnits === 1 ? "unit" : "units"} accepted within the branch tolerance.
+            </p>
+          ) : null}
         </div>
 
         <div className="flex flex-wrap gap-2">
@@ -168,6 +198,12 @@ export function SupplierReceiptDetailView({ receiptId }: { receiptId: string }) 
           </ButtonLink>
         </div>
       </div>
+
+      {seeCost && variance?.flagged ? (
+        <Callout tone="warning" title="Invoice differs from the order price">
+          The invoice is {formatSatang(Math.abs(variance.difference))} {variance.difference > 0 ? "above" : "below"} the accepted value at order cost. Check the supplier price before paying. Stock is not affected.
+        </Callout>
+      ) : null}
 
       {receipt.undercountOf ? (
         <p className="text-sm text-muted-foreground">
@@ -206,45 +242,58 @@ export function SupplierReceiptDetailView({ receiptId }: { receiptId: string }) 
       {tab === "overview" ? (
         <div {...tabPanelProps("receipt-detail", "overview")} className="grid gap-5">
           <Card className="overflow-hidden">
-            <table className={STACKED_TABLE.table}>
-              <thead className={STACKED_TABLE.head}>
+            <table className={STOCK_TABLE.table}>
+              <thead className={STOCK_TABLE.head}>
                 <tr>
-                  <th scope="col" className={STACKED_TABLE.th}>Item</th>
-                  <th scope="col" className={cn(STACKED_TABLE.th, "text-right")}>Accepted</th>
-                  <th scope="col" className={cn(STACKED_TABLE.th, "text-right")}>Rejected</th>
-                  <th scope="col" className={cn(STACKED_TABLE.th, "text-right")}>Corrected / Returned</th>
-                  <th scope="col" className={cn(STACKED_TABLE.th, "text-right")}>Eligible</th>
-                  <th scope="col" className={cn(STACKED_TABLE.th, "text-right")}>Actions</th>
+                  <th scope="col" className={STOCK_TABLE.th}>Item</th>
+                  <th scope="col" className={cn(STOCK_TABLE.th, "text-right")}>Accepted</th>
+                  <th scope="col" className={cn(STOCK_TABLE.th, "text-right")}>Rejected</th>
+                  <th scope="col" className={cn(STOCK_TABLE.th, "text-right")}>Corrected / Returned</th>
+                  <th scope="col" className={cn(STOCK_TABLE.th, "text-right")}>Eligible</th>
+                  {seeCost ? <th scope="col" className={cn(STOCK_TABLE.th, "text-right")}>Unit cost</th> : null}
+                  {seeCost ? <th scope="col" className={cn(STOCK_TABLE.th, "text-right")}>Line value</th> : null}
+                  <th scope="col" className={cn(STOCK_TABLE.th, "text-right")}>Actions</th>
                 </tr>
               </thead>
-              <tbody className={STACKED_TABLE.body}>
+              <tbody className={STOCK_TABLE.body}>
                 {lines.map((line) => (
-                  <tr key={line._id} className={STACKED_TABLE.row}>
-                    <td data-label="Item" className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled)}>
+                  <tr key={line._id} id={`receipt-stock-line-${line._id}`} tabIndex={focusedLine?._id === line._id ? -1 : undefined}
+                    className={cn(STOCK_TABLE.row, focusedLine?._id === line._id && "bg-muted/50")}>
+                    <td data-label="Item" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled)}>
                       <span className="block font-medium text-foreground">{line.item.productName}</span>
                       <span className="text-xs text-muted-foreground">
                         {line.item.variantLabel}
                         {line.item.sku ? ` · ${line.item.sku}` : ""}
                       </span>
-                      {line.rejectReason ? (
+                      {line.rejectReason || line.rejectReasonCode ? (
                         <span className="mt-0.5 block text-xs text-destructive">
-                          Rejected: {line.rejectReason}
+                          Rejected: {[rejectReasonLabel(line.rejectReasonCode), line.rejectReason].filter(Boolean).join(" · ")}
                         </span>
                       ) : null}
                     </td>
-                    <td data-label="Accepted" className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled, "font-mono tabular-nums lg:text-right")}>
+                    <td data-label="Accepted" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled, "font-mono tabular-nums lg:text-right")}>
                       {line.accepted}
                     </td>
-                    <td data-label="Rejected" className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled, "font-mono tabular-nums lg:text-right")}>
+                    <td data-label="Rejected" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled, "font-mono tabular-nums lg:text-right")}>
                       {line.rejected}
                     </td>
-                    <td data-label="Corrected / Returned" className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled, "font-mono text-xs tabular-nums lg:text-right")}>
+                    <td data-label="Corrected / Returned" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled, "font-mono text-xs tabular-nums lg:text-right")}>
                       {line.corrected} / {line.returned}
                     </td>
-                    <td data-label="Eligible" className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled, "font-mono font-semibold tabular-nums lg:text-right")}>
+                    <td data-label="Eligible" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled, "font-mono font-semibold tabular-nums lg:text-right")}>
                       {line.eligible}
                     </td>
-                    <td className={cn(STACKED_TABLE.cell, "lg:text-right")}>
+                    {seeCost ? (
+                      <td data-label="Unit cost" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled, "font-mono tabular-nums lg:text-right")}>
+                        {formatSatang(line.unitCost)}
+                      </td>
+                    ) : null}
+                    {seeCost ? (
+                      <td data-label="Line value" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled, "font-mono tabular-nums lg:text-right")}>
+                        {line.unitCost === undefined ? "—" : formatSatang(line.accepted * line.unitCost)}
+                      </td>
+                    ) : null}
+                    <td className={cn(STOCK_TABLE.cell, "lg:text-right")}>
                       {permissions.lead && line.eligible > 0 ? (
                         <div className="flex flex-wrap gap-1.5 lg:justify-end">
                           <Button
@@ -252,6 +301,7 @@ export function SupplierReceiptDetailView({ receiptId }: { receiptId: string }) 
                             variant="outline"
                             size="sm"
                             onClick={() => setCorrectingLineId(line._id)}
+                            title="We counted or posted wrong"
                           >
                             <RotateCcw aria-hidden className="size-3.5" />
                             Correct qty
@@ -261,6 +311,7 @@ export function SupplierReceiptDetailView({ receiptId }: { receiptId: string }) 
                             variant="outline"
                             size="sm"
                             onClick={() => setReturningLineId(line._id)}
+                            title="Goods go back to the supplier"
                           >
                             <Undo2 aria-hidden className="size-3.5" />
                             Return
@@ -286,6 +337,12 @@ export function SupplierReceiptDetailView({ receiptId }: { receiptId: string }) 
                 ))}
               </tbody>
             </table>
+            {permissions.lead && lines.some((line) => line.eligible > 0) ? (
+              <p className="border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
+                <strong className="text-foreground">Correct qty</strong>: we counted or posted wrong; the units become due again.{" "}
+                <strong className="text-foreground">Return</strong>: goods go back to the supplier (damaged, wrong or expired); accepted quantities stay.
+              </p>
+            ) : null}
           </Card>
 
           {adjustmentPage.status === "LoadingFirstPage" ? <SkeletonRows rows={2} label="Loading receipt adjustments" /> : null}
@@ -318,6 +375,7 @@ export function SupplierReceiptDetailView({ receiptId }: { receiptId: string }) 
                         <p className="text-muted-foreground">
                           {adj.actorLabel} · {staffDateTime(adj.createdAt)}
                           {adj.supplierReference ? ` · Supplier ref ${adj.supplierReference}` : ""}
+                          {adj.returnOutcome ? ` · ${returnOutcomeLabel(adj.returnOutcome)}` : ""}
                           {adj.negativeOverride ? ` · Negative override (counted ${adj.countedOnHand})` : ""}
                         </p>
                         {adj.followUpReceiptId ? (
@@ -431,6 +489,10 @@ export function SupplierReceiptDetailView({ receiptId }: { receiptId: string }) 
         <CorrectReceiptLineSheet
           line={correctingLine}
           onClose={() => setCorrectingLineId(null)}
+          onSwitchToReturn={() => {
+            setCorrectingLineId(null);
+            setReturningLineId(correctingLine._id);
+          }}
           onDone={(resolvedReport) => {
             setCorrectingLineId(null);
             show(
@@ -447,9 +509,19 @@ export function SupplierReceiptDetailView({ receiptId }: { receiptId: string }) 
         <ReturnToSupplierSheet
           line={returningLine}
           onClose={() => setReturningLineId(null)}
-          onDone={() => {
+          onDone={({ adjustmentId, outcome, quantity }) => {
             setReturningLineId(null);
-            show("Supplier return posted.", "success");
+            if (outcome === "replacement_expected" && permissions.directOrder) {
+              show("Supplier return posted. Create the replacement order.", "success");
+              setReplacementReturn({ _id: adjustmentId, variantId: returningLine.variantId, item: returningLine.item, quantity });
+              return;
+            }
+            show(
+              outcome === "replacement_expected"
+                ? "Supplier return posted. Ask a buyer to raise the replacement order from this receipt."
+                : "Supplier return posted.",
+              "success",
+            );
           }}
         />
       ) : null}

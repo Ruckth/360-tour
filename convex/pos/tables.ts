@@ -9,7 +9,7 @@ import { directPanelFields } from './private/directPanels';
 
 import {
   adjustmentApprovalPayload, checkoutApprovalKind, orderLineCoverage, orderLineKind, orderLineSaleSnapshot,
-  orderPaymentTenderFields, orderRefundTenderFields, orderReturnStatus, paymentAttemptReview,
+  orderPaymentTenderFields, orderRefundTenderFields, orderReturnStatus, packedPart, paymentAttemptReview,
   paymentAttemptRefusal, paymentAttemptStatus, paymentExternalLeg, returnClaim, returnEffect, returnItemsApprovalPayload,
   returnPart, returnSourceOwner, returnVoucherCredit,
 } from './validators';
@@ -254,6 +254,7 @@ export const posTables = {
 		variantId: v.optional(v.id('productVariants')),
 		packageVersionId: v.optional(v.id('packageVersions')),
 		coverage: v.optional(orderLineCoverage),
+		packing: v.optional(v.array(packedPart)),
 		saleSnapshot: v.optional(orderLineSaleSnapshot),
 		serviceId: v.optional(v.id('services')),
 		durationMin: v.optional(v.number()),

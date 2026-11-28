@@ -45,7 +45,7 @@ for (const theme of ["light", "dark"] as const) {
         await open(page, width, scenario, theme);
         if (scenario === "loading") await expect(page.getByRole("status").filter({ hasText: "Loading marketing results" })).toBeAttached();
         if (scenario === "error") await expect(page.getByRole("alert")).toContainText("Couldn’t load marketing results");
-        if (scenario === "first-run") await expect(page.getByText("See which links bring paid bookings")).toBeVisible();
+        if (scenario === "first-run") await expect(page.getByText("No marketing activity in the selected dates")).toBeVisible();
         if (scenario === "untracked") {
           // Sales before the first campaign: the figures and export, with the setup steps beside them.
           await expect(page.getByRole("status").filter({ hasText: "No campaigns or links yet" })).toBeVisible();
@@ -57,7 +57,7 @@ for (const theme of ["light", "dark"] as const) {
             await expect(page.getByRole("menuitem", { name: "Export CSV" })).toBeEnabled();
             await page.keyboard.press("Escape");
           }
-          await expect(page.getByText("See which links bring paid bookings")).toHaveCount(0);
+          await expect(page.getByText("No marketing activity in the selected dates")).toHaveCount(0);
         }
         if (scenario === "truncated") await expect(page.getByText("These figures are incomplete")).toBeVisible();
         if (scenario === "refunds") await expect(page.getByRole("heading", { name: "Money in and out" })).toBeVisible();
@@ -80,7 +80,7 @@ for (const theme of ["light", "dark"] as const) {
       await page.getByRole("tab", { name: "Link" }).click();
       await page.getByRole("button", { name: /^\/a1\b.*Show sales/ }).locator("visible=true").first().click();
       const sheet = page.getByRole("dialog", { name: "/a1" });
-      await expect(sheet).toContainText("2 refunds reduced net by ฿9,600.");
+      await expect(sheet).toContainText("2 sales with refunds reduced net by ฿9,600.");
       const box = (await sheet.boundingBox())!;
       expect.soft(box.x + box.width, "sheet inside the window").toBeLessThanOrEqual(width + 1);
       await expectAccessible(page, `sheet ${width} ${theme}`);
@@ -90,9 +90,12 @@ for (const theme of ["light", "dark"] as const) {
 
       await openExport(page, width);
       const dialog = page.getByRole("dialog", { name: "Export CSV" });
-      await expect(dialog.getByTestId("csv-preview")).toContainText("# Time zone: Asia/Bangkok");
-      await dialog.getByText("One row per sale").click();
-      await expect(dialog.getByTestId("csv-preview")).toContainText("Kind,Id,Reference");
+      await dialog.getByText("File metadata", { exact: true }).click();
+      await expect(dialog.getByText("# Time zone: Asia/Bangkok")).toBeVisible();
+      await dialog.getByText("All filtered sales").click();
+      const preview = dialog.getByTestId("csv-preview");
+      await expect(preview.getByRole("columnheader").first()).toHaveText("Kind");
+      await expect(preview.getByRole("cell").first()).toBeVisible();
       await expectAccessible(page, `export ${width} ${theme}`);
       await shot(page, `export-${width}-${theme}`, false);
       const download = page.waitForEvent("download");
@@ -115,9 +118,13 @@ test("a below-fold tab list does not scroll the dashboard away from its toolbar"
 
 test("metric explanations and the Finance view", async ({ page }) => {
   await open(page, 1440, "normal", "light");
-  await expect(page.getByRole("button", { name: "Definitions" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "What these count" })).toHaveCount(0);
-  await page.getByRole("button", { name: "About net collected", exact: true }).click();
+  const definitions = page.getByRole("button", { name: "Metric definitions" });
+  await definitions.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("dialog", { name: "Metric definitions" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(definitions).toBeFocused();
+  await page.getByRole("button", { name: "About tracked net", exact: true }).click();
   await expect(page.getByRole("tooltip")).toContainText("not profit");
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "About return on ad spend" }).click();
@@ -132,15 +139,16 @@ test("drill-down, chart table and range presets work from the keyboard", async (
   await open(page, 1440, "normal", "light");
   // Everything up to the breakdown rows is reachable with Tab.
   const reached = new Set<string>();
-  for (let i = 0; i < 60; i++) {
+  for (let i = 0; i < 70; i++) {
     await page.keyboard.press("Tab");
     reached.add(await page.evaluate(() => (document.activeElement?.getAttribute("aria-label") || document.activeElement?.textContent || "").trim().slice(0, 40)));
   }
-  for (const name of ["About net collected", "Export CSV", "Show as table", "Facebook"]) expect.soft([...reached].some((x) => x.startsWith(name)), name).toBe(true);
+  for (const name of ["About tracked net", "Export CSV", "Show as table", "Facebook"]) expect.soft([...reached].some((x) => x.startsWith(name)), name).toBe(true);
 
   await page.getByRole("button", { name: /^Facebook\b.*Show campaigns/ }).first().focus();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("navigation", { name: "Drill-down" })).toContainText("All sources");
+  await expect(page.getByRole("heading", { name: "Breakdown · Campaigns for Facebook" })).toBeFocused();
   await page.getByRole("button", { name: /^Facebook · November escape\b.*Show links/ }).first().focus();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("navigation", { name: "Drill-down" })).toContainText("Facebook · November escape");
@@ -162,16 +170,16 @@ test("drill-down, chart table and range presets work from the keyboard", async (
   expect(JSON.parse((await page.locator("body").getAttribute("data-requests")) ?? "[]").at(-1).range).toEqual({ preset: "last7", from: "2026-10-31", to: "2026-11-06" });
 });
 
-test("the range is remembered on this device, Last week included, and attribution sits in View options", async ({ page }) => {
+test("the range is remembered on this device, Last week included, and attribution sits beside report scope", async ({ page }) => {
   await open(page, 1180, "normal", "light");
   await expect(page.getByRole("button", { name: /^Dates: Last 30 days/ })).toBeVisible();
-  // Attribution is one tap away, not in the toolbar.
+  // The applied attribution is adjacent to the report scope.
   await expect(page.getByRole("radio", { name: "First touch" })).toHaveCount(0);
-  await page.getByRole("button", { name: /^View options/ }).click();
+  await page.getByRole("button", { name: /^Attribution/ }).click();
   await page.getByRole("radio", { name: "First touch" }).click();
   await expect(page.getByText(/Each sale goes to the first tracked link/)).toBeVisible();
   await page.keyboard.press("Escape");
-  await expect(page.getByRole("button", { name: "View options: First touch" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Attribution · First touch" })).toBeVisible();
 
   await page.getByRole("button", { name: /^Dates:/ }).click();
   await page.getByRole("button", { name: /^Last week/ }).click();
@@ -206,23 +214,53 @@ for (const width of [390, 1180]) {
     if (width < 640) {
       expect((await page.getByRole("button", { name: /^Dates:/ }).boundingBox())!.width).toBeGreaterThan(140);
       expect((await page.getByRole("combobox", { name: "Property", exact: true }).boundingBox())!.width).toBeGreaterThan(140);
-      // Dates, property, Marketing, Finance, attribution shortcut, ⋯.
-      expect(before).toBe(6);
-      const attribution = page.getByRole("button", { name: "Last touch", exact: true });
+      // Dates, property, Marketing, Finance, attribution, breakdown jump, ⋯.
+      expect(before).toBe(7);
+      const attribution = page.getByRole("button", { name: "Attribution · Last touch", exact: true });
       await expect(attribution).toBeVisible();
       await attribution.click();
       await expect(page.getByRole("radiogroup", { name: "Attribution" })).toBeVisible();
       await page.keyboard.press("Escape");
       expect(before).toBeLessThan(BEFORE_PHONE_CONTROLS_BEFORE_FIGURES);
       await expect(page.getByRole("button", { name: "Export CSV" })).toBeHidden();
-      await expect(page.getByRole("button", { name: "Definitions" })).toBeHidden();
+      await expect(page.getByRole("button", { name: "Metric definitions" })).toBeVisible();
       await page.getByRole("button", { name: "More dashboard actions" }).click();
-      await expect(page.getByRole("menuitem")).toHaveText(["Refresh", "View options: Last touch", "Export CSV"]);
+      await expect(page.getByRole("menuitem")).toHaveText(["Refresh", "Export CSV"]);
       await page.getByRole("menuitem", { name: "Refresh" }).click();
       await expect(page.getByRole("menu")).toHaveCount(0);
     } else {
-      expect(before).toBe(7);
+      expect(before).toBe(8);
       await expect(page.getByRole("button", { name: "More dashboard actions" })).toBeHidden();
     }
   });
 }
+
+test("the jump, drill back and date inspector move keyboard focus", async ({ page }) => {
+  await open(page, 1280, "normal", "light");
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const jump = page.getByRole("link", { name: "Jump to breakdown" });
+  await expect(jump).toBeInViewport();
+  await jump.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("heading", { name: "Breakdown", exact: true })).toBeFocused();
+
+  const source = page.getByRole("button", { name: /^Facebook\b.*Show campaigns/ }).first();
+  await source.press("Enter");
+  await expect(page.getByRole("heading", { name: "Breakdown · Campaigns for Facebook" })).toBeFocused();
+  await page.getByRole("button", { name: "All sources" }).press("Enter");
+  await expect(source).toBeFocused();
+
+  const chart = page.getByRole("region", { name: "Net collected by source" });
+  await chart.getByRole("button", { name: "Inspect dates" }).press("Enter");
+  const dates = chart.getByRole("combobox", { name: "Inspect date" });
+  await expect(dates).toBeFocused();
+  const initial = await dates.inputValue();
+  const next = await dates.locator("option").nth(1).getAttribute("value");
+  await dates.press("ArrowDown");
+  await expect(dates).toHaveValue(next!);
+  await dates.press("ArrowUp");
+  await expect(dates).toHaveValue(initial);
+  await expect(chart.getByRole("status")).toContainText("Total");
+  await chart.getByRole("button", { name: "Close date inspector" }).press("Enter");
+  await expect(chart.getByRole("group", { name: /^Net collected by source\./ })).toBeFocused();
+});

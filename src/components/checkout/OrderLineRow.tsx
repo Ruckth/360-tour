@@ -1,5 +1,7 @@
 "use client";
 
+import { PackedLotEditor } from "./PackedLotEditor";
+
 import { satangToBaht } from "convex/shared/money";
 import { parseMoneyInput } from "@/lib/money-input";
 import { ChevronDown, ChevronRight, Minus, Plus, RefreshCw, TicketPercent, Trash2, TriangleAlert, X } from "lucide-react";
@@ -368,6 +370,7 @@ function LineEditor({ line, catalog, run, waiting, onSent }: { line: OrderLine; 
 
   return (
     <div ref={editor} className="mx-3 mb-3 divide-y divide-border overflow-hidden rounded-xl bg-muted/50 px-3">
+      {line.kind === "product" || line.kind === "package" ? <PackedLotEditor key={line._id} line={line} disabled={waiting} /> : null}
       {/* The discount first: it is what a cashier opens a row for most often. */}
       {line.kind === "booking" ? null : <DiscountField line={line} run={run} waiting={waiting} onSent={() => { if (!priceDirty && !approvalDirty) onSent(); }} />}
       {line.kind === "service" ? (

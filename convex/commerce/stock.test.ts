@@ -102,6 +102,76 @@ it('returns absent balances from catalog search and joins On order, then audits 
   });
 });
 
+it('supplies branch reorder points to both request lookups without changing stock or valuation', async () => {
+  const { t, owner, cashier, cashierId, manager, branchId, otherBranchId, variantId } = await fixture();
+  const args = { branchId, variantId, expectedRevision: 0, quantity: 12 };
+  await owner.mutation(stock.setGrant, {
+    branchId, staffGrantId: cashierId, roles: { ...emptyStockRoles, requester: true }, expectedRevision: 0,
+  });
+  await expect(cashier.mutation(stock.setReorderPoint, args)).rejects.toMatchObject({ data: { code: 'STOCK_FORBIDDEN' } });
+  await expect(manager.mutation(stock.setReorderPoint, { ...args, branchId: otherBranchId }))
+    .rejects.toMatchObject({ data: { code: 'STOCK_FORBIDDEN' } });
+  await expect(manager.mutation(stock.setReorderPoint, { ...args, quantity: 1.5 })).rejects.toThrow();
+  await manager.mutation(stock.setReorderPoint, args);
+  const read = () => cashier.query(stock.selectedBalances, { branchId, variantIds: [variantId] });
+  await expect(read()).resolves.toMatchObject([{
+    variantId, reorderPoint: 12, reorderPointRevision: 1, onHand: 0, onOrder: 0, hasBalance: false, price: 74_900,
+  }]);
+  await expect(cashier.query(stock.listBalances, { branchId, search: 'robe', paginationOpts }))
+    .resolves.toMatchObject({ page: [{ variantId, reorderPoint: 12 }] });
+  await owner.mutation(stock.setReorderPoint, { ...args, branchId: otherBranchId, quantity: 5 });
+  await expect(owner.query(stock.selectedBalances, { branchId: otherBranchId, variantIds: [variantId] }))
+    .resolves.toMatchObject([{ variantId, reorderPoint: 5 }]);
+  await expect(manager.mutation(stock.setReorderPoint, { ...args, quantity: 15 }))
+    .rejects.toMatchObject({ data: { code: 'STALE_REORDER_POINT' } });
+  await manager.mutation(stock.setReorderPoint, { ...args, quantity: null, expectedRevision: 1 });
+  expect((await read())[0]).not.toHaveProperty('reorderPoint');
+  await expect(read()).resolves.toMatchObject([{ reorderPointRevision: 2, hasBalance: false }]);
+  expect(await t.run(ctx => ctx.db.query('stockMovements').first())).toBeNull();
+});
+
+it('finds legacy variant SKUs, reports archive impact, and restores the same product with merged audit history', async () => {
+  const { t, manager, cashier, branchId, productId, variantId } = await fixture();
+  await t.run(async ctx => {
+    await ctx.db.patch(variantId, { normalizedSku: undefined, sku: 'SPA-ALOE-060' });
+    await writeStockMovement(ctx, { branchId, variantId, kind: 'opening', delta: 8, sourceKey: 'catalog-impact-opening', actor: 'manager' });
+    const supplier = { name: 'Catalog supplier' };
+    const supplierId = await ctx.db.insert('suppliers', {
+      ...supplier, nameKey: 'catalog supplier', status: 'active', revision: 1, createdAt: 1, updatedAt: 1,
+    });
+    const orderId = await ctx.db.insert('purchaseOrders', {
+      branchId, reference: 'PO-CATALOG', supplierId, supplier, status: 'ordered', phase: 'open',
+      issuedRevision: 1, revision: 1, lineCount: 1, openLineCount: 1, orderedUnits: 7, acceptedUnits: 0,
+      dueUnits: 7, totalCost: 35_000, createdByKey: 'manager', createdByLabel: 'Manager', createdAt: 1, updatedAt: 1,
+    });
+    await ctx.db.insert('purchaseOrderLines', {
+      orderId, branchId, variantId, item: { productName: 'Handwoven Robe', variantLabel: 'Medium' },
+      ordered: 7, cancelled: 0, accepted: 0, corrected: 0, returned: 0, open: true, sort: 0,
+    });
+    await ctx.db.insert('stockIncoming', { branchId, variantId, quantity: 7 });
+  });
+  const find = () => manager.query(stock.listProducts, { branchId, status: 'active', search: 'SPA-ALOE-060', paginationOpts });
+  await expect(find()).resolves.toMatchObject({ page: [{ _id: productId, categoryName: 'General' }] });
+  await expect(manager.query(stock.productArchiveImpact, { branchId, productId }))
+    .resolves.toMatchObject({ onHand: 8, onOrder: 7, openOrders: 1, variantCount: 1 });
+  await manager.mutation(stock.archiveProduct, { branchId, productId, expectedRevision: 1 });
+  await expect(find()).resolves.toMatchObject({ page: [] });
+  await expect(cashier.mutation(stock.restoreProduct, { branchId, productId, expectedRevision: 2 })).rejects.toThrow();
+  await expect(manager.mutation(stock.restoreProduct, { branchId, productId, expectedRevision: 1 })).rejects.toThrow('This product changed');
+  await manager.mutation(stock.restoreProduct, { branchId, productId, expectedRevision: 2 });
+  await expect(find()).resolves.toMatchObject({ page: [{ _id: productId, revision: 3 }] });
+  const first = await manager.query(stock.productHistory, { branchId, productId, allTargets: true,
+    paginationOpts: { numItems: 2, cursor: null } });
+  expect(first.page).toMatchObject([{ targetType: 'product', after: { status: 'active' } },
+    { targetType: 'product', after: { status: 'archived' } }]);
+  const second = await manager.query(stock.productHistory, { branchId, productId, allTargets: true,
+    paginationOpts: { numItems: 2, cursor: first.continueCursor } });
+  expect(second.page).toEqual(expect.arrayContaining([
+    expect.objectContaining({ targetType: 'variant', targetId: variantId, revisionBefore: 0, after: expect.objectContaining({ price: 74_900 }) }),
+    expect.objectContaining({ targetType: 'product', revisionBefore: 0, categoryNames: expect.objectContaining({}) }),
+  ]));
+});
+
 it('backfills existing variant search without rewriting its business revision', async () => {
   const { t, manager, branchId, productId } = await fixture();
   const legacy = await t.run(async ctx => await ctx.db.insert('productVariants', {
@@ -277,7 +347,7 @@ it('filters human actor labels and reason codes without exposing legacy tokens',
     });
     const legacyActor = await ctx.db.insert('stockMovements', {
       branchId, variantId, kind: 'sale', delta: -1, before: 2, after: 1, sourceKey: 'sale:legacy-filter:robe',
-      actor: ' KAMON@example.com ', createdAt: 2,
+      actor: ' KAMON@example.com ', reasonCode: '  ＦＯＵＮＤ ', createdAt: 2,
     });
     const legacyToken = await ctx.db.insert('stockMovements', {
       branchId, variantId, kind: 'write_off', delta: -1, before: 1, after: 0, sourceKey: 'legacy:token',
@@ -285,11 +355,27 @@ it('filters human actor labels and reason codes without exposing legacy tokens',
     });
     return { current, legacyActor, legacyToken, level: (await ctx.db.query('stockLevels').first())!._id };
   });
-  await t.mutation(internal.commerce.stock.backfillMovementFilters, { paginationOpts });
   const byActor = await manager.query(stock.listActivity, { branchId, actor: ' ＫＡＭＯＮ@EXAMPLE.COM ', reasonCode: '   ', paginationOpts });
   expect(byActor.page.map(row => row._id)).toEqual([rows.current.movementId, rows.legacyActor]);
   await expect(manager.query(stock.listActivity, { branchId, reasonCode: ' FOUND ', paginationOpts })).resolves.toMatchObject({
-    page: [{ _id: rows.current.movementId }],
+    page: [{ _id: rows.current.movementId }, { _id: rows.legacyActor, reasonCode: '  ＦＯＵＮＤ ' }],
+  });
+  const matched = { branchId, actor: 'kamon@example.com', reasonCode: 'found', kind: 'sale' as const };
+  await expect(manager.query(stock.listActivity, { ...matched, paginationOpts })).resolves.toMatchObject({
+    page: [{ _id: rows.legacyActor }],
+  });
+  const firstPage = await manager.query(stock.listActivity, {
+    variantId, ...matched, paginationOpts: { numItems: 1, cursor: null },
+  });
+  expect(firstPage).toMatchObject({ page: [], isDone: false });
+  await expect(manager.query(stock.listActivity, {
+    variantId, ...matched, paginationOpts: { numItems: 1, cursor: firstPage.continueCursor },
+  })).resolves.toMatchObject({ page: [{ _id: rows.legacyActor }] });
+  const beforeBackfill = await t.run(ctx => ctx.db.get(rows.legacyActor));
+  await t.mutation(internal.commerce.stock.backfillMovementFilters, { paginationOpts });
+  expect(await t.run(ctx => ctx.db.get(rows.legacyActor))).toEqual({ ...beforeBackfill, actorSearch: 'kamon@example.com' });
+  await expect(manager.query(stock.listActivity, { ...matched, paginationOpts })).resolves.toMatchObject({
+    page: [{ _id: rows.legacyActor, reasonCode: '  ＦＯＵＮＤ ' }],
   });
   const blank = await manager.query(stock.listActivity, { branchId, actor: ' ', reasonCode: '', paginationOpts });
   expect(blank.page.map(row => row.actorLabel)).toEqual(['Kamon@example.com', 'KAMON@example.com', 'Staff member']);
@@ -299,6 +385,43 @@ it('filters human actor labels and reason codes without exposing legacy tokens',
   });
   expect(history.page.map(row => row.staff?.actorName)).toContain('Staff member');
   expect(JSON.stringify(history)).not.toContain(token);
+});
+
+it('intersects movement facets and records a one-submit negative correction in the branch review history', async () => {
+  const { t, manager, cashier, branchId, otherBranchId, variantId } = await fixture();
+  const opening = await manager.mutation(stock.postOperation, {
+    branchId, kind: 'opening', reasonCode: 'opening_stock', operationKey: 'opening-once',
+    lines: [{ variantId, quantity: 24, expectedRevision: 0 }],
+  });
+  const operation = await manager.query(stock.getOperation, { branchId, operationId: opening });
+  const movementId = operation.lines[0].movementId;
+  await t.run(async ctx => await writeStockMovement(ctx, {
+    branchId, variantId, kind: 'sale', delta: -6, sourceKey: 'sale:negative-once:robe', actor: 'desk',
+  }));
+  const filters = { branchId, variantId, kind: 'opening' as const, reasonCode: 'opening_stock', paginationOpts };
+  await expect(manager.query(stock.listActivity, filters)).resolves.toMatchObject({ page: [{ _id: movementId }] });
+  await expect(manager.query(stock.listActivity, { ...filters, kind: 'sale' })).resolves.toMatchObject({ page: [] });
+  await expect(manager.query(stock.access, { branchId })).resolves.toMatchObject({ openReportCount: 0 });
+  await expect(manager.query(stock.access, { branchId: otherBranchId })).resolves.toMatchObject({ openReportCount: 0, lead: false });
+  const problemId = await manager.mutation(stock.reportProblem, { branchId, movementId, reason: 'Opening quantity differs', operationKey: 'one-report' });
+  await expect(manager.query(stock.access, { branchId })).resolves.toMatchObject({ openReportCount: 1 });
+  await expect(manager.query(stock.listReports, { branchId, paginationOpts })).resolves.toMatchObject({
+    page: [{ _id: problemId, movement: { itemLabel: 'Handwoven Robe · Medium', kind: 'opening', delta: 24 } }],
+  });
+  const input = { branchId, movementId, quantity: 24, expectedRevision: 2, reason: 'Overstated opening stock',
+    confirmNegative: true, physicalCount: 0, operationKey: 'one-submit' };
+  await expect(cashier.mutation(stock.postCorrection, input)).rejects.toMatchObject({ data: { code: 'STOCK_FORBIDDEN' } });
+  await expect(manager.query(stock.previewCorrection, { branchId, movementId, quantity: 24 })).resolves.toMatchObject({
+    requiresReconciliation: true, line: { before: 18, after: -6 },
+  });
+  const result = await manager.mutation(stock.postCorrection, input);
+  expect(result.operationId).not.toBeNull();
+  await expect(manager.mutation(stock.postCorrection, input)).resolves.toEqual(result);
+  const corrected = await manager.query(stock.getOperation, { branchId, operationId: result.operationId! });
+  expect(corrected).toMatchObject({ physicalCount: 0, lines: [{ after: -6 }] });
+  const reconciliations = await manager.query(stock.listReports, { branchId, status: 'resolved', paginationOpts });
+  expect(reconciliations.page).toMatchObject([{ movementId, requestedQuantity: 24, correctionId: result.operationId }]);
+  await expect(manager.query(stock.access, { branchId })).resolves.toMatchObject({ openReportCount: 1 });
 });
 
 it('detects a normalized duplicate active label when an existing variant was omitted', async () => {
@@ -335,4 +458,74 @@ it.each([
   await expect(t.run(ctx => writeStockMovement(ctx, { ...replay, originalMovementId: old })))
     .rejects.toMatchObject({ data: { code: 'STOCK_KEY_CONFLICT' } });
   expect(await t.run(ctx => ctx.db.query('stockLevels').first())).toBeNull();
+});
+
+it('opts a branch into bin custody and relocates three units without changing legacy branch stock', async () => {
+  const { t, manager, managerId, cashier, branchId, otherBranchId, variantId } = await fixture();
+  const scope = { branchId, variantId };
+  await t.run(ctx => writeStockMovement(ctx, {
+    ...scope, sourceKey: 'legacy-bin-opening', kind: 'opening', delta: 8, actor: 'seed',
+  }));
+  await expect(manager.query(stock.binBalances, scope)).resolves.toMatchObject({ onHand: 8, unassigned: 8, bins: [] });
+  await expect(cashier.mutation(stock.addBin, { branchId, name: 'Shelf A' })).rejects.toMatchObject({ data: { code: 'STOCK_FORBIDDEN' } });
+  const a = await manager.mutation(stock.addBin, { branchId, name: 'Shelf A' });
+  const b = await manager.mutation(stock.addBin, { branchId, name: 'Shelf B' });
+  const foreign = await t.run(ctx => ctx.db.insert('stockBins', { branchId: otherBranchId, name: 'Shelf A', normalizedName: 'shelf a' }));
+  await expect(manager.mutation(stock.addBin, { branchId, name: ' shelf a ' })).resolves.toBe(a);
+  const initial = { ...scope, from: null, to: a, quantity: 5, requestKey: 'assign-legacy-stock' };
+  const legacyMove = await manager.mutation(stock.relocateBinStock, initial);
+  await t.run(ctx => ctx.db.patch(legacyMove, { actorTokenIdentifier: undefined }));
+  await expect(manager.mutation(stock.relocateBinStock, initial)).resolves.toBe(legacyMove);
+  await expect(manager.mutation(stock.relocateBinStock, { ...initial, to: foreign, requestKey: 'foreign' }))
+    .rejects.toMatchObject({ data: { code: 'STOCK_BIN_LOCATION' } });
+  const move = { ...scope, from: a, to: b, quantity: 3, requestKey: 'relocate-three' };
+  const id = await manager.mutation(stock.relocateBinStock, move);
+  await expect(manager.mutation(stock.relocateBinStock, move)).resolves.toBe(id);
+  await t.run(ctx => ctx.db.patch(managerId, { email: 'renamed@example.com' }));
+  const renamed = t.withIdentity({ email: 'renamed@example.com', emailVerified: true, tokenIdentifier: 'manager' });
+  await expect(renamed.mutation(stock.relocateBinStock, move)).resolves.toBe(id);
+  expect(await t.run(ctx => ctx.db.get(id))).toMatchObject({ actor: 'manager@example.com', actorTokenIdentifier: 'manager' });
+  expect((await renamed.query(stock.binBalances, scope)).recent.find(row => row._id === id)).not.toHaveProperty('actorTokenIdentifier');
+  await expect(renamed.query(stock.binBalances, scope)).resolves.toMatchObject({
+    onHand: 8, unassigned: 3, bins: [{ id: a, quantity: 2 }, { id: b, quantity: 3 }],
+    recent: expect.arrayContaining([{ _id: id, ...move, fromBefore: 5, fromAfter: 2, toBefore: 0, toAfter: 3,
+      actor: 'manager@example.com', _creationTime: expect.any(Number), createdAt: expect.any(Number) }]),
+  });
+  await expect(t.run(ctx => writeStockMovement(ctx, {
+    ...scope, sourceKey: 'cannot-sell-assigned', kind: 'sale', delta: -4, actor: 'seed',
+  }))).rejects.toMatchObject({ data: { code: 'STOCK_BIN_SHORTAGE' } });
+  await expect(renamed.query(stock.selectedBalances, { branchId, variantIds: [variantId] }))
+    .resolves.toMatchObject([{ onHand: 8, revision: 1 }]);
+});
+
+it('relocates tracked lots independently and protects their assigned quantities from sales', async () => {
+  const { t, manager, branchId, variantId } = await fixture();
+  const scope = { branchId, variantId };
+  const [early, late] = await t.run(async ctx => {
+    await ctx.db.insert('stockTracking', { variantId, enabledBy: 'seed', enabledAt: Date.now() });
+    const expiresAt = Date.now() + 3_600_000;
+    for (const [code, quantity] of [['A', 4], ['B', 2]] as const) {
+      await writeStockMovement(ctx, {
+        ...scope, sourceKey: `bin-tracked-${code}`, kind: 'opening', delta: quantity, actor: 'seed',
+        lotReceipt: { code, expiresAt },
+      });
+    }
+    return await ctx.db.query('stockLots').withIndex('by_variantId_and_code', q => q.eq('variantId', variantId)).take(2);
+  });
+  const a = await manager.mutation(stock.addBin, { branchId, name: 'Shelf A' });
+  const b = await manager.mutation(stock.addBin, { branchId, name: 'Shelf B' });
+  const move = { ...scope, from: null, to: a, quantity: 4, requestKey: 'assign-lot-a' };
+  await expect(manager.mutation(stock.relocateBinStock, move)).rejects.toMatchObject({ data: { code: 'STOCK_BIN_LOT' } });
+  await manager.mutation(stock.relocateBinStock, { ...move, lotId: early._id });
+  await manager.mutation(stock.relocateBinStock, { ...scope, from: a, to: b, lotId: early._id, quantity: 3, requestKey: 'move-lot-a' });
+  await expect(manager.query(stock.binBalances, scope)).resolves.toMatchObject({
+    onHand: 6, unassigned: 2, bins: [{ id: a, quantity: 1 }, { id: b, quantity: 3 }],
+    lots: expect.arrayContaining([{ id: early._id, code: 'A', unassigned: 0, bins: [{ id: a, quantity: 1 }, { id: b, quantity: 3 }] }]),
+  });
+  const sale = { ...scope, sourceKey: 'bin-tracked-sale', kind: 'sale', delta: -1, actor: 'seed' } as const;
+  await expect(t.run(ctx => writeStockMovement(ctx, { ...sale, lotAllocations: [{ lotId: early._id, quantity: 1 }] })))
+    .rejects.toMatchObject({ data: { code: 'INSUFFICIENT_STOCK' } });
+  const { movementId } = await t.run(ctx => writeStockMovement(ctx, sale));
+  await expect(t.run(ctx => ctx.db.query('stockLotMovements').withIndex('by_movementId', q => q.eq('movementId', movementId)).unique()))
+    .resolves.toMatchObject({ allocations: [{ lotId: late._id, quantity: 1 }] });
 });

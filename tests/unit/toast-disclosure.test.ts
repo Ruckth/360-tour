@@ -78,6 +78,19 @@ describe("Toast", () => {
     expect(region().textContent).toBe("");
   });
 
+  it("keeps a retryable Undo available after a restore error", async () => {
+    let show!: (text: string, action?: ToastAction) => void;
+    const restore = vi.fn().mockRejectedValueOnce(new Error("Restore failed.")).mockResolvedValueOnce(undefined);
+    await act(async () => root.render(createElement(Harness, { onReady: (s) => (show = s) })));
+    await act(async () => show("Archived product.", { label: "Undo", retryOnError: true, run: restore }));
+    await act(async () => button("Undo")!.click());
+    expect(region().textContent).toContain("Restore failed.");
+    expect(button("Undo")?.disabled).toBe(false);
+    await act(async () => button("Undo")!.click());
+    expect(restore).toHaveBeenCalledTimes(2);
+    expect(region().textContent).toBe("");
+  });
+
   it("runs its action, then closes; a failed action shows why and waits for ✕", async () => {
     let show!: (text: string, action?: ToastAction) => void;
     await act(async () => root.render(createElement(Harness, { onReady: (s) => (show = s) })));

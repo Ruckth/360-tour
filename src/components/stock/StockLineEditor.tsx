@@ -158,9 +158,10 @@ export function StockLineEditor({
                       disabled={disabled}
                       placeholder="0"
                       aria-invalid={err?.quantity ? true : undefined}
-                      aria-describedby={err?.quantity ? qtyErrorId : undefined}
+                      aria-describedby={[err?.quantity ? qtyErrorId : "", line.quantityHint ? `${qtyId}-hint` : ""].filter(Boolean).join(" ") || undefined}
                       onChange={(event) => updateLine(index, { quantityText: event.target.value })}
                     />
+                    {line.quantityHint ? <p id={`${qtyId}-hint`} className="text-xs text-muted-foreground">{line.quantityHint}</p> : null}
                     <FieldError id={qtyErrorId}>{err?.quantity}</FieldError>
                   </div>
 

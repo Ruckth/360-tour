@@ -15,6 +15,8 @@ describe("csvCell", () => {
 
   it("neutralises spreadsheet formulas", () => {
     expect(csvCell("=HYPERLINK(\"x\")")).toBe("\"'=HYPERLINK(\"\"x\"\")\"");
+    expect(csvCell("  =2+2")).toBe("'  =2+2");
+    expect(csvCell("＝2+2")).toBe("'＝2+2");
     expect(csvCell("+1")).toBe("'+1");
     expect(csvCell("-1")).toBe("'-1");
     expect(csvCell("@SUM(A1)")).toBe("'@SUM(A1)");

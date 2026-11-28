@@ -1,5 +1,5 @@
 /** Cells starting with these are run as formulas by Excel/Sheets, so they get a leading apostrophe. */
-const FORMULA_PREFIX = /^[=+\-@\t\r]/;
+const FORMULA_PREFIX = /^(?:[\t\r\n]|[\s\uFEFF]*[=+\-@＝＋－＠])/u;
 
 /**
  * One CSV cell: neutralises spreadsheet formulas and quotes values containing separators or quotes.

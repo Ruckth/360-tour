@@ -207,7 +207,11 @@ const functionReferenceAllowlist: Record<string, string> = {
   "maintenance/aiEval:seed": "Operator command: convex/maintenance/aiEval.ts usage comments.",
   "messaging/projectionMaintenance:initializeInbox": "Operator command: docs/architecture/phase4-implementation.md initialization runbook.",
   "pos/staffApprovals:pending": "Pre-paging response read by admin tabs still on the previous bundle; ApprovalsPanel reads pendingPage. Remove one deploy later.",
-  "commerce/stock:backfillMovementFilters": "Operator command to index historical staff display names and reason codes before enabling Activity filters.",
+  "commerce/purchasing:orderRevisions": "The previous purchasing bundle pages issued revisions through this endpoint during a guarded application rollback. The current order history links individual revisions.",
+  "commerce/purchasing:backfillPurchasingLegacy": "Operator migration reconstructs historical PO line values and indexes existing documents during rollout.",
+  "commerce/purchasing:backfillSupplierData": "Operator migration for existing supplier activity and contact search, documented in stock-dashboard-rollout.md.",
+  "marketing/profitViews:drainPreparedViews": "Operator rollback command documented in profitability-snapshot-rollback.md.",
+  "commerce/stock:backfillMovementFilters": "Optional operator command to refresh historical staff search keys without altering movement evidence.",
   "commerce/paymentCutover:closeDirectPanel": "Compatibility for open direct-pay tabs from the prior bundle. The RPC refuses unresolved panels; remove it after cutover reloads those tills.",
 };
 

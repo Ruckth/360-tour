@@ -39,6 +39,8 @@ const saleAllocationFields = {
   returnedAmount: v.number(),
 };
 export const chosenVariant = v.object({ contentKey: v.string(), variantId: v.id('productVariants') });
+export const packedLotSlice = v.object({ lotId: v.id('stockLots'), quantity: v.number() });
+export const packedPart = v.object({ contentKey: v.string(), allocations: v.array(packedLotSlice) });
 export const orderLineSaleSnapshot = v.object({
   label: v.string(),
   settingsRevision: v.number(),
@@ -52,6 +54,8 @@ export const orderLineSaleSnapshot = v.object({
     ...saleAllocationFields,
     vatProfile,
     goodwillShare: v.optional(v.number()),
+    packedLots: v.optional(v.array(packedLotSlice)),
+    returnedPackedLots: v.optional(v.array(packedLotSlice)),
     stockMovementId: v.optional(v.id('stockMovements')),
     grantId: v.optional(v.id('sessionGrants')),
     voucherId: v.optional(v.id('vouchers')),
@@ -79,6 +83,7 @@ export const paymentExternalLeg = v.object({
   change: v.optional(v.number()),
   reference: v.optional(v.string()),
   instructedAt: v.optional(v.number()),
+  stockHoldUntil: v.optional(v.number()),
   instructedTillId: v.optional(v.string()),
   instructedTab: v.optional(v.string()),
   /** The attempt's owner revision when this part was instructed. A handover moves past it for good. */

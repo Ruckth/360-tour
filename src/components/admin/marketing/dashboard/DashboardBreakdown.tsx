@@ -3,7 +3,7 @@
 import { Card } from "@/components/ui/card";
 
 import { ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, ChevronRight, Plus } from "lucide-react";
-import type { ReactNode } from "react";
+import { useLayoutEffect, useRef, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { SegmentedTabs, tabPanelProps } from "../../SegmentedTabs";
 import { StatusBadge } from "../../StatusBadge";
@@ -79,16 +79,17 @@ function columns(b: Breakdown, cash: boolean): Column[] {
   ];
 }
 
-function RoasCell({ roas, onAddSpend, tracked }: { roas?: Roas; onAddSpend?: (ids: string[]) => void; tracked: boolean }) {
+function RoasCell({ roas, onAddSpend, tracked, eligible = [] }: { roas?: Roas; onAddSpend?: (ids: string[]) => void; tracked: boolean; eligible?: string[] }) {
   const { capabilities } = useMarketingAccess();
   if (!roas || !tracked) return <Dash />;
   if (roas.kind === "all_properties_only") return <span className="text-xs text-muted-foreground">All properties only</span>;
   if (roas.kind === "missing") {
-    if (!capabilities.spend || !onAddSpend || !roas.campaignIds.length) return <Dash title="No spend entered for these dates" />;
+    const addable = roas.campaignIds.filter((id) => eligible.includes(id));
+    if (!capabilities.spend || !onAddSpend || !addable.length) return <Dash title="No spend entered for these dates" />;
     return (
       <button
         type="button"
-        onClick={() => onAddSpend(roas.campaignIds)}
+        onClick={() => onAddSpend(addable)}
         className="relative z-10 inline-flex h-8 items-center gap-1 rounded-md border border-dashed border-border px-2 text-xs font-semibold text-foreground transition hover:border-solid hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11"
       >
         <Plus aria-hidden className="size-3.5" />
@@ -104,7 +105,7 @@ function RoasCell({ roas, onAddSpend, tracked }: { roas?: Roas; onAddSpend?: (id
   );
 }
 
-function Cell({ row, col, onAddSpend }: { row: BreakdownRow | TotalRow; col: SortKey; onAddSpend?: (ids: string[]) => void }) {
+function Cell({ row, col, onAddSpend, eligible }: { row: BreakdownRow | TotalRow; col: SortKey; onAddSpend?: (ids: string[]) => void; eligible?: string[] }) {
   const kind = "kind" in row ? row.kind : "total";
   const untracked = kind === "unknown" || kind === "staff" || kind === "messaging" || kind === "none";
   switch (col) {
@@ -130,7 +131,7 @@ function Cell({ row, col, onAddSpend }: { row: BreakdownRow | TotalRow; col: Sor
     case "net":
       return <span className="font-semibold text-foreground">{thb(row.net)}</span>;
     case "roas":
-      return <RoasCell roas={row.roas} onAddSpend={kind === "total" ? undefined : onAddSpend} tracked={!untracked} />;
+      return <RoasCell roas={row.roas} onAddSpend={kind === "total" ? undefined : onAddSpend} tracked={!untracked} eligible={eligible} />;
     default:
       return null;
   }
@@ -144,6 +145,7 @@ function NameButton({ row, onOpen, card = false }: { row: BreakdownRow; onOpen: 
   return (
     <button
       type="button"
+      data-drill-row={row.key}
       onClick={() => onOpen(row)}
       className={cn(
         "group flex w-full min-w-0 pointer-coarse:min-h-11 items-start gap-2 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -204,9 +206,31 @@ export function DashboardBreakdown({
   onOpen: (row: BreakdownRow) => void;
   onAddSpend: (campaignIds: string[]) => void;
 }) {
+  const heading = useRef<HTMLHeadingElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  const focus = useRef<"heading" | string | null>(null);
+  const pathKey = b.path.map((step) => `${step.level}:${step.id}`).join("/");
+  useLayoutEffect(() => {
+    if (focus.current === null) return;
+    const restore = focus.current === "heading" ? null : Array.from(panel.current?.querySelectorAll<HTMLButtonElement>("[data-drill-row]") ?? []).find((button) => button.dataset.drillRow === focus.current && button.getClientRects().length);
+    (restore ?? heading.current)?.focus();
+    focus.current = null;
+  }, [pathKey]);
+
+  function openRow(row: BreakdownRow) {
+    if (row.drill.level !== "sales") focus.current = "heading";
+    onOpen(row);
+  }
+  function backTo(path: DrillStep[]) {
+    const returning = b.path[path.length];
+    focus.current = returning ? `${returning.level}:${returning.id}` : "heading";
+    onPath(path);
+  }
+
+  const eligible = p.report.campaigns.filter((campaign) => campaign.status === "active").map((campaign) => campaign.id);
   const cols = columns(b, p.cash);
+  const sortable = cols.filter((column) => column.key !== "roas" || b.canSortRoas);
   const empty = !b.rows.length && !b.pinned.length;
-  const scope = p.cash ? "Finance view · by payment and coupon settlement date" : `${p.filters.touch === "first" ? "First touch" : "Last touch"} · sales made in these dates`;
   const toggleSort = (key: SortKey) => onSort(sort.key === key ? { key, dir: sort.dir === "asc" ? "desc" : "asc" } : { key, dir: key === "name" ? "asc" : "desc" });
 
   const th = (col: Column) => {
@@ -219,10 +243,10 @@ export function DashboardBreakdown({
         aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}
         className={cn("py-3 font-semibold", col.key === "name" ? cn("sticky left-0 z-10 min-w-52 px-4 text-left", TINT) : "px-2.5 text-right")}
       >
-        <button type="button" onClick={() => toggleSort(col.key)} className={cn("inline-flex pointer-coarse:min-h-11 pointer-coarse:min-w-11 items-center gap-1 rounded uppercase tracking-[0.1em] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", active && "text-foreground")}>
+        {col.key === "roas" && !b.canSortRoas ? col.label : <button type="button" onClick={() => toggleSort(col.key)} className={cn("inline-flex pointer-coarse:min-h-11 pointer-coarse:min-w-11 items-center gap-1 rounded uppercase tracking-[0.1em] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", active && "text-foreground")}>
           {col.label}
           <Icon aria-hidden className={cn("size-3.5", !active && "opacity-50")} />
-        </button>
+        </button>}
       </th>
     );
   };
@@ -232,11 +256,11 @@ export function DashboardBreakdown({
       {cols.map((col) =>
         col.key === "name" ? (
           <td key={col.key} className={cn("sticky left-0 z-10 bg-card px-4 py-3 align-top transition-colors", GROUP_HOVER_TINT)}>
-            <NameButton row={row} onOpen={onOpen} />
+            <NameButton row={row} onOpen={openRow} />
           </td>
         ) : (
           <td key={col.key} className="whitespace-nowrap px-2.5 py-3 text-right align-top font-sans tabular-nums">
-            <Cell row={row} col={col.key} onAddSpend={onAddSpend} />
+            <Cell row={row} col={col.key} onAddSpend={onAddSpend} eligible={eligible} />
           </td>
         ),
       )}
@@ -260,17 +284,19 @@ export function DashboardBreakdown({
     </tr>
   );
 
-  const metricCols = cols.filter((c) => c.key !== "name" && c.key !== "net");
+  const rankedBy = cols.find((column) => column.key === sort.key && sort.key !== "name" && sort.key !== "net");
+  const metricCols = cols.filter((c) => c.key !== "name" && c.key !== "net" && c.key !== rankedBy?.key);
   const card = (row: BreakdownRow) => (
     <li key={row.key} className="relative bg-card transition-colors active:bg-muted/40">
       <div className="grid gap-3 px-4 py-4">
         <div className="flex items-start gap-3">
           <div className="min-w-0 flex-1">
-            <NameButton row={row} onOpen={onOpen} card />
+            <NameButton row={row} onOpen={openRow} card />
           </div>
           <div className="shrink-0 text-right">
             <p className="text-base font-semibold font-sans tabular-nums text-foreground">{thb(row.net)}</p>
-            <p className="text-xs text-muted-foreground">net</p>
+            <p className="text-xs text-muted-foreground">Net</p>
+            {rankedBy ? <div className="mt-1 text-xs">{rankedBy.label} <Cell row={row} col={rankedBy.key} onAddSpend={onAddSpend} eligible={eligible} /></div> : null}
           </div>
           <ChevronRight aria-hidden className="mt-1 size-4 shrink-0 text-muted-foreground" />
         </div>
@@ -279,7 +305,7 @@ export function DashboardBreakdown({
             <div key={col.key} className={cn("min-w-0", col.key === "roas" && "col-span-3")}>
               <dt className="text-muted-foreground">{col.label}</dt>
               <dd className="font-medium font-sans tabular-nums text-foreground">
-                <Cell row={row} col={col.key} onAddSpend={onAddSpend} />
+                <Cell row={row} col={col.key} onAddSpend={onAddSpend} eligible={eligible} />
               </dd>
             </div>
           ))}
@@ -290,7 +316,7 @@ export function DashboardBreakdown({
 
   const crumbs = b.path.length ? (
     <nav aria-label="Drill-down" className="flex flex-wrap items-center gap-1 border-b border-border bg-muted/20 px-4 py-2 text-sm">
-      <button type="button" onClick={() => onPath([])} className="rounded px-1 font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11 pointer-coarse:min-w-11">
+      <button type="button" onClick={() => backTo([])} className="rounded px-1 font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11 pointer-coarse:min-w-11">
         All {b.view === "source" ? "sources" : "campaigns"}
       </button>
       {b.path.map((step, i) => (
@@ -301,7 +327,7 @@ export function DashboardBreakdown({
               {stepName(p, step)}
             </span>
           ) : (
-            <button type="button" onClick={() => onPath(b.path.slice(0, i + 1))} className="rounded px-1 font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11 pointer-coarse:min-w-11">
+            <button type="button" onClick={() => backTo(b.path.slice(0, i + 1))} className="rounded px-1 font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11 pointer-coarse:min-w-11">
               {stepName(p, step)}
             </button>
           )}
@@ -342,7 +368,7 @@ export function DashboardBreakdown({
                 onChange={(event) => onSort({ key: event.target.value as SortKey, dir: event.target.value === "name" ? "asc" : "desc" })}
                 className="h-10 pointer-coarse:min-h-11 appearance-none rounded-lg border border-input bg-background pl-3 pr-8 text-sm font-semibold text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring dark:[color-scheme:dark]"
               >
-                {cols.map((col) => (
+                {sortable.map((col) => (
                   <option key={col.key} value={col.key}>
                     {col.key === "name" ? "Name" : col.label}
                   </option>
@@ -388,22 +414,21 @@ export function DashboardBreakdown({
   }
 
   return (
-    <Card role="region" id="breakdown" aria-labelledby="breakdown-title" className="@container min-w-0 ">
+    <Card role="region" id="breakdown" aria-labelledby="marketing-breakdown" className="@container min-w-0 ">
       <div className="grid gap-3 border-b border-border px-4 pt-3">
         <div className="min-w-0">
-          <h2 id="breakdown-title" className="text-base font-semibold text-foreground">
-            Breakdown
+          <h2 ref={heading} id="marketing-breakdown" tabIndex={-1} className="text-base font-semibold text-foreground">
+            Breakdown{b.path.length ? ` · ${b.path.at(-1)?.level === "source" ? "Campaigns" : "Links"} for ${stepName(p, b.path[b.path.length - 1])}` : ""}
           </h2>
-          <p className="text-xs text-muted-foreground">{scope} · select a row to drill down</p>
+          <p className="text-xs text-muted-foreground">Select a row to drill down</p>
         </div>
         <SegmentedTabs tabs={VIEWS} value={b.view} onValueChange={onView} label="Breakdown by" id="breakdown" className="-mb-px shadow-none" />
       </div>
       {crumbs}
-      <div {...tabPanelProps("breakdown", b.view)}>{body}</div>
+      <div ref={panel} {...tabPanelProps("breakdown", b.view)}>{body}</div>
       <p className="border-t border-border px-4 py-2.5 text-xs leading-5 text-muted-foreground">
         {NOTES[b.view]}
         {p.cash && b.view !== "coupon" ? " First paid counts sales receiving their first payment; coupon-only counts checkout settlements with no own cash received. The Finance view hides sessions and conversion: they belong to visits." : ""}
-        {!p.allProperties && b.showSessions ? " Sessions, conversion and ROAS are for All properties only." : ""}
       </p>
     </Card>
   );

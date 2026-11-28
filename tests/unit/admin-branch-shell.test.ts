@@ -344,6 +344,8 @@ describe('unsaved changes', () => {
 });
 
 describe('first landing', () => {
+  // Stock handles first choice inside its workspace; Today uses the general branch gate.
+  beforeEach(() => { state.pathname = '/admin/today'; });
   it('asks a first-time two-branch person to choose once, then restores the choice on this device', async () => {
     manager();
     await render();
@@ -376,7 +378,7 @@ describe('first landing', () => {
       expect(document.querySelector('[data-branch-switcher]'), path).toBeNull();
     }
     // A branch route still asks.
-    state.pathname = '/admin/stock/balances';
+    state.pathname = '/admin/today';
     await render();
     expect(document.querySelector('h1')?.textContent).toBe('Choose a branch to start');
   });

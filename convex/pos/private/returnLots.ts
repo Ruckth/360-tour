@@ -49,3 +49,15 @@ export function selectReturnLots(units: number, requested: LotAllocation[] | und
 export function remainingReturnLots(lots: ReturnLot[]) {
   return new Map(lots.map(lot => [lot.lotId, { lot, remaining: lot.quantity }]));
 }
+
+/** Intersect this physical part's unused slices with the original movement's remaining lots. */
+export function packedReturnLots(
+  lots: ReturnLot[], packed: LotAllocation[], returned: LotAllocation[] = [],
+) {
+  const used = new Map(returned.map(lot => [lot.lotId, lot.quantity]));
+  const limits = new Map(packed.map(lot => [lot.lotId, lot.quantity - (used.get(lot.lotId) ?? 0)]));
+  return lots.flatMap(lot => {
+    const quantity = Math.min(lot.quantity, limits.get(lot.lotId) ?? 0);
+    return quantity > 0 ? [{ ...lot, quantity }] : [];
+  });
+}

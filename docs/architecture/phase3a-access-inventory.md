@@ -46,12 +46,33 @@ The inventory test compares every source registration with this table and requir
 | `commerce/purchasing.reverseReturn` | `staffMutation` | checkout | Branch purchasing grant, record state and revision checks. Mutations check access before replay. |
 | `commerce/purchasing.holds` | `staffQuery` | checkout | Branch purchasing grant, record state and revision checks. Mutations check access before replay. |
 | `commerce/purchasing.declineHeldGoods` | `staffMutation` | checkout | Branch purchasing grant, record state and revision checks. Mutations check access before replay. |
+| `commerce/purchasing.openHoldCount` | `staffQuery` | checkout | Branch purchasing read grant; one bounded open-hold index range for the Stock nav badge. |
+| `commerce/purchasing.recordHeldGoodsHandoff` | `staffMutation` | checkout | Branch buyer grant, declined-hold state and revision checks. Mutations check access before replay. |
+| `commerce/purchasing.acceptHeldGoods` | `staffMutation` | checkout | Branch buyer grant, open-hold state and revision, own open order line with units due. Mutations check access before replay. |
+| `commerce/purchasing.supplierRejectionSummary` | `staffQuery` | checkout | Branch purchasing read grant; bounded recent supplier receipts and their lines. |
 | `commerce/purchasing.suppliers` | `staffQuery` | checkout | Branch purchasing grant, record state and revision checks. Mutations check access before replay. |
 | `commerce/purchasing.addSupplier` | `staffMutation` | checkout | Branch purchasing grant, record state and revision checks. Mutations check access before replay. |
 | `commerce/purchasing.editSupplier` | `staffMutation` | checkout | Branch purchasing grant, record state and revision checks. Mutations check access before replay. |
 | `commerce/purchasing.incoming` | `staffQuery` | checkout | Branch purchasing grant, record state and revision checks. Mutations check access before replay. |
 | `commerce/purchasing.history` | `staffQuery` | checkout | Branch purchasing grant, record state and revision checks. Mutations check access before replay. |
+| `commerce/purchasing.myRequestCountsAt` | `staffQuery` | checkout | Branch purchasing grant; counts only the caller's own requests through the requester/status index. |
+| `commerce/purchasing.requestApproverCoverage` | `staffQuery` | checkout | Branch purchasing grant; returns only a count of other bound approvers and whether the caller can manage access. |
+| `commerce/purchasing.copyPurchaseRequest` | `staffMutation` | checkout | Branch requester grant; own declined, closed or sent-back request only. Mutations check access before replay. |
+| `commerce/purchasing.approvePurchaseOrderIssue` | `staffMutation` | checkout | Branch approver grant; a different person from the creator and the approval requester. Mutations check access before replay. |
+| `commerce/purchasing.declinePurchaseOrderIssue` | `staffMutation` | checkout | Branch approver grant; not the approval requester. Mutations check access before replay. |
+| `commerce/purchasing.supplierMatches` | `staffQuery` | checkout | Branch purchasing grant, record state and revision checks. Mutations check access before replay. |
+| `commerce/purchasing.supplierImpact` | `staffQuery` | checkout | Branch purchasing grant, record state and revision checks. Mutations check access before replay. |
 | `commerce/stockExpansion.createTransfer` | `staffMutation` | checkout | Origin requester. The destination must be an active branch. |
+| `commerce/stockExpansion.editTransfer` | `staffMutation` | checkout | Origin buyer checks the draft revision and destination before editing. |
+| `commerce/stockExpansion.transferAvailability` | `staffQuery` | checkout | Read access to the requested branch. Up to twelve requested variants. |
+| `commerce/stockExpansion.lotConversionBalances` | `staffQuery` | checkout | Company-scoped stock lead checks the affected branch balances before conversion. |
+| `commerce/stockExpansion.convertLotTracking` | `staffMutation` | checkout | Company-scoped stock lead. Checks branch access, quantities and reviewed revisions before allocating lots. |
+| `commerce/stockExpansion.findCountLot` | `staffQuery` | checkout | Branch lead looks up one lot by variant and code within the selected branch. |
+| `commerce/stockExpansion.branchExpiry` | `staffQuery` | checkout | Branch stock reader. Paginates lots in the requested expiry window. |
+| `commerce/stockExpansion.branchReservations` | `staffQuery` | checkout | Branch stock reader. Paginates active reservations in the selected branch. |
+| `commerce/stockExpansion.readLotCountSession` | `staffQuery` | checkout | Branch stock lead reads their own open session for the variant. |
+| `commerce/stockExpansion.startLotCountSession` | `staffMutation` | checkout | Branch stock lead starts or resumes their own session for a tracked variant. |
+| `commerce/stockExpansion.finishLotCountSession` | `staffMutation` | checkout | Branch stock lead must match the session actor, branch and variant. |
 | `commerce/stockExpansion.sendTransfer` | `staffMutation` | checkout | Origin buyer. Dispatch is tied to the original transfer and its stock movements. |
 | `commerce/stockExpansion.receiveTransfer` | `staffMutation` | checkout | Destination receiver. Accepted units and lots are bounded by dispatch. |
 | `commerce/stockExpansion.closeTransferShort` | `staffMutation` | checkout | Destination stock lead, or origin stock lead when the destination is inactive. |
@@ -265,9 +286,12 @@ The inventory test compares every source registration with this table and requir
 | `marketing/commands/refreshCredit.refreshCredit` | `marketingMutation` | Independent marketing permission "reviewCredits", without requiring a staff role. | Independent marketing grants, privacy projection, affiliate/credit state and review checks remain in handlers/helpers. |
 | `marketing/commands/reviewCredit.reviewCredit` | `marketingMutation` | Independent marketing permission "reviewCredits", without requiring a staff role. | Independent marketing grants, privacy projection, affiliate/credit state and review checks remain in handlers/helpers. |
 | `marketing/profitViews.openView` | `marketingMutation` | Independent marketing permission 'spend', without requiring a staff role. | Materializes a temporary view bound to the signed-in identity, range, and disclosure level. |
+| `marketing/profitViews.sourceStatus` | `marketingQuery` | Independent marketing permission 'spend', without requiring a staff role. | Exposes build status only to the owning identity under its current access. |
+| `marketing/profitViews.sourceBatch` | `publicQuery` | Timestamp-pinned finance worker transport with an unguessable job capability. | Checks the capability hash, pending source, expiry and fixed report scope before returning one bounded slice. |
 | `marketing/profitability.recordVisitCosts` | `marketingMutation` | Independent marketing permission 'serviceFinance', without requiring a staff role. | Version-checked actual delivery costs and correction reason recorded in visit history. |
 | `marketing/profitability.findCustomers` | `marketingQuery` | Independent marketing permission 'serviceFinance', without requiring a staff role. | Explicit service-report customer assignment, recorded in appointment history. |
 | `marketing/profitability.identifyCustomer` | `marketingMutation` | Independent marketing permission 'serviceFinance', without requiring a staff role. | Explicit service-report customer assignment, recorded in appointment history. |
+| `marketing/profitability.prepareTransactions` | `marketingMutation` | Independent marketing permission 'spend', without requiring a staff role. | Prepares caller-owned transaction pages from a verified profitability snapshot. |
 | `marketing/profitability.report` | `marketingQuery` | Independent marketing permission 'spend', without requiring a staff role. | Managers see anonymous attendee labels. Only finance and administrators can export or link identities. |
 | `marketing/profitability.financeInputs` | `marketingQuery` | Independent marketing permission 'serviceFinance', without requiring a staff role. | Finance and administrators record effective-dated revisions. |
 | `marketing/profitability.recordMonth` | `marketingMutation` | Independent marketing permission 'serviceFinance', without requiring a staff role. | Finance and administrators record effective-dated revisions. |
@@ -288,6 +312,8 @@ The inventory test compares every source registration with this table and requir
 | `pos/catalog.stableCatalog` | `staffQuery` | Staff capability 'checkout'; existing role model is authoritative. | Order visibility (cashier: open orders or today’s receipts), ownership, revision, cashier rules, approval and link checks remain in handlers/helpers. |
 | `pos/catalog.recentCatalogRanking` | `staffQuery` | Staff capability 'checkout'; existing role model is authoritative. | Order visibility (cashier: open orders or today’s receipts), ownership, revision, cashier rules, approval and link checks remain in handlers/helpers. |
 | `pos/orders.getOrder` | `staffQuery` | Staff capability 'checkout'; existing role model is authoritative. | Order visibility (cashier: open orders or today’s receipts), ownership, revision, cashier rules, approval and link checks remain in handlers/helpers. |
+| `pos/orders.packedLotOptions` | `staffQuery` | Staff capability 'checkout'. | Reads eligible lots for an accessible draft order and selling branch. |
+| `pos/orders.savePackedLots` | `staffMutation` | Staff capability 'checkout'. | Confirms physical part allocations for an accessible draft order and selling branch. |
 | `pos/orders.listOrders` | `staffQuery` | Operations access. | Branch scope for retail orders before projecting rows. |
 | `pos/orders.findOrderByNumber` | `staffQuery` | Staff capability 'checkout'; existing role model is authoritative. | Order visibility (cashier: open orders or today’s receipts), ownership, revision, cashier rules, approval and link checks remain in handlers/helpers. |
 | `pos/orders.ordersForBooking` | `staffQuery` | Team operations capability with active branch scope. | Retail order details require access to the selling branch. Booking and appointment totals retain their existing accounting scope. |
@@ -393,6 +419,9 @@ The inventory test compares every source registration with this table and requir
 | `pos/staffApprovals.detail` | `staffQuery` | Staff capability 'approve'. | Per-request review policy, followed by kind-specific detail and freshness checks. |
 | `pos/staffApprovals.myStatus` | `staffQuery` | Staff capability 'checkout'. | Requester token ownership and kind-specific status checks. |
 | `commerce/stock.access` | `staffQuery` | Staff capability 'checkout'. | Reads the caller's selected-branch permission flags. |
+| `commerce/stock.binBalances` | `staffQuery` | Staff capability 'checkout'. | Reads positions and recent relocations with selected-branch stock read access. |
+| `commerce/stock.addBin` | `staffMutation` | Staff capability 'checkout'. | Stock lead creates a bin in an active selected branch. |
+| `commerce/stock.relocateBinStock` | `staffMutation` | Staff capability 'checkout'. | Stock lead relocates available units within an active selected branch. |
 | `commerce/stock.listBalances` | `staffQuery` | Staff capability 'checkout'. | Requires a branch stock grant. Pages catalog matches or the branch's recount queue. |
 | `commerce/stock.selectedBalances` | `staffQuery` | Staff capability 'checkout'. | Requires a branch stock grant. Resolves up to 50 selected items directly, including archived items flagged for recount when requested. |
 | `commerce/stock.listActivity` | `staffQuery` | Staff capability 'checkout'. | Requires a branch stock grant. Pages branch movements with one indexed facet. |
@@ -410,13 +439,16 @@ The inventory test compares every source registration with this table and requir
 | `commerce/stock.listCategories` | `staffQuery` | Staff capability 'checkout'. | A branch stock grant allows reading the shared category list. |
 | `commerce/stock.listProducts` | `staffQuery` | Staff capability 'checkout'. | A branch stock grant allows paging the shared catalog. |
 | `commerce/stock.getProduct` | `staffQuery` | Staff capability 'checkout'. | A branch stock grant allows reading a product and its first 50 variants. |
+| `commerce/stock.productArchiveImpact` | `staffQuery` | Staff capability 'checkout'. | A branch stock grant allows reading stock and incoming order impact. |
 | `commerce/stock.productHistory` | `staffQuery` | Staff capability 'checkout'. | A branch stock grant allows paging a product or one of its variants' edits. |
 | `commerce/stock.saveProduct` | `staffMutation` | Staff capability 'operations'. | Branch stock lead creates or edits shared products and variants with change history. |
 | `commerce/stock.archiveProduct` | `staffMutation` | Staff capability 'operations'. | Branch stock lead archives a shared product and refreshes variant search. |
+| `commerce/stock.restoreProduct` | `staffMutation` | Staff capability 'operations'. | Branch stock lead restores a shared product and refreshes variant search. |
 | `commerce/stock.branchPolicy` | `staffQuery` | Staff capability 'manageTeam'. | Owner reads branch opt-ins for direct orders and receipts. |
 | `commerce/stock.listGrants` | `staffQuery` | Staff capability 'manageTeam'. | Owner reads eligible staff and their explicit grants for a branch. |
 | `commerce/stock.setGrant` | `staffMutation` | Staff capability 'manageTeam'. | Owner writes an explicit role grant for branch-eligible staff, with a revision check. |
 | `commerce/stock.setBranchPolicy` | `staffMutation` | Staff capability 'manageTeam'. | Owner updates a branch's direct order and direct receipt opt-ins, with a revision check. |
+| `commerce/stock.setReorderPoint` | `staffMutation` | Staff capability 'checkout', selected branch and stock lead grant. | Updates or clears a branch item reorder point with a revision check. |
 | `commerce/settings.getRules` | `staffQuery` | Staff capability 'operations'. | Owners and managers read; `canEdit` is the owner's 'settings' capability. Resolved dormant defaults and a null `settingsId` when no settings row exists; no writes. |
 | `commerce/settings.getAccess` | `staffQuery` | Staff capability 'checkout'. | Sale switches per caller role; till readiness from the stored acknowledgement and the page's loaded revision. |
 | `commerce/settings.updateRules` | `staffMutation` | Staff capability 'settings'. | One keyed, revision-checked adjustment with reason; enabling a sale switch requires every till acknowledged after the cutover. |

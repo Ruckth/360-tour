@@ -69,6 +69,12 @@ const OLD_NAMES = ['bills', 'billLines', 'billPayments', 'billCorrections', 'bil
 const STOCK_COMPATIBILITY_FILES = new Set([
   'convex/commerce/private/stockCatalog.ts', // Checks uniqueness before variant search initialization finishes.
   'convex/commerce/private/stockLedger.ts', // Recognizes retries for movement rows without fingerprints.
+  'convex/commerce/private/stockExpansionLedger.ts', // Returns and transfers made before lot tracking retain their original physical provenance.
+  'convex/commerce/stockExpansion.ts', // Protects the reserved lot code for units without recorded provenance.
+  'convex/commerce/private/purchasingCore.ts', // Derives historical line value and rejected quantities from original receipt evidence.
+  'convex/commerce/private/purchasingOrders.ts', // Preserves old order values during amendment and indexes historical purchase references.
+  'convex/commerce/private/purchasingReceipts.ts', // Seeds historical order line value before receipt or correction writes.
+  'convex/commerce/purchasing.ts', // Exposes bounded internal supplier and purchase history migration commands.
   'convex/commerce/settings.ts', // Gates product sales on catalog readiness.
   'convex/commerce/stock.ts', // Initializes variant search and movement filters in bounded batches.
 ]);
@@ -164,7 +170,7 @@ add('ignored-scratch', 0, 'Scratch dirs not in .gitignore (output, tmp, graphify
 add('test-harness', 0, 'Shared Convex test harness exists (1 = yes)', existsSync(join(ROOT, 'convex/testing/harness.ts')) ? 1 : 0, 1);
 
 const tableDifferences = reviewedTableDifferences(schema.tables);
-add('tables', 1, 'Convex tables (74 existing + 23 commerce + 4 profitability + 28 Stock and retail)', tableNames.length, 129,
+add('tables', 1, 'Convex tables (74 existing + 23 commerce + 4 profitability + 34 Stock and retail)', tableNames.length, 135,
   [...tableDifferences, ...schema.tables.map(table => `${table.name} → ${table.source}`)]);
 const commercePosTables = new Set(['directPaymentPanels', 'paymentAttempts', 'orderReturns', 'returnPayouts']);
 const commerceTables = schema.tables.filter(table => COMMERCE_TABLE_NAMES.includes(table.name)
@@ -185,12 +191,12 @@ add('reexport-pages', 1, 'Files under [locale] that only re-export another page'
 const startApiRoutes = srcFiles.filter((p) => /^src\/start-app\/routes\/api\./.test(rel(p)));
 add('channel-routes', 2, 'Frontend webhook routes left (line/facebook/instagram/whatsapp; Next folders or Start api routes)', ['line', 'facebook', 'instagram', 'whatsapp'].filter((c) => existsSync(join(ROOT, `src/app/api/${c}`)) || startApiRoutes.some((p) => rel(p).startsWith(`src/start-app/routes/api.${c}`))).length, 0);
 add('server-secret-uses', 2, 'Calls to requireServerSecret', count(convexProd, /requireServerSecret\(/g), 0);
-add('as-never-webhooks', 2, '`as never` casts in frontend HTTP handlers', count(srcFiles.filter((p) => rel(p).startsWith('src/app/api/') || startApiRoutes.includes(p) || rel(p).startsWith('src/lib/server/http/')), /as never/g), 0);
+add('as-never-webhooks', 2, '`as never` casts in frontend HTTP handlers', count(srcFiles.filter((p) => rel(p).startsWith('src/app/api/') || startApiRoutes.includes(p) || rel(p).startsWith('src/lib/server/http/')), /\bas\s+never\b/g), 0);
 suiteMetric(2, 'phase2-tests', 'Required phase 2 test files executed and passing');
 add('global-rate-row', 2, 'Uses of the single chat:global rate-limit key', count(convexProd, /['"`]chat:global['"`]/g), 0);
 
 add('raw-public-functions', 3, 'Public functions on raw query/mutation/action outside convex/auth/model.ts', rawPublicViolations.length, 0, rawPublicViolations);
-add('as-never', 3, '`as never` casts in app code (excluding reui)', count([...srcFiles, ...convexProd].filter((p) => !isTest(p)), /as never/g), 0);
+add('as-never', 3, '`as never` casts in app code (excluding reui)', count([...srcFiles, ...convexProd].filter((p) => !isTest(p)), /\bas\s+never\b/g), 0);
 add('src-imports-convex-lib', 3, 'Browser imports of backend implementations', ownershipDetails('browser').length, 0, ownershipDetails('browser'));
 add('convex-imports-src', 3, 'Backend imports of browser implementations', ownershipDetails('backend').length, 0, ownershipDetails('backend'));
 add('cross-domain', 3, 'Cross-domain imports that bypass model.ts', ownershipDetails('cross-domain').length, 0, ownershipDetails('cross-domain'));

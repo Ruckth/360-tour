@@ -1,5 +1,6 @@
 "use client";
 
+import { Check } from "lucide-react";
 import { useId } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,6 +14,7 @@ export type ReasonFieldProps = {
   label?: string;
   id?: string;
   disabled?: boolean;
+  required?: boolean;
   error?: string | null;
   placeholder?: string;
   /** Smaller chips and a screen-reader-only label, for a reason inside a tight panel. */
@@ -25,7 +27,7 @@ export type ReasonFieldProps = {
   className?: string;
 };
 
-/** A required reason with editable quick chips. */
+/** A reason field with editable quick chips and high-contrast selected state. */
 export function ReasonField({
   value,
   onChange,
@@ -33,6 +35,7 @@ export function ReasonField({
   label = "Reason",
   id,
   disabled = false,
+  required = true,
   error,
   placeholder = "Pick one or type",
   compact = false,
@@ -63,13 +66,14 @@ export function ReasonField({
                 disabled={disabled}
                 onClick={() => onChange(chip)}
                 className={cn(
-                  "inline-flex items-center rounded-full border font-semibold whitespace-nowrap transition-colors pointer-coarse:min-h-11 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-45",
+                  "inline-flex items-center gap-1.5 rounded-full border font-semibold whitespace-nowrap transition-colors pointer-coarse:min-h-11 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-45",
                   compact ? "min-h-8 px-3 text-xs" : "min-h-10 px-3.5 text-sm",
                   pressed
-                    ? "border-input bg-background text-foreground shadow-sm"
-                    : "border-border bg-muted text-foreground hover:border-input",
+                    ? "border-foreground bg-foreground text-background shadow-sm"
+                    : "border-border bg-muted text-foreground hover:border-foreground/40",
                 )}
               >
+                {pressed ? <Check aria-hidden className="size-3.5 shrink-0" /> : null}
                 {chip}
               </button>
             );
@@ -80,8 +84,8 @@ export function ReasonField({
         id={inputId}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        required
-        aria-required="true"
+        required={required}
+        aria-required={required ? "true" : undefined}
         aria-invalid={error ? true : undefined}
         aria-describedby={error ? errorId : undefined}
         disabled={disabled}

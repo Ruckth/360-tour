@@ -53,8 +53,16 @@ function FinanceForm({
 }) {
   const recordCosts = useMutation(api.marketing.profitability.recordCosts);
   const recordMonth = useMutation(api.marketing.profitability.recordMonth);
-  const baseline = useRef<string | null>(null);
   const [initial] = useState(data);
+  const [campaignSearch, setCampaignSearch] = useState('');
+  const [campaignChoices, setCampaignChoices] = useState<Record<string, string>>(() =>
+    Object.fromEntries([
+      ...(initial.statement?.campaignIds ?? []).map((id) => [id, 'included']),
+      ...(initial.statement?.excludedCampaignIds ?? []).map((id) => [id, 'excluded']),
+    ]),
+  );
+  const included = initial.campaigns.filter((campaign) => campaignChoices[campaign.id] === 'included');
+  const excluded = initial.campaigns.filter((campaign) => campaignChoices[campaign.id] === 'excluded');
   const [busy, setBusy] = useState(false),
     [error, setError] = useState('');
   async function submit(e: FormEvent<HTMLFormElement>) {
@@ -71,6 +79,7 @@ function FinanceForm({
           reason: String(fields.get('reason') ?? ''),
           serviceId,
           expected: initial.schedule?._id ?? null,
+          expectedNextFrom: initial.nextScheduleFrom,
           staff: amount(fields, 'staff'),
           materials: amount(fields, 'materials'),
           tools: amount(fields, 'tools'),
@@ -83,8 +92,8 @@ function FinanceForm({
           otherExpenses: amount(fields, 'otherExpenses'),
           tax: amount(fields, 'tax'),
           otherIncome: amount(fields, 'otherIncome'),
-          campaignIds: initial.campaigns.filter((c) => fields.get(c.id) === 'included').map((c) => c.id),
-          excludedCampaignIds: initial.campaigns.filter((c) => fields.get(c.id) === 'excluded').map((c) => c.id),
+          campaignIds: included.map((c) => c.id),
+          excludedCampaignIds: excluded.map((c) => c.id),
           reason: String(fields.get('reason') ?? ''),
         });
       else return;
@@ -98,10 +107,10 @@ function FinanceForm({
   }
   return (
     <form
-      ref={(form) => {
-        if (form && baseline.current === null) baseline.current = JSON.stringify([...new FormData(form)]);
+      onChange={(event) => {
+        if (event.target instanceof HTMLInputElement && event.target.type === 'search') return;
+        onDirty(true);
       }}
-      onChange={(event) => onDirty(JSON.stringify([...new FormData(event.currentTarget)]) !== baseline.current)}
       className="grid gap-4"
       onSubmit={(e) => {
         void submit(e);
@@ -110,8 +119,8 @@ function FinanceForm({
       {mode === 'cost' ? (
         <>
           <p className="text-sm text-muted-foreground">
-            Standard cost per delivered service. Historical entries are estimates based on the schedule effective
-            on the delivery day.
+            Standard cost per delivered service. Historical entries are estimates based on the schedule
+            effective on the delivery day.
           </p>
           <div className="grid gap-3 sm:grid-cols-3">
             {(['staff', 'materials', 'tools'] as const).map((key) => (
@@ -123,17 +132,27 @@ function FinanceForm({
               />
             ))}
           </div>
-          {initial.schedule && (
-            <p className="text-xs text-muted-foreground">
-              Current schedule effective {initial.schedule.from} · recorded by {initial.schedule.actor}
-            </p>
-          )}
+          <p className="text-sm text-muted-foreground">
+            {initial.schedule
+              ? 'Schedule in effect from ' +
+                initial.schedule.from +
+                ' · recorded by ' +
+                initial.schedule.actor
+              : 'No schedule is in effect on this day.'}
+          </p>
+          <p className="text-sm text-muted-foreground">
+            This entry applies from {date}
+            {initial.nextScheduleFrom
+              ? ' until the next schedule takes effect on ' + initial.nextScheduleFrom
+              : ' onward'}
+            .
+          </p>
         </>
       ) : (
         <>
           <p className="text-sm text-muted-foreground">
-            Enter the month’s totals for the service business. Exclude direct service costs and the campaign spend
-            selected below. Partial months use a daily share.
+            Enter the month’s totals for the service business. Exclude direct service costs and the campaign
+            spend selected below. Partial months use a daily share.
           </p>
           <div className="grid gap-3 sm:grid-cols-2">
             {(
@@ -150,35 +169,61 @@ function FinanceForm({
           <fieldset>
             <legend className="mb-2 font-medium">Service acquisition campaigns</legend>
             <p className="text-sm text-muted-foreground">
-              Classify campaign spend for this month. Spending awaiting classification holds CAC and net profit
-              open.
+              Classify campaign spend for this month. Spending awaiting classification holds CAC and net
+              profit open.
             </p>
-            <div className="mt-2 flex flex-wrap gap-3">
-              {initial.campaigns.map((c) => (
-                <label key={c.id} className="inline-flex min-h-10 items-center gap-2">
-                  {c.name}
-                  <select
-                    className={inputStyle}
-                    name={c.id}
-                    defaultValue={
-                      initial.statement?.campaignIds.includes(c.id)
-                        ? 'included'
-                        : initial.statement?.excludedCampaignIds?.includes(c.id)
-                          ? 'excluded'
-                          : ''
-                    }
-                  >
-                    <option value="">Unclassified</option>
-                    <option value="included">Service acquisition</option>
-                    <option value="excluded">Outside service business</option>
-                  </select>
-                </label>
-              ))}
+            <label className="mt-3 grid max-w-sm gap-1 text-sm">
+              Search campaigns
+              <input
+                type="search"
+                className={inputStyle}
+                value={campaignSearch}
+                onChange={(event) => setCampaignSearch(event.target.value)}
+              />
+            </label>
+            <p className="mt-2 text-sm" role="status">
+              {included.length} selected for service acquisition · {excluded.length} outside the service
+              business
+            </p>
+            {included.length > 0 && (
+              <details className="mt-2 text-sm">
+                <summary>Selected campaigns</summary>
+                <ul className="ml-5 list-disc">
+                  {included.map((campaign) => (
+                    <li key={campaign.id}>{campaign.name}</li>
+                  ))}
+                </ul>
+              </details>
+            )}
+            <div className="mt-2 grid gap-3 sm:grid-cols-2">
+              {initial.campaigns
+                .filter((campaign) =>
+                  campaign.name.toLowerCase().includes(campaignSearch.trim().toLowerCase()),
+                )
+                .map((c) => (
+                  <label key={c.id} className="grid gap-1">
+                    {c.name}
+                    <select
+                      className={inputStyle}
+                      value={campaignChoices[c.id] ?? ''}
+                      onChange={(event) =>
+                        setCampaignChoices({
+                          ...campaignChoices,
+                          [c.id]: event.target.value,
+                        })
+                      }
+                    >
+                      <option value="">Unclassified</option>
+                      <option value="included">Service acquisition</option>
+                      <option value="excluded">Outside service business</option>
+                    </select>
+                  </label>
+                ))}
             </div>
           </fieldset>
           <label className="flex items-start gap-2 text-sm">
-            <input type="checkbox" name="confirmedStatement" required className="mt-1" />I have included all service expenses, other income
-            and acquisition spend for this month.
+            <input type="checkbox" name="confirmedStatement" required className="mt-1" />I have included all
+            service expenses, other income and acquisition spend for this month.
           </label>
         </>
       )}
@@ -209,7 +254,9 @@ function FinanceForm({
   );
 }
 
-export type FinanceInputsHandle = { changeContext: (change: () => void) => Promise<void> };
+export type FinanceInputsHandle = {
+  changeContext: (change: () => void) => Promise<void>;
+};
 
 export function FinanceInputs({
   ref,
@@ -232,13 +279,17 @@ export function FinanceInputs({
     if (saving || confirming.current) return;
     confirming.current = true;
     try {
-      if (dirty && !(await confirm({
-        title: "Discard unsaved finance inputs?",
-        description: "Your edits to this entry will be lost.",
-        cancelLabel: "Keep editing",
-        confirmLabel: "Discard changes",
-        destructive: true,
-      }))) return;
+      if (
+        dirty &&
+        !(await confirm({
+          title: 'Discard unsaved finance inputs?',
+          description: 'Your edits to this entry will be lost.',
+          cancelLabel: 'Keep editing',
+          confirmLabel: 'Discard changes',
+          destructive: true,
+        }))
+      )
+        return;
       setDirty(false);
       setMessage('');
       change();
@@ -255,7 +306,13 @@ export function FinanceInputs({
   const valid = isIsoDate(date);
   const data = useQuery(
     api.marketing.profitability.financeInputs,
-    valid ? { month: date.slice(0, 7), from: date, ...(id ? { serviceId: id } : {}) } : 'skip',
+    valid
+      ? {
+          month: date.slice(0, 7),
+          from: date,
+          ...(id ? { serviceId: id } : {}),
+        }
+      : 'skip',
   );
   return (
     <div className="grid gap-4 p-4 sm:p-6">
@@ -266,7 +323,7 @@ export function FinanceInputs({
             className={inputStyle}
             value={mode}
             onChange={(e) => {
-              const next = e.target.value === "month" ? "month" : "cost";
+              const next = e.target.value === 'month' ? 'month' : 'cost';
               e.target.value = mode;
               void changeContext(() => setMode(next));
             }}
@@ -310,7 +367,17 @@ export function FinanceInputs({
           </label>
         )}
       </div>
-      {onClose && <Button type="button" variant="outline" className="w-fit" disabled={saving} onClick={() => void changeContext(onClose)}>Close finance inputs</Button>}
+      {onClose && (
+        <Button
+          type="button"
+          variant="outline"
+          className="w-fit"
+          disabled={saving}
+          onClick={() => void changeContext(onClose)}
+        >
+          Close finance inputs
+        </Button>
+      )}
       {message && (
         <p role="status" className="text-sm font-medium">
           {message}

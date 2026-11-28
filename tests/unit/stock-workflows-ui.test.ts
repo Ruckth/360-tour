@@ -5,15 +5,20 @@ import type { Id } from "convex/_generated/dataModel";
 import { act, createElement, useState, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ReturnLotChoice } from "@/components/checkout/ReturnLotChoice";
+import { confirmedReturnLots, type Choice } from "@/components/checkout/returns-desk";
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
+import { PurchaseRequestDetailView } from "@/components/stock/PurchaseRequestDetailView";
 import { PurchaseOrderDetailView } from "@/components/stock/PurchaseOrderDetailView";
 import { BranchStockAccessSheet } from "@/components/stock/BranchStockAccessSheet";
 import { RequestEditorSheet } from "@/components/stock/PurchasingEditorSheets";
 import { purchasingDetailHref, validatePurchasingSearch } from "@/components/stock/purchasing-location";
 import { ReceiveDeliverySheet } from "@/components/stock/ReceiveDeliverySheet";
+import { MovementInspectSheet } from "@/components/stock/MovementInspectSheet";
 import { StockActivityView } from "@/components/stock/StockActivityView";
 import { StockAdjustSheet } from "@/components/stock/StockBalanceSheets";
 import { StockBalancesView } from "@/components/stock/StockBalancesView";
+import { LotDetailPanel } from "@/components/stock/StockLotDetailPanel";
 import { StockExpansionView } from "@/components/stock/StockExpansionView";
 import {
   createOperationKey,
@@ -28,6 +33,7 @@ import {
 } from "@/components/stock/stock-format";
 import { StockLineEditor } from "@/components/stock/StockLineEditor";
 import { StockProductsView } from "@/components/stock/StockProductsView";
+import { SuppliersManagementPanel } from "@/components/stock/SupplierPicker";
 import { StockPurchasingHubView } from "@/components/stock/StockPurchasingHubView";
 import { StockSectionShell } from "@/components/stock/StockSectionNav";
 import { StockVariantPickerDialog } from "@/components/stock/StockVariantPicker";
@@ -48,6 +54,7 @@ const mockBranch = vi.hoisted(() => ({
     slug: string;
     state: "active";
   } | null,
+  extraBranches: [] as { id: Id<"branches">; key: string; name: string; slug: string; state: "active" }[],
   select: vi.fn(),
 }));
 const mockConvex = vi.hoisted(() => ({
@@ -62,6 +69,9 @@ const mockConvex = vi.hoisted(() => ({
 }));
 
 vi.mock("convex/react", () => ({
+  useConvex: () => ({
+    query: (ref: FunctionReference<"query">, args: unknown) => Promise.resolve(mockConvex.query(getFunctionName(ref), args)),
+  }),
   useQuery: (ref: FunctionReference<"query">, args: unknown) =>
     args === "skip" ? undefined : mockConvex.query(getFunctionName(ref), args),
   useQueries: (requests: Record<string, { query: FunctionReference<"query">; args: unknown }>) =>
@@ -88,7 +98,7 @@ vi.mock("@/platform/navigation", () => ({
 vi.mock("@/components/admin/branch/branch-context", () => ({
   useAdminBranch: () => ({
     current: mockBranch.current,
-    branches: mockBranch.current ? [mockBranch.current] : [],
+    branches: mockBranch.current ? [mockBranch.current, ...mockBranch.extraBranches.filter((branch) => branch.id !== mockBranch.current?.id)] : [],
     select: mockBranch.select,
   }),
 }));
@@ -179,6 +189,7 @@ describe("Stock UI components and workflow regressions", () => {
     mockNav.searchParams = new URLSearchParams();
     mockNav.push.mockReset();
     mockNav.replace.mockReset();
+    mockBranch.extraBranches = [];
     mockBranch.current = {
       id: "branch_1" as Id<"branches">,
       key: "samui",
@@ -204,6 +215,81 @@ describe("Stock UI components and workflow regressions", () => {
     vi.useRealTimers();
   });
 
+  it("loads rejection reasons on demand for the selected branch and supplier", async () => {
+    const branchId = "branch_1" as Id<"branches">;
+    const supplierId = "supplier_1" as Id<"suppliers">;
+    const queryName = getFunctionName(api.commerce.purchasing.supplierRejectionSummary);
+    mockConvex.paginated.mockReturnValue({
+      results: [{ _id: supplierId, name: "Coastal Supply", status: "active" }],
+      status: "Exhausted", loadMore: vi.fn(),
+    });
+    mockConvex.query.mockImplementation(name => name === queryName
+      ? { receiptsScanned: 4, byReason: [{ reason: "damaged", units: 3 }, { reason: "uncoded", units: 1 }] }
+      : undefined);
+
+    await act(async () => root.render(createElement(SuppliersManagementPanel, { branchId, canEdit: false })));
+    expect(mockConvex.query).not.toHaveBeenCalledWith(queryName, expect.anything());
+    const open = [...document.querySelectorAll("button")].find(button => button.textContent === "Rejection reasons")!;
+    await act(async () => open.click());
+    expect(mockConvex.query).toHaveBeenCalledWith(queryName, { branchId, supplierId });
+    const dialog = document.querySelector('[role="dialog"]')!;
+    expect(dialog.textContent).toContain("4 most recent receipts");
+    expect(dialog.querySelector("dt")?.textContent).toBe("Damaged");
+    expect(dialog.querySelector("dd")?.textContent).toBe("3");
+    expect(dialog.textContent).toContain("No reason recorded");
+  });
+
+  it.each([
+    [{ operationId: "operation_1", reportId: null }, "Linked stock correction posted."],
+    [{ operationId: null, reportId: "report_1" }, "Reconciliation report opened in Needs review."],
+  ])("replays an ambiguous correction result with the original request", async (result, notice) => {
+    const branchId = mockBranch.current!.id;
+    const movementId = "movement_1" as Id<"stockMovements">;
+    const sourceActivity = getFunctionName(api.commerce.stock.sourceActivity);
+    mockConvex.query.mockImplementation(name => name === getFunctionName(api.commerce.stock.getMovement)
+      ? { itemLabel: "Lavender oil", kind: "opening", delta: 24, before: 0, after: 24, actorLabel: "Staff",
+        createdAt: 1, canCorrect: true, reversibleQuantity: 24, sourceId: "batch_1", reports: [{ _id: "owned", status: "open" }] }
+      : undefined);
+    mockConvex.paginated.mockImplementation(name => ({
+      results: name === sourceActivity ? [
+        { _id: movementId, itemLabel: "Lavender oil", delta: 24, before: 0, after: 24 },
+        { _id: "movement_2", itemLabel: "Soap", delta: 4, before: 0, after: 4 },
+      ] : [],
+      status: "Exhausted", loadMore: vi.fn(),
+    }));
+    mockConvex.queries.mockImplementation(() => ({
+      preview: { requiresReconciliation: true, line: { before: 18, after: -6, delta: -24, revision: 2 } },
+    }));
+    const post = getMutationSpy(api.commerce.stock.postCorrection)
+      .mockRejectedValueOnce(new Error("Response lost"))
+      .mockResolvedValueOnce(result);
+    const onSuccess = vi.fn();
+    const onClose = vi.fn();
+    const access = { lead: true, read: true } as Parameters<typeof MovementInspectSheet>[0]["access"];
+    const button = (label: string) => [...document.querySelectorAll("button")].find(item => item.textContent === label)!;
+    await act(async () => root.render(wrap(createElement(MovementInspectSheet, { branchId, movementId, access, reportContext: null, onSuccess, onClose }))));
+    const section = document.querySelector('[aria-label="Movements from same source"]');
+    expect(section?.previousElementSibling?.contains(button("Correct movement"))).toBe(true);
+    await act(async () => button("Correct movement").click());
+    await act(async () => button("Use all reversible units").click());
+    await act(async () => {
+      setInputValue(document.querySelector<HTMLInputElement>("#corr-physical-count")!, "0");
+      setInputValue(document.querySelector<HTMLInputElement>("#corr-reason")!, "Wrong opening count");
+      document.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click();
+    });
+    const submit = () => document.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    await act(async () => { submit(); });
+    expect(post).toHaveBeenCalledOnce();
+    expect(onSuccess).not.toHaveBeenCalled();
+    mockConvex.queries.mockImplementation(() => ({ preview: new Error("Quantity no longer reversible") }));
+    await act(async () => { submit(); });
+    expect(post).toHaveBeenCalledTimes(2);
+    expect(post.mock.calls[1]).toEqual(post.mock.calls[0]);
+    expect(post.mock.calls[0][0]).toMatchObject({ expectedRevision: 2, physicalCount: 0, confirmNegative: true });
+    expect(onSuccess).toHaveBeenCalledWith(notice);
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
   it("names approval shortfalls by SKU and focuses the affected draft quantity", async () => {
     const orderId = "order_1";
     const line = (id: string, variantId: string, variantLabel: string, sku: string) => ({
@@ -215,6 +301,7 @@ describe("Stock UI components and workflow regressions", () => {
       lines: [line("line_1", "var_1", "250 ml", "OIL-250"), line("line_2", "var_2", "500 ml", "OIL-500")],
       holds: [],
       permissions: { buyer: true },
+      returnsAwaitingCredit: { count: 0, units: 0 },
     } : undefined);
     const issue = getMutationSpy(api.commerce.purchasing.issuePurchaseOrder).mockRejectedValue({
       data: { code: "ALLOCATION_CHANGED", lines: [{ orderLineId: "line_2", available: 4 }] },
@@ -256,7 +343,21 @@ describe("Stock UI components and workflow regressions", () => {
     const render = async () => act(async () => root.render(wrap(createElement(StockProductsView))));
     const button = (label: string) => [...document.querySelectorAll("button")].find((b) => b.textContent === label);
     await render();
-    await act(async () => button("Edit")?.click());
+    const productRow = () => document.querySelector('button[aria-label="Actions for Massage Oil"]')?.closest("tr");
+    expect(productRow()?.querySelectorAll("button, summary")).toHaveLength(2);
+    product.status = "archived";
+    await render();
+    expect(productRow()?.querySelectorAll("button, summary")).toHaveLength(2);
+    expect(button("Restore")).toBeDefined();
+    product.status = "active";
+    await render();
+    expect(document.querySelector('button[aria-label="Actions for Massage Oil"]')).not.toBeNull();
+    expect(button("Archive")).toBeUndefined();
+    expect(button("History")).toBeUndefined();
+    await act(async () => button("Massage Oil")?.click());
+    expect(document.querySelector('[aria-label="Status for 250 ml · OIL-250, row 1"]')).not.toBeNull();
+    expect(document.querySelectorAll('button[aria-expanded="false"]')).not.toHaveLength(0);
+    expect(document.body.textContent).toContain("Archive saved variants to preserve their stock and purchase history.");
     const name = document.querySelector<HTMLInputElement>("#prod-name");
     expect(name).not.toBeNull();
     await act(async () => { if (name) setInputValue(name, "Organic Massage Oil"); });
@@ -290,7 +391,8 @@ describe("Stock UI components and workflow regressions", () => {
 
   it("adds three request lines in one picker confirmation and keeps filter picks immediate", async () => {
     const items = ["Oil", "Soap", "Towel"].map((productName, index) => ({
-      variantId: `var_${index + 1}`, productName, label: "Standard", onHand: 0, onOrder: 0,
+      variantId: `var_${index + 1}`, productName, label: "Standard", onHand: 2, onOrder: 3,
+      reorderPoint: index === 0 ? 12 : undefined,
     }));
     mockConvex.paginated.mockImplementation(() => ({ results: items, status: "Exhausted", loadMore: vi.fn() }));
     const branchId = "branch_1" as Id<"branches">;
@@ -305,7 +407,10 @@ describe("Stock UI components and workflow regressions", () => {
     expect(document.body.textContent).toContain(`Items (0/${STOCK_MAX_LINES})`);
     await act(async () => button("Add 3 items")?.click());
     expect(document.body.textContent).toContain(`Items (3/${STOCK_MAX_LINES})`);
-    expect(document.querySelectorAll('input[id^="pr-line-qty-"]')).toHaveLength(3);
+    const quantities = [...document.querySelectorAll<HTMLInputElement>('input[id^="pr-line-qty-"]')];
+    expect(quantities.map((input) => input.value)).toEqual(["7", "1", "1"]);
+    const hint = document.getElementById(quantities[0].getAttribute("aria-describedby")!);
+    expect(hint?.textContent).toContain("Par 12 − on hand 2 − on order 3");
 
     const onSelect = vi.fn();
     const onOpenChange = vi.fn();
@@ -374,7 +479,7 @@ describe("Stock UI components and workflow regressions", () => {
     expect(document.body.textContent).toContain("฿600");
   });
 
-  it("StockSectionShell renders branch context, active Stock nav link, and missing-branch callout", async () => {
+  it("StockSectionShell leaves branch context to the header and exposes the active page and branch recovery", async () => {
     mockNav.segment = "purchasing";
     await act(async () => root.render(createElement(StockSectionShell, null, "Active stock view")));
 
@@ -389,7 +494,7 @@ describe("Stock UI components and workflow regressions", () => {
       "Transfers & Lots",
     ]);
     expect(links.find((a) => a.getAttribute("aria-current") === "page")?.textContent?.trim()).toBe("Purchasing");
-    expect(document.body.textContent).toContain("Koh Samui");
+    expect(document.body.textContent).not.toContain("Koh Samui");
     expect(document.body.textContent).toContain("Active stock view");
 
     mockBranch.current = null;
@@ -436,7 +541,7 @@ describe("Stock UI components and workflow regressions", () => {
       link.textContent?.trim(),
       link.getAttribute("href"),
     ]);
-    expect(rowActions).toEqual(expect.arrayContaining([["Count", href], ["Adjust", href]]));
+    expect(rowActions).toEqual([["Open lots", href]]);
     expect(mockNav.replace).toHaveBeenCalledExactlyOnceWith(href);
 
     mockNav.searchParams = new URLSearchParams("variantId=var_1");
@@ -602,16 +707,16 @@ describe("Stock UI components and workflow regressions", () => {
     const reset = [...document.querySelectorAll("button")].find(item => item.textContent?.trim() === "Reset filters")!;
     expect(reset.disabled).toBe(false);
     await act(async () => reset.click());
-    expect(reset.disabled).toBe(true);
+    expect(reset.isConnected).toBe(false);
     expect(mockNav.replace).toHaveBeenCalledWith("/admin/stock/activity?returnTo=%2Fadmin%2Fstock%2Fbalances");
   });
 
   it("fills the outstanding transfer quantities and points to a line that exceeds its live cap", async () => {
-    const transfer = { _id: "transfer1", state: "inTransit", createdAt: 1, otherBranch: "Samui" };
+    const transfer = { _id: "transfer1", state: "inTransit", createdAt: 1, otherBranch: "Samui", reference: "TR-1" };
     const lines = [
-      { _id: "robe", productName: "Robe", label: "Blue", quantity: 7, received: 3 },
-      { _id: "soap", productName: "Soap", label: "Small", quantity: 2, received: 0 },
-      { _id: "bag", productName: "Bag", label: "Red", quantity: 1, received: 1 },
+      { _id: "robe", productName: "Robe", label: "Blue", quantity: 7, received: 3, lots: [] },
+      { _id: "soap", productName: "Soap", label: "Small", quantity: 2, received: 0, lots: [] },
+      { _id: "bag", productName: "Bag", label: "Red", quantity: 1, received: 1, lots: [] },
     ];
     mockConvex.query.mockImplementation(name => {
       if (name === "commerce/stock:access") return { read: true, receiver: true };
@@ -629,6 +734,9 @@ describe("Stock UI components and workflow regressions", () => {
     const receive = getMutationSpy(api.commerce.stockExpansion.receiveTransfer);
     await act(async () => root.render(wrap(createElement(StockExpansionView))));
     await click("Open");
+    expect(mockNav.replace).toHaveBeenCalledWith("/admin/stock/expansion?transferId=transfer1");
+    mockNav.searchParams = new URLSearchParams("transferId=transfer1");
+    await act(async () => root.render(wrap(createElement(StockExpansionView))));
     await click("Fill all remaining");
     const robe = document.querySelector<HTMLInputElement>("#tr-recv-robe")!;
     expect(robe.value).toBe("4");
@@ -652,32 +760,167 @@ describe("Stock UI components and workflow regressions", () => {
     expect(document.querySelector("#tr-recv-robe")).toBeNull();
     receive.mockRejectedValueOnce(new Error("Connection interrupted"));
     await click("Post transfer receipt");
-    await click("Post transfer receipt");
+    transfer.state = "received";
+    lines[1].received = lines[1].quantity;
+    await act(async () => root.render(wrap(createElement(StockExpansionView))));
+    await click("Verify posted receipt");
     expect(receive.mock.calls[0][0].requestId).toBe(receive.mock.calls[1][0].requestId);
     expect(receive).toHaveBeenCalledWith(expect.objectContaining({ lines: [
-      { lineId: "soap", quantity: 2 },
+      { lineId: "soap", quantity: 2, allocations: undefined },
     ] }));
   });
 
-  it("limits the stock grant lookup field to a complete 254-character email and keeps the match after a role edit", async () => {
+  it("replays a recorded shortage with the same request key after a dropped response", async () => {
+    mockNav.searchParams = new URLSearchParams("transferId=transfer1");
+    const transfer = { _id: "transfer1", state: "inTransit", reference: "TR-1" };
+    mockConvex.query.mockImplementation(name => {
+      if (name === "commerce/stock:access") return { read: true };
+      if (name === "commerce/stockExpansion:transferDetail") return {
+        transfer, lines: [{ _id: "line", productName: "Soap", quantity: 3, received: 1, lots: [] }],
+        permissions: { closeShort: true },
+      };
+    });
+    const post = getMutationSpy(api.commerce.stockExpansion.closeTransferShort)
+      .mockRejectedValueOnce(new Error("Lost response")).mockResolvedValueOnce("event");
+    const button = (label: string) => [...document.querySelectorAll("button")].find(item => item.textContent?.trim() === label)!;
+    await act(async () => root.render(wrap(createElement(StockExpansionView))));
+    await act(async () => button("Close short").click());
+    await act(async () => setInputValue(document.querySelector<HTMLInputElement>("#short-reason")!, " Missing box "));
+    await act(async () => button("Confirm close short").click());
+    transfer.state = "short";
+    await act(async () => root.render(wrap(createElement(StockExpansionView))));
+    await act(async () => button("Verify recorded shortage").click());
+    expect(post.mock.calls).toHaveLength(2);
+    expect(post.mock.calls[0]).toEqual(post.mock.calls[1]);
+    expect(post.mock.calls[0]?.[0]).toMatchObject({ reason: "Missing box", reviewed: [{ lineId: "line", quantity: 2 }] });
+    expect(button("Verify recorded shortage")).toBeUndefined();
+  });
+
+  it("asks before dispatching a reviewed transfer and defaults focus to Cancel", async () => {
+    mockNav.searchParams = new URLSearchParams("transferId=transfer1");
+    mockConvex.query.mockImplementation(name => {
+      if (name === "commerce/stock:access") return { read: true, buyer: true };
+      if (name === "commerce/stockExpansion:transferDetail") return {
+        transfer: { _id: "transfer1", state: "draft", revision: 2, reference: "TR-1", note: "Driver 42" },
+        origin: "Samui", destination: "Phuket",
+        lines: [{ _id: "line", productName: "Soap", quantity: 3, received: 0, lots: [] }],
+        permissions: { send: true },
+      };
+    });
+    const send = getMutationSpy(api.commerce.stockExpansion.sendTransfer);
+    const button = (label: string, scope: ParentNode = document) =>
+      [...scope.querySelectorAll("button")].find(item => item.textContent?.trim() === label)!;
+    await act(async () => root.render(wrap(createElement(StockExpansionView))));
+    expect(document.body.textContent).toContain("Driver 42");
+    await act(async () => button("Send transfer").click());
+    const dialog = document.querySelector('[role="alertdialog"]')!;
+    expect(dialog.textContent).toContain("Samui → Phuket · 1 line · 3 units");
+    expect(document.activeElement).toBe(button("Cancel", dialog));
+    await act(async () => button("Cancel", dialog).click());
+    expect(send).not.toHaveBeenCalled();
+    await act(async () => button("Send transfer").click());
+    await act(async () => button("Send transfer", document.querySelector('[role="alertdialog"]')!).click());
+    expect(send).toHaveBeenCalledExactlyOnceWith({ transferId: "transfer1", revision: 2 });
+  });
+
+  it("discards an open transfer editor when working branch changes", async () => {
+    const origin = mockBranch.current!;
+    const next = { ...origin, id: "branch_2" as Id<"branches">, name: "Phuket" };
+    mockBranch.extraBranches = [origin, next];
+    mockConvex.query.mockImplementation(name => name === "commerce/stock:access" ? { read: true, requester: true } : undefined);
+    const findButton = (text: string) => [...document.querySelectorAll("button")].find(item => item.textContent?.trim() === text);
+    await act(async () => root.render(wrap(createElement(StockExpansionView))));
+    await act(async () => findButton("New transfer")!.click());
+    await act(async () => setInputValue(document.querySelector<HTMLInputElement>("#transfer-note")!, "Driver note for Samui"));
+    expect(document.body.textContent).toContain("Sending from Koh Samui");
+    expect(hasDirtyUnsavedGuard()).toBe(true);
+    mockBranch.current = next;
+    await act(async () => root.render(wrap(createElement(StockExpansionView))));
+    expect(document.querySelector("#transfer-note")).toBeNull();
+    expect(hasDirtyUnsavedGuard()).toBe(false);
+    await act(async () => findButton("New transfer")!.click());
+    expect(document.body.textContent).toContain("Sending from Phuket");
+    expect(document.querySelector<HTMLInputElement>("#transfer-note")?.value).toBe("");
+  });
+
+  it("previews signed lot count changes and clears the count before switching to removal", async () => {
+    const branchId = mockBranch.current!.id;
+    const lot = { lotId: "track-10", code: "Batch", onHand: 10, available: 10, reserved: 0, revision: 1, expired: false, expiresAt: Date.now() + 60_000 };
+    mockConvex.query.mockImplementation(name => {
+      if (name === "commerce/stockExpansion:lotBalances") return { tracking: true, canAdjust: true, onHand: 10, held: 0, expired: 0, sellable: 10, lots: [lot] };
+      if (name === "commerce/stockExpansion:findCountLot") return lot;
+      if (name === "commerce/stockExpansion:readLotCountSession") return null;
+    });
+    const variant = {
+      variantId: "variant1" as Id<"productVariants">, productId: "product1" as Id<"products">, productName: "Product",
+      label: "Variant", sku: undefined, status: "active" as const, price: 100, onHand: 10, onOrder: 0,
+      revision: 0, needsRecount: false, lotTracked: true, hasBalance: true,
+    };
+    await act(async () => root.render(wrap(createElement(LotDetailPanel, { branchId, variant, onSuccess: vi.fn() }))));
+    await act(async () => document.querySelector("summary")!.click());
+    await act(async () => document.querySelector<HTMLInputElement>('input[value="count"]')!.click());
+    const button = (text: string) => [...document.querySelectorAll("button")].find(item => item.textContent?.trim() === text)!;
+    await act(async () => setInputValue(document.querySelector<HTMLInputElement>("#lot-code-search")!, "Batch"));
+    await act(async () => button("Find lot").click());
+    await act(async () => button("Count Batch · 10 on hand").click());
+    const count = document.querySelector<HTMLInputElement>("#lot-qty")!;
+    await act(async () => setInputValue(count, "7"));
+    expect(document.body.textContent).toContain("Reviewed on hand 10 · Counted 7 · Adjustment -3");
+    await act(async () => setInputValue(count, "10"));
+    expect(document.body.textContent).toContain("Reviewed on hand 10 · Counted 10 · Adjustment 0");
+    await act(async () => document.querySelector<HTMLInputElement>('input[value="remove"]')!.click());
+    expect(document.querySelector<HTMLInputElement>("#lot-qty")?.value).toBe("");
+    expect(document.body.textContent).not.toContain("Reviewed on hand 10");
+  });
+
+  it("keeps decimal and over-limit return lot input editable while blocking preview", async () => {
+    const first = "lot-first" as Id<"stockLots">;
+    const second = "lot-second" as Id<"stockLots">;
+    const expiresAt = Date.now() + 60_000;
+    const options = [{ lotId: first, code: "First", quantity: 2, expiresAt }, { lotId: second, code: "Second", quantity: 3, expiresAt }];
+    function ReturnLotTest() {
+      const [choice, setChoice] = useState<Choice>({ units: 3, condition: "sellable" });
+      return createElement("div", null,
+        createElement(ReturnLotChoice, { options, choice, disabled: false, onChange: setChoice }),
+        createElement("button", { disabled: confirmedReturnLots(options, choice) === null }, "Preview"),
+      );
+    }
+    await act(async () => root.render(wrap(createElement(ReturnLotTest))));
+    const [firstInput, secondInput] = [...document.querySelectorAll<HTMLInputElement>('input[type="number"]')];
+    const preview = document.querySelector<HTMLButtonElement>("button")!;
+    for (const invalid of ["1.5", "3"]) {
+      await act(async () => setInputValue(firstInput, invalid));
+      expect(firstInput.value).toBe(invalid);
+      expect(firstInput.getAttribute("aria-invalid")).toBe("true");
+      expect(document.getElementById(firstInput.getAttribute("aria-describedby")!)?.textContent)
+        .toContain("Enter a whole number from 0 to 2.");
+      expect(preview.disabled).toBe(true);
+    }
+    await act(async () => setInputValue(firstInput, "1"));
+    await act(async () => setInputValue(secondInput, "2"));
+    expect(firstInput.hasAttribute("aria-invalid")).toBe(false);
+    expect(preview.disabled).toBe(false);
+  });
+
+  it("limits the stock grant lookup field to 254 characters, searches by partial name or email, and keeps the match after a role edit", async () => {
     vi.useFakeTimers();
     const email = `${"a".repeat(242)}@example.com`;
     const setGrant = getMutationSpy(api.commerce.stock.setGrant).mockResolvedValue(1);
     const onSaved = vi.fn();
     mockConvex.paginated.mockImplementation((name, args) => ({
-      results: name === getFunctionName(api.commerce.stock.listGrants) && (args as { email?: string }).email === email
+      results: name === getFunctionName(api.commerce.stock.listGrants) && (args as { search?: string }).search === email
         ? [{ staffGrantId: "staff_1", email, role: "cashier" }] : [],
       status: "Exhausted", loadMore: vi.fn(),
     }));
     await act(async () => root.render(wrap(createElement(BranchStockAccessSheet, {
       branchId: "branch_1" as Id<"branches">, branchName: "Koh Samui", onClose: vi.fn(), onSaved,
     }))));
-    const search = document.querySelector<HTMLInputElement>('input[aria-label="Find staff by full email"]')!;
+    const search = document.querySelector<HTMLInputElement>('input[aria-label="Find staff by name or email"]')!;
     expect(search.maxLength).toBe(254);
     await act(async () => setInputValue(search, email));
     await act(async () => vi.advanceTimersByTimeAsync(200));
     expect(mockConvex.paginated).toHaveBeenLastCalledWith(getFunctionName(api.commerce.stock.listGrants), {
-      branchId: "branch_1", email,
+      branchId: "branch_1", search: email,
     });
     const receiver = () => document.querySelector<HTMLInputElement>(`input[aria-label="Receiver / Counter for ${email}"]`);
     expect(receiver()).toBeTruthy();
@@ -721,6 +964,8 @@ describe("Stock UI components and workflow regressions", () => {
             price: 15000,
             onHand: 6,
             onOrder: 2,
+            reorderPoint: 12,
+            reorderPointRevision: 3,
             revision: 3,
             needsRecount: false,
             lotTracked: false,
@@ -737,6 +982,71 @@ describe("Stock UI components and workflow regressions", () => {
     expect(document.body.textContent).toContain("Request stock · Koh Samui");
     expect(document.body.textContent).toContain("Spa Oil");
     expect(document.body.textContent).toContain(`Items (1/${STOCK_MAX_LINES})`);
+    const quantity = document.querySelector<HTMLInputElement>("#pr-line-qty-var_1");
+    expect(quantity?.value).toBe("4");
+    expect(document.getElementById(quantity!.getAttribute("aria-describedby")!)?.textContent)
+      .toContain("Par 12 − on hand 6 − on order 2");
+
+    const setPoint = getMutationSpy(api.commerce.stock.setReorderPoint).mockResolvedValue(null);
+    const button = (label: string) => [...document.querySelectorAll("button")].find((item) => item.textContent === label);
+    await act(async () => button("Reorder point 12 · Edit")!.click());
+    expect(document.querySelector<HTMLInputElement>("#reorder-point-var_1")?.value).toBe("12");
+    await act(async () => button("Save reorder point")!.click());
+    expect(setPoint).toHaveBeenCalledWith({
+      branchId: "branch_1", variantId: "var_1", quantity: 12, expectedRevision: 3,
+    });
+  });
+
+  it("shows the requester note and branch stock context while reviewing an approval", async () => {
+    mockConvex.query.mockImplementation((name) => name === getFunctionName(api.commerce.purchasing.request) ? {
+      request: {
+        _id: "req_1", branchId: "branch_1", status: "awaiting_approval", revision: 1,
+        reference: "PR-0001", requesterLabel: "Requester", updatedAt: Date.now(), note: "Use for weekend arrivals",
+      },
+      permissions: { approver: true },
+      orders: [],
+      lines: [{
+        _id: "line_1", quantity: 20, item: { productName: "Aloe gel", variantLabel: "Standard" },
+        context: { onHand: 8, onOrder: 7, otherDemand: 5, lastUnitCost: 1200 },
+      }],
+    } : undefined);
+    await act(async () => root.render(wrap(createElement(PurchaseRequestDetailView, { requestId: "req_1" }))));
+    const approve = [...document.querySelectorAll("button")].find((button) => button.textContent === "Approve");
+    expect(approve).toBeDefined();
+    await act(async () => approve!.click());
+    const dialog = document.querySelector('[role="dialog"]');
+    expect(dialog?.textContent).toContain("Use for weekend arrivals");
+    expect([...dialog!.querySelectorAll("dt")].map((term) => term.textContent))
+      .toEqual(["On hand", "On order", "Other open demand", "Last unit cost"]);
+    expect([...dialog!.querySelectorAll("dd")].slice(0, 3).map((value) => value.textContent)).toEqual(["8", "7", "5"]);
+    expect(dialog?.querySelector<HTMLInputElement>("#appr-qty-line_1")?.value).toBe("20");
+  });
+
+  it("renders a near-limit multiline request note and blocks submitting an overdue draft", async () => {
+    const submit = getMutationSpy(api.commerce.purchasing.submitRequestForApproval);
+    const note = `Weekend arrivals\n${"x".repeat(1_800)}`;
+    await act(async () => root.render(wrap(createElement(RequestEditorSheet, {
+      branchId: "branch_1" as Id<"branches">,
+      branchName: "Koh Samui",
+      existing: {
+        requestId: "req_1" as Id<"purchaseRequests">,
+        revision: 1,
+        needBy: "2020-01-01",
+        note,
+        lines: [{ variantId: "var_1" as Id<"productVariants">, productName: "Aloe gel", variantLabel: "Standard", quantityText: "1" }],
+      },
+      onClose: vi.fn(),
+      onSaved: vi.fn(),
+    }))));
+    const textarea = document.querySelector<HTMLTextAreaElement>("textarea#pr-note");
+    expect(textarea?.value).toBe(note);
+    expect(textarea?.maxLength).toBe(2_000);
+    expect(document.getElementById("pr-note-count")?.textContent).toContain(`${note.length} / 2000`);
+    await act(async () => document.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click());
+    await act(async () => document.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+    expect(submit).not.toHaveBeenCalled();
+    expect(document.getElementById("pr-need-by")?.getAttribute("aria-invalid")).toBe("true");
+    expect(document.getElementById("pr-need-by-error")?.textContent).toContain("Choose today or a future date");
   });
 
   it("RequestEditorSheet preserves saved draft and submit operationKey when Save & submit fails at submit", async () => {
@@ -811,7 +1121,7 @@ describe("Stock UI components and workflow regressions", () => {
           _id: "pol_1", variantId: "var_1", ordered: 4, due: 4,
           item: { productName: "Spa Oil", variantLabel: "500 ml" },
         }],
-        holds: [], acceptableHolds: [],
+        holds: [], acceptableHolds: [], overReceiptTolerancePct: 0, returnsAwaitingCredit: { count: 0, units: 0 },
       };
     });
     const loadMore = vi.fn();
@@ -924,6 +1234,8 @@ describe("Stock UI components and workflow regressions", () => {
             },
           ],
           holds: [],
+          overReceiptTolerancePct: 0,
+          returnsAwaitingCredit: { count: 0, units: 0 },
           acceptableHolds: [
             {
               holdId: "hold_7",

@@ -12,7 +12,7 @@ import { holdsInstruction, paymentError, paymentRange, paymentRefusal, type Atte
 
 export async function preflightAttempt(
   ctx: MutationCtx, order: Doc<'orders'>, attempt: Attempt, settings: CommerceSettings,
-  actor: StaffActor, tenders: Tender[], now: number, persistRefusal = false,
+  actor: StaffActor, tenders: Tender[], now: number, persistRefusal = false, stockHoldUntil?: number,
 ) {
   try {
     const frozen = holdsInstruction(attempt) ? await readFrozenCatalogue(ctx, attempt) : undefined;
@@ -21,7 +21,7 @@ export async function preflightAttempt(
     }
     const cart = await checkPaymentCart(ctx, order, attempt.reviewedRequest);
     const sale = await prepareCommercePayment(ctx, {
-      order, settings, actor, tenders, now, frozen, lines: cart.lines, appointment: cart.appointment,
+      order, settings, actor, tenders, now, frozen, stockHoldUntil, lines: cart.lines, appointment: cart.appointment,
       vouchers: attempt.reviewedRequest.vouchers,
     });
     const catalogue = attempt.fingerprint.split(':')[1];

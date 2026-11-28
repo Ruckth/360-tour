@@ -4,9 +4,10 @@ import { usePaginatedQuery, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
-import { ArrowLeft, Filter, PackageCheck, Plus, ShieldAlert, X } from "lucide-react";
+import { ArrowLeft, Filter, PackageCheck, Plus, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { EmptyState, SkeletonRows, STACKED_TABLE } from "@/components/admin/admin-bulk";
+import { EmptyState, SkeletonRows } from "@/components/admin/admin-bulk";
+import { STOCK_TABLE } from "./stock-table";
 import { useAdminBranch } from "@/components/admin/branch/branch-context";
 import { Callout, NoticeBar, useNotice } from "@/components/admin/marketing/MarketingBits";
 import { SegmentedTabs, tabPanelProps } from "@/components/admin/SegmentedTabs";
@@ -20,12 +21,12 @@ import { staffDateTime } from "@/lib/staff-time";
 import { cn } from "@/lib/utils";
 import Link from "@/platform/link";
 import { useRouter, useSearchParams } from "@/platform/navigation";
-import { DeclineHoldSheet, OrderEditorSheet, RequestEditorSheet } from "./PurchasingEditorSheets";
+import { HeldGoodsPanel } from "./HeldGoodsPanel";
+import { newRequestLine, OrderEditorSheet, RequestEditorSheet } from "./PurchasingEditorSheets";
 import { ReceiveDeliverySheet } from "./ReceiveDeliverySheet";
 import { PURCHASING_HUB_PATH, purchasingDetailHref, validatePurchasingSearch } from "./purchasing-location";
 import {
   formatSatang,
-  HOLD_STATUS_META,
   ORDER_STATUS_META,
   parseVariantIdsParam,
   RECEIPT_KIND_META,
@@ -38,6 +39,8 @@ import type { StockLineDraft } from "./stock-types";
 import { useResolvedStockVariants } from "./StockFormGuard";
 import { StockVariantPickerDialog } from "./StockVariantPicker";
 import { SupplierPickerField, SuppliersManagementPanel } from "./SupplierPicker";
+
+import { ageLabel, itemSummaryLabel, relativeDate, URGENCY_CLASS } from "./purchasing-display";
 
 export { OrderEditorSheet, RequestEditorSheet } from "./PurchasingEditorSheets";
 
@@ -92,7 +95,7 @@ export function StockPurchasingHubView() {
   const branchWideRequests = Boolean(access?.approver || access?.buyer || access?.lead);
 
   const requestFilter = queue.requestFilter ?? "default";
-  const reqFilterMode = !branchWideRequests && (requestFilter === "approved" || requestFilter === "all" || requestFilter === "awaiting_approval")
+  const reqFilterMode = !branchWideRequests && (requestFilter === "approved" || requestFilter === "fully_ordered" || requestFilter === "all" || requestFilter === "awaiting_approval")
     ? "default" : requestFilter;
   const orderFilterMode = queue.orderFilter ?? (queue.variantId ? "item" : "open");
   const orderItemOpenOnly = queue.allItemOrders !== "1";
@@ -100,7 +103,6 @@ export function StockPurchasingHubView() {
 
   const [reqItemPickerOpen, setReqItemPickerOpen] = useState(false);
   const [orderItemPickerOpen, setOrderItemPickerOpen] = useState(false);
-  const [decliningHold, setDecliningHold] = useState<HoldRow | null>(null);
 
   // One-shot auto-open intent consumed from URL params (stripped with replace so Back doesn't reopen)
   const [pendingAutoOpen, setPendingAutoOpen] = useState<PendingPurchasingAutoOpen | null>(() =>
@@ -164,7 +166,7 @@ export function StockPurchasingHubView() {
 
   const rawVariant = tab === "requests" && reqFilterMode === "item" ? queue.requestVariantId
     : tab === "orders" && orderFilterMode === "item" ? queue.variantId : undefined;
-  const rawSupplier = tab === "orders" && orderFilterMode === "supplier" ? queue.supplierId : undefined;
+  const rawSupplier = (tab === "orders" || tab === "receipts") && orderFilterMode === "supplier" ? queue.supplierId : undefined;
   const filter = useQuery(
     api.commerce.purchasing.queueFilter,
     branch && access?.read && (rawVariant || rawSupplier)
@@ -202,15 +204,7 @@ export function StockPurchasingHubView() {
         }
         if (pendingAutoOpen.action === "request") {
           setNewRequestPrefill(
-            resolvedPrefillItems.map((item) => ({
-              variantId: item.variantId,
-              productName: item.productName,
-              variantLabel: item.label,
-              sku: item.sku,
-              onHand: item.onHand,
-              onOrder: item.onOrder,
-              quantityText: "1",
-            })),
+            resolvedPrefillItems.map(newRequestLine),
           );
           setNewRequestOpen(true);
         } else if (pendingAutoOpen.action === "order") {
@@ -249,15 +243,22 @@ export function StockPurchasingHubView() {
     }
   }
 
+  const requestCounts = useQuery(api.commerce.purchasing.myRequestCountsAt,
+    branch && access?.read && tab === "requests" ? { branchId: branch.id } : "skip");
+  const changesCount = requestCounts?.needsChanges;
+  const changesLabel = changesCount === undefined ? "" : changesCount >= 100 ? " (100+)" : ` (${changesCount})`;
   const resolvedRequestView = (() => {
     if (reqFilterMode === "item" && filterVariantId) return { kind: "item" as const, variantId: filterVariantId };
     if (reqFilterMode === "mine") return { kind: "mine" as const };
-    if (reqFilterMode === "awaiting_approval") return { kind: "status" as const, status: "awaiting_approval" as const };
-    if (reqFilterMode === "approved") return { kind: "status" as const, status: "approved" as const };
+    if (reqFilterMode === "needs_changes" || reqFilterMode === "draft" || reqFilterMode === "declined" || reqFilterMode === "closed") {
+      return { kind: "mineStatus" as const, status: reqFilterMode };
+    }
+    if (reqFilterMode === "awaiting_approval") return { kind: "approvalQueue" as const };
+    if (reqFilterMode === "approved" || reqFilterMode === "fully_ordered") return { kind: "approved" as const, fullyOrdered: reqFilterMode === "fully_ordered" };
     if (reqFilterMode === "all") return { kind: "all" as const };
     // Default: Needs approval for approvers, My requests for staff
     return access?.approver
-      ? { kind: "status" as const, status: "awaiting_approval" as const }
+      ? { kind: "approvalQueue" as const }
       : { kind: "mine" as const };
   })();
 
@@ -270,6 +271,11 @@ export function StockPurchasingHubView() {
     }
     if (orderFilterMode === "draft") return { kind: "phase" as const, phase: "draft" as const };
     if (orderFilterMode === "closed") return { kind: "phase" as const, phase: "closed" as const };
+    if (orderFilterMode === "overdue") return { kind: "overdue" as const };
+    if (orderFilterMode === "due_soon") return { kind: "dueSoon" as const };
+    if (orderFilterMode === "awaiting_approval" || orderFilterMode === "received" || orderFilterMode === "closed_short" || orderFilterMode === "cancelled") {
+      return { kind: "status" as const, status: orderFilterMode };
+    }
     return { kind: "phase" as const, phase: "open" as const };
   })();
 
@@ -294,22 +300,15 @@ export function StockPurchasingHubView() {
     { initialNumItems: STOCK_PAGE_SIZE },
   );
 
-  const {
-    results: holdRows,
-    status: holdQueryStatus,
-    loadMore: loadMoreHolds,
-  } = usePaginatedQuery(
-    api.commerce.purchasing.holds,
-    branch && access?.read && tab === "holds" ? { branchId: branch.id, status: holdStatusFilter } : "skip",
-    { initialNumItems: STOCK_PAGE_SIZE },
-  );
 
   const purchaseMatch = useQuery(
     api.commerce.purchasing.purchaseReference,
     branch && access?.read && searchingPurchases ? { branchId: branch.id, reference: purchaseReference } : "skip",
   );
-  const receiptSearchArgs = branch && access?.read && tab === "receipts" ? { branchId: branch.id } : null;
-  const searchingReceipts = receiptReference.trim() !== "";
+  const receiptExceptions = queue.receiptFilter === "exceptions" && !rawSupplier;
+  const receiptSearchArgs = branch && access?.read && tab === "receipts" && (!rawSupplier || filter?.supplier)
+    ? { branchId: branch.id, supplierId: rawSupplier ? filter?.supplier?.id : undefined, ...(receiptExceptions ? { exceptionsOnly: true } : {}) } : null;
+  const searchingReceipts = !rawSupplier && !receiptExceptions && receiptReference.trim() !== "";
   const receiptList = usePaginatedQuery(
     api.commerce.purchasing.receipts,
     receiptSearchArgs
@@ -325,7 +324,7 @@ export function StockPurchasingHubView() {
     { initialNumItems: STOCK_PAGE_SIZE },
   );
   const receiptRows = [...new Map([...receiptByReference.results, ...receiptList.results].map(row => [row._id, row])).values()];
-  const receiptsLoading = receiptList.status === "LoadingFirstPage" || (searchingReceipts && receiptByReference.status === "LoadingFirstPage");
+  const receiptsLoading = Boolean(rawSupplier && filterPending) || receiptList.status === "LoadingFirstPage" || (searchingReceipts && receiptByReference.status === "LoadingFirstPage");
 
   if (!branch) return null;
   if (access === undefined) return <SkeletonRows label="Loading purchasing" rows={5} />;
@@ -338,7 +337,7 @@ export function StockPurchasingHubView() {
   }
 
   return (
-    <div className="grid gap-5">
+    <div className="grid gap-3">
       <NoticeBar notice={notice} onClose={clear} />
 
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -350,48 +349,48 @@ export function StockPurchasingHubView() {
             </ButtonLink>
           ) : null}
           <h2 className="font-serif text-xl font-semibold text-foreground">Purchasing</h2>
-          <p className="text-sm text-muted-foreground">
-            Request stock, approve demand, issue purchase orders, receive deliveries, and resolve held goods for {branch.name}.
-          </p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-1">
           {access.receiver ? (
             <Button
               type="button"
-              variant="outline"
+              size="sm"
+              variant={tab === "receipts" ? "default" : "ghost"}
               onClick={() => {
                 setReceivePrefill({ lines: [], variantIds: [] });
                 setReceiveOpen(true);
               }}
             >
-              <PackageCheck aria-hidden className="size-4" />
+              <PackageCheck aria-hidden className="hidden size-4 sm:inline" />
               Receive delivery
             </Button>
           ) : null}
           {access.requester ? (
             <Button
               type="button"
-              variant={tab === "requests" ? "default" : "outline"}
+              size="sm"
+              variant={tab === "requests" ? "default" : "ghost"}
               onClick={() => {
                 setNewRequestPrefill([]);
                 setNewRequestOpen(true);
               }}
             >
-              <Plus aria-hidden className="size-4" />
+              <Plus aria-hidden className="hidden size-4 sm:inline" />
               Request stock
             </Button>
           ) : null}
           {access.directOrder ? (
             <Button
               type="button"
-              variant={tab === "orders" ? "default" : "outline"}
+              size="sm"
+              variant={tab === "orders" ? "default" : "ghost"}
               onClick={() => {
                 setNewOrderForHold(null);
                 setNewOrderPrefill([]);
                 setNewOrderOpen(true);
               }}
             >
-              <Plus aria-hidden className="size-4" />
+              <Plus aria-hidden className="hidden size-4 sm:inline" />
               Create order
             </Button>
           ) : null}
@@ -413,9 +412,9 @@ export function StockPurchasingHubView() {
       />
 
       {(tab === "requests" || tab === "orders") ? (
-        <Label className="grid max-w-sm gap-1.5">
-          Purchase reference
-          <Input type="search" value={purchaseReference} maxLength={64} placeholder="Purchase order or request reference"
+        <Label className="block max-w-sm">
+          <span className="sr-only">Purchase reference</span>
+          <Input type="search" value={purchaseReference} maxLength={64} placeholder="Find a PO or request by reference"
             onChange={(event) => updateSearch({ reference: event.target.value })} />
         </Label>
       ) : null}
@@ -425,28 +424,28 @@ export function StockPurchasingHubView() {
           <Card className="overflow-hidden">
             {purchaseMatch === undefined ? (
               <SkeletonRows label="Looking up purchase reference" rows={1} />
-            ) : !purchaseMatch.request && !purchaseMatch.order ? (
+            ) : purchaseMatch.requests.length === 0 && purchaseMatch.orders.length === 0 ? (
               <EmptyState>No purchase documents match this reference at {branch.name}.</EmptyState>
             ) : (
               <ul className="divide-y divide-border">
-                {purchaseMatch.request ? (
-                  <li className="flex flex-wrap items-center gap-3 p-4">
-                    <Link className="font-mono underline underline-offset-4" href={detailHref(`requests/${purchaseMatch.request._id}`)}>
-                      {purchaseMatch.request.reference}
+                {purchaseMatch.requests.map((request) => (
+                  <li key={request._id} className="flex flex-wrap items-center gap-2 p-4">
+                    <Link className="font-mono underline underline-offset-4" href={detailHref(`requests/${request._id}`)}>
+                      {request.reference}
                     </Link>
-                    <span className="text-sm">{purchaseMatch.request.requesterLabel}</span>
-                    <StatusBadge {...REQUEST_STATUS_META[purchaseMatch.request.status]} />
+                    <span className="text-sm">{request.requesterLabel}</span>
+                    <StatusBadge {...(request.status === "approved" && request.fullyOrdered ? { ...REQUEST_STATUS_META.approved, label: "Fully ordered" } : REQUEST_STATUS_META[request.status])} />
                   </li>
-                ) : null}
-                {purchaseMatch.order ? (
-                  <li className="flex flex-wrap items-center gap-3 p-4">
-                    <Link className="font-mono underline underline-offset-4" href={detailHref(`orders/${purchaseMatch.order._id}`)}>
-                      {purchaseMatch.order.reference}
+                ))}
+                {purchaseMatch.orders.map((order) => (
+                  <li key={order._id} className="flex flex-wrap items-center gap-3 p-4">
+                    <Link className="font-mono underline underline-offset-4" href={detailHref(`orders/${order._id}`)}>
+                      {order.reference}
                     </Link>
-                    <span className="text-sm">{purchaseMatch.order.supplier.name}</span>
-                    <StatusBadge {...ORDER_STATUS_META[purchaseMatch.order.status]} />
+                    <span className="text-sm">{order.supplier.name}</span>
+                    <StatusBadge {...ORDER_STATUS_META[order.status]} />
                   </li>
-                ) : null}
+                ))}
               </ul>
             )}
           </Card>
@@ -466,10 +465,15 @@ export function StockPurchasingHubView() {
                   {access.approver ? "Needs approval (default)" : "My requests (default)"}
                 </SelectItem>
                 <SelectItem value="mine">My requests</SelectItem>
+                <SelectItem value="needs_changes">Needs my changes{changesLabel}</SelectItem>
+                <SelectItem value="draft">My drafts</SelectItem>
+                <SelectItem value="declined">My declined requests</SelectItem>
+                <SelectItem value="closed">My closed requests</SelectItem>
                 {access.approver || access.buyer || access.lead ? (
                   <>
                     <SelectItem value="awaiting_approval">Needs approval</SelectItem>
                     <SelectItem value="approved">Approved</SelectItem>
+                    <SelectItem value="fully_ordered">Fully ordered</SelectItem>
                     <SelectItem value="all">All branch requests</SelectItem>
                   </>
                 ) : null}
@@ -508,48 +512,46 @@ export function StockPurchasingHubView() {
                 No purchase requests match this view.
               </EmptyState>
             ) : (
-              <table className={STACKED_TABLE.table}>
-                <thead className={STACKED_TABLE.head}>
+              <table className={STOCK_TABLE.table}>
+                <thead className={STOCK_TABLE.head}>
                   <tr>
-                    <th scope="col" className={STACKED_TABLE.th}>Reference</th>
-                    <th scope="col" className={STACKED_TABLE.th}>Status</th>
-                    <th scope="col" className={STACKED_TABLE.th}>Requester</th>
-                    <th scope="col" className={STACKED_TABLE.th}>Need by</th>
-                    <th scope="col" className={cn(STACKED_TABLE.th, "text-right")}>Lines</th>
-                    <th scope="col" className={cn(STACKED_TABLE.th, "text-right")}>Action</th>
+                    <th scope="col" className={STOCK_TABLE.th}>Reference</th>
+                    <th scope="col" className={STOCK_TABLE.th}>Status</th>
+                    <th scope="col" className={STOCK_TABLE.th}>Requester</th>
+                    <th scope="col" className={STOCK_TABLE.th}>Need by</th>
+                    <th scope="col" className={STOCK_TABLE.th}>Items</th>
                   </tr>
                 </thead>
-                <tbody className={STACKED_TABLE.body}>
-                  {requestRows.map((req) => (
-                    <tr key={req._id} className={STACKED_TABLE.row}>
-                      <td data-label="Reference" className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled)}>
-                        <Link
-                          href={detailHref(`requests/${req._id}`)}
-                          className="font-mono text-sm font-semibold text-foreground underline-offset-4 hover:underline"
-                        >
-                          {req.reference}
-                        </Link>
-                      </td>
-                      <td data-label="Status" className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled)}>
-                        <StatusBadge {...REQUEST_STATUS_META[req.status]} />
-                      </td>
-                      <td data-label="Requester" className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled, "text-xs text-muted-foreground")}>
-                        {req.requesterLabel}
-                        {req.mine ? " (you)" : ""}
-                      </td>
-                      <td data-label="Need by" className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled, "text-xs tabular-nums text-muted-foreground")}>
-                        {req.needBy ?? "—"}
-                      </td>
-                      <td data-label="Lines" className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled, "font-mono text-xs tabular-nums lg:text-right")}>
-                        {req.lineCount}
-                      </td>
-                      <td className={cn(STACKED_TABLE.cell, "lg:text-right")}>
-                        <ButtonLink href={detailHref(`requests/${req._id}`)} variant="outline" size="sm">
-                          Open
-                        </ButtonLink>
-                      </td>
-                    </tr>
-                  ))}
+                <tbody className={STOCK_TABLE.body}>
+                  {requestRows.map((req) => {
+                    const due = relativeDate(req.needBy);
+                    return (
+                      <tr key={req._id} className={STOCK_TABLE.row}>
+                        <td data-label="Reference" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled)}>
+                          <Link
+                            href={detailHref(`requests/${req._id}`)}
+                            className="font-mono text-sm font-semibold text-foreground underline-offset-4 hover:underline"
+                          >
+                            {req.reference}
+                          </Link>
+                        </td>
+                        <td data-label="Status" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled)}>
+                          <StatusBadge {...(req.status === "approved" && req.fullyOrdered ? { ...REQUEST_STATUS_META.approved, label: "Fully ordered" } : REQUEST_STATUS_META[req.status])} />
+                        </td>
+                        <td data-label="Requester" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled, "text-xs text-muted-foreground")}>
+                          {req.requesterLabel}
+                          {req.mine ? " (you)" : ""}
+                          {req.submittedAt ? <span className="block">Submitted {ageLabel(req.submittedAt)}</span> : null}
+                        </td>
+                        <td data-label="Need by" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled, "text-xs tabular-nums text-muted-foreground")}>
+                          {req.needBy ? <time dateTime={req.needBy} title={req.needBy} className={URGENCY_CLASS[due.urgency]}>{due.label}</time> : "—"}
+                        </td>
+                        <td data-label="Items" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled, "break-words text-xs")}>
+                          {itemSummaryLabel(req.itemSummary, req.lineCount)}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             )}
@@ -575,8 +577,14 @@ export function StockPurchasingHubView() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="open">Open orders (default)</SelectItem>
+                <SelectItem value="overdue">Overdue</SelectItem>
+                <SelectItem value="due_soon">Due this week</SelectItem>
+                <SelectItem value="awaiting_approval">Awaiting approval</SelectItem>
                 <SelectItem value="draft">Draft orders</SelectItem>
-                <SelectItem value="closed">Received & closed</SelectItem>
+                <SelectItem value="received">Received</SelectItem>
+                <SelectItem value="closed_short">Closed short</SelectItem>
+                <SelectItem value="cancelled">Cancelled</SelectItem>
+                {orderFilterMode === "closed" ? <SelectItem value="closed">Received & closed (all)</SelectItem> : null}
                 <SelectItem value="supplier">Filter by supplier</SelectItem>
                 <SelectItem value="item">Filter by item</SelectItem>
               </SelectContent>
@@ -618,22 +626,22 @@ export function StockPurchasingHubView() {
             ) : orderRows.length === 0 ? (
               <EmptyState>No purchase orders match this view.</EmptyState>
             ) : (
-              <table className={STACKED_TABLE.table}>
-                <thead className={STACKED_TABLE.head}>
+              <table className={STOCK_TABLE.table}>
+                <thead className={STOCK_TABLE.head}>
                   <tr>
-                    <th scope="col" className={STACKED_TABLE.th}>Reference</th>
-                    <th scope="col" className={STACKED_TABLE.th}>Supplier</th>
-                    <th scope="col" className={STACKED_TABLE.th}>Status</th>
-                    <th scope="col" className={STACKED_TABLE.th}>Expected</th>
-                    <th scope="col" className={cn(STACKED_TABLE.th, "text-right")}>Due / Ordered</th>
-                    <th scope="col" className={cn(STACKED_TABLE.th, "text-right")}>Total</th>
-                    <th scope="col" className={cn(STACKED_TABLE.th, "text-right")}>Action</th>
+                    <th scope="col" className={STOCK_TABLE.th}>Reference</th>
+                    <th scope="col" className={STOCK_TABLE.th}>Supplier</th>
+                    <th scope="col" className={STOCK_TABLE.th}>Status</th>
+                    <th scope="col" className={STOCK_TABLE.th}>Expected</th>
+                    <th scope="col" className={cn(STOCK_TABLE.th, "text-right")}>Due / Ordered</th>
+                    <th scope="col" className={cn(STOCK_TABLE.th, "text-right")}>Total</th>
+                    <th scope="col" className={cn(STOCK_TABLE.th, "text-right")}>Action</th>
                   </tr>
                 </thead>
-                <tbody className={STACKED_TABLE.body}>
+                <tbody className={STOCK_TABLE.body}>
                   {orderRows.map((po) => (
-                    <tr key={po._id} className={STACKED_TABLE.row}>
-                      <td data-label="Reference" className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled)}>
+                    <tr key={po._id} className={STOCK_TABLE.row}>
+                      <td data-label="Reference" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled)}>
                         <Link
                           href={detailHref(`orders/${po._id}`)}
                           className="font-mono text-sm font-semibold text-foreground underline-offset-4 hover:underline"
@@ -641,23 +649,31 @@ export function StockPurchasingHubView() {
                           {po.reference}
                         </Link>
                       </td>
-                      <td data-label="Supplier" className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled, "text-sm")}>
+                      <td data-label="Supplier" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled, "text-sm")}>
                         {po.supplier.name}
                       </td>
-                      <td data-label="Status" className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled)}>
+                      <td data-label="Status" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled)}>
                         <StatusBadge {...ORDER_STATUS_META[po.status]} />
                       </td>
-                      <td data-label="Expected" className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled, "text-xs tabular-nums text-muted-foreground")}>
-                        {po.expectedDate ?? "—"}
+                      <td data-label="Expected" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled, "text-xs tabular-nums text-muted-foreground")}>
+                        <ExpectedCell expectedDate={po.expectedDate} open={po.phase === "open"} />
                       </td>
-                      <td data-label="Due / Ordered" className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled, "font-mono text-xs tabular-nums lg:text-right")}>
+                      <td data-label="Due / Ordered" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled, "font-mono text-xs tabular-nums lg:text-right")}>
                         <strong className="text-foreground">{po.dueUnits}</strong> / {po.orderedUnits}
                         {po.openLineCount > 0 ? ` (${po.openLineCount} open)` : ""}
                       </td>
-                      <td data-label="Total" className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled, "font-mono text-xs tabular-nums lg:text-right")}>
-                        {po.totalCost > 0 ? formatSatang(po.totalCost) : "—"}
+                      <td data-label="Total" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled, "font-mono text-xs tabular-nums lg:text-right")}>
+                        {po.totalCost ? formatSatang(po.totalCost) : "—"}
+                        {po.phase === "open" && po.outstandingValue !== undefined && po.outstandingValue > 0 ? (
+                          <span className="block text-muted-foreground">Outstanding {formatSatang(po.outstandingValue)}</span>
+                        ) : null}
+                        {(po.unpricedLines ?? 0) > 0 ? (
+                          <span className="mt-0.5 inline-block rounded bg-amber-100 px-1.5 py-0.5 font-sans text-[11px] font-medium text-amber-900 dark:bg-amber-900/40 dark:text-amber-200">
+                            Price missing
+                          </span>
+                        ) : null}
                       </td>
-                      <td className={cn(STACKED_TABLE.cell, "lg:text-right")}>
+                      <td className={cn(STOCK_TABLE.cell, "lg:text-right")}>
                         <ButtonLink href={detailHref(`orders/${po._id}`)} variant="outline" size="sm">
                           Open
                         </ButtonLink>
@@ -679,16 +695,36 @@ export function StockPurchasingHubView() {
         </div>
       ) : tab === "receipts" ? (
         <div {...tabPanelProps("purchasing-hub", "receipts")} className="grid gap-4">
-          <Label className="grid max-w-sm gap-1.5">
-            Receipt or delivery reference
-            <Input type="search" value={receiptReference} maxLength={64}
-              onChange={(event) => updateSearch({ receiptReference: event.target.value })} />
-          </Label>
+          {rawSupplier ? (
+            <div className="flex items-center gap-2">
+              <span>Supplier · {filter?.supplier?.name ?? "Unknown supplier"}</span>
+              <Button variant="outline" size="sm" onClick={() => updateSearch({ supplierId: undefined })}>Clear supplier</Button>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-end gap-3">
+              <Select value={queue.receiptFilter ?? "all"} onValueChange={(v) => updateSearch({ receiptFilter: v === "all" ? undefined : v })}>
+                <SelectTrigger aria-label="Receipt filter" className="w-52">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All receipts</SelectItem>
+                  <SelectItem value="exceptions">Has rejections or holds</SelectItem>
+                </SelectContent>
+              </Select>
+              {receiptExceptions ? null : (
+                <Label className="grid max-w-sm gap-1.5">
+                  Receipt or delivery reference
+                  <Input type="search" value={receiptReference} maxLength={64}
+                    onChange={(event) => updateSearch({ receiptReference: event.target.value })} />
+                </Label>
+              )}
+            </div>
+          )}
           <Card className="overflow-hidden">
             {receiptsLoading ? (
               <SkeletonRows label="Loading posted receipts" rows={5} />
             ) : receiptRows.length === 0 ? (
-              <EmptyState>{searchingReceipts ? "No receipts match this reference." : `No posted receipts at ${branch.name}.`}</EmptyState>
+              <EmptyState>{rawSupplier ? "No posted receipts for this supplier at this branch." : searchingReceipts ? "No receipts match this reference." : `No posted receipts at ${branch.name}.`}</EmptyState>
             ) : (
               <ul className="divide-y divide-border">
                 {receiptRows.map((receipt) => (
@@ -699,6 +735,21 @@ export function StockPurchasingHubView() {
                       </Link>
                       <span className="text-sm">
                         {receipt.supplier?.name ?? "No supplier"}{receipt.deliveryReference ? ` · ${receipt.deliveryReference}` : ""}
+                      </span>
+                      <span className="font-mono text-xs text-muted-foreground">
+                        <span title="Accepted">A {receipt.acceptedUnits}</span>
+                        {" · "}
+                        <span title="Rejected" className={receipt.rejectedUnits > 0 ? "text-destructive" : undefined}>R {receipt.rejectedUnits}</span>
+                        {" · "}
+                        <span title="Held" className={receipt.heldUnits > 0 ? "text-amber-700 dark:text-amber-400" : undefined}>H {receipt.heldUnits}</span>
+                        {receipt.orderId ? (
+                          <>
+                            {" · "}
+                            <Link className="underline underline-offset-4" href={detailHref(`orders/${receipt.orderId}`)}>
+                              {receipt.orderReference ?? "Order"}
+                            </Link>
+                          </>
+                        ) : null}
                       </span>
                     </div>
                     <div className="grid gap-1 text-xs text-muted-foreground">
@@ -720,116 +771,19 @@ export function StockPurchasingHubView() {
           ) : null}
         </div>
       ) : tab === "holds" ? (
-        <div {...tabPanelProps("purchasing-hub", "holds")} className="grid gap-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-sm text-muted-foreground">
-              Excess or substitute deliveries held outside On hand across orders of any status.
-            </p>
-            <Select value={holdStatusFilter} onValueChange={(v) => updateSearch({ holdStatus: v })}>
-              <SelectTrigger aria-label="Held goods status" className="w-44">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="open">Unresolved holds</SelectItem>
-                <SelectItem value="accepted">Accepted</SelectItem>
-                <SelectItem value="declined">Declined</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <Card className="overflow-hidden">
-            {holdQueryStatus === "LoadingFirstPage" ? (
-              <SkeletonRows label="Loading held goods" rows={4} />
-            ) : holdRows.length === 0 ? (
-              <EmptyState>
-                {holdStatusFilter === "open"
-                  ? `No unresolved held goods at ${branch.name}.`
-                  : `No ${holdStatusFilter} holds found.`}
-              </EmptyState>
-            ) : (
-              <ul className="divide-y divide-border">
-                {holdRows.map((hold) => (
-                  <li key={hold._id} className="flex flex-wrap items-start justify-between gap-4 p-4">
-                    <div className="grid min-w-0 flex-1 gap-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <StatusBadge {...HOLD_STATUS_META[hold.status]} />
-                        <span className="font-medium text-foreground">
-                          {hold.item.productName} · {hold.item.variantLabel}
-                        </span>
-                        <span className="font-mono text-xs text-muted-foreground">
-                          Qty {hold.quantity} (accepted {hold.acceptedQuantity})
-                        </span>
-                      </div>
-                      <p className="text-sm text-foreground">{hold.reason}</p>
-                      <p className="text-xs text-muted-foreground">
-                        Receipt{" "}
-                        <Link
-                          href={detailHref(`receipts/${hold.receiptId}`)}
-                          className="font-mono underline underline-offset-4"
-                        >
-                          {hold.receiptReference}
-                        </Link>
-                        {hold.orderId ? (
-                          <>
-                            {" · Order "}
-                            <Link
-                              href={detailHref(`orders/${hold.orderId}`)}
-                              className="font-mono underline underline-offset-4"
-                            >
-                              {hold.orderReference ?? hold.orderId}
-                            </Link>
-                          </>
-                        ) : null}
-                        {" · "}
-                        {staffDateTime(hold.createdAt)}
-                      </p>
-                      {hold.resolution ? (
-                        <p className="text-xs text-muted-foreground">
-                          Resolution: {hold.resolution}
-                          {hold.resolvedByLabel ? ` (${hold.resolvedByLabel})` : ""}
-                        </p>
-                      ) : null}
-                    </div>
-                    {hold.status === "open" && access.buyer ? (
-                      <div className="flex shrink-0 flex-wrap gap-2">
-                        {access.directOrder ? (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              setNewOrderForHold(hold);
-                              setNewOrderOpen(true);
-                            }}
-                          >
-                            Create linked order
-                          </Button>
-                        ) : null}
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="ghost"
-                          className="text-destructive hover:text-destructive"
-                          onClick={() => setDecliningHold(hold)}
-                        >
-                          <ShieldAlert aria-hidden className="size-3.5" />
-                          Decline & return
-                        </Button>
-                      </div>
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Card>
-
-          {holdQueryStatus === "CanLoadMore" ? (
-            <div className="flex justify-center">
-              <Button type="button" variant="outline" onClick={() => loadMoreHolds(STOCK_PAGE_SIZE)}>
-                Load more holds
-              </Button>
-            </div>
-          ) : null}
+        <div {...tabPanelProps("purchasing-hub", "holds")}>
+          <HeldGoodsPanel
+            branch={branch}
+            access={access}
+            status={holdStatusFilter}
+            onStatusChange={(status) => updateSearch({ holdStatus: status })}
+            detailHref={detailHref}
+            onCreateLinkedOrder={(hold) => {
+              setNewOrderForHold(hold);
+              setNewOrderOpen(true);
+            }}
+            onNotice={(message) => show(message, "success")}
+          />
         </div>
       ) : (
         <div {...tabPanelProps("purchasing-hub", "suppliers")}>
@@ -857,6 +811,7 @@ export function StockPurchasingHubView() {
         <RequestEditorSheet
           branchId={branch.id}
           branchName={branch.name}
+          canSetReorderPoint={access.lead}
           initialLines={newRequestPrefill}
           onClose={() => {
             setNewRequestOpen(false);
@@ -911,16 +866,27 @@ export function StockPurchasingHubView() {
         />
       ) : null}
 
-      {decliningHold ? (
-        <DeclineHoldSheet
-          hold={holdRows.find((row) => row._id === decliningHold._id) ?? decliningHold}
-          onClose={() => setDecliningHold(null)}
-          onDone={() => {
-            setDecliningHold(null);
-            show("Held goods marked declined and returned.", "success");
-          }}
-        />
-      ) : null}
+
     </div>
+  );
+}
+
+/** Expected date with its distance from resort today; open orders past it show an Overdue badge. */
+function ExpectedCell({ expectedDate, open }: { expectedDate?: string; open: boolean }) {
+  if (!expectedDate) return <>—</>;
+  const relative = relativeDate(expectedDate);
+  return (
+    <span className="grid gap-0.5">
+      <time dateTime={expectedDate}>{expectedDate}</time>
+      {open ? (
+        relative.urgency === "overdue" ? (
+          <span className="inline-block w-fit rounded bg-destructive/10 px-1.5 py-0.5 text-[11px] font-medium text-destructive">
+            Overdue {-(relative.days ?? 0)} d
+          </span>
+        ) : (
+          <span className={URGENCY_CLASS[relative.urgency]}>{relative.label}</span>
+        )
+      ) : null}
+    </span>
   );
 }

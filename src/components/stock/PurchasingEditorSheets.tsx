@@ -5,9 +5,10 @@ import type { FunctionReturnType } from "convex/server";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import { useMemo, useState, type FormEvent } from "react";
-import { Callout, EditorSheet, SheetForm } from "@/components/admin/marketing/MarketingBits";
+import { Callout, EditorSheet, FieldError, NumberField, SheetForm } from "@/components/admin/marketing/MarketingBits";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
+import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SheetDescription, SheetTitle } from "@/components/ui/sheet";
@@ -16,12 +17,36 @@ import {
   parseOptionalSatang,
   parseStockError,
   parseWholeQuantity,
+  STOCK_MAX_QUANTITY,
 } from "./stock-format";
 import type { StockLineDraft } from "./stock-types";
-import { StockStaleBanner, useStockDirtyGuard } from "./StockFormGuard";
+import { StockStaleBanner, useResolvedStockVariants, useStockDirtyGuard, type ResolvedBalanceRow } from "./StockFormGuard";
 import { StockLineEditor, type StockLineFieldErrors } from "./StockLineEditor";
 import { StockVariantPickerDialog } from "./StockVariantPicker";
+import { addDays } from "convex/shared/dates";
+import { resortTodayIso } from "convex/shared/time";
 import { SupplierPickerField } from "./SupplierPicker";
+
+const REQUEST_NOTE_LIMIT = 2_000;
+
+export function newRequestLine(item: {
+  variantId: Id<"productVariants">;
+  productName: string;
+  label: string;
+  sku?: string;
+  onHand: number;
+  onOrder: number;
+  reorderPoint?: number;
+}): StockLineDraft {
+  const { variantId, productName, label, sku, onHand, onOrder, reorderPoint } = item;
+  const quantity = reorderPoint === undefined ? 1 : Math.min(STOCK_MAX_QUANTITY, Math.max(1, reorderPoint - onHand - onOrder));
+  return {
+    variantId, productName, variantLabel: label, sku, onHand, onOrder,
+    quantityText: String(quantity),
+    quantityHint: reorderPoint === undefined ? undefined
+      : `Suggested ${quantity} · Par ${reorderPoint} − on hand ${onHand} − on order ${onOrder} (minimum 1, maximum ${STOCK_MAX_QUANTITY.toLocaleString("en-US")})`,
+  };
+}
 
 type HoldRow = FunctionReturnType<typeof api.commerce.purchasing.holds>["page"][number];
 
@@ -33,11 +58,93 @@ function buildRequestSnapshotKey(needBy: string, note: string, lines: readonly {
   });
 }
 
+function RequestReorderPoint({
+  branchId,
+  row,
+  disabled,
+  onSaved,
+}: {
+  branchId: Id<"branches">;
+  row: ResolvedBalanceRow;
+  disabled: boolean;
+  onSaved: (point: number | undefined) => void;
+}) {
+  const save = useMutation(api.commerce.stock.setReorderPoint);
+  const [draft, setDraft] = useState<{ text: string; revision: number }>();
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const fieldId = `reorder-point-${row.variantId}`;
+  const stale = draft !== undefined && draft.revision !== row.reorderPointRevision;
+
+  function reviewLatest() {
+    setDraft({ text: row.reorderPoint?.toString() ?? "", revision: row.reorderPointRevision });
+    setError("");
+  }
+
+  async function savePoint() {
+    if (!draft || stale || busy || disabled) return;
+    const parsed = parseWholeQuantity(draft.text, { allowBlank: true, allowZero: true, label: "Reorder point" });
+    if (!parsed.ok) {
+      setError(parsed.error);
+      document.getElementById(fieldId)?.focus();
+      return;
+    }
+    setError("");
+    setBusy(true);
+    try {
+      await save({ branchId, variantId: row.variantId, quantity: parsed.value ?? null, expectedRevision: draft.revision });
+      onSaved(parsed.value);
+      setDraft(undefined);
+    } catch (cause) {
+      setError(parseStockError(cause, "Could not save the reorder point.").message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!draft) return (
+    <Button type="button" variant="ghost" size="sm" className="w-fit" disabled={disabled} onClick={reviewLatest}
+      aria-label={`Edit reorder point for ${row.productName} · ${row.label}`}>
+      {row.reorderPoint === undefined ? "Set reorder point" : `Reorder point ${row.reorderPoint} · Edit`}
+    </Button>
+  );
+
+  return (
+    <div className="grid gap-2 rounded-md border p-2.5">
+      <Label htmlFor={fieldId}>Branch reorder point</Label>
+      <NumberField id={fieldId} value={draft.text} disabled={busy || disabled} placeholder="Unset"
+        aria-describedby={`${fieldId}-hint ${fieldId}-error`}
+        aria-invalid={Boolean(error)}
+        onChange={(event) => { setDraft({ ...draft, text: event.target.value }); setError(""); }}
+        onKeyDown={(event) => {
+          if (event.key !== "Enter") return;
+          event.preventDefault();
+          void savePoint();
+        }} />
+      <p id={`${fieldId}-hint`} className="text-xs text-muted-foreground">Save an empty field to clear it. This setting applies to new request lines at this branch.</p>
+      <FieldError id={`${fieldId}-error`}>{error}</FieldError>
+      {stale ? <p role="status" className="text-xs text-muted-foreground">The reorder point changed while you were editing.</p> : null}
+      <div className="flex flex-wrap gap-2">
+        {stale ? (
+          <Button type="button" size="sm" disabled={busy || disabled} onClick={reviewLatest}>Review latest point</Button>
+        ) : (
+          <Button type="button" size="sm" disabled={busy || disabled} onClick={() => void savePoint()}>
+            {busy ? "Saving…" : "Save reorder point"}
+          </Button>
+        )}
+        <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => setDraft(undefined)}>Cancel</Button>
+      </div>
+    </div>
+  );
+}
+
 export function RequestEditorSheet({
   branchId,
   branchName,
   existing,
   liveRevision,
+  copySkipped = 0,
+  canSetReorderPoint = false,
   initialLines = [],
   onClose,
   onSaved,
@@ -52,13 +159,17 @@ export function RequestEditorSheet({
     lines: StockLineDraft[];
   };
   liveRevision?: number;
+  copySkipped?: number;
+  canSetReorderPoint?: boolean;
   initialLines?: StockLineDraft[];
   onClose: () => void;
-  onSaved: (requestId: Id<"purchaseRequests">) => void;
+  onSaved: (requestId: Id<"purchaseRequests">, warning?: string) => void;
 }) {
   const saveRequest = useMutation(api.commerce.purchasing.saveRequest);
   const submitRequest = useMutation(api.commerce.purchasing.submitRequestForApproval);
 
+  const today = resortTodayIso();
+  const [dateError, setDateError] = useState("");
   const initialNeedBy = existing?.needBy ?? "";
   const initialNote = existing?.note ?? "";
   const startingLines = existing?.lines ?? initialLines;
@@ -66,6 +177,8 @@ export function RequestEditorSheet({
   const [needBy, setNeedBy] = useState(initialNeedBy);
   const [note, setNote] = useState(initialNote);
   const [lines, setLines] = useState<StockLineDraft[]>(startingLines);
+  const variantIds = useMemo(() => lines.map((line) => line.variantId), [lines]);
+  const { items: reorderRows } = useResolvedStockVariants(branchId, variantIds, { enabled: canSetReorderPoint });
   const [lineErrors, setLineErrors] = useState<StockLineFieldErrors>({});
   const [submitNow, setSubmitNow] = useState(!existing);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -107,6 +220,11 @@ export function RequestEditorSheet({
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     setError("");
+    if (needBy && needBy < today && (submitNow || needBy !== initialNeedBy)) {
+      setDateError("Choose today or a future date.");
+      document.getElementById("pr-need-by")?.focus();
+      return;
+    }
     const errs: StockLineFieldErrors = {};
     let firstInvalidId: string | undefined;
     if (lines.length === 0) {
@@ -161,13 +279,15 @@ export function RequestEditorSheet({
         setSubmitOpKey(activeSubmitKey);
       }
 
+      let warning: string | undefined;
       if (submitNow && activeDraft) {
         try {
-          await submitRequest({
+          const result = await submitRequest({
             requestId: activeDraft.requestId,
             expectedRevision: activeDraft.revision,
             operationKey: activeSubmitKey,
           });
+          warning = result.warning;
           setSubmitPendingDraft(false);
         } catch (submitCause) {
           // Draft succeeded, submit failed: keep savedDraft + submitOpKey so retrying never duplicates the draft
@@ -180,7 +300,10 @@ export function RequestEditorSheet({
           return;
         }
       }
-      if (activeDraft) onSaved(activeDraft.requestId);
+      if (activeDraft) {
+        if (warning) onSaved(activeDraft.requestId, warning);
+        else onSaved(activeDraft.requestId);
+      }
     } catch (cause) {
       setError(parseStockError(cause, "Could not save purchase request.").message);
       setSaving(false);
@@ -242,24 +365,36 @@ export function RequestEditorSheet({
             </Callout>
           ) : null}
 
-          <div className="grid gap-3 sm:grid-cols-2">
+          {copySkipped > 0 ? (
+            <Callout tone="warning">{copySkipped} archived {copySkipped === 1 ? "item was" : "items were"} left out of this draft.</Callout>
+          ) : null}
+          <div className="grid gap-3">
             <div className="grid gap-1.5">
               <Label htmlFor="pr-need-by">Need-by date (optional)</Label>
               <DatePicker
                 id="pr-need-by"
                 value={needBy}
+                min={today}
+                aria-invalid={Boolean(dateError)}
+                aria-describedby={dateError ? "pr-need-by-error" : undefined}
                 onValueChange={(val) => {
                   setNeedBy(val);
+                  setDateError("");
                   setSaveOpKey(createOperationKey("pr-save"));
                 }}
                 clearable
                 placeholder="Optional date"
               />
+              <FieldError id="pr-need-by-error">{dateError}</FieldError>
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="pr-note">Note (optional)</Label>
-              <Input
+              <Textarea
                 id="pr-note"
+                rows={3}
+                maxLength={REQUEST_NOTE_LIMIT}
+                className="min-h-24 [field-sizing:content]"
+                aria-describedby={note.length >= 1_800 ? "pr-note-count" : undefined}
                 value={note}
                 onChange={(event) => {
                   setNote(event.target.value);
@@ -267,6 +402,9 @@ export function RequestEditorSheet({
                 }}
                 placeholder="Context for approver"
               />
+              {note.length >= 1_800 ? (
+                <p id="pr-note-count" className="text-xs text-muted-foreground">{note.length} / {REQUEST_NOTE_LIMIT} characters</p>
+              ) : null}
             </div>
           </div>
 
@@ -281,6 +419,16 @@ export function RequestEditorSheet({
             onAddClick={() => setPickerOpen(true)}
             addLabel="Add item"
             idPrefix="pr-line"
+            renderLineExtra={canSetReorderPoint ? (line) => {
+              const row = reorderRows.find((item) => item.variantId === line.variantId);
+              return row ? (
+                <RequestReorderPoint branchId={branchId} row={row} disabled={saving}
+                  onSaved={(reorderPoint) => {
+                    const { quantityHint } = newRequestLine({ ...row, reorderPoint });
+                    setLines((current) => current.map((item) => item.variantId === row.variantId ? { ...item, quantityHint } : item));
+                  }} />
+              ) : null;
+            } : undefined}
           />
 
           <label className="flex items-center gap-2.5 text-sm">
@@ -304,15 +452,7 @@ export function RequestEditorSheet({
         onSelectMany={(items) => {
           setLines((curr) => [
             ...curr,
-            ...items.map((item) => ({
-              variantId: item.variantId,
-              productName: item.productName,
-              variantLabel: item.label,
-              sku: item.sku,
-              onHand: item.onHand,
-              onOrder: item.onOrder,
-              quantityText: "1",
-            })),
+            ...items.map(newRequestLine),
           ]);
           setSaveOpKey(createOperationKey("pr-save"));
         }}
@@ -390,15 +530,21 @@ export function OrderEditorSheet({
   }, []);
 
   const [supplier, setSupplier] = useState<{ id: Id<"suppliers">; name: string } | null>(startSupplier);
+  const [expectedDateEdited, setExpectedDateEdited] = useState(false);
   const [expectedDate, setExpectedDate] = useState(existing?.expectedDate ?? "");
   const [supplierReference, setSupplierReference] = useState(existing?.supplierReference ?? "");
   const [note, setNote] = useState(existing?.note ?? "");
   const [lines, setLines] = useState<StockLineDraft[]>(startLines);
+  const [tbc, setTbc] = useState<ReadonlySet<string>>(() => new Set(startLines.filter((line) => line.priceTbc).map((line) => line.variantId)));
   const [lineErrors, setLineErrors] = useState<StockLineFieldErrors>({});
   const [pickerOpen, setPickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [opKey, setOpKey] = useState(() => createOperationKey("po-save"));
+  // Replacement orders for held or returned goods may issue without prices; others need a cost or TBC on every line.
+  const pricesRequired = !forHold && !replacesReturnId;
+  const unpricedLines = lines.filter((line) => !(line.unitCostText ?? "").trim());
+  const expectedMin = existing?.expectedDate && existing.expectedDate < resortTodayIso() ? existing.expectedDate : resortTodayIso();
 
   const isDirty = useMemo(() => {
     if ((supplier?.id ?? null) !== (startSupplier?.id ?? null)) return true;
@@ -406,6 +552,7 @@ export function OrderEditorSheet({
     if (supplierReference !== (existing?.supplierReference ?? "")) return true;
     if (note !== (existing?.note ?? "")) return true;
     if (lines.length !== startLines.length) return true;
+    if (startLines.some((line) => Boolean(line.priceTbc) !== tbc.has(line.variantId))) return true;
     return lines.some((line, idx) => {
       const init = startLines[idx];
       return (
@@ -415,7 +562,7 @@ export function OrderEditorSheet({
         (init.unitCostText ?? "") !== (line.unitCostText ?? "")
       );
     });
-  }, [supplier, startSupplier, expectedDate, existing, supplierReference, note, lines, startLines]);
+  }, [supplier, startSupplier, expectedDate, existing, supplierReference, note, lines, startLines, tbc]);
 
   const { requestClose } = useStockDirtyGuard(isDirty, onClose, saving);
   const isStale = Boolean(
@@ -442,6 +589,7 @@ export function OrderEditorSheet({
       quantity: number;
       unitCost?: number;
       requestLineId?: Id<"purchaseRequestLines">;
+      priceTbc?: boolean;
     }[] = [];
 
     for (const line of lines) {
@@ -460,6 +608,7 @@ export function OrderEditorSheet({
           variantId: line.variantId,
           quantity: qtyParsed.value,
           ...(costParsed.value !== undefined ? { unitCost: costParsed.value } : {}),
+          ...(costParsed.value === undefined && tbc.has(line.variantId) ? { priceTbc: true } : {}),
           ...(line.requestLineId ? { requestLineId: line.requestLineId as Id<"purchaseRequestLines"> } : {}),
         });
       }
@@ -481,7 +630,7 @@ export function OrderEditorSheet({
         ...(existing ? { orderId: existing.orderId, expectedRevision: reviewedRevision ?? existing.revision } : {}),
         supplierId: supplier.id,
         ...(requestId ? { requestId } : {}),
-        expectedDate: expectedDate || undefined,
+        expectedDate: expectedDateEdited ? expectedDate : expectedDate || undefined,
         supplierReference: supplierReference.trim() || undefined,
         note: note.trim() || undefined,
         ...(forHold ? { forHoldId: forHold._id } : {}),
@@ -556,6 +705,9 @@ export function OrderEditorSheet({
               required
               onChange={(next) => {
                 setSupplier(next);
+                if (!existing && !expectedDateEdited) {
+                  setExpectedDate(next?.leadTimeDays === undefined ? "" : addDays(resortTodayIso(), next.leadTimeDays));
+                }
                 setOpKey(createOperationKey("po-save"));
               }}
             />
@@ -568,9 +720,11 @@ export function OrderEditorSheet({
                 id="po-expected"
                 value={expectedDate}
                 onValueChange={(val) => {
+                  setExpectedDateEdited(true);
                   setExpectedDate(val);
                   setOpKey(createOperationKey("po-save"));
                 }}
+                min={expectedMin}
                 clearable
               />
             </div>
@@ -602,17 +756,49 @@ export function OrderEditorSheet({
             idPrefix="po-line"
           />
 
+          {unpricedLines.length > 0 ? (
+            <fieldset className="grid gap-2 rounded-lg border border-border p-3 text-sm">
+              <legend className="px-1 text-xs font-medium text-muted-foreground">
+                {pricesRequired ? "Lines without a unit cost need one, or Price to be confirmed, before issue" : "Lines without a unit cost"}
+              </legend>
+              {unpricedLines.map((line) => (
+                <label key={line.variantId} className="inline-flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    className="size-4 accent-foreground"
+                    checked={tbc.has(line.variantId)}
+                    onChange={(event) => {
+                      const next = new Set(tbc);
+                      if (event.target.checked) next.add(line.variantId);
+                      else next.delete(line.variantId);
+                      setTbc(next);
+                      setOpKey(createOperationKey("po-save"));
+                    }}
+                  />
+                  <span>{line.productName} · {line.variantLabel} — Price to be confirmed (prints TBC)</span>
+                </label>
+              ))}
+            </fieldset>
+          ) : null}
+
           <div className="grid gap-1.5">
             <Label htmlFor="po-note">Note for supplier (optional)</Label>
-            <Input
+            <Textarea
               id="po-note"
+              rows={3}
+              maxLength={REQUEST_NOTE_LIMIT}
               value={note}
+              aria-describedby={note.length >= 1_800 ? "po-note-count" : undefined}
               onChange={(event) => {
                 setNote(event.target.value);
                 setOpKey(createOperationKey("po-save"));
               }}
               placeholder="Delivery instructions"
+              className="field-sizing-content min-h-20"
             />
+            {note.length >= 1_800 ? (
+              <p id="po-note-count" className="text-xs text-muted-foreground" aria-live="polite">{note.length} / {REQUEST_NOTE_LIMIT} characters</p>
+            ) : null}
           </div>
         </SheetForm>
       </EditorSheet>
@@ -656,11 +842,17 @@ export function DeclineHoldSheet({
   const decline = useMutation(api.commerce.purchasing.declineHeldGoods);
   const [reviewedRevision, setReviewedRevision] = useState(hold.revision);
   const [reason, setReason] = useState("");
+  const [handoff, setHandoff] = useState({ carrier: "", returnReference: "", note: "", collected: false });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [opKey, setOpKey] = useState(() => createOperationKey("hold-dec"));
+  const editHandoff = (patch: Partial<typeof handoff>) => {
+    setHandoff((current) => ({ ...current, ...patch }));
+    setOpKey(createOperationKey("hold-dec"));
+  };
+  const handoffEntered = Boolean(handoff.carrier.trim() || handoff.returnReference.trim() || handoff.note.trim() || handoff.collected);
 
-  const { requestClose } = useStockDirtyGuard(reason.trim() !== "", onClose, saving);
+  const { requestClose } = useStockDirtyGuard(reason.trim() !== "" || handoffEntered, onClose, saving);
   const isStale = hold.revision !== reviewedRevision;
 
   async function handleSubmit(event: FormEvent) {
@@ -681,6 +873,16 @@ export function DeclineHoldSheet({
         holdId: hold._id,
         expectedRevision: reviewedRevision,
         reason: reason.trim(),
+        ...(handoffEntered
+          ? {
+              handoff: {
+                carrier: handoff.carrier.trim() || undefined,
+                returnReference: handoff.returnReference.trim() || undefined,
+                note: handoff.note.trim() || undefined,
+                collected: handoff.collected || undefined,
+              },
+            }
+          : {}),
         operationKey: opKey,
       });
       onDone();
@@ -738,6 +940,27 @@ export function DeclineHoldSheet({
             placeholder="e.g. Returned excess shipment to supplier driver"
           />
         </div>
+        <fieldset className="grid gap-3 rounded-lg border border-border p-3">
+          <legend className="px-1 text-sm font-medium text-foreground">Handoff evidence (optional)</legend>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-1.5">
+              <Label htmlFor="decline-hold-carrier">Carrier or driver</Label>
+              <Input id="decline-hold-carrier" value={handoff.carrier} maxLength={200} onChange={(event) => editHandoff({ carrier: event.target.value })} />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="decline-hold-return-ref">Supplier return reference</Label>
+              <Input id="decline-hold-return-ref" value={handoff.returnReference} maxLength={64} placeholder="e.g. RMA-881" onChange={(event) => editHandoff({ returnReference: event.target.value })} />
+            </div>
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="decline-hold-collection-note">Collection note</Label>
+            <Input id="decline-hold-collection-note" value={handoff.note} maxLength={2000} placeholder="e.g. Driver signed the return slip" onChange={(event) => editHandoff({ note: event.target.value })} />
+          </div>
+          <label className="flex items-start gap-2 text-sm text-foreground">
+            <input type="checkbox" checked={handoff.collected} onChange={(event) => editHandoff({ collected: event.target.checked })} className="mt-0.5 size-4 accent-foreground" />
+            <span>Goods were collected now. Leave unticked if the supplier picks them up later; you can record the pickup from the queue.</span>
+          </label>
+        </fieldset>
       </SheetForm>
     </EditorSheet>
   );

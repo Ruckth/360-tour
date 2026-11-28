@@ -27,7 +27,7 @@ type Refused = { status: "refused"; code: string; message: string };
 const leg = (direction: PaymentLeg["direction"]) => (row: ServerLeg): PaymentLeg => ({
   key: row.key, direction, method: row.method, amount: row.amount, state: row.state,
   tendered: row.tendered, received: row.received ?? null, change: row.change ?? null, reference: row.reference ?? null, instructedAt: row.instructedAt ?? null,
-  checkPrevious: row.checkPrevious,
+  checkPrevious: row.checkPrevious, stockHoldUntil: row.stockHoldUntil,
 });
 
 /** The server's codes that have a CommerceRefusal of their own. */

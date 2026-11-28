@@ -4,16 +4,15 @@ import type { MutationCtx } from '../../_generated/server';
 import { reserveWrites } from '../../lib/readBudget';
 import { COMMERCE_LIMITS } from '../../shared/commerce';
 import {
-  allocateStockLots, expansionError, maxActiveReservations, stockAvailability, stockText, stockUnits, type StockScope, expansionRead,
+  allocateStockLots, expansionError, maxActiveReservations, stockAvailability, stockText, stockUnits, type StockScope, type Allocation, expansionRead,
 } from './stockAvailability';
 import { readStockLevel, writeStockMovement } from './stockLedger';
 
-const checkoutHoldMs = 10 * 60_000;
 const checkoutHoldLines = COMMERCE_LIMITS.sale.distinctVariants;
 const maxReservationMs = 60 * 60 * 1000;
 
 export async function reserveStock(ctx: MutationCtx, args: StockScope & {
-  orderId?: Id<'orders'>; checkout?: true; sourceKey: string; actor: string; quantity: number; expiresAt: number;
+  orderId?: Id<'orders'>; checkout?: true; sourceKey: string; actor: string; quantity: number; expiresAt: number; lotAllocations?: Allocation[];
 }): Promise<Id<'stockReservations'>> {
   const sourceKey = stockText(args.sourceKey, 200, 'a hold reference');
   const actor = stockText(args.actor, 300, 'the operator');
@@ -22,7 +21,10 @@ export async function reserveStock(ctx: MutationCtx, args: StockScope & {
     .withIndex('by_sourceKey', q => q.eq('sourceKey', sourceKey)).unique();
   if (previous) {
     if (previous.branchId !== args.branchId || previous.variantId !== args.variantId || previous.orderId !== args.orderId ||
-        previous.checkout !== args.checkout || previous.quantity !== quantity || previous.expiresAt !== args.expiresAt || previous.actor !== actor) {
+        previous.checkout !== args.checkout || (args.lotAllocations &&
+          (previous.allocations.length !== args.lotAllocations.length || !args.lotAllocations.every(lot =>
+            previous.allocations.some(saved => saved.lotId === lot.lotId && saved.quantity === lot.quantity)))) ||
+        previous.quantity !== quantity || previous.expiresAt !== args.expiresAt || previous.actor !== actor) {
       expansionError('STOCK_KEY_CONFLICT', 'This hold reference was already used for a different action.');
     }
     return previous._id;
@@ -46,7 +48,20 @@ export async function reserveStock(ctx: MutationCtx, args: StockScope & {
     expansionError('STOCK_RESERVATION_EXISTS', 'The order already has an active hold for this item.');
   }
   if (availability.sellable < quantity) expansionError('INSUFFICIENT_STOCK', 'There is insufficient sellable stock for this hold.');
-  const allocations = availability.tracking ? allocateStockLots(availability.lots, quantity, args.expiresAt) : [];
+  if (args.checkout && availability.tracking) {
+    const protectedUnits = availability.lots.reduce((sum, lot) => sum + (lot.expiresAt > args.expiresAt ? lot.available : 0), 0);
+    if (protectedUnits < quantity) expansionError('STOCK_HOLD_LOT_EXPIRY',
+      'Some units expire before the ten-minute checkout hold ends. Use a lot with a later expiry or reduce the quantity.');
+  }
+  const requestedLots = args.lotAllocations;
+  if (requestedLots && (!availability.tracking ||
+      requestedLots.reduce((sum, lot) => sum + lot.quantity, 0) !== quantity ||
+      new Set(requestedLots.map(lot => lot.lotId)).size !== requestedLots.length ||
+      !requestedLots.every(lot => Number.isSafeInteger(lot.quantity) && lot.quantity > 0 && availability.lots.some(position =>
+        position.lotId === lot.lotId && position.available >= lot.quantity && position.expiresAt > args.expiresAt)))) {
+    expansionError('INSUFFICIENT_STOCK', 'A packed lot is unavailable for the duration of the hold.');
+  }
+  const allocations = requestedLots ?? (availability.tracking ? allocateStockLots(availability.lots, quantity, args.expiresAt) : []);
   reserveWrites(ctx, 1);
   const reservationId = await ctx.db.insert('stockReservations', {
     branchId: args.branchId, variantId: args.variantId, orderId: args.orderId, checkout: args.checkout,
@@ -84,11 +99,11 @@ export async function expireStockReservation(ctx: MutationCtx, reservationId: Id
   }
 }
 
-type CheckoutLine = { variantId: Id<'productVariants'>; quantity: number };
+type CheckoutLine = { variantId: Id<'productVariants'>; quantity: number; lotAllocations?: Allocation[] };
 
 export async function placeCheckoutHolds(ctx: MutationCtx, args: {
   orderId: Id<'orders'>; branchId: Id<'branches'>; attemptId: Id<'paymentAttempts'>;
-  legKey: string; lines: CheckoutLine[]; actor: string;
+  legKey: string; lines: CheckoutLine[]; actor: string; expiresAt: number;
 }) {
   if (!args.lines.length) return;
   await ctx.runMutation(internal.commerce.stockExpansion.reserveCheckout, args);
@@ -97,12 +112,12 @@ export async function placeCheckoutHolds(ctx: MutationCtx, args: {
 /** On failure, convex rolls back this child mutation even when the caller returns a payment refusal. */
 export async function reserveCheckoutHolds(ctx: MutationCtx, args: {
   orderId: Id<'orders'>; branchId: Id<'branches'>; attemptId: Id<'paymentAttempts'>;
-  legKey: string; lines: CheckoutLine[]; actor: string;
+  legKey: string; lines: CheckoutLine[]; actor: string; expiresAt: number;
 }): Promise<void> {
   if (args.lines.length > checkoutHoldLines || new Set(args.lines.map(line => line.variantId)).size !== args.lines.length) {
     expansionError('STOCK_RESERVATION_LIMIT', 'Split this order into smaller payments.');
   }
-  const expiresAt = Date.now() + checkoutHoldMs;
+  const { expiresAt } = args;
   for (const line of args.lines) {
     await reserveStock(ctx, {
       ...line, branchId: args.branchId, orderId: args.orderId, checkout: true, actor: args.actor, expiresAt,

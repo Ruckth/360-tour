@@ -237,8 +237,16 @@ it('won’t arm stock whose lots expire during the hold and won’t turn expired
   const near = await stockFixture(2, Date.now() + 5 * 60_000);
   const soon = await openRetailPayment(near, 'soon-expiring');
   await expect(near.owner.mutation(payments.armPaymentLeg.armPaymentLeg, { ...soon.attempt, load: near.load, legKey: 'card' }))
-    .resolves.toMatchObject({ status: 'refused', code: 'INSUFFICIENT_STOCK' });
+    .resolves.toMatchObject({ status: 'refused', code: 'STOCK_HOLD_LOT_EXPIRY', message: expect.stringContaining('ten-minute checkout hold') });
   expect(await near.t.run(ctx => ctx.db.query('stockReservations').take(1))).toEqual([]);
+  const expectedExpiry = Date.now() + 10 * 60_000;
+  await near.t.run(ctx => writeStockMovement(ctx, {
+    branchId: near.branchId, variantId: near.variantId, delta: 2, kind: 'lot_adjustment',
+    sourceKey: 'later-expiry', actor: 'stock', lotReceipt: { code: 'later-expiry', expiresAt: expectedExpiry + 10 * 60_000 },
+  }));
+  await expect(near.owner.mutation(payments.armPaymentLeg.armPaymentLeg, { ...soon.attempt, load: near.load, legKey: 'card' }))
+    .resolves.toMatchObject({ status: 'instruct', leg: { stockHoldUntil: expectedExpiry } });
+  expect(await near.t.run(ctx => ctx.db.query('stockReservations').take(1))).toMatchObject([{ expiresAt: expectedExpiry }]);
   await near.t.finishAllScheduledFunctions(vi.runAllTimers);
 
   const fixture = await stockFixture(2);
@@ -256,3 +264,92 @@ it('won’t arm stock whose lots expire during the hold and won’t turn expired
   expect(await t.run(ctx => ctx.db.query('stockLevels').withIndex('by_variantId_and_branchId', q =>
     q.eq('variantId', variantId).eq('branchId', branchId)).unique())).toMatchObject({ onHand: 0 });
 });
+
+it('settles explicitly packed lots by row and rejects returning the package with the standalone lot', async () => {
+  const { t, owner, branchId, primary, variantId, tillId, load } = await stockFixture(3, Date.now() + 3_600_000);
+  const { orderId, lineId } = await owner.mutation(retail.add, {
+    branchId, variantId, quantity: 1, expectedPrice: 30000, clientKey: 'packed-product-add',
+  });
+  const packageLine = await t.run(async ctx => {
+    const now = Date.now();
+    await writeStockMovement(ctx, {
+      branchId, variantId, delta: 1, kind: 'opening', sourceKey: 'packed-second-lot', actor: 'seed',
+      lotReceipt: { code: '2026-B', expiresAt: now + 7_200_000 },
+    });
+    const settings = (await ctx.db.query('commerceSettings').first())!;
+    await ctx.db.patch(settings._id, { saleSwitches: { ...settings.saleSwitches, mixedPackages: 'everyone' } });
+    const customerId = await ctx.db.insert('customers', { name: 'Packing guest', createdAt: now, updatedAt: now, createdBy: 'seed' });
+    const packageId = await ctx.db.insert('packages', { name: 'Packed gift', status: 'active', sort: 0, revision: 0 });
+    const packageVersionId = await ctx.db.insert('packageVersions', {
+      packageId, version: 1, name: 'Packed gift', price: 30000, validityDays: 180, allowTransfer: false,
+      contents: [{ kind: 'product', contentKey: 'pouch', variantId, units: 1 }], estimatedSplit: [],
+    });
+    await ctx.db.patch(packageId, { currentVersionId: packageVersionId });
+    const id = await ctx.db.insert('orderLines', {
+      orderId, kind: 'package', packageVersionId, name: 'Packed gift', currency: 'THB', qty: 1,
+      unitPrice: 30000, catalogUnitPrice: 30000, createdAt: now,
+    });
+    await ctx.db.patch(orderId, { customerId, due: 60000 });
+    return id;
+  });
+  const orders = api.pos.orders;
+  const options = (await owner.query(orders.packedLotOptions, { lineId }))!;
+  const early = options.parts[0].lots.find(lot => lot.code === '2026-A')!;
+  const late = options.parts[0].lots.find(lot => lot.code === '2026-B')!;
+  const identity = { email: 'packing-other@example.com', tokenIdentifier: 'packing-other', emailVerified: true };
+  await t.run(ctx => ctx.db.insert('staffGrants', {
+    role: 'manager', branchIds: [primary], email: identity.email, tokenIdentifier: identity.tokenIdentifier,
+    createdAt: Date.now(), updatedAt: Date.now(), updatedByEmail: 'stockowner@example.com',
+  }));
+  const outsider = t.withIdentity(identity);
+  await expect(outsider.query(orders.packedLotOptions, { lineId })).resolves.toBeNull();
+  await expect(outsider.mutation(orders.savePackedLots, { lineId, expectedRevision: options.revision, parts: [] })).rejects.toThrow('Order not found');
+  const packed = (lotId: typeof early.lotId) => [{ lotId, quantity: 1 }];
+  await owner.mutation(orders.savePackedLots, {
+    lineId, expectedRevision: options.revision, parts: [{ contentKey: 'product', allocations: packed(late.lotId) }],
+  });
+  const packageOptions = (await owner.query(orders.packedLotOptions, { lineId: packageLine }))!;
+  await owner.mutation(orders.savePackedLots, {
+    lineId: packageLine, expectedRevision: packageOptions.revision, parts: [{ contentKey: 'pouch', allocations: packed(early.lotId) }],
+  });
+  const order = (await t.run(ctx => ctx.db.get(orderId)))!;
+  const opened = await owner.mutation(payments.startPaymentAttempt.startPaymentAttempt, {
+    orderId, tillId, tabKey, load, clientKey: 'packed-payment', expectedRevision: order.revision, expectedDue: 60000,
+    businessDate: resortTodayIso(), customers: [{ customerId: order.customerId!, revision: 0 }], vouchers: [], legs: [{ key: 'card', method: 'card', amount: 60000 }],
+  });
+  if (opened.status !== 'ready') throw new Error(JSON.stringify(opened));
+  const attempt = { attemptId: opened.attempt.attemptId, ownerRevision: opened.attempt.ownerRevision, tillId, tabKey };
+  await expect(owner.mutation(payments.armPaymentLeg.armPaymentLeg, { ...attempt, load, legKey: 'card' }))
+    .resolves.toMatchObject({ status: 'instruct' });
+  await owner.mutation(payments.recordPaymentLeg.recordPaymentLeg, { ...attempt, legKey: 'card', outcome: 'taken' });
+  await expect(owner.mutation(payments.settleOrder.settlePaymentAttempt, attempt)).resolves.toMatchObject({ status: 'settled' });
+
+  const paid = (await owner.query(orders.getOrder, { orderId }))!;
+  expect(paid.lines.find(line => line._id === lineId)?.saleSnapshot?.contents[0].packedLots).toEqual(packed(late.lotId));
+  expect(paid.lines.find(line => line._id === packageLine)?.saleSnapshot?.contents[0].packedLots).toEqual(packed(early.lotId));
+  const returns = payments.returnItems;
+  const [productLots, packageLots] = await owner.query(returns.lots, {
+    orderId, parts: [{ lineId }, { lineId: packageLine, contentKey: 'pouch' }],
+  });
+  expect(productLots).toMatchObject({ packed: true, lots: [{ code: '2026-B', quantity: 1 }] });
+  expect(packageLots).toMatchObject({ packed: true, lots: [{ code: '2026-A', quantity: 1 }] });
+  const part = { kind: 'content', lineId: packageLine, contentKey: 'pouch', units: 1, disposition: 'sellable' } as const;
+  const selection = { orderId, tillId, reason: 'Wrong product', clientKey: 'packed-return-preview',
+    expectedRevision: paid.order.revision, expectedCorrectionRevision: paid.paymentRecord.correctionRevision };
+  await expect(owner.query(returns.preview, { ...selection, parts: [{ ...part, lotAllocations: packed(late.lotId) }] }))
+    .rejects.toThrow('exceeds the original stock movement');
+  const correct = { ...selection, parts: [{ ...part, lotAllocations: packed(early.lotId) }] };
+  await expect(owner.query(returns.preview, correct)).resolves.toMatchObject({ amount: 30000 });
+  await expect(owner.query(returns.preview, {
+    ...selection, parts: [{ ...part, disposition: 'damaged', lotAllocations: packed(late.lotId) }],
+  })).rejects.toThrow('exceeds the original stock movement');
+  const authorized = await owner.mutation(returns.authorize, correct);
+  expect(authorized.status).toBe('authorized');
+  const destination = { returnId: authorized.returnId, tillId, operatorRevision: authorized.operatorRevision, destinationKey: authorized.claims[0].key };
+  expect(authorized.claims[0].state).toBe('instructed');
+  await expect(owner.mutation(returns.recordPayout, { ...destination, outcome: 'given' }))
+    .resolves.toMatchObject({ status: 'completed' });
+  expect((await t.run(ctx => ctx.db.get(packageLine)))?.saleSnapshot?.contents[0].returnedPackedLots).toEqual(packed(early.lotId));
+  expect(await owner.query(returns.lots, { orderId, parts: [{ lineId }] }))
+    .toMatchObject([{ packed: true, lots: [{ code: '2026-B', quantity: 1 }] }]);
+}, 20_000);

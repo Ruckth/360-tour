@@ -1,3 +1,6 @@
+import { projectSupplierOrder } from './supplierActivity';
+import { addDays } from '../../shared/dates';
+import { resortTodayIso } from '../../shared/time';
 /** Purchase orders: Draft → Ordered → Partially received → Received; Close remainder → Closed short | Cancelled. */
 import { omit } from 'convex-helpers';
 import type { Doc, Id } from '../../_generated/dataModel';
@@ -6,15 +9,29 @@ import type { StaffActor } from '../../auth/model';
 import { reserveWrites } from '../../lib/readBudget';
 import type { PurchasingResult } from '../purchasingTables';
 import {
-  actorOf, adjustIncoming, assertSafeTotals, availableApproval, draftChanges, expectRevision, fail, ISSUED_OPEN, isoDate, lineCount, lineDue,
+  actorOf, adjustIncoming, assertSafeTotals, availableApproval, draftChanges, expectRevision, fail, futureIsoDate, ISSUED_OPEN, itemLabel, lineCount, lineDue,
   newReference, orderSummary, otherHoldReplacement, purchasingAccess, quantity, readItem, readOrderLines, readRequestLines, reason,
-  recordEvent, requireActiveItems, requireSupplier, runOnce, shiftCommitment, supplierSnapshot, text, uniqueBy, unitCost,
-  type Actor, type StockAccess,
+  recordEvent, referenceCode, refreshFullyOrdered, requireActiveItems, requireSupplier, runOnce, shiftCommitment, supplierSnapshot, text, uniqueBy, unitCost,
+  lineAcceptedValue, seedLegacyLine, type Actor, type StockAccess,
 } from './purchasingCore';
 
 type DraftLine = {
   variantId: Id<'productVariants'>; quantity: number; unitCost?: number; requestLineId?: Id<'purchaseRequestLines'>;
+  /** Price to be confirmed: lets the line issue without a unit cost (prints as TBC). */
+  priceTbc?: boolean;
 };
+
+/**
+ * Issue needs a price on every line, or an explicit TBC flag. Drafts stay lenient, and so does a linked replacement for
+ * held or returned goods (the supplier usually replaces them at no charge).
+ */
+function requirePrices(order: Pick<Doc<'purchaseOrders'>, 'forHoldId' | 'replacesReturnId'>, lines: Pick<Doc<'purchaseOrderLines'>, '_id' | 'unitCost' | 'priceTbc'>[]) {
+  if (order.forHoldId || order.replacesReturnId) return;
+  const unpriced = lines.filter(line => line.unitCost === undefined && !line.priceTbc).map(line => line._id);
+  if (unpriced.length) {
+    fail('PRICE_REQUIRED', 'Enter a unit cost on every line, or mark it Price to be confirmed, before issuing.', { orderLineIds: unpriced });
+  }
+}
 
 export type SaveOrderArgs = {
   branchId: Id<'branches'>; orderId?: Id<'purchaseOrders'>; expectedRevision?: number;
@@ -97,15 +114,21 @@ export async function saveOrderDraft(ctx: MutationCtx, staff: StaffActor, args: 
     if (!args.requestId) requireDirect(access);
     lineCount(args.lines, 'order lines');
     uniqueBy(args.lines, line => line.variantId, 'Each item can appear once per order.');
-    for (const line of args.lines) { quantity(line.quantity, 'Order quantity'); unitCost(line.unitCost); }
+    for (const line of args.lines) {
+      quantity(line.quantity, 'Order quantity'); unitCost(line.unitCost);
+      if (line.priceTbc && line.unitCost !== undefined) fail('INVALID_COST', 'A line with a unit cost is not Price to be confirmed.');
+    }
     assertSafeTotals(args.lines.map(line => ({ ordered: line.quantity, cancelled: 0, unitCost: line.unitCost })));
     await validateSource(ctx, args.branchId, args.requestId, args.lines);
     await validateLink(ctx, args.branchId, args, args.lines.map(line => line.variantId), args.orderId);
     const supplier = await requireSupplier(ctx, args.supplierId);
     const reads = await Promise.all(args.lines.map(line => readItem(ctx, line.variantId)));
+    const previous = args.orderId ? await ctx.db.get(args.orderId) : null;
     const header = {
       supplierId: supplier._id, supplier: supplierSnapshot(supplier), requestId: args.requestId,
-      expectedDate: isoDate(args.expectedDate, 'Expected date'),
+      expectedDate: !args.orderId && args.expectedDate === undefined && supplier.leadTimeDays !== undefined
+        ? addDays(resortTodayIso(), supplier.leadTimeDays)
+        : futureIsoDate(args.expectedDate, 'Expected date', previous?.expectedDate),
       supplierReference: text(args.supplierReference, 'Supplier reference', 'reference'),
       note: text(args.note, 'Note', 'note'),
       replacesReturnId: args.replacesReturnId, forHoldId: args.forHoldId,
@@ -139,7 +162,7 @@ export async function saveOrderDraft(ctx: MutationCtx, staff: StaffActor, args: 
       revision = 1;
       reserveWrites(ctx, 1);
       orderId = await ctx.db.insert('purchaseOrders', {
-        branchId: args.branchId, reference, status: 'draft', phase: 'draft', ...header,
+        branchId: args.branchId, reference, referenceCode: referenceCode(reference), status: 'draft', phase: 'draft', ...header,
         issuedRevision: 0, revision, lineCount: 0, openLineCount: 0, orderedUnits: 0, acceptedUnits: 0, dueUnits: 0, totalCost: 0,
         createdByKey: actor.actorKey, createdByLabel: actor.actorLabel, createdAt: now, updatedAt: now,
       });
@@ -149,7 +172,8 @@ export async function saveOrderDraft(ctx: MutationCtx, staff: StaffActor, args: 
     for (const [sort, line] of args.lines.entries()) {
       const id = await ctx.db.insert('purchaseOrderLines', {
         orderId, branchId: args.branchId, variantId: line.variantId, item: reads[sort].item, requestLineId: line.requestLineId,
-        ordered: line.quantity, cancelled: 0, accepted: 0, corrected: 0, returned: 0, unitCost: line.unitCost, open: false, sort,
+        ordered: line.quantity, cancelled: 0, accepted: 0, corrected: 0, returned: 0, unitCost: line.unitCost,
+        ...(line.priceTbc ? { priceTbc: true } : {}), open: false, sort,
       });
       lines.push((await ctx.db.get(id))!);
     }
@@ -169,9 +193,10 @@ type OrderAction = { orderId: Id<'purchaseOrders'>; expectedRevision: number; op
 async function orderTransition(
   ctx: MutationCtx, staff: StaffActor, args: OrderAction & Record<string, unknown>, action: string,
   apply: (order: Doc<'purchaseOrders'>, actor: Actor, access: StockAccess) => Promise<PurchasingResult>,
+  permission: 'buyer' | 'approver' = 'buyer',
 ) {
   const order = await loadOrder(ctx, args.orderId);
-  const access = await purchasingAccess(ctx, staff, order.branchId, 'buyer');
+  const access = await purchasingAccess(ctx, staff, order.branchId, permission);
   const actor = actorOf(staff);
   const { operationKey, ...payload } = args;
   return runOnce(ctx, actor, order.branchId, `order.${action}`, operationKey, payload, async () => {
@@ -188,6 +213,7 @@ async function writeRevision(ctx: MutationCtx, order: Doc<'purchaseOrders'>, lin
     expectedDate: order.expectedDate, supplierReference: order.supplierReference, note: order.note,
     lines: lines.map(line => ({
       orderLineId: line._id, variantId: line.variantId, item: line.item, ordered: line.ordered, cancelled: line.cancelled, unitCost: line.unitCost,
+      ...(line.priceTbc ? { priceTbc: true } : {}),
     })),
     reason: why, ...actor, issuedAt: Date.now(),
   });
@@ -198,18 +224,95 @@ async function saveSummary(ctx: MutationCtx, order: Doc<'purchaseOrders'>, patch
   const summary = orderSummary({ ...order, ...patch }, lines);
   const revision = order.revision + 1;
   reserveWrites(ctx, 1);
-  await ctx.db.patch(order._id, { ...patch, ...summary, revision, updatedAt: Date.now() });
+  const projection = await projectSupplierOrder(ctx, order, summary.phase);
+  await ctx.db.patch(order._id, { ...patch, ...summary, ...projection, revision, updatedAt: Date.now() });
   return { lines, revision, summary };
 }
 
-/** Issue rechecks supplier, items, policy and approvals, then commits demand and On order together. */
+/**
+ * The direct (not request-backed) commitment of an order under the branch's direct order limit: accepted value at
+ * receipt costs plus what is still due at the current price. A committed direct line without a price (TBC) makes the
+ * value unknown, so it can never prove the order is under the limit. Linked replacements for holds or returns are
+ * exempt from pricing and carry no unknown value.
+ */
+export function directCommitment(order: Pick<Doc<'purchaseOrders'>, 'forHoldId' | 'replacesReturnId'>, lines: Doc<'purchaseOrderLines'>[]) {
+  let value = 0, unknown = 0;
+  for (const line of lines) {
+    if (line.requestLineId) continue;
+    const committed = line.ordered - line.cancelled;
+    value += lineAcceptedValue(line) + Math.max(0, lineDue(line)) * (line.unitCost ?? 0);
+    if (committed > 0 && line.unitCost === undefined && !order.forHoldId && !order.replacesReturnId) unknown++;
+  }
+  return { value, unknown };
+}
+
+const overLimit = (commitment: { value: number; unknown: number }, limit: number | null) =>
+  limit !== null && (commitment.value > limit || commitment.unknown > 0);
+
+/**
+ * Issue rechecks supplier, items, prices, policy and approvals, then commits demand and On order together. A direct order
+ * above the branch's direct order limit is sent to Awaiting approval instead; a different approver issues it.
+ */
 export function issueOrder(ctx: MutationCtx, staff: StaffActor, args: OrderAction) {
   return orderTransition(ctx, staff, args, 'issue', async (order, actor, access) => {
+    if (order.status === 'awaiting_approval') fail('ORDER_STATE', 'This order is waiting for approval.');
     if (order.status !== 'draft') fail('ORDER_STATE', 'This order was already issued.');
     if (!order.requestId) requireDirect(access);
+    const limit = access.policy.directOrderLimit;
+    if (!order.requestId && limit !== null) {
+      const drafted = await readOrderLines(ctx, order._id);
+      requirePrices(order, drafted);
+      const commitment = directCommitment(order, drafted);
+      const value = commitment.value;
+      if (overLimit(commitment, limit)) {
+        const { revision } = await saveSummary(ctx, order, {
+          status: 'awaiting_approval', approvalRequestedByKey: actor.actorKey, approvalRequestedByLabel: actor.actorLabel, approvalRequestedAt: Date.now(),
+        });
+        await recordEvent(ctx, actor, { entity: 'order', entityId: order._id, branchId: order.branchId, action: 'approval_requested',
+          changes: [
+            { field: 'orderValue', before: null, after: value }, { field: 'directOrderLimit', before: null, after: limit },
+            ...(commitment.unknown ? [{ field: 'unpricedLines', before: null, after: commitment.unknown }] : []),
+          ] });
+        return { id: order._id, reference: order.reference, revision, awaitingApproval: true };
+      }
+    }
+    return performIssue(ctx, order, actor);
+  });
+}
+
+/**
+ * A different approver issues a direct order that exceeded the limit. Neither the person who asked for approval nor the
+ * draft's creator can approve it.
+ */
+export function approveOrderIssue(ctx: MutationCtx, staff: StaffActor, args: OrderAction) {
+  return orderTransition(ctx, staff, args, 'approve_issue', async (order, actor) => {
+    if (order.status !== 'awaiting_approval') fail('ORDER_STATE', 'This order is not waiting for approval.');
+    if (actor.actorKey === order.approvalRequestedByKey || actor.actorKey === order.createdByKey) {
+      fail('SELF_APPROVAL', 'Ask another approver to approve an order you created or sent for approval.');
+    }
+    await recordEvent(ctx, actor, { entity: 'order', entityId: order._id, branchId: order.branchId, action: 'issue_approved' });
+    return performIssue(ctx, order, actor, { approvedByLabel: actor.actorLabel });
+  }, 'approver');
+}
+
+/** Send an over-limit order back to draft with a reason. */
+export function declineOrderIssue(ctx: MutationCtx, staff: StaffActor, args: OrderAction & { reason: string }) {
+  return orderTransition(ctx, staff, args, 'decline_issue', async (order, actor) => {
+    if (order.status !== 'awaiting_approval') fail('ORDER_STATE', 'This order is not waiting for approval.');
+    if (actor.actorKey === order.approvalRequestedByKey) fail('SELF_APPROVAL', 'Ask another approver to decide on an order you sent for approval.');
+    const why = reason(args.reason);
+    const { revision } = await saveSummary(ctx, order, { status: 'draft' });
+    await recordEvent(ctx, actor, { entity: 'order', entityId: order._id, branchId: order.branchId, action: 'issue_declined', reason: why });
+    return { id: order._id, reference: order.reference, revision };
+  }, 'approver');
+}
+
+async function performIssue(ctx: MutationCtx, order: Doc<'purchaseOrders'>, actor: Actor, extra: Partial<Doc<'purchaseOrders'>> = {}): Promise<PurchasingResult> {
+  {
     const supplier = await requireSupplier(ctx, order.supplierId);
     const drafted = await readOrderLines(ctx, order._id);
     if (!drafted.length) fail('NO_LINES', 'Add at least one line before issuing.');
+    requirePrices(order, drafted);
     const reads = await requireActiveItems(ctx, drafted.map(line => line.variantId));
     assertSafeTotals(drafted);
     await validateLink(ctx, order.branchId, order, drafted.map(line => line.variantId), order._id);
@@ -233,11 +336,13 @@ export function issueOrder(ctx: MutationCtx, staff: StaffActor, args: OrderActio
       await ctx.db.patch(line._id, { open: true, item: line.item });
       await adjustIncoming(ctx, order.branchId, line.variantId, line.ordered);
     }
-    const { revision } = await saveSummary(ctx, order, { status: 'ordered', issuedRevision: 1, issuedAt: Date.now(), supplier: issued.supplier });
+    await refreshFullyOrdered(ctx, order.requestId);
+    const { revision } = await saveSummary(ctx, order, { ...extra, status: 'ordered', issuedRevision: 1, issuedAt: Date.now(), supplier: issued.supplier });
     await writeRevision(ctx, issued, lines, 1, actor);
-    await recordEvent(ctx, actor, { entity: 'order', entityId: order._id, branchId: order.branchId, action: 'issued' });
+    await recordEvent(ctx, actor, { entity: 'order', entityId: order._id, branchId: order.branchId, action: 'issued',
+      changes: [{ field: 'issuedRevision', before: 0, after: 1 }] });
     return { id: order._id, reference: order.reference, revision };
-  });
+  }
 }
 
 export function deleteOrderDraft(ctx: MutationCtx, staff: StaffActor, args: OrderAction) {
@@ -252,84 +357,159 @@ export function deleteOrderDraft(ctx: MutationCtx, staff: StaffActor, args: Orde
 export type AmendArgs = OrderAction & {
   reason: string; expectedDate?: string; supplierReference?: string;
   lines: { orderLineId: Id<'purchaseOrderLines'>; due?: number; unitCost?: number }[];
+  /** New lines the supplier agreed to ship: direct-order policy, or an approved line of the order's source request. */
+  addLines?: DraftLine[];
 };
 
 /**
- * Amend an open order's existing lines: expected date, future unit cost and outstanding quantity.
- * A reduction cancels at most what is due. An increase needs approval on the same request line or the direct-order policy.
+ * Amend an open order: expected date, supplier reference, future unit cost and outstanding quantity of existing lines,
+ * plus new lines. A reduction cancels at most what is due. An increase or new line needs approval on the same request
+ * line or the direct-order policy. An amendment that changes nothing is rejected (NO_CHANGES) and issues no revision.
  */
 export function amendOrder(ctx: MutationCtx, staff: StaffActor, args: AmendArgs) {
   return orderTransition(ctx, staff, args, 'amend', async (order, actor, access) => {
     if (!ISSUED_OPEN.includes(order.status)) fail('ORDER_STATE', 'Only an open issued order can be amended.');
     const why = reason(args.reason);
+    const added = args.addLines ?? [];
     if (args.lines.length > 50) fail('TOO_MANY_LINES', 'An order can hold at most 50 lines.');
     uniqueBy(args.lines, line => line.orderLineId, 'Each line can be amended once.');
     const lines = new Map((await readOrderLines(ctx, order._id)).map(line => [line._id, line]));
+    if (lines.size + added.length > 50) fail('TOO_MANY_LINES', 'An order can hold at most 50 lines.');
+    uniqueBy([...lines.values(), ...added], line => line.variantId, 'Each item can appear once per order. Amend the existing line instead.');
+    const expectedDate = args.expectedDate === undefined ? order.expectedDate : futureIsoDate(args.expectedDate, 'Expected date', order.expectedDate);
+    const supplierReference = args.supplierReference === undefined ? order.supplierReference : text(args.supplierReference, 'Supplier reference', 'reference');
     let futureDue = [...lines.values()].reduce((sum, line) => sum + lineDue(line), 0);
     let increases = false;
+    let changed = added.length > 0 || expectedDate !== order.expectedDate || supplierReference !== order.supplierReference;
     for (const change of args.lines) {
       const line = lines.get(change.orderLineId);
       if (!line) fail('ORDER_LINE_NOT_FOUND', 'A line is not on this order.');
       unitCost(change.unitCost);
+      if (change.unitCost !== undefined && change.unitCost !== line.unitCost) changed = true;
       if (change.due !== undefined) {
         quantity(change.due, 'Still due', 0);
         futureDue += change.due - lineDue(line);
+        if (change.due !== lineDue(line)) changed = true;
         if (change.due > lineDue(line)) increases = true;
       }
     }
+    if (!changed) fail('NO_CHANGES', 'Nothing changed. Edit a quantity, cost, date or reference, or add a line, before issuing an amendment.');
+    const reads = await Promise.all(added.map(line => {
+      quantity(line.quantity, 'Order quantity'); unitCost(line.unitCost);
+      return readItem(ctx, line.variantId);
+    }));
+    futureDue += added.reduce((sum, line) => sum + line.quantity, 0);
     if (futureDue === 0) fail('USE_CLOSE_REMAINDER', 'Use Close remainder to cancel every outstanding unit.');
-    if (increases) {
+    if (increases || added.length) {
       await requireSupplier(ctx, order.supplierId);
-      await requireActiveItems(ctx, args.lines.filter(c => c.due !== undefined && c.due > lineDue(lines.get(c.orderLineId)!))
-        .map(c => lines.get(c.orderLineId)!.variantId));
+      await requireActiveItems(ctx, [
+        ...args.lines.filter(c => c.due !== undefined && c.due > lineDue(lines.get(c.orderLineId)!)).map(c => lines.get(c.orderLineId)!.variantId),
+        ...added.map(line => line.variantId),
+      ]);
     }
-    assertSafeTotals([...lines.values()].map(line => {
+    requirePrices(order, added.map((line, i) => ({ _id: `new:${i}` as Id<'purchaseOrderLines'>, unitCost: line.unitCost, priceTbc: line.priceTbc })));
+    // New lines follow the issue rule: request-backed lines must match an approved line of the order's own request.
+    for (const line of added) {
+      if (line.requestLineId) {
+        const source = await ctx.db.get(line.requestLineId);
+        if (!order.requestId || !source || source.requestId !== order.requestId || source.variantId !== line.variantId) {
+          fail('REQUEST_LINE_MISMATCH', 'A new line must match an approved line on this order\'s request.');
+        }
+      } else {
+        requireDirect(access);
+      }
+    }
+    assertSafeTotals([...[...lines.values()].map(line => {
       const change = args.lines.find(c => c.orderLineId === line._id);
       const delta = change?.due === undefined ? 0 : change.due - lineDue(line);
       return {
         ordered: line.ordered + Math.max(0, delta), cancelled: line.cancelled - Math.min(0, delta),
         unitCost: change?.unitCost ?? line.unitCost,
       };
-    }));
-    reserveWrites(ctx, args.lines.length);
+    }), ...added.map(line => ({ ordered: line.quantity, cancelled: 0, unitCost: line.unitCost }))]);
+    reserveWrites(ctx, args.lines.length + added.length);
+    const diff: { field: string; before: string | number | null; after: string | number | null }[] = [];
     for (const change of args.lines) {
       const line = lines.get(change.orderLineId)!;
       const patch: Partial<Doc<'purchaseOrderLines'>> = {};
-      if (change.unitCost !== undefined) patch.unitCost = change.unitCost;
-      if (change.due !== undefined) {
+      if (change.unitCost !== undefined && change.unitCost !== line.unitCost) {
+        // Repricing changes only the open commitment: fix the accepted value from receipt evidence first.
+        const seeded = await seedLegacyLine(ctx, line);
+        if (line.acceptedValue === undefined) patch.acceptedValue = seeded.acceptedValue;
+        if (line.rejected === undefined) patch.rejected = seeded.rejected;
+        patch.unitCost = change.unitCost;
+        if (line.priceTbc) patch.priceTbc = undefined;
+        diff.push({ field: `lines[${itemLabel(line.item)}].unitCost`, before: line.unitCost ?? null, after: change.unitCost });
+      }
+      if (change.due !== undefined && change.due !== lineDue(line)) {
         const delta = change.due - lineDue(line);
         if (delta > 0) {
           if (line.requestLineId) await shiftCommitment(ctx, line.requestLineId, delta);
           else requireDirect(access);
           patch.ordered = line.ordered + delta;
-        } else if (delta < 0) {
+        } else {
           await shiftCommitment(ctx, line.requestLineId, delta);
           patch.cancelled = line.cancelled - delta;
         }
         patch.open = change.due > 0;
         await adjustIncoming(ctx, order.branchId, line.variantId, delta);
+        diff.push({ field: `lines[${itemLabel(line.item)}].due`, before: lineDue(line), after: change.due });
       }
-      await ctx.db.patch(line._id, patch);
+      if (Object.keys(patch).length) await ctx.db.patch(line._id, patch);
     }
+    let sort = Math.max(-1, ...[...lines.values()].map(line => line.sort)) + 1;
+    for (const [i, line] of added.entries()) {
+      await shiftCommitment(ctx, line.requestLineId, line.quantity);
+      await ctx.db.insert('purchaseOrderLines', {
+        orderId: order._id, branchId: order.branchId, variantId: line.variantId, item: reads[i].item, requestLineId: line.requestLineId,
+        ordered: line.quantity, cancelled: 0, accepted: 0, corrected: 0, returned: 0, unitCost: line.unitCost,
+        ...(line.priceTbc ? { priceTbc: true } : {}), open: true, sort: sort++,
+      });
+      await adjustIncoming(ctx, order.branchId, line.variantId, line.quantity);
+      diff.push({ field: `lines[${itemLabel(reads[i].item)}]`, before: null, after: line.quantity });
+    }
+    await refreshFullyOrdered(ctx, order.requestId);
     const issuedRevision = order.issuedRevision + 1;
-    const header = {
-      issuedRevision,
-      expectedDate: args.expectedDate === undefined ? order.expectedDate : isoDate(args.expectedDate, 'Expected date'),
-      supplierReference: args.supplierReference === undefined ? order.supplierReference : text(args.supplierReference, 'Supplier reference', 'reference'),
-    };
+    const header = { issuedRevision, expectedDate, supplierReference };
+    if (expectedDate !== order.expectedDate) diff.push({ field: 'expectedDate', before: order.expectedDate ?? null, after: expectedDate ?? null });
+    if (supplierReference !== order.supplierReference) diff.push({ field: 'supplierReference', before: order.supplierReference ?? null, after: supplierReference ?? null });
     const { lines: updated, revision } = await saveSummary(ctx, order, header);
+    // The direct order limit holds at every commitment: an amendment that takes the direct commitment above the limit
+    // (or adds an unpriced direct line under one) needs an approver who neither created nor sent the order for approval.
+    const limit = access.policy.directOrderLimit;
+    const before = directCommitment(order, [...lines.values()]);
+    const after = directCommitment(order, updated);
+    if (overLimit(after, limit) && (after.value > before.value || after.unknown > before.unknown)) {
+      const fourEyes = access.approver && actor.actorKey !== order.createdByKey && actor.actorKey !== order.approvalRequestedByKey;
+      if (!fourEyes) {
+        fail('DIRECT_ORDER_LIMIT', 'This amendment takes the order above the direct order limit. Ask a different approver to amend it.', {
+          value: after.value, limit, unpriced: after.unknown,
+        });
+      }
+      diff.push({ field: 'directOrderLimit', before: null, after: limit });
+    }
     await writeRevision(ctx, { ...order, ...header }, updated, issuedRevision, actor, why);
+    const kept = diff.length > 19 ? diff.slice(0, 19) : diff;
     await recordEvent(ctx, actor, { entity: 'order', entityId: order._id, branchId: order.branchId, action: 'amended', reason: why,
-      changes: [{ field: 'issuedRevision', before: order.issuedRevision, after: issuedRevision }] });
+      changes: [
+        { field: 'issuedRevision', before: order.issuedRevision, after: issuedRevision }, ...kept,
+        ...(kept.length < diff.length ? [{ field: 'changes.omitted', before: null, after: diff.length - kept.length }] : []),
+      ] });
     return { id: order._id, reference: order.reference, revision };
   });
 }
 
-/** Cancel everything still due. Holds stay in their queue. */
-export function closeOrderRemainder(ctx: MutationCtx, staff: StaffActor, args: OrderAction & { reason: string }) {
-  return orderTransition(ctx, staff, args, 'close', async (order, actor) => {
+/**
+ * Cancel everything still due. Holds stay in their queue. Released approval makes the source request orderable again,
+ * unless a stock lead also closes the request's remaining demand (`closeRequestDemand`).
+ */
+export function closeOrderRemainder(ctx: MutationCtx, staff: StaffActor, args: OrderAction & { reason: string; closeRequestDemand?: boolean }) {
+  return orderTransition(ctx, staff, args, 'close', async (order, actor, access) => {
     if (!ISSUED_OPEN.includes(order.status)) fail('ORDER_STATE', 'Only an open issued order can be closed.');
     const why = reason(args.reason);
+    if (args.closeRequestDemand && !access.lead) fail('STOCK_FORBIDDEN', 'Only a stock lead can close the request\'s remaining demand.');
+    const request = args.closeRequestDemand && order.requestId ? await ctx.db.get(order.requestId) : null;
+    if (args.closeRequestDemand && request?.status !== 'approved') fail('REQUEST_STATE', 'The source request is no longer open.');
     const lines = await readOrderLines(ctx, order._id);
     reserveWrites(ctx, lines.length);
     for (const line of lines) {
@@ -339,9 +519,66 @@ export function closeOrderRemainder(ctx: MutationCtx, staff: StaffActor, args: O
       await adjustIncoming(ctx, order.branchId, line.variantId, -due);
       await ctx.db.patch(line._id, { cancelled: line.cancelled + due, open: false });
     }
+    if (request) {
+      const requestLines = await readRequestLines(ctx, request._id);
+      reserveWrites(ctx, requestLines.length + 1);
+      for (const line of requestLines) await ctx.db.patch(line._id, { requestStatus: 'closed' });
+      await ctx.db.patch(request._id, { status: 'closed', fullyOrdered: undefined, lastReason: why, revision: request.revision + 1, updatedAt: Date.now() });
+      await recordEvent(ctx, actor, { entity: 'request', entityId: request._id, branchId: request.branchId, action: 'closed', reason: why, relatedId: order._id });
+    } else {
+      await refreshFullyOrdered(ctx, order.requestId);
+    }
     const { revision, summary } = await saveSummary(ctx, order, { status: 'closed_short', closedReason: why });
     await recordEvent(ctx, actor, { entity: 'order', entityId: order._id, branchId: order.branchId, action: 'closed', reason: why,
       changes: [{ field: 'status', before: order.status, after: summary.status }] });
     return { id: order._id, reference: order.reference, revision };
   });
+}
+
+/** Rows processed per backfill call (orders read ≤ 50 lines each, so they use a smaller page). */
+const BACKFILL_PAGE = { purchaseRequests: 50, purchaseOrders: 10, supplierReceipts: 50 } as const;
+
+/**
+ * One page of the purchasing legacy backfill. Requests and orders get their 5-character reference code (fragment
+ * search); receipts get the exceptions flag; order lines get accepted value and rejections reconstructed from receipt
+ * evidence, and order headers their value summary. Idempotent: rows already carrying the fields are left unchanged.
+ */
+export async function backfillLegacyPage(
+  ctx: MutationCtx, table: keyof typeof BACKFILL_PAGE, cursor: string | null,
+) {
+  const result = await ctx.db.query(table).paginate({ numItems: BACKFILL_PAGE[table], cursor });
+  let updated = 0;
+  for (const row of result.page) {
+    if (table === 'supplierReceipts') {
+      const receipt = row as Doc<'supplierReceipts'>;
+      if (receipt.hasExceptions === undefined) {
+        await ctx.db.patch(receipt._id, { hasExceptions: receipt.rejectedUnits > 0 || receipt.heldUnits > 0 });
+        updated++;
+      }
+      continue;
+    }
+    const document = row as Doc<'purchaseRequests'> | Doc<'purchaseOrders'>;
+    const patch: { referenceCode?: string } = document.referenceCode === undefined ? { referenceCode: referenceCode(document.reference) } : {};
+    if (table === 'purchaseOrders') {
+      const order = row as Doc<'purchaseOrders'>;
+      const lines = await readOrderLines(ctx, order._id);
+      const seeded = await Promise.all(lines.map(line => seedLegacyLine(ctx, line)));
+      for (const [i, line] of seeded.entries()) {
+        if (lines[i].acceptedValue === undefined || lines[i].rejected === undefined) {
+          await ctx.db.patch(line._id, { acceptedValue: line.acceptedValue, rejected: line.rejected });
+        }
+      }
+      if (order.receivedValue === undefined || lines.some(line => line.acceptedValue === undefined)) {
+        const { receivedValue, outstandingValue, unpricedLines, rejectedUnits, totalCost } = orderSummary(order, seeded);
+        await ctx.db.patch(order._id, { ...patch, receivedValue, outstandingValue, unpricedLines, rejectedUnits, totalCost });
+        updated++;
+        continue;
+      }
+    }
+    if (patch.referenceCode) {
+      await ctx.db.patch(document._id, patch);
+      updated++;
+    }
+  }
+  return { updated, isDone: result.isDone, continueCursor: result.continueCursor };
 }

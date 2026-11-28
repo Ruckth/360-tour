@@ -21,7 +21,23 @@ export function fail(code: string, message: string, data: Record<string, unknown
 }
 
 export function actorOf(staff: StaffActor): Actor {
-  return { actorKey: staff.tokenIdentifier, actorLabel: staff.email };
+  return { actorKey: staff.tokenIdentifier, actorLabel: staffDisplayName(staff.email) };
+}
+
+/**
+ * A short, human staff name for purchasing documents. Older records stored the login email; it is reduced on every read,
+ * so no full address reaches list rows, history or the supplier copy: the local part before any `+tag`, split on
+ * separators, without id-like tokens (any digit), title-cased and at most 40 characters. Plain names pass through.
+ */
+export function staffDisplayName(label: string | undefined) {
+  const value = label?.trim() ?? '';
+  if (!value) return 'Staff member';
+  if (!value.includes('@')) return value.length > 40 ? `${value.slice(0, 39)}…` : value;
+  const local = value.split('@')[0].split('+')[0];
+  const words = local.split(/[._\-\s]+/).filter(word => word && !/\d/.test(word));
+  const name = words.map(word => word[0].toUpperCase() + word.slice(1).toLowerCase()).join(' ');
+  if (!name) return 'Staff member';
+  return name.length > 40 ? `${name.slice(0, 39)}…` : name;
 }
 
 /** Current branch and action grant. Always called before replay lookup so revoked access cannot replay. */
@@ -69,6 +85,21 @@ export function isoDate(value: string | undefined, label: string) {
   }
   return value;
 }
+
+/**
+ * A date that must not be before today in resort time. An unchanged stored value is accepted as-is, so editing an older
+ * document never forces a new date.
+ */
+export function futureIsoDate(value: string | undefined, label: string, previous?: string, now = Date.now()) {
+  const date = isoDate(value, label);
+  if (date && date !== previous && date < resortTodayIso(now)) {
+    fail('DATE_IN_PAST', `${label} can't be in the past.`, { field: label, today: resortTodayIso(now) });
+  }
+  return date;
+}
+
+/** The 5-character random code at the end of a PR/PO/GR reference, for fragment lookup. */
+export const referenceCode = (reference: string) => reference.slice(-5);
 
 export function lineCount<T>(lines: T[], label = 'lines') {
   if (lines.length === 0) fail('NO_LINES', `Add at least one of the ${label}.`);
@@ -241,6 +272,12 @@ export async function requireSupplier(ctx: QueryCtx, supplierId: Id<'suppliers'>
 export function supplierSnapshot(supplier: Doc<'suppliers'>): Doc<'purchaseOrders'>['supplier'] {
   return {
     name: supplier.name,
+    address: supplier.address,
+    taxId: supplier.taxId,
+    paymentTerms: supplier.paymentTerms,
+    leadTimeDays: supplier.leadTimeDays,
+    deliveryDays: supplier.deliveryDays,
+    minimumOrder: supplier.minimumOrder,
     ...(supplier.contactName ? { contactName: supplier.contactName } : {}),
     ...(supplier.phone ? { phone: supplier.phone } : {}),
     ...(supplier.email ? { email: supplier.email } : {}),
@@ -266,13 +303,14 @@ export async function adjustIncoming(ctx: MutationCtx, branchId: Id<'branches'>,
 
 // ---------- Order lines ----------
 
+/** Units still due; never negative (an over-delivery accepted within the branch tolerance leaves 0 due). */
 export const lineDue = (line: Pick<Doc<'purchaseOrderLines'>, 'ordered' | 'cancelled' | 'accepted'>) =>
-  line.ordered - line.cancelled - line.accepted;
+  Math.max(0, line.ordered - line.cancelled - line.accepted);
 
 export const ISSUED_OPEN: OrderStatus[] = ['ordered', 'partially_received'];
 
 export function phaseOf(status: OrderStatus): OrderPhase {
-  if (status === 'draft') return 'draft';
+  if (status === 'draft' || status === 'awaiting_approval') return 'draft';
   if (status === 'deleted') return 'deleted';
   return status === 'ordered' || status === 'partially_received' ? 'open' : 'closed';
 }
@@ -294,24 +332,64 @@ export async function correctionClosesRemainder(ctx: QueryCtx, order: Doc<'purch
     !!(await otherHoldReplacement(ctx, order.forHoldId, order._id));
 }
 
-/** Header counters and status from its lines (≤ 50). An explicitly closed order stays closed. */
+/**
+ * Accepted value of a line: each receipt's recorded unit cost (kept in `acceptedValue`). Older lines without it value
+ * accepted units at the line's current cost.
+ */
+export const lineAcceptedValue = (line: Pick<Doc<'purchaseOrderLines'>, 'accepted' | 'unitCost' | 'acceptedValue'>) =>
+  line.acceptedValue ?? line.accepted * (line.unitCost ?? 0);
+
+/** Receipt lines read per order line when reconstructing a pre-feature line (bounded; beyond it the estimate stays). */
+const LEGACY_RECEIPT_SCAN = 100;
+
+/**
+ * Lines written before accepted value and rejection counts were kept have neither. Reconstruct both from the line's
+ * immutable receipt lines (accepted − corrected at each receipt's recorded cost; rejected units), so repricing or a later
+ * receipt never revalues history. Call before the current command writes any receipt line or correction for it. Lines
+ * with more receipts than the bound keep the accepted × current cost estimate. Returns the line with both fields set.
+ */
+export async function seedLegacyLine(ctx: QueryCtx, line: Doc<'purchaseOrderLines'>): Promise<Doc<'purchaseOrderLines'>> {
+  if (line.acceptedValue !== undefined && line.rejected !== undefined) return line;
+  const receipts = await stockRead(ctx, () => ctx.db.query('supplierReceiptLines')
+    .withIndex('by_orderLineId', q => q.eq('orderLineId', line._id)).take(LEGACY_RECEIPT_SCAN + 1));
+  if (receipts.length > LEGACY_RECEIPT_SCAN) {
+    return { ...line, acceptedValue: line.acceptedValue ?? lineAcceptedValue(line), rejected: line.rejected ?? 0 };
+  }
+  const acceptedValue = receipts.reduce((sum, row) => sum + (row.accepted - row.corrected) * (row.unitCost ?? 0), 0);
+  const rejected = receipts.reduce((sum, row) => sum + row.rejected, 0);
+  return { ...line, acceptedValue: line.acceptedValue ?? acceptedValue, rejected: line.rejected ?? rejected };
+}
+
+/**
+ * Header counters and status from its lines (≤ 50). An explicitly closed order stays closed.
+ * Value: received at receipt costs plus the open commitment (due × current cost); `totalCost` is their sum, so a
+ * repriced amendment changes only what is still outstanding. `unpricedLines` counts committed lines with no cost.
+ */
 export function orderSummary(order: Doc<'purchaseOrders'>, lines: Doc<'purchaseOrderLines'>[]) {
-  let orderedUnits = 0, acceptedUnits = 0, dueUnits = 0, openLineCount = 0, totalCost = 0;
+  let orderedUnits = 0, acceptedUnits = 0, dueUnits = 0, openLineCount = 0, receivedValue = 0, outstandingValue = 0;
+  let unpricedLines = 0, rejectedUnits = 0;
   for (const line of lines) {
     const committed = line.ordered - line.cancelled;
+    const due = lineDue(line);
     orderedUnits += committed;
     acceptedUnits += line.accepted;
-    dueUnits += lineDue(line);
-    if (lineDue(line) > 0) openLineCount++;
-    totalCost += committed * (line.unitCost ?? 0);
+    rejectedUnits += line.rejected ?? 0;
+    dueUnits += due;
+    if (due > 0) openLineCount++;
+    receivedValue += lineAcceptedValue(line);
+    outstandingValue += Math.max(0, due) * (line.unitCost ?? 0);
+    if (committed > 0 && line.unitCost === undefined) unpricedLines++;
   }
   let status: OrderStatus = order.status;
   if (status === 'closed_short' || status === 'cancelled') {
     status = acceptedUnits > 0 ? 'closed_short' : 'cancelled';
-  } else if (status !== 'draft' && status !== 'deleted') {
+  } else if (status !== 'draft' && status !== 'deleted' && status !== 'awaiting_approval') {
     status = dueUnits === 0 ? 'received' : acceptedUnits > 0 ? 'partially_received' : 'ordered';
   }
-  return { orderedUnits, acceptedUnits, dueUnits, openLineCount, totalCost, status, phase: phaseOf(status), lineCount: lines.length };
+  return {
+    orderedUnits, acceptedUnits, dueUnits, openLineCount, totalCost: receivedValue + outstandingValue,
+    receivedValue, outstandingValue, unpricedLines, rejectedUnits, status, phase: phaseOf(status), lineCount: lines.length,
+  };
 }
 
 /** Line subtotals and the order total must stay exact integers of satang. Checked wherever cost or quantity can grow. */
@@ -339,7 +417,10 @@ export function availableApproval(line: Doc<'purchaseRequestLines'>) {
   return line.requestStatus === 'approved' ? Math.max(0, line.approvedQuantity - line.committedQuantity) : 0;
 }
 
-/** Release or commit approved quantity for a request-backed line. Releases always apply; reuse depends on status. */
+/**
+ * Release or commit approved quantity for a request-backed line. Releases always apply; reuse depends on status.
+ * Callers refresh the request's Fully ordered flag once afterwards (`refreshFullyOrdered`; an order has one source request).
+ */
 export async function shiftCommitment(ctx: MutationCtx, requestLineId: Id<'purchaseRequestLines'> | undefined, delta: number) {
   if (!requestLineId || delta === 0) return;
   const line = await ctx.db.get(requestLineId);
@@ -351,6 +432,22 @@ export async function shiftCommitment(ctx: MutationCtx, requestLineId: Id<'purch
   }
   reserveWrites(ctx, 1);
   await ctx.db.patch(requestLineId, { committedQuantity: Math.max(0, line.committedQuantity + delta) });
+}
+
+/**
+ * An approved request whose every line is fully committed shows Fully ordered and leaves the default Approved queue.
+ * Closing a PO remainder releases commitment, which clears the flag again. Reads the request's lines (≤ 50).
+ */
+export async function refreshFullyOrdered(ctx: MutationCtx, requestId: Id<'purchaseRequests'> | undefined) {
+  if (!requestId) return;
+  const request = await ctx.db.get(requestId);
+  if (!request) return;
+  const lines = await readRequestLines(ctx, requestId);
+  const fullyOrdered = request.status === 'approved' && lines.some(line => line.approvedQuantity > 0) &&
+    lines.every(line => line.committedQuantity >= line.approvedQuantity);
+  if ((request.fullyOrdered ?? false) === fullyOrdered && request.fullyOrdered !== undefined) return;
+  reserveWrites(ctx, 1);
+  await ctx.db.patch(requestId, { fullyOrdered });
 }
 
 // ---------- History ----------
@@ -366,7 +463,7 @@ const historyValue = (value: string | number | boolean | null | undefined): Hist
 
 /** A draft line as history shows it: identity (variant), display label, quantity and optional unit cost. */
 export type DiffLine = { variantId: string; item: ItemRead['item']; quantity: number; unitCost?: number };
-const itemLabel = (item: ItemRead['item']) => `${item.productName} · ${item.variantLabel}${item.sku ? ` (${item.sku})` : ''}`;
+export const itemLabel = (item: ItemRead['item']) => `${item.productName} · ${item.variantLabel}${item.sku ? ` (${item.sku})` : ''}`;
 
 /**
  * Concise before/after changes for a draft edit: changed header scalars, then added, removed and changed lines keyed by
