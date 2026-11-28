@@ -243,7 +243,8 @@
     "notConfirmedCopy": "Мы не смогли подтвердить оплаченное бронирование по этой ссылке.",
     "reference": "Референс: {reference}",
     "returnHome": "На главную",
-    "exploreMoreVillas": "Смотреть другие виллы"
+    "exploreMoreVillas": "Смотреть другие виллы",
+    "stepCompleted": "Готово:"
   },
   "Coupon": {
     "haveCode": "Есть промокод?",

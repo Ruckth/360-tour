@@ -243,7 +243,8 @@
     "notConfirmedCopy": "เราไม่สามารถตรวจสอบการจองที่ชำระเงินแล้วจากลิงก์นี้ได้",
     "reference": "อ้างอิง: {reference}",
     "returnHome": "กลับหน้าแรก",
-    "exploreMoreVillas": "ดูวิลล่าเพิ่มเติม"
+    "exploreMoreVillas": "ดูวิลล่าเพิ่มเติม",
+    "stepCompleted": "เสร็จแล้ว:"
   },
   "Coupon": {
     "haveCode": "มีโค้ดส่วนลดไหม?",

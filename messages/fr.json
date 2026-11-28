@@ -243,7 +243,8 @@
     "notConfirmedCopy": "Nous n’avons pas pu vérifier une réservation payée depuis ce lien.",
     "reference": "Référence : {reference}",
     "returnHome": "Retour à l’accueil",
-    "exploreMoreVillas": "Explorer plus de villas"
+    "exploreMoreVillas": "Explorer plus de villas",
+    "stepCompleted": "Terminé :"
   },
   "Coupon": {
     "haveCode": "Vous avez un code ?",

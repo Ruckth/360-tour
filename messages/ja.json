@@ -243,7 +243,8 @@
     "notConfirmedCopy": "このリンクから支払い済み予約を確認できませんでした。",
     "reference": "参照: {reference}",
     "returnHome": "ホームへ戻る",
-    "exploreMoreVillas": "他のヴィラを見る"
+    "exploreMoreVillas": "他のヴィラを見る",
+    "stepCompleted": "完了："
   },
   "Coupon": {
     "haveCode": "コードをお持ちですか？",

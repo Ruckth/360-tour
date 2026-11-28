@@ -243,7 +243,8 @@
     "notConfirmedCopy": "We could not verify a paid booking from this link.",
     "reference": "Reference: {reference}",
     "returnHome": "Return Home",
-    "exploreMoreVillas": "Explore more villas"
+    "exploreMoreVillas": "Explore more villas",
+    "stepCompleted": "Completed:"
   },
   "Coupon": {
     "haveCode": "Have a code?",

@@ -48,7 +48,7 @@ export function SuggestionChips({
             "max-w-full rounded-full border border-border bg-background/85 font-medium text-slate-700 shadow-sm shadow-black/5 transition hover:border-gold/60 hover:bg-gold/10 hover:text-foreground disabled:pointer-events-none disabled:opacity-60 dark:border-white/15 dark:bg-background/60 dark:text-slate-300 dark:hover:text-white",
             variant === "initial"
               ? "min-h-11 px-4 py-2.5 text-center text-sm leading-snug sm:px-5 sm:text-[15px]"
-              : "px-3 py-1.5 text-left text-[11px] leading-tight",
+              : "inline-flex items-center px-3 py-1.5 text-left text-[11px] leading-tight [overflow-wrap:anywhere] pointer-coarse:min-h-11 pointer-coarse:py-2 pointer-coarse:text-xs",
           )}
         >
           {item.text}

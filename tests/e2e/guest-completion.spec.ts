@@ -38,3 +38,47 @@ test.describe("G21 Experiences Contact Concierge", () => {
     });
   }
 });
+
+function isoDaysFromNow(days: number) {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, "0"), String(date.getDate()).padStart(2, "0")].join("-");
+}
+
+test("G35 step bar shows one current step and a completed mark", async ({ page }) => {
+  await page.goto(`/booking?checkin=${isoDaysFromNow(46)}&nights=2&adults=2&children=0&unit=garden-suite`);
+  await page.getByRole("button", { name: en.Booking.continue, exact: true }).click();
+  const current = page.getByRole("button", { name: en.Booking.guestDetails, exact: true });
+  await expect(current).toBeFocused();
+  await expect(current).toHaveAttribute("aria-current", "step");
+  const done = page.getByRole("button", { name: `${en.Booking.stepCompleted} ${en.Booking.villaDates}`, exact: true });
+  await expect(done).toHaveAttribute("data-step-state", "complete");
+  await expect(done.locator("svg")).toBeVisible();
+  expect(await done.evaluate((node) => getComputedStyle(node).backgroundColor))
+    .not.toBe(await current.evaluate((node) => getComputedStyle(node).backgroundColor));
+  await expect(page.getByRole("button", { name: en.Booking.pay, exact: true })).toBeDisabled();
+  await done.press("Enter");
+  await expect(page.getByRole("button", { name: en.Booking.villaDates, exact: true })).toHaveAttribute("aria-current", "step");
+});
+
+test.describe("G36 follow-up chips on a coarse pointer", () => {
+  test.use({ viewport: { width: 360, height: 760 }, isMobile: true, hasTouch: true });
+  test("each follow-up chip is at least 44 px high and chips do not overlap", async ({ page }) => {
+    await page.goto("/th/chat?returnTo=%2Fth");
+    expect(await page.evaluate(() => matchMedia("(pointer: coarse)").matches)).toBe(true);
+    const messages = page.getByTestId("chat-messages");
+    await messages.getByTestId("chat-suggestions").getByRole("button", { name: th.Chat.suggestionGuests }).tap();
+    const chips = messages.getByTestId("chat-suggestions").getByRole("button");
+    await expect(chips).toHaveCount(2);
+    const boxes = [];
+    for (const chip of await chips.all()) {
+      const box = (await chip.boundingBox())!;
+      expect(box.height).toBeGreaterThanOrEqual(44);
+      expect(box.x + box.width).toBeLessThanOrEqual(360);
+      boxes.push(box);
+    }
+    const [a, b] = boxes;
+    const overlap = a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+    expect(overlap).toBe(false);
+  });
+});

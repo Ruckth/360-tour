@@ -243,7 +243,8 @@
     "notConfirmedCopy": "我们无法通过此链接验证已付款预订。",
     "reference": "参考：{reference}",
     "returnHome": "返回首页",
-    "exploreMoreVillas": "探索更多别墅"
+    "exploreMoreVillas": "探索更多别墅",
+    "stepCompleted": "已完成："
   },
   "Coupon": {
     "haveCode": "有优惠码吗？",

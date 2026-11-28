@@ -243,7 +243,8 @@
     "notConfirmedCopy": "हम इस लिंक से भुगतान की गई बुकिंग सत्यापित नहीं कर सके।",
     "reference": "संदर्भ: {reference}",
     "returnHome": "होम पर लौटें",
-    "exploreMoreVillas": "और विला देखें"
+    "exploreMoreVillas": "और विला देखें",
+    "stepCompleted": "पूर्ण:"
   },
   "Coupon": {
     "haveCode": "क्या आपके पास कोड है?",
