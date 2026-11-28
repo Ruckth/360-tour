@@ -75,3 +75,29 @@ test("opening a stay's spa form shows only appointments attached to that booking
   }
   throw new Error("The seeded service needs two non-overlapping times within the fixture week.");
 });
+
+test("the hotel desk opens payment from today's balance and finds a past stay by keyboard", async ({ page }) => {
+  test.setTimeout(60_000);
+  const owner = await signedInBackend(page);
+  const today = resortTodayIso();
+  const name = `Desk ${crypto.randomUUID().slice(0, 8)}`;
+  const base = { propertySlug: "pool-villa", guestName: name, guestPhone: "+66876543210", guests: 1, notifyGuest: false };
+  await owner.mutation(api.bookings.commands.createBooking.createBooking, { ...base, checkIn: today, checkOut: addDaysIso(today, 1) });
+  await owner.mutation(api.bookings.commands.createBooking.createBooking, { ...base, checkIn: addDaysIso(today, -32), checkOut: addDaysIso(today, -30) });
+  await page.goto("/admin/hotel");
+  const balance = page.getByRole("button", { name: /^Balance due / });
+  await chooseBranchIfPrompted(page, balance);
+  await expect(balance).toHaveAccessibleName(/THB/);
+  await balance.click();
+  const guest = page.getByRole("list", { name: "Balance due" }).getByRole("listitem").filter({ hasText: name });
+  await guest.getByRole("button", { name: "Take payment" }).click();
+  await expect(page).toHaveURL(/\/admin\/checkout\?order=[^&]+/);
+  await page.goto("/admin/hotel");
+  const search = page.getByRole("searchbox", { name: "Search bookings" });
+  await search.fill(name);
+  await expect(page.getByRole("region", { name: "Current or upcoming" }).getByRole("button")).toHaveCount(1);
+  const past = page.getByRole("region", { name: "Past" }).getByRole("button", { name: new RegExp(name) });
+  await past.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("dialog")).toContainText(name);
+});
