@@ -105,8 +105,7 @@ export function validateAdminSettingsSearch(search: Record<string, unknown>): Re
  * Validates the villa editor `?tab=` query parameter, falling back to the default `details` section.
  */
 export function validateAdminPropertySearch(search: Record<string, unknown>): Record<string, unknown> & { tab?: AdminPropertyTab } {
-  const next = { ...search };
-  delete next.tab;
-  const tab = typeof search.tab === "string" ? adminPropertyTab(search.tab) : "details";
-  return tab === "details" ? next : { ...next, tab };
+  if (search.tab === undefined) return { ...search, tab: undefined };
+  // The router merges validated search over the raw values. Override an invalid tab explicitly.
+  return { ...search, tab: adminPropertyTab(typeof search.tab === "string" ? search.tab : null) };
 }

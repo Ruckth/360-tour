@@ -168,9 +168,9 @@ describe("Addressable villa editor sections & OTA-to-direct jump (M32, M33)", ()
   it("M32: validates all 6 section tabs, falls back invalid values to Details, and drives tab state from URL", async () => {
     expect(validateAdminPropertySearch({ tab: "reviews", extra: "1" })).toEqual({ tab: "reviews", extra: "1" });
     expect(validateAdminPropertySearch({ tab: "calendar" })).toEqual({ tab: "calendar" });
-    expect(validateAdminPropertySearch({ tab: "details" })).toEqual({});
-    expect(validateAdminPropertySearch({ tab: "bogus" })).toEqual({});
-    expect(validateAdminPropertySearch({ tab: ["reviews", "calendar"] })).toEqual({});
+    expect(validateAdminPropertySearch({ tab: "details" })).toEqual({ tab: "details" });
+    expect(validateAdminPropertySearch({ tab: "bogus" })).toEqual({ tab: "details" });
+    expect(validateAdminPropertySearch({ tab: ["reviews", "calendar"] })).toEqual({ tab: "details" });
 
     state.tabParam = "reviews";
     await renderEditor();
