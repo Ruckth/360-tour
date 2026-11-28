@@ -7,7 +7,7 @@ import type { Id } from "convex/_generated/dataModel";
 import { ArrowLeft, Filter, PackageCheck, Plus, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { EmptyState, SkeletonRows } from "@/components/admin/admin-bulk";
-import { STOCK_TABLE } from "./stock-table";
+import list from "./StockRecordList.module.css";
 import { useAdminBranch } from "@/components/admin/branch/branch-context";
 import { Callout, NoticeBar, useNotice } from "@/components/admin/marketing/MarketingBits";
 import { SegmentedTabs, tabPanelProps } from "@/components/admin/SegmentedTabs";
@@ -459,7 +459,7 @@ export function StockPurchasingHubView() {
               value={reqFilterMode}
               onValueChange={(v) => updateSearch({ requestFilter: v })}
             >
-              <SelectTrigger aria-label="Request filter" className="w-52">
+              <SelectTrigger aria-label="Request filter" className="w-full sm:w-64">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -503,7 +503,7 @@ export function StockPurchasingHubView() {
               onSaved={(quantity) => show(quantity === undefined ? "Reorder point cleared." : `Reorder point saved at ${quantity}.`, "success")} />
           ) : null}
 
-          <Card className="overflow-hidden">
+          <Card className={cn("overflow-hidden", list.frame)}>
             {filterPending || reqStatus === "LoadingFirstPage" ? (
               <SkeletonRows label="Loading purchase requests" rows={5} />
             ) : requestRows.length === 0 ? (
@@ -519,41 +519,41 @@ export function StockPurchasingHubView() {
                 No purchase requests match this view.
               </EmptyState>
             ) : (
-              <table className={STOCK_TABLE.table}>
-                <thead className={STOCK_TABLE.head}>
+              <table role="table" className={list.table}>
+                <thead className="admin-eyebrow">
                   <tr>
-                    <th scope="col" className={STOCK_TABLE.th}>Reference</th>
-                    <th scope="col" className={STOCK_TABLE.th}>Status</th>
-                    <th scope="col" className={STOCK_TABLE.th}>Requester</th>
-                    <th scope="col" className={STOCK_TABLE.th}>Need by</th>
-                    <th scope="col" className={STOCK_TABLE.th}>Items</th>
+                    <th scope="col">Reference</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">Requester</th>
+                    <th scope="col">Need by</th>
+                    <th scope="col">Items</th>
                   </tr>
                 </thead>
-                <tbody className={STOCK_TABLE.body}>
+                <tbody>
                   {requestRows.map((req) => {
                     const due = relativeDate(req.needBy);
                     return (
-                      <tr key={req._id} className={STOCK_TABLE.row}>
-                        <td data-label="Reference" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled)}>
+                      <tr key={req._id}>
+                        <td data-label="Reference">
                           <Link
                             href={detailHref(`requests/${req._id}`)}
-                            className="font-mono text-sm font-semibold text-foreground underline-offset-4 hover:underline"
+                            className="inline-flex min-h-11 items-center font-mono text-sm font-semibold text-foreground underline decoration-border underline-offset-4 hover:decoration-current"
                           >
                             {req.reference}
                           </Link>
                         </td>
-                        <td data-label="Status" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled)}>
+                        <td data-label="Status">
                           <StatusBadge {...(req.status === "approved" && req.fullyOrdered ? { ...REQUEST_STATUS_META.approved, label: "Fully ordered" } : REQUEST_STATUS_META[req.status])} />
                         </td>
-                        <td data-label="Requester" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled, "text-xs text-muted-foreground")}>
+                        <td data-label="Requester" className="text-xs text-muted-foreground">
                           {req.requesterLabel}
                           {req.mine ? " (you)" : ""}
                           {req.submittedAt ? <span className="block">Submitted {ageLabel(req.submittedAt)}</span> : null}
                         </td>
-                        <td data-label="Need by" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled, "text-xs tabular-nums text-muted-foreground")}>
+                        <td data-label="Need by" className="text-xs tabular-nums text-muted-foreground">
                           {req.needBy ? <time dateTime={req.needBy} title={req.needBy} className={URGENCY_CLASS[due.urgency]}>{due.label}</time> : "—"}
                         </td>
-                        <td data-label="Items" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled, "break-words text-xs")}>
+                        <td data-label="Items" className="break-words text-xs">
                           {itemSummaryLabel(req.itemSummary, req.lineCount)}
                         </td>
                       </tr>
@@ -583,7 +583,7 @@ export function StockPurchasingHubView() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="open">Open orders (default)</SelectItem>
+                <SelectItem value="open">Open orders</SelectItem>
                 <SelectItem value="overdue">Overdue</SelectItem>
                 <SelectItem value="due_soon">Due this week</SelectItem>
                 <SelectItem value="awaiting_approval">Awaiting approval</SelectItem>
@@ -627,49 +627,48 @@ export function StockPurchasingHubView() {
             ) : null}
           </div>
 
-          <Card className="overflow-hidden">
+          <Card className={cn("overflow-hidden", list.frame)}>
             {filterPending || orderStatus === "LoadingFirstPage" ? (
               <SkeletonRows label="Loading purchase orders" rows={5} />
             ) : orderRows.length === 0 ? (
               <EmptyState>No purchase orders match this view.</EmptyState>
             ) : (
-              <table className={STOCK_TABLE.table}>
-                <thead className={STOCK_TABLE.head}>
+              <table role="table" className={list.table}>
+                <thead className="admin-eyebrow">
                   <tr>
-                    <th scope="col" className={STOCK_TABLE.th}>Reference</th>
-                    <th scope="col" className={STOCK_TABLE.th}>Supplier</th>
-                    <th scope="col" className={STOCK_TABLE.th}>Status</th>
-                    <th scope="col" className={STOCK_TABLE.th}>Expected</th>
-                    <th scope="col" className={cn(STOCK_TABLE.th, "text-right")}>Due / Ordered</th>
-                    <th scope="col" className={cn(STOCK_TABLE.th, "text-right")}>Total</th>
-                    <th scope="col" className={cn(STOCK_TABLE.th, "text-right")}>Action</th>
+                    <th scope="col">Reference</th>
+                    <th scope="col">Supplier</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">Expected</th>
+                    <th scope="col" className="text-right">Due / Ordered</th>
+                    <th scope="col" className="text-right">Total</th>
                   </tr>
                 </thead>
-                <tbody className={STOCK_TABLE.body}>
+                <tbody>
                   {orderRows.map((po) => (
-                    <tr key={po._id} className={STOCK_TABLE.row}>
-                      <td data-label="Reference" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled)}>
+                    <tr key={po._id}>
+                      <td data-label="Reference">
                         <Link
                           href={detailHref(`orders/${po._id}`)}
-                          className="font-mono text-sm font-semibold text-foreground underline-offset-4 hover:underline"
+                          className="inline-flex min-h-11 items-center font-mono text-sm font-semibold text-foreground underline decoration-border underline-offset-4 hover:decoration-current"
                         >
                           {po.reference}
                         </Link>
                       </td>
-                      <td data-label="Supplier" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled, "text-sm")}>
+                      <td data-label="Supplier" className="text-sm">
                         {po.supplier.name}
                       </td>
-                      <td data-label="Status" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled)}>
+                      <td data-label="Status">
                         <StatusBadge {...ORDER_STATUS_META[po.status]} />
                       </td>
-                      <td data-label="Expected" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled, "text-xs tabular-nums text-muted-foreground")}>
+                      <td data-label="Expected" className="text-xs tabular-nums text-muted-foreground">
                         <ExpectedCell expectedDate={po.expectedDate} open={po.phase === "open"} />
                       </td>
-                      <td data-label="Due / Ordered" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled, "font-mono text-xs tabular-nums lg:text-right")}>
+                      <td data-label="Due / Ordered" className="font-mono text-xs tabular-nums text-right">
                         <strong className="text-foreground">{po.dueUnits}</strong> / {po.orderedUnits}
                         {po.openLineCount > 0 ? ` (${po.openLineCount} open)` : ""}
                       </td>
-                      <td data-label="Total" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled, "font-mono text-xs tabular-nums lg:text-right")}>
+                      <td data-label="Total" className="font-mono text-xs tabular-nums text-right">
                         {po.totalCost ? formatSatang(po.totalCost) : "—"}
                         {po.phase === "open" && po.outstandingValue !== undefined && po.outstandingValue > 0 ? (
                           <span className="block text-muted-foreground">Outstanding {formatSatang(po.outstandingValue)}</span>
@@ -679,11 +678,6 @@ export function StockPurchasingHubView() {
                             Price missing
                           </span>
                         ) : null}
-                      </td>
-                      <td className={cn(STOCK_TABLE.cell, "lg:text-right")}>
-                        <ButtonLink href={detailHref(`orders/${po._id}`)} variant="outline" size="sm">
-                          Open
-                        </ButtonLink>
                       </td>
                     </tr>
                   ))}

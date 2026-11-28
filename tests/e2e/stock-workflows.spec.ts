@@ -117,6 +117,11 @@ test('staff can receive a partial tracked purchase order on a phone and inspect 
   await row.getByRole('link', { name: 'Open lots', exact: true }).click();
   await expect(page.getByRole('tab', { name: 'Lots & expiry' })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByText(`LOT-${token}`, { exact: true })).toBeVisible();
+  const lot = page.getByRole('row').filter({ hasText: `LOT-${token}` });
+  await page.setViewportSize({ width: 820, height: 1180 });
+  await expect(lot).toHaveCSS('display', 'table-row');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(lot).toHaveCSS('display', 'grid');
 });
 
 test('bad adjust shows inline preview error without crashing and balance-to-request prefill consumes URL flags for Back', async ({ page }) => {
@@ -245,7 +250,13 @@ test('purchasing searches posted documents and restores filtered queues from det
   await expect(page.getByRole('link', { name: draft.reference, exact: true })).toBeVisible();
 
   await page.goto(`${hub}?tab=orders&orderFilter=draft`);
-  await page.getByRole('link', { name: draft.reference, exact: true }).click();
+  const orderRow = page.getByRole('row').filter({ hasText: draft.reference });
+  await page.setViewportSize({ width: 820, height: 1180 });
+  await expect(orderRow).toHaveCSS('display', 'table-row');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(orderRow).toHaveCSS('display', 'grid');
+  await expect(orderRow.getByRole('link')).toHaveCount(1);
+  await orderRow.getByRole('link', { name: draft.reference, exact: true }).click();
   await page.getByRole('link', { name: 'Orders', exact: true }).click();
   await expect(page.getByRole('combobox', { name: 'Order filter' })).toHaveText('Draft orders');
   await expect(page.getByRole('tab', { name: 'Orders' })).toHaveAttribute('aria-selected', 'true');
@@ -296,4 +307,66 @@ test('Stock sections stay keyboard reachable with an expanded sidebar, icon rail
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL(/stock\/balances/);
   await expect(page.locator('header')).toContainText('Koh Samui');
+});
+
+test.describe('Stock touch layouts', () => {
+  test.use({ hasTouch: true });
+
+  test('catalog and balances adapt to the available iPad width and keep the active selection on rotation', async ({ page }) => {
+    test.setTimeout(90_000);
+    const { owner, branchId } = await setupStockOwner(page);
+    const token = crypto.randomUUID().slice(0, 8);
+    const name = `Aloe travel pack ${token}`;
+    await owner.mutation(stock.saveProduct, {
+      branchId, name, vatProfile: 'standard',
+      variants: [{ label: 'Travel size', sku: token, price: 12000, status: 'active' }],
+    });
+    await page.goto('/admin/stock/products');
+    await page.getByRole('searchbox', { name: 'Search products by name or SKU' }).fill(token);
+    const product = page.getByRole('row').filter({ hasText: name });
+    const menu = product.getByRole('button', { name: `Actions for ${name}` });
+
+    for (const [width, height] of [[320, 800], [390, 844], [600, 900], [820, 1180], [1180, 820]]) {
+      await page.setViewportSize({ width, height });
+      await expect(product).toBeVisible();
+      const compact = width < 640;
+      await expect(product).toHaveCSS('display', compact ? 'grid' : 'table-row');
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      if (compact) {
+        const title = await product.getByRole('button', { name, exact: true }).boundingBox();
+        const action = await menu.boundingBox();
+        expect(action!.height).toBeGreaterThanOrEqual(44);
+        expect(title!.height).toBeGreaterThanOrEqual(44);
+        expect(Math.min(title!.y + title!.height, action!.y + action!.height)).toBeGreaterThan(Math.max(title!.y, action!.y));
+      }
+      if (process.env.CAPTURE_SCREENSHOTS) {
+        await page.screenshot({ path: test.info().outputPath(`product-list-${width}.png`) });
+      }
+      await menu.tap();
+      await expect(page.getByRole('menuitem', { name: 'Show variants' })).toBeVisible();
+      await page.keyboard.press('Escape');
+    }
+
+    await page.setViewportSize({ width: 320, height: 800 });
+    await page.goto(`/admin/stock/balances?q=${token}`);
+    const balance = page.getByRole('row').filter({ hasText: name });
+    await page.getByRole('button', { name: 'Select', exact: true }).tap();
+    await balance.getByRole('checkbox').check();
+    const actions = page.getByRole('toolbar', { name: 'Actions for selected item', exact: true });
+    await expect(actions).toContainText('1 selected');
+    await expect(actions.getByRole('button', { name: 'Request 1' })).toBeVisible();
+    await expect(actions.getByRole('button', { name: 'Create order' })).toBeVisible();
+    const clear = actions.getByRole('button', { name: 'Clear selection' });
+    await clear.focus();
+    for (const [width, height] of [[820, 1180], [1180, 820], [390, 844]]) {
+      await page.setViewportSize({ width, height });
+      await expect(balance.getByRole('checkbox')).toBeChecked();
+      await expect(page.getByRole('toolbar')).toHaveCount(1);
+      await expect(clear).toBeInViewport();
+      await expect(clear).toBeFocused();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    }
+    await clear.tap();
+    await expect(actions).toHaveCount(0);
+  });
 });

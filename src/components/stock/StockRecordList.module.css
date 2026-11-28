@@ -1,0 +1,105 @@
+/* Measure the space left by the admin navigation, including iPad Split View. */
+.frame {
+  container: stock-records / inline-size;
+  min-width: 0;
+}
+
+.table {
+  width: 100%;
+  text-align: start;
+  font-size: 0.875rem;
+}
+
+.table th,
+.table td {
+  padding: 0.4rem 0.625rem;
+  vertical-align: middle;
+  overflow-wrap: anywhere;
+}
+
+.table th {
+  padding-block: 0.5rem;
+  overflow-wrap: normal;
+  letter-spacing: 0.06em;
+}
+
+.table th:not([class~="text-right"]) {
+  text-align: start;
+}
+
+.table thead {
+  border-bottom: 1px solid var(--border);
+  background-color: color-mix(in srgb, var(--muted) 40%, transparent);
+}
+
+.table tbody tr:not(:last-child) {
+  border-bottom: 1px solid var(--border);
+}
+
+@container stock-records (width < 40rem) {
+  .table,
+  .table tbody {
+    display: block;
+  }
+
+  .table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .table tbody tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.25rem 0.75rem;
+    padding: 0.45rem 0.75rem 0.65rem;
+    align-items: baseline;
+  }
+
+  .table td {
+    display: block;
+    min-width: 0;
+    padding: 0;
+    text-align: start;
+  }
+
+  .table td:first-child {
+    grid-column: 1 / -1;
+  }
+
+  .table td[data-label]:not(:first-child)::before {
+    content: attr(data-label) " ";
+    font-size: 0.75rem;
+    color: var(--muted-foreground);
+  }
+
+  .table .rowWithActions {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+    align-items: center;
+  }
+
+  .table .rowWithActions td:first-child,
+  .table .rowWithActions td:last-child {
+    grid-row: 1;
+  }
+
+  .table .rowWithActions td:first-child {
+    grid-column: 1 / 3;
+  }
+
+  .table .rowWithActions td:nth-child(even):not(:last-child) {
+    grid-column: 1;
+  }
+
+  .table .rowWithActions td:nth-child(odd):not(:first-child):not(:last-child) {
+    grid-column: 2 / -1;
+  }
+
+  .table .rowWithActions td:last-child {
+    grid-column: 3;
+    justify-self: end;
+  }
+}

@@ -621,6 +621,7 @@ export function StockAdjustSheet({
   const previewError = previewRaw instanceof Error ? previewRaw : null;
   const preview = previewRaw && !(previewRaw instanceof Error) ? (previewRaw as OperationPreviewResult) : undefined;
 
+  const checkingBalance = previewQueries.preview !== undefined && previewRaw === undefined;
   const liveRevision = preview?.lines[0]?.revision ?? liveItem?.revision ?? item.revision;
   const liveOnHand = preview?.lines[0]?.before ?? liveItem?.onHand ?? item.onHand;
   const isStale = liveRevision !== reviewedBalance.revision;
@@ -718,7 +719,8 @@ export function StockAdjustSheet({
         saving={saving}
         error={error}
         compact
-        submitLabel="Save adjustment"
+        submitDisabled={checkingBalance}
+        submitLabel={checkingBalance ? "Checking balance…" : "Save adjustment"}
         readOnly={isLotTracked}
       >
         {isLotTracked ? (

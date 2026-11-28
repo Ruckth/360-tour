@@ -719,6 +719,15 @@ describe("Balances, counts, adjustments, opening & access improvements (S01-S24)
     expect(document.body.textContent).toContain("8 →");
     expect(document.body.textContent).toContain("7");
     expect(document.body.textContent).toContain("−1");
+
+    await act(async () => document.querySelector<HTMLInputElement>('input[name="adjust-reason"]')!.click());
+    const submit = document.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+    expect(submit.disabled).toBe(true);
+    expect(submit.textContent).toBe("Checking balance…");
+    mockConvex.queries.mockReturnValue({ preview: { lines: [{ before: 8, after: 7, delta: -1, revision: 1 }] } });
+    await act(async () => setInputValue(document.getElementById("adjust-note") as HTMLInputElement, "Verified"));
+    expect(submit.disabled).toBe(false);
+    expect(submit.textContent).toBe("Save adjustment");
   });
 
   it("renders OpeningStockSheet single dialog with 0→16 preview + unit cost and bulk multi-line post (S19, S20)", async () => {

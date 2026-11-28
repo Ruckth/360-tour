@@ -7,7 +7,7 @@ import type { Id } from "convex/_generated/dataModel";
 import { ArrowRight, PackagePlus, Plus } from "lucide-react";
 import { useRef, useState } from "react";
 import { EmptyState, SearchBox, SkeletonRows, useDebounced } from "@/components/admin/admin-bulk";
-import { STOCK_TABLE } from "./stock-table";
+import list from "./StockRecordList.module.css";
 import { useAdminBranch } from "@/components/admin/branch/branch-context";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { Callout, EditorSheet, NoticeBar, useNotice } from "@/components/admin/marketing/MarketingBits";
@@ -195,7 +195,7 @@ export function StockProductsView() {
   }
 
   return (
-    <div ref={screen} className="grid gap-5">
+    <div ref={screen} className="grid gap-3 sm:gap-4">
       <NoticeBar notice={archiveToast.current && notice?.tone === "success" ? null : notice} onClose={clear} />
       <Toast {...archiveToast} />
 
@@ -241,7 +241,7 @@ export function StockProductsView() {
         />
       </div>
 
-      <Card {...tabPanelProps("stock-product-status", statusFilter)} className="overflow-hidden">
+      <Card {...tabPanelProps("stock-product-status", statusFilter)} className={cn("overflow-hidden", list.frame)}>
         {status === "LoadingFirstPage" ? (
           <SkeletonRows label="Loading products" rows={5} />
         ) : products.length === 0 ? (
@@ -260,48 +260,48 @@ export function StockProductsView() {
               : `No ${statusFilter} products yet.`}
           </EmptyState>
         ) : (
-          <table className={STOCK_TABLE.table}>
-            <thead className={STOCK_TABLE.head}>
+          <table role="table" className={list.table}>
+            <thead className="admin-eyebrow">
               <tr>
-                <th scope="col" className={STOCK_TABLE.th}>Product</th>
-                <th scope="col" className={STOCK_TABLE.th}>Category</th>
-                <th scope="col" className={STOCK_TABLE.th}>Variants</th>
-                <th scope="col" className={STOCK_TABLE.th}>Price range</th>
-                <th scope="col" className={STOCK_TABLE.th}>VAT</th>
-                <th scope="col" className={STOCK_TABLE.th}>Status</th>
-                <th scope="col" className={cn(STOCK_TABLE.th, "text-right")}>Actions</th>
+                <th scope="col">Product</th>
+                <th scope="col">Category</th>
+                <th scope="col">Variants</th>
+                <th scope="col">Price range</th>
+                <th scope="col">VAT</th>
+                <th scope="col">Status</th>
+                <th scope="col" className="text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className={STOCK_TABLE.body}>
+            <tbody>
               {products.map((product) => (
-                <tr key={product._id} className={STOCK_TABLE.row}>
-                  <td data-label="Product" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled)}>
+                <tr key={product._id} className={list.rowWithActions}>
+                  <td data-label="Product">
                     {access.canManageProducts && product.status !== "archived" ? (
-                      <Button type="button" variant="link" className="h-auto whitespace-normal px-0 text-left" onClick={event => openEditor(product._id, event.currentTarget)}>
+                      <Button type="button" variant="link" className="h-auto min-h-11 min-w-11 pointer-coarse:min-h-11 pointer-coarse:min-w-11 justify-start whitespace-normal px-0 text-left leading-tight" onClick={event => openEditor(product._id, event.currentTarget)}>
                         {product.name}
                       </Button>
                     ) : <span className="font-medium text-foreground">{product.name}</span>}
                   </td>
-                  <td data-label="Category" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled)}>
+                  <td data-label="Category">
                     {product.categoryName ?? "—"}
                   </td>
-                  <td data-label="Variants" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled, "tabular-nums")}>
-                    {product.variantCount} variants
+                  <td data-label="Variants" className="tabular-nums">
+                    {product.variantCount}
                     {expandedProduct === product._id && <ProductVariants branchId={branch.id} product={product} />}
                   </td>
-                  <td data-label="Price range" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled, "tabular-nums")}>
+                  <td data-label="Price range" className="tabular-nums">
                     {product.minPrice === product.maxPrice
                       ? formatSatang(product.minPrice)
                       : `${formatSatang(product.minPrice)} – ${formatSatang(product.maxPrice)}`}
                   </td>
-                  <td data-label="VAT" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled, "text-xs text-muted-foreground")}>
+                  <td data-label="VAT" className="text-xs text-muted-foreground">
                     {product.vatProfile === "standard" ? "Standard VAT" : "VAT exempt"}
                   </td>
-                  <td data-label="Status" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled)}>
+                  <td data-label="Status">
                     <StatusBadge {...CATALOGUE_STATUS_META[product.status]} />
                   </td>
-                  <td className={cn(STOCK_TABLE.cell, "lg:text-right")}>
-                    <div id={`stock-product-actions-${product._id}`} className="flex flex-wrap gap-1.5 lg:justify-end">
+                  <td className="lg:text-right">
+                    <div id={`stock-product-actions-${product._id}`} className="flex flex-wrap items-center justify-end gap-1">
                       {access.canManageProducts && product.status === "archived" ? (
                         <Button type="button" variant="outline" size="sm" disabled={pending} onClick={event => void handleRestore(product, event.currentTarget)}>
                           Restore

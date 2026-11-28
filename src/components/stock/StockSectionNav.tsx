@@ -34,7 +34,7 @@ export function StockSectionShell({ children }: { children: ReactNode }) {
                           : "border-transparent text-muted-foreground hover:text-foreground",
                       )}
                     >
-                      {id === "expansion" ? <><span className="max-sm:sr-only">Transfers &amp; </span>Lots</> : label}
+                      {id === "expansion" ? <><span className="max-sm:sr-only sm:mr-1">Transfers &amp; </span>Lots</> : label}
                       {id === "purchasing" ? <OpenHoldBadge compact /> : null}
                     </Link>
                   </li>
