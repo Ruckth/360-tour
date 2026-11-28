@@ -101,6 +101,7 @@ function WaitingForManager({ requestId, view, summary, onWithdrawn, onBusyChange
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const parts = summary ? returnableParts(view) : [];
+  const restoresSession = summary?.parts.some((part) => part.kind === "restoreSession");
   async function withdraw() {
     setSending(true);
     onBusyChange(true);
@@ -125,10 +126,12 @@ function WaitingForManager({ requestId, view, summary, onWithdrawn, onBusyChange
             {parts.find(row => row.lineId === part.lineId && row.contentKey === part.contentKey)?.label ?? part.label ?? view.lines.find(line => line._id === part.lineId)?.name ?? "Item"} · {part.kind === "restoreSession" ? t("returns.restoreSession") : part.kind === "cancelPackage" ? t("returns.wholePackageShort") : `× ${part.units}`}
           </li>)}</ul>
           <h3 className="font-medium">{t("returns.whereItGoes")}</h3>
-          {summary.payouts ? <ul className="grid gap-1">
-            {summary.payouts.map((payout, index) => <li key={index} className="capitalize">{payout.label}{payout.destinationMask ? ` · ${payout.destinationMask}` : ""} · {money(payout.amount)}</li>)}
-            {!summary.payouts.length ? <li>{t("returns.noPayout")}</li> : null}
-          </ul> : <p className="text-muted-foreground">Payout details are unavailable for this request.</p>}
+          {summary.payouts || restoresSession ? <ul aria-label={t("returns.whereItGoes")} className="grid gap-1">
+            {summary.payouts?.map((payout, index) => <li key={index} className="capitalize">{payout.label}{payout.destinationMask ? ` · ${payout.destinationMask}` : ""} · {money(payout.amount)}</li>)}
+            {restoresSession ? <li>{destinationText({ kind: "restore" })}</li> : null}
+            {summary.payouts?.length === 0 ? <li>{t("returns.noPayout")}</li> : null}
+          </ul> : null}
+          {summary.payouts === undefined ? <p className="text-muted-foreground">Payout details are unavailable for this request.</p> : null}
         </section> : null}
         {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
       </SheetBody>

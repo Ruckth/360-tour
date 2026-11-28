@@ -110,15 +110,21 @@ describe("checkout category groups", () => {
     expect(tile("Aroma oil massage 90")).toBeUndefined();
   });
 
-  it("searches every tab from any tab, and offers the search as a custom item when nothing matches", async () => {
+  it("keeps the query when narrowing or broadening results and offers a custom item during search", async () => {
     await show(await createFixtureBackend());
-    await click(tab("Spa"));
     const search = () => document.querySelector<HTMLInputElement>('input[aria-label="Search all items"]')!;
     await act(async () => type(search(), "coconut"));
-    // A service and an extra, from two tabs, while Spa is selected.
     expect(tile("Coconut body scrub 45")).toBeTruthy();
     expect(tile("Coconut water")).toBeTruthy();
-    expect(buttonText("Add as custom item")).toBeUndefined();
+    await click(tab("Spa"));
+    expect(search().value).toBe("coconut");
+    expect(tile("Coconut body scrub 45")).toBeTruthy();
+    expect(tile("Coconut water")).toBeUndefined();
+    expect(buttonText("Add as custom item")).toBeTruthy();
+
+    await click(tab("All results"));
+    expect(search().value).toBe("coconut");
+    expect(tile("Coconut water")).toBeTruthy();
 
     await act(async () => type(search(), "Champagne"));
     expect(catalog().textContent).toContain("No item matches “Champagne”.");

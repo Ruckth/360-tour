@@ -134,6 +134,23 @@ test.describe("Return items", () => {
     expect(await page.evaluate(() => window.returnsFixture.returns())).toHaveLength(0);
   });
 
+  test("a cashier's reopened pending return still shows the session restoration destination", async ({ page }) => {
+    await open(page, "?variant=covered&role=cashier");
+    const returnItems = page.getByRole("button", { name: "Return items · Thai massage" });
+    await returnItems.click();
+    const panel = sheet(page);
+    await panel.getByRole("button", { name: "Changed mind" }).click();
+    const quoteLabel = panel.locator("[data-return-destinations] li").filter({ hasText: "Restore session" });
+    await expect(quoteLabel).toHaveText("Restore session");
+    await panel.getByRole("button", { name: "Ask a manager" }).click();
+    await expect(panel.locator("[data-return-waiting]")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(panel).toHaveCount(0);
+    await returnItems.click();
+    const destinations = panel.getByRole("list", { name: "Where it goes" });
+    await expect(destinations.getByRole("listitem")).toHaveText(["Restore session", "No money to give back"]);
+  });
+
   test("after a reload the till shows Check previous refund and never a second payout", async ({ page }) => {
     await open(page);
     await page.getByRole("button", { name: "Return items · Gold Wellness" }).click();

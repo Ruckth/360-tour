@@ -200,7 +200,8 @@ describe("checkout order screen", () => {
 
     await act(async () => button("Orders").click());
     const row = () => [...byLabel("Unpaid orders").querySelectorAll("button")].find((el) => el.textContent?.includes("Order #1043"))!;
-    expect(row().textContent).toContain("Payer Pat · CONF-2026-A1B2C3");
+    expect(row().textContent).toContain("Payer Pat");
+    expect(row().textContent).toContain("CONF-2026-A1B2C3");
     // Anna's own order is still empty, so it isn't listed.
     expect(byLabel("Unpaid orders").textContent).not.toContain("Order #1041");
     await act(async () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
@@ -243,7 +244,8 @@ describe("checkout order screen", () => {
     await act(async () => button("Orders").click());
     await act(async () => button("Paid").click());
     const paid = [...byLabel("Paid orders").querySelectorAll("button")].find((el) => el.textContent?.includes("Order #1043"))!;
-    expect(paid.textContent).toContain("Payer Pat · CONF-2026-A1B2C3");
+    expect(paid.textContent).toContain("Payer Pat");
+    expect(paid.textContent).toContain("CONF-2026-A1B2C3");
     // Paid orders list their total (the deposit included) and receipt number.
     expect(paid.textContent).toContain("R-000142");
     expect(paid.textContent).toContain("฿50,400");

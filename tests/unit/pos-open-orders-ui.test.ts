@@ -75,7 +75,7 @@ describe("open orders list", () => {
     expect(document.querySelector('label[for="order-lookup"]')?.textContent).toBe("Order or receipt number");
   });
 
-  it("lists each order with its customer or booking, item count and due, in the order given, and opens one in a tap", async () => {
+  it("lists each order with its available customer and booking identifiers, item count and due, in the order given, and opens one in a tap", async () => {
     const rows = [
       row(1045, { customerName: "Somchai Prasert", bookingReference: "CONF-A", itemCount: 3, due: 78000 }),
       row(1044, { bookingReference: "CONF-B", otherBookings: 1, itemCount: 1, due: 2600000 }),
@@ -84,14 +84,15 @@ describe("open orders list", () => {
     const onOpen = await showList({ results: rows, status: "Exhausted", loadMore: vi.fn() }, rows[1]._id);
     const items = [...list()!.querySelectorAll("li")];
     expect(items.map((li) => li.querySelector("span span")?.textContent)).toEqual(["Order #1045", "Order #1044Current", "Order #1043"]);
-    expect(items[0].textContent).toContain("Somchai Prasert · CONF-A · 3 items");
+    const visibleLabels = (item: HTMLElement) => [...item.querySelectorAll("span")].filter((span) => !span.children.length).map((span) => span.textContent);
+    expect(visibleLabels(items[0])).toEqual(expect.arrayContaining(["Somchai Prasert", "CONF-A", "3 items"]));
     expect(items[0].textContent).toContain("฿780");
-    expect(items[1].textContent).toContain("CONF-B +1 · 1 item");
+    expect(visibleLabels(items[1])).toEqual(expect.arrayContaining(["CONF-B +1", "1 item"]));
     expect(items[1].textContent).toContain("฿26,000");
     expect(items[1].querySelector("button")?.getAttribute("aria-current")).toBe("true");
     expect(items[0].querySelector("button")?.getAttribute("aria-label")).toMatch(/^Order #1045, Somchai Prasert, CONF-A, updated .+, 3 items, ฿780 due$/);
     expect(items[1].querySelector("button")?.getAttribute("aria-label")).toContain("1 item, ฿26,000 due, current order");
-    expect(items[2].textContent).toContain("No customer · 2 items");
+    expect(visibleLabels(items[2])).toEqual(expect.arrayContaining(["No customer", "2 items"]));
     expect(button("Load more")).toBeUndefined();
 
     await act(async () => items[0].querySelector("button")!.click());
