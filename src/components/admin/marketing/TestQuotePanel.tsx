@@ -1,5 +1,6 @@
 "use client";
 
+import type { Id } from 'convex/_generated/dataModel';
 import { addDays } from 'convex/shared/dates';
 
 import { Check, Plus, Trash2 } from "lucide-react";
@@ -17,9 +18,9 @@ import { parseWhole } from "./coupon-form";
 import { directOfferApplied, formatDay, marketingErrorText, nightsBetween, quoteVerdict, thb } from "./marketing-format";
 import type { MarketingActions, MarketingProperty, OfferResult } from "./types";
 
-type ServiceLine = { key: number; serviceSlug: string; amount: string };
+type ServiceLine = { key: number; serviceId: string; amount: string };
 export type QuoteServiceCatalog = {
-  choices: readonly { slug: string; name: string }[];
+  choices: readonly { id: Id<"services">; name: string; category: string; durationMin: number }[];
   loading?: boolean;
   loadMore?: () => void;
 };
@@ -67,11 +68,11 @@ export function TestQuotePanel({
   const nights = nightsBetween(checkIn, checkOut);
   const villaInfo = properties.find((property) => property.slug === villa);
   const catalog = serviceCatalog?.choices ?? [];
-  const validServices = new Set(catalog.map(({ slug }) => slug));
+  const validServices = new Map<string, Id<"services">>(catalog.map(({ id }) => [id, id]));
   const serviceErrors = services.map((line) => {
     const amount = parseWhole(line.amount);
-    if (!line.serviceSlug) return "Choose a service";
-    if (!validServices.has(line.serviceSlug)) return "This service is unavailable. Choose another service.";
+    if (!line.serviceId) return "Choose a service";
+    if (!validServices.has(line.serviceId)) return "This service is unavailable. Choose another service.";
     if (amount === undefined || Number.isNaN(amount) || amount <= 0) return "Enter the price in baht";
     return "";
   });
@@ -87,7 +88,10 @@ export function TestQuotePanel({
     if (!code || invalid || running) return;
     setRunning(true);
     setError("");
-    const lines = services.map(({ serviceSlug, amount }) => ({ serviceSlug, amount: (parseWhole(amount) ?? 0) * 100 }));
+    const lines = services.flatMap(({ serviceId, amount }) => {
+      const id = validServices.get(serviceId);
+      return id ? [{ serviceId: id, amount: (parseWhole(amount) ?? 0) * 100 }] : [];
+    });
     try {
       const quote = await testQuote({ code, propertySlug: villa, checkIn, checkOut, services: lines.length ? lines : undefined });
       const label = `${villaInfo?.name ?? villa} · ${nights} ${nights === 1 ? "night" : "nights"}${lines.length ? ` + ${lines.length} service${lines.length === 1 ? "" : "s"}` : ""}`;
@@ -161,12 +165,12 @@ export function TestQuotePanel({
                   aria-describedby={`${id}-service-${line.key}`}
                   aria-invalid={submitted && !!serviceErrors[index]}
                   className="h-9 min-w-0 rounded-md border border-input bg-background px-2 text-sm"
-                  value={line.serviceSlug}
-                  onChange={(event) => setServices((current) => current.map((item) => item.key === line.key ? { ...item, serviceSlug: event.target.value } : item))}
+                  value={line.serviceId}
+                  onChange={(event) => setServices((current) => current.map((item) => item.key === line.key ? { ...item, serviceId: event.target.value } : item))}
                 >
                   <option value="">Choose a service</option>
-                  {line.serviceSlug && !validServices.has(line.serviceSlug) && <option value={line.serviceSlug} disabled>Service unavailable</option>}
-                  {catalog.map((service) => <option key={service.slug} value={service.slug}>{service.name}</option>)}
+                  {line.serviceId && !validServices.has(line.serviceId) && <option value={line.serviceId} disabled>Service unavailable</option>}
+                  {catalog.map((service) => <option key={service.id} value={service.id}>{service.name} · {service.category} · {service.durationMin} min</option>)}
                 </select>
                 <NumberField
                   aria-label={`Price of service ${index + 1}`}
@@ -200,7 +204,7 @@ export function TestQuotePanel({
             variant="outline"
             size="sm"
             className="justify-self-start"
-            onClick={() => setServices((current) => [...current, { key: nextEditorKey(), serviceSlug: "", amount: "" }])}
+            onClick={() => setServices((current) => [...current, { key: nextEditorKey(), serviceId: "", amount: "" }])}
           >
             <Plus aria-hidden className="size-4" />
             Add a service

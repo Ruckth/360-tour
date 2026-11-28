@@ -42,6 +42,7 @@ describe('marketing admin access', () => {
       () => t.query(api.marketing.queries.getCoupon, { couponId }),
       () => t.query(api.marketing.queries.checkSlug, { slug: 'f' }),
       () => t.query(api.marketing.queries.testQuote, quote),
+      () => t.query(api.marketing.queries.listQuoteServices, { paginationOpts: { cursor: null, numItems: 20 } }),
       () => t.mutation(api.marketing.commands.saveCampaign.saveCampaign, { name: 'x', source: 'x', medium: 'x' }),
       () => t.mutation(api.marketing.commands.setCampaignStatus.setCampaignStatus, { campaignId, status: 'active' }),
       () => t.mutation(api.marketing.commands.saveLink.saveLink, link),
@@ -306,8 +307,8 @@ describe('marketing audit regressions', () => {
     const { t, admin } = await setup();
     const args = { ...quote, services: [{ label: 'Bad', amount }] };
     await expect(t.query(api.marketing.public.previewCoupon, args)).rejects.toThrow('invalid_service_amount');
-    await t.run(ctx => ctx.db.insert('services', service));
-    await expect(admin.query(api.marketing.queries.testQuote, { ...quote, services: [{ serviceSlug: service.slug, amount }] }))
+    const serviceId = await t.run(ctx => ctx.db.insert('services', service));
+    await expect(admin.query(api.marketing.queries.testQuote, { ...quote, services: [{ serviceId, amount }] }))
       .rejects.toThrow('invalid_service_amount');
   });
 
@@ -317,16 +318,16 @@ describe('marketing audit regressions', () => {
       for (let i = 0; i < 20; i++) await ctx.db.insert('services', { ...service, slug: `earlier-${i}`, category: 'Earlier' });
       return ctx.db.insert('services', service);
     });
-    const first = await admin.query(api.services.publicServices.list, { paginationOpts: { cursor: null, numItems: 20 } });
-    expect(first.page.some(({ slug }) => slug === service.slug)).toBe(false);
-    const next = await admin.query(api.services.publicServices.list, { paginationOpts: { cursor: first.continueCursor, numItems: 20 } });
-    expect(next.page).toEqual([expect.objectContaining({ slug: service.slug, name: service.name })]);
-    const args = { ...quote, services: [{ serviceSlug: service.slug, amount: 34000 }] };
+    const first = await admin.query(api.marketing.queries.listQuoteServices, { paginationOpts: { cursor: null, numItems: 20 } });
+    expect(first.page.some(({ id }) => id === serviceId)).toBe(false);
+    const next = await admin.query(api.marketing.queries.listQuoteServices, { paginationOpts: { cursor: first.continueCursor, numItems: 20 } });
+    expect(next.page).toEqual([expect.objectContaining({ id: serviceId, name: service.name })]);
+    const args = { ...quote, services: [{ serviceId, amount: 34000 }] };
     const roomOnly = await admin.query(api.marketing.queries.testQuote, quote);
     const withService = await admin.query(api.marketing.queries.testQuote, args);
     expect(withService.total - roomOnly.total).toBe(34000);
-    await expect(admin.query(api.marketing.queries.testQuote, { ...quote, services: [{ serviceSlug: 'nonexistent', amount: 34000 }] }))
-      .rejects.toThrow('service_unavailable');
+    await t.run(ctx => ctx.db.patch(serviceId, { slug: 'renamed-service' }));
+    expect((await admin.query(api.marketing.queries.testQuote, args)).total).toBe(withService.total);
     await t.run(ctx => ctx.db.patch(serviceId, { status: 'archived' }));
     await expect(admin.query(api.marketing.queries.testQuote, args)).rejects.toThrow('service_unavailable');
     await t.run(ctx => ctx.db.delete(serviceId));

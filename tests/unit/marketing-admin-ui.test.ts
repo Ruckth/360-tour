@@ -351,8 +351,8 @@ describe("marketing link URL filters", () => {
 it("quotes a selected catalog service by identity and blocks an unavailable selection", async () => {
   const testQuote = vi.fn().mockRejectedValue(new Error("Quote service unavailable"));
   const loadMore = vi.fn();
-  const more = { slug: "later-page", name: "Canonical massage" };
-  const choice = { slug: "first-page", name: "First service" };
+  const more = { id: "later-page" as Id<"services">, name: "Canonical massage", category: "Spa", durationMin: 60 };
+  const choice = { id: "first-page" as Id<"services">, name: "First service", category: "Spa", durationMin: 30 };
   const props = {
     testQuote, code: "SPA-10", dirty: false, today: "2026-11-08",
     properties: [{ _id: "villa" as Id<"properties">, slug: "villa", name: "Villa", status: "active" as const, pricePerNight: 50000, currency: "THB", maxGuests: 2 }],
@@ -366,12 +366,12 @@ it("quotes a selected catalog service by identity and blocks an unavailable sele
   expect(testQuote).not.toHaveBeenCalled();
   const picker = document.querySelector<HTMLSelectElement>('select[aria-label="Service 1"]')!;
   await act(async () => {
-    picker.value = more.slug;
+    picker.value = more.id;
     picker.dispatchEvent(new Event("change", { bubbles: true }));
   });
   await type(document.querySelector('input[aria-label="Price of service 1"]'), "340");
   await click(button("Run quote"));
-  expect(testQuote).toHaveBeenCalledWith(expect.objectContaining({ services: [{ serviceSlug: more.slug, amount: 34000 }] }));
+  expect(testQuote).toHaveBeenCalledWith(expect.objectContaining({ services: [{ serviceId: more.id, amount: 34000 }] }));
   await render(createElement(TestQuotePanel, { ...props, serviceCatalog: { choices: [choice] } }));
   await click(button("Run quote"));
   expect(testQuote).toHaveBeenCalledOnce();

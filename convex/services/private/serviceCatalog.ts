@@ -1,5 +1,5 @@
 import { ConvexError } from 'convex/values';
-import type { Doc } from '../../_generated/dataModel';
+import type { Doc, Id } from '../../_generated/dataModel';
 import type { QueryCtx } from '../../_generated/server';
 import { satangToBaht } from '../../shared/money';
 import { serviceOptions } from '../../shared/serviceOptions';
@@ -22,9 +22,8 @@ export function assertServicePrice(price: number, currency: string, expectedPric
 	throw new ConvexError({ code: 'SERVICE_PRICE_CHANGED', message: `The price changed to ${currency === 'THB' ? '฿' : `${currency} `}${amount}. Review and try again.` });
 }
 
-export async function activeServiceBySlug(ctx: QueryCtx, slug: string) {
-  if (!slug || slug.length > 500) return null;
-  const service = await ctx.db.query("services").withIndex("by_slug", (q) => q.eq("slug", slug)).unique();
+export async function activeServiceById(ctx: QueryCtx, serviceId: Id<"services">) {
+  const service = await ctx.db.get(serviceId);
   return service?.status === "active" ? service : null;
 }
 
