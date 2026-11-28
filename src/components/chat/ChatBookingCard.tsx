@@ -91,17 +91,8 @@ export function ChatBookingCard({ context }: { context: ChatBookingContext }) {
     setError("");
   }
 
-  const formatAmount = useMemo(() => {
-    const formatters = new Map<string, Intl.NumberFormat>();
-    return (satang: number, currency: string) => {
-      let formatter = formatters.get(currency);
-      if (!formatter) {
-        formatter = new Intl.NumberFormat(locale, { style: "currency", currency, maximumFractionDigits: 0 });
-        formatters.set(currency, formatter);
-      }
-      return formatter.format(satangToBaht(satang));
-    };
-  }, [locale]);
+  const formatAmount = (satang: number, currency: string) =>
+    new Intl.NumberFormat(locale, { style: "currency", currency, maximumFractionDigits: 0 }).format(satangToBaht(satang));
   const bookingHref = useMemo(() => {
     const params = new URLSearchParams();
     if (checkIn) params.set("checkin", checkIn);

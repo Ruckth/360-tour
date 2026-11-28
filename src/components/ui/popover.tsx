@@ -1,7 +1,7 @@
 "use client";
 
 import * as PopoverPrimitive from "@radix-ui/react-popover";
-import type { ComponentPropsWithoutRef } from "react";
+import type { ComponentProps } from "react";
 import { cn } from "@/lib/utils";
 
 export const Popover = PopoverPrimitive.Root;
@@ -13,7 +13,7 @@ export function PopoverContent({
   align = "center",
   sideOffset = 8,
   ...props
-}: ComponentPropsWithoutRef<typeof PopoverPrimitive.Content>) {
+}: ComponentProps<typeof PopoverPrimitive.Content>) {
   return (
     <PopoverPrimitive.Portal>
       <PopoverPrimitive.Content

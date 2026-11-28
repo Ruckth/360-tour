@@ -53,8 +53,8 @@ describe("G35 booking step states", () => {
 describe("G36 follow-up suggestion targets", () => {
   it("gives compact chips a 44 px coarse-pointer minimum and activates a long label once", async () => {
     const onSelect = vi.fn();
-    const long = { id: "long", text: "Which villa is best for a family of five with two small children and grandparents?" };
-    await show(createElement(SuggestionChips, { suggestions: [long, { id: "b", text: "Pickup?" }], onSelect }));
+    const long = { id: "family" as const, source: "static" as const, text: "Which villa is best for a family of five with two small children and grandparents?" };
+    await show(createElement(SuggestionChips, { suggestions: [long, { id: "airport" as const, source: "static" as const, text: "Pickup?" }], onSelect }));
     const chips = [...document.querySelectorAll<HTMLButtonElement>("[data-testid=chat-suggestions] button")];
     for (const chip of chips) expect(chip.className).toMatch(/(^| )pointer-coarse:min-h-11( |$)/);
     await act(async () => chips[0].click());
