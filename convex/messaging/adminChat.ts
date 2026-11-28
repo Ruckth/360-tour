@@ -601,7 +601,7 @@ export const queueCounts = adminQuery({
 	handler: async ctx => {
 		if (!(await canAccessResortDesk(ctx, 'chats'))) return null;
 		if (!(await inboxProjectionReady(ctx))) return null;
-		// Projected, non-waiting legacy chats with no state still appear in progress.
+		// An open projected chat with no explicit reply state counts as in progress when nobody is waiting.
 		const [waiting, inProgress] = await Promise.all([countOpenQueue(ctx, ['needs_staff']), countOpenQueue(ctx, ['processing', undefined])]);
 		return { waiting, inProgress };
 	}
