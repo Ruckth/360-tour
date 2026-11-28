@@ -48,7 +48,7 @@ function isoDaysFromNow(days: number) {
 }
 
 test("G35 step bar shows one current step and a completed mark", async ({ page }) => {
-  await page.goto(`/booking?checkin=${isoDaysFromNow(46)}&nights=2&adults=2&children=0&unit=garden-suite`);
+  await page.goto(`/booking?checkin=${isoDaysFromNow(126)}&nights=2&adults=2&children=0&unit=garden-suite`);
   await page.getByRole("button", { name: en.Booking.continue, exact: true }).click();
   const current = page.getByRole("button", { name: en.Booking.guestDetails, exact: true });
   await expect(current).toBeFocused();
