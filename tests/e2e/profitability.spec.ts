@@ -63,6 +63,9 @@ test('@smoke finance enters historical costs and expenses and reconciles the fil
         .first();
     await expect(card('Revenue')).toContainText('฿1,000');
     await expect(card('Net profit')).toContainText('Unavailable');
+    const grossMargin = page.getByRole('region', { name: 'Gross margin' });
+    await expect(grossMargin).toContainText('2024-08-01 – 2024-08-31');
+    await expect(grossMargin).toContainText('Costed records only');
     await page.getByLabel('Through').fill('2024-08-30');
     await expect(page.getByText('Applied dates · 2024-08-01 – 2024-08-31 · Date edits pending')).toBeVisible();
     await page.getByLabel('Through').fill(to);
@@ -98,6 +101,8 @@ test('@smoke finance enters historical costs and expenses and reconciles the fil
       await page.getByLabel(k + ' (฿)', { exact: true }).fill(v);
     await page.getByRole('button', { name: 'Save cost schedule' }).click();
     await expect(card('Gross profit')).toContainText('฿500');
+    await expect(grossMargin).toContainText('50%');
+    await expect(grossMargin.getByRole('link', { name: 'View gross profit transactions' })).toHaveAttribute('href', /from=2024-08-01.*to=2024-08-31.*metric=gross/);
     await expect(cogs).toContainText('฿500');
     await expect(cogs.getByRole('link', { name: /missing costs/ })).toHaveCount(0);
     await page.getByRole('button', { name: 'Finance inputs', exact: true }).click();

@@ -68,11 +68,11 @@ export function TodayStrip({ villaName, onOpen }: { villaName: (id: string) => s
             disabled={!groups}
             onClick={() => setOpen((current) => (current === key ? null : key))}
             className={cn(
-              "grid min-h-14 min-w-0 content-start gap-2 rounded-xl border border-border bg-card px-2 py-2 sm:min-h-20 sm:px-4 sm:py-4 text-start transition-colors hover:border-input focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60",
+              "grid min-h-14 min-w-0 content-start gap-1 rounded-xl border border-border bg-card px-1.5 py-1.5 text-start transition-colors hover:border-input focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60 sm:min-h-20 sm:gap-2 sm:px-4 sm:py-4",
               open === key && "border-foreground/40 bg-muted",
             )}
           >
-            <span className="flex items-center justify-between gap-0.5 whitespace-nowrap text-xs leading-tight font-normal text-muted-foreground sm:text-xs">{label}<ChevronDown aria-hidden className={cn("size-2.5 shrink-0 transition-transform sm:size-3", open === key && "rotate-180")} /></span>
+            <span className="flex items-center justify-between gap-0.5 text-xs leading-tight font-normal text-muted-foreground sm:whitespace-nowrap">{label}<ChevronDown aria-hidden className={cn("size-2.5 shrink-0 transition-transform sm:size-3", open === key && "rotate-180")} /></span>
             {groups ? <span className="money font-sans text-lg leading-none font-semibold tracking-tight tabular-nums sm:text-[28px]">{key === "balanceDue" ? amounts.length ? amounts.map((amount) => <span key={amount} className="block text-pretty wrap-anywhere">{amount}</span>) : "—" : groups[key].length}</span> : <Skeleton className="h-6 w-10" />}
             {data?.complete === false ? <span className="text-xs text-muted-foreground">Partial</span> : null}
             {key === "balanceDue" ? <span className="text-pretty text-xs text-muted-foreground">Today’s guests · all villas</span> : null}

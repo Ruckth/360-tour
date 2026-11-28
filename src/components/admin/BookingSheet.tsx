@@ -81,12 +81,14 @@ export function BookingSheet({
   initialAction,
   properties,
   onClose,
+  onCloseAutoFocus,
   onBookSpa,
 }: {
   bookingId: string | null;
   initialAction?: BookingSheetAction;
   properties: AdminProperty[];
   onClose: () => void;
+  onCloseAutoFocus?: (event: Event) => void;
   onBookSpa?: (booking: BookingDetail) => void;
 }) {
   const booking = useQuery(api.bookings.admin.getForAdmin, bookingId ? { bookingId } : "skip");
@@ -107,7 +109,11 @@ export function BookingSheet({
 
   return (
     <Sheet open={Boolean(bookingId)} onOpenChange={(open) => { if (!open) void close(); }}>
-      <SheetContent showCloseButton={false} className="w-full max-w-full overflow-y-auto bg-background p-5 sm:max-w-[30rem]">
+      <SheetContent
+        showCloseButton={false}
+        onCloseAutoFocus={onCloseAutoFocus}
+        className="w-full max-w-full overflow-y-auto bg-background p-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] sm:max-w-[30rem] sm:p-5"
+      >
         {booking === undefined || booking === null ? <SheetClose asChild><Button size="icon" variant="ghost" aria-label="Close" className="absolute right-3 top-3"><X aria-hidden className="size-4" /></Button></SheetClose> : null}
         {booking === undefined ? (
           <div role="status" aria-label="Loading booking" className="grid gap-5">

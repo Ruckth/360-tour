@@ -12,6 +12,24 @@ async function audit(page: Page, width: number, name: string) {
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   if (process.env.CAPTURE_SCREENSHOTS === "1") await page.screenshot({ path: test.info().outputPath(`${name}.png`), fullPage: false });
 }
+test("phone campaign search and status fit on one row and narrow the list", async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 800 });
+  await page.goto("/tests/browser/marketing-spend.html");
+  const search = page.getByRole("searchbox", { name: "Search campaigns" });
+  const status = page.getByRole("combobox", { name: "Campaign status" });
+  const searchBox = (await search.boundingBox())!;
+  const statusBox = (await status.boundingBox())!;
+  expect(searchBox.y).toBeCloseTo(statusBox.y, 0);
+  expect(statusBox.x + statusBox.width).toBeLessThanOrEqual(360);
+  await status.click();
+  await page.getByRole("option", { name: "Paused (0)" }).click();
+  await expect(page.getByText("No paused campaigns.")).toBeVisible();
+  await status.click();
+  await page.getByRole("option", { name: /^Current/ }).click();
+  await search.fill("November");
+  await expect(page.getByRole("button", { name: /^November escape/ }).first()).toBeVisible();
+});
+
 for (const theme of ["light", "dark"]) for (const width of [390, 820, 1180, 1440]) {
   for (const scenario of ["normal", "no-spend"]) test(`add spend ${scenario} ${width} ${theme}`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });

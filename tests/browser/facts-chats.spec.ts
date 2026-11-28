@@ -165,6 +165,9 @@ for (const [size, viewport] of Object.entries(SIZES)) {
       await page.keyboard.press("ArrowLeft");
       await expect(activity.getByRole("tab", { name: "Live" })).toHaveAttribute("aria-selected", "true");
       await expect(page.locator("body")).toHaveAttribute("data-navigation", /view=active/);
+      await page.keyboard.press("Escape");
+      await page.getByRole("button", { name: "Clear guest activity filter" }).click();
+      await expect(page.locator("body")).toHaveAttribute("data-navigation", /view=in_progress/);
     });
 
     test("contact details are behind the header info button; IDs stay under closed More · technical", async ({ page }) => {

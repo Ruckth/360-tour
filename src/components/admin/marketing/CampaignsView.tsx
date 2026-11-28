@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { SegmentedTabs } from "../SegmentedTabs";
@@ -168,13 +169,28 @@ export function CampaignsView({ campaigns, listing, editor: Editor = CampaignEdi
     <div className="mx-auto w-full min-w-0 max-w-7xl px-4 py-4 sm:px-6">
       <section className="min-w-0 border border-border bg-card">
         <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
-          <p className="min-w-60 flex-1 text-sm text-muted-foreground">
+          <p className="hidden min-w-60 flex-1 text-sm text-muted-foreground sm:block">
             Each campaign groups the links and coupons for one push, and sets the source and medium its visits report as.
           </p>
           {all.length ? (
-            <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
-              <SearchBox value={query} onChange={setQuery} label="Search campaigns" />
-              {access.capabilities.draft ? <Button size="sm" onClick={() => openNew()} className="w-full sm:w-auto">
+            <div className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto">
+              <SearchBox value={query} onChange={setQuery} label="Search campaigns" className="max-sm:min-w-0 max-sm:[&_input]:h-11" />
+              <div className="w-30 shrink-0 sm:hidden">
+                <Select value={tab} onValueChange={(value) => {
+                  const selected = tabs.find((option) => option.value === value);
+                  if (selected) setTab(selected.value);
+                }}>
+                  <SelectTrigger className="h-11 w-full" aria-label="Campaign status">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {tabs.map((option) => <SelectItem key={option.value} value={option.value}>
+                      {option.label} ({option.n})
+                    </SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              {access.capabilities.draft ? <Button size="sm" onClick={() => openNew()} className="max-sm:me-auto max-sm:min-h-11">
                 <Plus aria-hidden className="size-4" />
                 New campaign
               </Button> : null}
@@ -208,7 +224,7 @@ export function CampaignsView({ campaigns, listing, editor: Editor = CampaignEdi
           </FirstRunEmpty>
         ) : (
           <>
-            <div className="px-4 pt-3">
+            <div className="hidden px-4 pt-3 sm:block">
               <SegmentedTabs
                 label="Campaign status"
                 controls="marketing-campaigns-list"

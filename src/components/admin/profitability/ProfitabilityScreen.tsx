@@ -508,6 +508,7 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
               report={shown}
               href={href}
               narrowed={overview.rules.length > 0}
+              period={from === to ? from : `${from} – ${to}`}
               openMonth={
                 canWrite
                   ? (month) => {

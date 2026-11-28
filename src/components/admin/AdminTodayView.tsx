@@ -86,6 +86,11 @@ export function AdminTodayView() {
       {/* Phones and tablets keep every count above the fold: Hotel is one row (or a 2×2 on
           phones) and Spa and Chats sit side by side; desktop fits all three tiles on one row. */}
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+        {canOpenChats ? (
+          <Tile title="Chats" icon={MessageCircle} className={soloDesk ? "col-span-2" : undefined}>
+            <CountLink href="/admin/chats" label={queue === null ? "Open chat queue" : "Needs you"} count={waitingText} />
+          </Tile>
+        ) : null}
         {canOpenHotel ? (
           <Tile title="Hotel" icon={BedDouble} className="col-span-2">
             {stays?.complete === false ? <p role="status" className="text-xs text-muted-foreground">Some of today’s stays could not be loaded.</p> : null}
@@ -100,11 +105,6 @@ export function AdminTodayView() {
         {canOpenSpa ? (
           <Tile title="Spa" icon={CalendarClock} className={soloDesk ? "col-span-2" : undefined}>
             <CountLink href={staffCalendarHref({ date: today, openOnly: true })} label="Open appointments today" count={spaFailed ? "Count unavailable" : appointments?.length} />
-          </Tile>
-        ) : null}
-        {canOpenChats ? (
-          <Tile title="Chats" icon={MessageCircle} className={soloDesk ? "col-span-2" : undefined}>
-            <CountLink href="/admin/chats" label={queue === null ? "Open chat queue" : "Needs you"} count={waitingText} />
           </Tile>
         ) : null}
       </div>

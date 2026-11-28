@@ -788,6 +788,16 @@ export function ChatsView() {
                       Search: {truncate(trimmedSearchQuery, 24)}
                     </RemovableBadge>
                   ) : null}
+                  {status === "active" || status === "inactive" ? (
+                    <RemovableBadge removeLabel="Clear guest activity filter" onRemove={() => setStatus(queueParams(queue).view)}>
+                      {status === "active" ? "Live guests" : "Inactive guests"}
+                    </RemovableBadge>
+                  ) : null}
+                  {adminStatus === "resolved" || adminStatus === "archived" ? (
+                    <RemovableBadge removeLabel="Clear chat status filter" onRemove={() => setAdminStatus("done")}>
+                      {adminStatusTabs.find(({ value }) => value === adminStatus)?.label}
+                    </RemovableBadge>
+                  ) : null}
                   {emptyFilter !== "non_empty" ? (
                     <RemovableBadge removeLabel="Clear empty filter" onRemove={() => setEmptyFilter("non_empty")}>
                       {emptyFilterLabel(emptyFilter)}

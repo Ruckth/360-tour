@@ -5,15 +5,20 @@ import { costTotal, metricNames, type ProfitFilters, type ProfitMetric } from 'c
 import { thb } from '../marketing/marketing-format';
 import { inputStyle } from './report-controls';
 import { box, money, type Report, type Href } from './report-model';
+
+const marginFormat = new Intl.NumberFormat('en', { style: 'percent', maximumFractionDigits: 1 });
+
 export function Overview({
   report,
   href,
   narrowed,
+  period,
   openMonth,
 }: {
   report: Report;
   href: Href;
   narrowed: boolean;
+  period: string;
   openMonth?: (month: string) => void;
 }) {
   const [sort, setSort] = useState('revenue');
@@ -24,6 +29,7 @@ export function Overview({
     return b.revenue - a.revenue || a.name.localeCompare(b.name);
   });
   const s = report.summary;
+  const grossMargin = s.gross !== null && s.coveredRevenue > 0 ? marginFormat.format(s.gross / s.coveredRevenue) : null;
   const financeCoverage = s.unmappedSpend
     ? thb(s.unmappedSpend) + ' in campaign spend awaits classification'
     : report.missingMonths.length
@@ -105,6 +111,25 @@ export function Overview({
   );
   return (
     <>
+      <section aria-label="Gross margin" className={box + ' grid gap-2 p-3 sm:p-4'}>
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+          <h2 className="text-sm font-medium">Gross margin</h2>
+          <p className="text-xs text-muted-foreground">{period}</p>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-x-3">
+          <div>
+            <p className="text-2xl font-semibold tabular-nums">{grossMargin ?? '—'}</p>
+            <p className="text-xs text-muted-foreground">{s.missingCount > 0 ? 'Costed records only' : 'After service costs'}</p>
+          </div>
+          <Link
+            href={href(true, { metric: 'gross', additional: null })}
+            className="inline-flex min-h-11 items-center gap-1 text-sm font-medium text-primary underline underline-offset-2"
+          >
+            View gross profit transactions
+            <ArrowUpRight aria-hidden="true" size={16} className="shrink-0" />
+          </Link>
+        </div>
+      </section>
       <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
         {metricCard('revenue')}
         <div className={box + ' grid content-start gap-2 p-4'}>

@@ -77,7 +77,9 @@ export function AdminCalendarHeader({
     </Select>
   );
   return (
-    <div className="border-b border-border [&_button]:text-[13px] pointer-coarse:[&_button]:text-sm" data-testid="calendar-toolbar">
+    <div className={compact
+      ? "flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-border px-2 py-1.5 sm:block sm:p-0 [&_button]:text-[13px] pointer-coarse:[&_button]:text-sm"
+      : "border-b border-border [&_button]:text-[13px] pointer-coarse:[&_button]:text-sm"} data-testid="calendar-toolbar">
       <TooltipProvider delay={400}>
         <div className="hidden flex-wrap items-center gap-2 px-4 py-3 sm:flex">
           <EventCalendarNavToday className="h-9 px-3 pointer-coarse:min-h-11" />
@@ -100,13 +102,15 @@ export function AdminCalendarHeader({
           </ToggleGroup>
           <div className="shrink-0">{primaryAction}</div>
         </div>
-        <div className="flex items-center gap-0.5 px-2 py-2 sm:hidden">
+        <div className={compact ? "flex flex-1 items-center gap-0.5 sm:hidden" : "flex items-center gap-0.5 px-2 py-2 sm:hidden"}>
           <EventCalendarNavPrev className="size-9 shrink-0 pointer-coarse:size-11" />
           {picker}
           <EventCalendarNavNext className="size-9 shrink-0 pointer-coarse:size-11" />
           <div className="ms-auto shrink-0">{primaryAction}</div>
         </div>
-        <div className="flex flex-wrap items-center gap-1.5 border-t border-border px-2 py-2 sm:gap-2 sm:px-4">
+        <div className={compact
+          ? "flex flex-1 flex-wrap items-center gap-1.5 sm:gap-2 sm:border-t sm:border-border sm:px-4 sm:py-2"
+          : "flex flex-wrap items-center gap-1.5 border-t border-border px-2 py-2 sm:gap-2 sm:px-4"}>
           {search}
           <div className="sm:hidden">{mobileView}</div>
           {children}
