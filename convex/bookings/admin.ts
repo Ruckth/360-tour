@@ -122,10 +122,12 @@ export const listForAdmin = adminQuery({
 
 /** Full booking detail for the admin sheet, including the private pay-link token while unpaid. */
 export const getForAdmin = adminQuery({
-	args: { bookingId: v.id('bookings') },
+	args: { bookingId: v.string() },
 	handler: async (ctx, args) => {
 		if (!(await canAccessResortDesk(ctx, 'bookings'))) return null;
-		const booking = await ctx.db.get(args.bookingId);
+		const bookingId = ctx.db.normalizeId('bookings', args.bookingId);
+		if (!bookingId) return null;
+		const booking = await ctx.db.get(bookingId);
 		if (!booking) return null;
 		const property = await ctx.db.get(booking.propertyId);
 		const payable = booking.paymentStatus === 'pending' && booking.status !== 'cancelled';

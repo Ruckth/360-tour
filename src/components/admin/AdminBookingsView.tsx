@@ -134,7 +134,7 @@ function HotelBookings() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const linkedBooking = searchParams.get("booking");
-  const linkedBookingId = linkedBooking && /^[a-z0-9]{32}$/i.test(linkedBooking) ? linkedBooking as Id<"bookings"> : null;
+  const linkedBookingId = linkedBooking || null;
   function closeBooking() {
     setSelected(null);
     if (!linkedBooking) return;
