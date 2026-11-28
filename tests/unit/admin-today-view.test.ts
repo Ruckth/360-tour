@@ -7,7 +7,7 @@ import { resortMidnight } from "@/lib/staff-bookings";
 import { serverTodayIso } from "@/components/admin/admin-bookings-shared";
 import { addDaysIso } from "@/lib/booking/dates";
 
-const mocks = vi.hoisted(() => ({ calls: [] as [string, unknown][], search: "" }));
+const mocks = vi.hoisted(() => ({ calls: [] as [string, unknown][], search: "", queue: { waiting: 3, inProgress: 0 } as unknown }));
 const today = serverTodayIso();
 const stay = (id: string, checkIn: string, checkOut: string, owed = 0) => ({ _id: id, guestName: id, checkIn, checkOut, status: "confirmed", owed, currency: "THB" });
 vi.mock("convex/react", () => ({
@@ -20,8 +20,16 @@ vi.mock("convex/react", () => ({
       const start = resortMidnight(today);
       return { appointments: [{ start: start + 3_600_000, status: "booked" }, { start: start + 7_200_000, status: "cancelled" }, { start: start - 3_600_000, status: "booked" }] };
     }
-    if (name === "messaging/adminChat:queueCounts") return { waiting: 3, inProgress: 0 };
     return undefined;
+  },
+  useQueries: (requests: { queue?: { query: Parameters<typeof getFunctionName>[0]; args: unknown } }) => {
+    const request = requests.queue;
+    if (!request) {
+      mocks.calls.push(["messaging/adminChat:queueCounts", "skip"]);
+      return {};
+    }
+    mocks.calls.push([getFunctionName(request.query), request.args]);
+    return { queue: mocks.queue };
   },
 }));
 vi.mock("@/platform/link", () => ({ default: ({ children, href, ...props }: { children: ReactNode; href: string }) => createElement("a", { href, ...props }, children) }));
@@ -37,6 +45,7 @@ beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   mocks.calls = [];
   mocks.search = "";
+  mocks.queue = { waiting: 3, inProgress: 0 };
   host = document.createElement("div");
   document.body.append(host);
   root = createRoot(host);
@@ -57,6 +66,14 @@ describe("Today home (D01)", () => {
     expect(linkCount("/admin/hotel?today=balanceDue")).toBe("Balance due1");
     expect(linkCount(`/admin/staff/calendar?date=${today}&scope=open`)).toBe("Open appointments today1");
     expect(linkCount("/admin/chats")).toBe("Needs you3");
+  });
+
+  it("keeps Hotel and Spa summaries when the chat count fails", async () => {
+    mocks.queue = new Error("Count unavailable");
+    await act(async () => root.render(createElement(AdminTodayView)));
+    expect(linkCount("/admin/chats")).toBe("Needs you—");
+    expect(linkCount("/admin/hotel?today=arriving")).toBe("Arriving2");
+    expect(linkCount(`/admin/staff/calendar?date=${today}&scope=open`)).toBe("Open appointments today1");
   });
 
   it("keeps Spa available without exposing Hotel or Chats to a manager outside the resort", async () => {

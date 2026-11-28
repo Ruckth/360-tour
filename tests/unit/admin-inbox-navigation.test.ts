@@ -24,6 +24,7 @@ const mocks = vi.hoisted(() => ({
   mutation: vi.fn(),
   page: [] as unknown[],
   listResult: {} as unknown,
+  queueResult: undefined as unknown,
   olderPage: undefined as unknown,
   reanchoredPage: undefined as unknown,
   nextCursor: null as string | null,
@@ -56,6 +57,7 @@ vi.mock("convex/react", () => ({
   },
   useQueries: (requests: Record<string, { args: { paginationOpts: { cursor: string | null } } }>) =>
     Object.fromEntries(Object.entries(requests).map(([key, { args }]) => {
+      if (key === "queue") return [key, mocks.queueResult];
       mocks.listArgs.push(args);
       const { cursor } = args.paginationOpts;
       const result = cursor === "after-live-movement" ? mocks.reanchoredPage : cursor ? mocks.olderPage : mocks.listResult;
@@ -153,6 +155,7 @@ beforeEach(() => {
   }));
   mocks.search = new URLSearchParams("view=all&session=session-a");
   mocks.nextCursor = null;
+  mocks.queueResult = undefined;
   mocks.olderPage = undefined;
   mocks.reanchoredPage = undefined;
   mocks.page = [session("session-a"), session("session-b")];
@@ -178,6 +181,15 @@ afterEach(async () => {
 });
 
 describe("inbox navigation", () => {
+  it("keeps the selected transcript and unnumbered queue tabs when the count fails", async () => {
+    mocks.queueResult = new Error("Count unavailable");
+    await render();
+    expect(latestDetail().selectedSession?._id).toBe("session-a");
+    const tabLabels = [...document.querySelectorAll('[role="tab"]')].map(tab => tab.textContent?.trim());
+    expect(tabLabels).toContain("Needs you");
+    expect(tabLabels).toContain("In progress");
+  });
+
   it("keeps a newly requested queue when search debounce fires before the URL commits", async () => {
     vi.useFakeTimers();
     try {

@@ -14,15 +14,17 @@ export function waitingBadge(waiting: number | null | undefined): WaitingBadge |
   return { text, label: `${text} ${waiting === 1 ? "chat needs" : "chats need"} you` };
 }
 
-/**
- * The Needs you badge for the Chats link. Only people whose navigation includes Chats subscribe;
- * the server checks the same operations access as the queue. Navigation never waits for it.
- */
-export function useWaitingChatsBadge(): WaitingBadge | null {
-  const canOpenChats = useAdminNav().some((item) => item.href === "/admin/chats");
+/** Preserve the common Convex subscription while isolating a failed count from its host view. */
+export function useSafeQueueCounts(enabled = true) {
   const query = api.messaging.adminChat.queueCounts;
-  const { queue } = useQueries(canOpenChats ? { queue: { query, args: {} } } : {}) as {
+  const { queue } = useQueries(enabled ? { queue: { query, args: {} } } : {}) as {
     queue?: FunctionReturnType<typeof query> | Error;
   };
-  return queue instanceof Error ? null : waitingBadge(queue?.waiting);
+  return queue instanceof Error ? null : queue;
+}
+
+/** Subscribe only when the staff member can open Chats. */
+export function useWaitingChatsBadge(): WaitingBadge | null {
+  const canOpenChats = useAdminNav().some((item) => item.href === "/admin/chats");
+  return waitingBadge(useSafeQueueCounts(canOpenChats)?.waiting);
 }

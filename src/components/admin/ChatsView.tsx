@@ -22,6 +22,7 @@ import {
   channelFilterLabel,
 } from "./admin-chat-filters";
 import { CHAT_SHORTCUT_KEYS, CHAT_SHORTCUTS, Kbd } from "./chat-shortcuts";
+import { useSafeQueueCounts } from "./waiting-chats";
 import { CheckCheck, ChevronRight, Filter, Keyboard, Search } from "lucide-react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
@@ -228,7 +229,7 @@ export function ChatsView() {
     setPageDepth(1);
     setRetryKeys({});
   }
-  const queueCounts = useQuery(api.messaging.adminChat.queueCounts, {});
+  const queueCounts = useSafeQueueCounts();
   const queryText = urlSearchQuery.trim();
   const listRequests = Object.fromEntries(
     (invalidMessageDateRange ? [] : pageCursors).map((cursor, index) => [String(index), {

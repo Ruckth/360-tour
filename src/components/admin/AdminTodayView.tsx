@@ -11,7 +11,7 @@ import { staffCalendarHref } from "@/lib/staff-links";
 import { canOpenResortDesk } from "./admin-access";
 import { useStaffAccess } from "./staff-access";
 import { todayBookingArgs, todayGroups, type TodayGroup } from "./TodayStrip";
-import { waitingBadge } from "./waiting-chats";
+import { useSafeQueueCounts, waitingBadge } from "./waiting-chats";
 
 const DAY_MS = 86_400_000;
 
@@ -55,7 +55,7 @@ export function AdminTodayView() {
   const stays = useQuery(api.bookings.admin.listForAdmin, canOpenHotel ? todayBookingArgs(today) : "skip");
   const start = resortMidnight(today);
   const schedule = useQuery(api.services.admin.listSchedule, canOpenSpa ? { from: start, to: start + DAY_MS } : "skip");
-  const queue = useQuery(api.messaging.adminChat.queueCounts, canOpenChats ? {} : "skip");
+  const queue = useSafeQueueCounts(canOpenChats);
 
   const groups = stays ? todayGroups(stays.bookings, today) : null;
   const appointments = schedule?.appointments.filter((appointment) => isOpenAppointmentStartingIn(appointment, start, start + DAY_MS));
