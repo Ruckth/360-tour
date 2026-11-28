@@ -738,6 +738,7 @@
     "ask": "Узнать об услуге",
     "minutes": "мин",
     "fromPrice": "от {price}",
+    "defaultDuration": "По умолчанию: {duration}",
     "chooseDuration": "Выберите длительность",
     "next": "Следующие услуги",
     "first": "На первую страницу",

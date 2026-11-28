@@ -15,7 +15,6 @@ export type BookingRefundSource = {
   reference: Pick<RefundInput, "paymentId" | "orderId">;
 };
 
-/** Shared by standalone refunds and atomic cancellation/refund, including old receipt money. */
 /** Each option names the payment date and what is still refundable; a reference is added when those still collide. */
 export function bookingRefundSources(data: Financials): BookingRefundSource[] {
   const rows = data.payments.filter(p => p.status === "recorded" && p.refundable > 0).map(p => ({
@@ -31,11 +30,11 @@ export function bookingRefundSources(data: Financials): BookingRefundSource[] {
 }
 
 export function BookingRefundSourcePicker({ id, sources, value, onChange }: { id: string; sources: BookingRefundSource[]; value: string; onChange: (value: string) => void }) {
-  return <div className="grid gap-2">
+  return <div className="grid min-w-0 gap-2">
     <Label htmlFor={id}>Refund from</Label>
     <Select value={value} onValueChange={onChange}>
-      <SelectTrigger id={id}><SelectValue /></SelectTrigger>
-      <SelectContent>{sources.map(source => <SelectItem key={source.value} value={source.value}>{source.label}</SelectItem>)}</SelectContent>
+      <SelectTrigger id={id} className="min-w-0"><SelectValue /></SelectTrigger>
+      <SelectContent className="max-w-[min(24rem,calc(100vw-2rem))]">{sources.map(source => <SelectItem key={source.value} value={source.value} className="whitespace-normal break-words">{source.label}</SelectItem>)}</SelectContent>
     </Select>
   </div>;
 }

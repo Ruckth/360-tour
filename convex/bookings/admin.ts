@@ -14,7 +14,7 @@ import { readBudget } from '../lib/readBudget';
 import { stayFinancials } from './private/stayCorrections';
 import { MAX_ROWS_PER_NIGHT, scanOverlappingBookings, scanOverlappingDateBlocks } from './private/stayOverlap';
 import { assertValidIsoDate } from '../shared/validation';
-import { archivedVillaPolicy, assertBookingEditable, CLEANUP_SCAN_LIMIT, DAY_MS, deleteBlocker, GuestSuggestion, loadBooking, MAX_CALENDAR_DAYS, MAX_CALENDAR_VILLAS, MAX_GUEST_SUGGESTIONS, planBookingEditPricing, stayAttendanceEnabled, SEARCH_SCAN_LIMIT, toAdminBooking } from './private/stays';
+import { archivedVillaBlocker, archivedVillaPolicy, assertBookingEditable, CLEANUP_SCAN_LIMIT, DAY_MS, deleteBlocker, GuestSuggestion, loadBooking, MAX_CALENDAR_DAYS, MAX_CALENDAR_VILLAS, MAX_GUEST_SUGGESTIONS, planBookingEditPricing, stayAttendanceEnabled, SEARCH_SCAN_LIMIT, toAdminBooking } from './private/stays';
 
 function calendarProperty(property: Doc<'properties'>) {
 	return {
@@ -161,6 +161,9 @@ export const getForAdmin = adminQuery({
 			marketingAttribution: booking.marketingAttribution ?? null,
 			propertyName: property?.name ?? 'Unknown villa',
 			propertyStatus: property?.status ?? 'archived',
+			reopenVillaBlocker: archivedVillaBlocker(property, booking.checkIn),
+			// The booking detail and property editor both require operations admin access.
+			canOpenVilla: property !== null,
 			subtotal: booking.subtotal,
 			discountAmount: booking.discountAmount,
 			priceOverride: booking.priceOverride ?? null,
@@ -325,9 +328,9 @@ export const quoteBookingEdit = adminQuery({
  * entered by hand in admin or created more than `olderThanDays` ago. Newest first.
  */
 export const listCleanupCandidates = adminQuery({
-	args: { olderThanDays: v.number() },
+	args: { olderThanDays: v.number(), refreshToken: v.optional(v.string()) },
 	handler: async (ctx, args) => {
-		if (!Number.isFinite(args.olderThanDays) || args.olderThanDays < 0) throw new Error('Enter a number of days.');
+		if (!Number.isSafeInteger(args.olderThanDays) || args.olderThanDays < 0) throw new Error('Enter a number of days.');
 		const now = Date.now();
 		const cutoff = now - args.olderThanDays * DAY_MS;
 		const byStatus = (status: 'pending' | 'cancelled') =>

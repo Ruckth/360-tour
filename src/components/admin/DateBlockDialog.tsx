@@ -47,7 +47,7 @@ export function DateBlockDialog({
     const source = sourceLabel(target.source);
     return (
       <Dialog open onOpenChange={(open) => (open ? undefined : onClose())}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Imported from {source}</DialogTitle>
             <DialogDescription>
@@ -152,11 +152,19 @@ function HostBlockForm({
       void run(() => updateDateBlock({ blockId: block._id, propertyId: propertyId as Id<"properties">, ...range, expected }));
       return;
     }
+    if (propertyIds.length > 1 && (!multiPreviewArgs || !preview)) return;
+    const reviewedIds = propertyIds.length > 1
+      ? preview?.filter((row) => row.error === null).map((row) => row.propertyId) ?? []
+      : propertyIds as Id<"properties">[];
+    if (!reviewedIds.length || conflicts || !range.reason.trim()) return;
     pending.current = true;
     setBusy(true);
     setError("");
     try {
-      const saved = await addDateBlocks({ propertyIds: propertyIds as Id<"properties">[], ...range });
+      const saved = [
+        ...(await addDateBlocks({ propertyIds: reviewedIds, ...range })),
+        ...previewConflicts,
+      ];
       if (saved.every((result) => result.error === null)) {
         onClose();
         return;
@@ -188,17 +196,17 @@ function HostBlockForm({
   if (results) {
     const blocked = results.filter((result) => result.error === null);
     return (
-      <Dialog open onOpenChange={(open) => (open ? undefined : onClose())}>
-        <DialogContent className="sm:max-w-md">
+      <Dialog open onOpenChange={(open) => (!open && !pending.current ? onClose() : undefined)}>
+        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
-              Blocked {blocked.length} of {results.length} villas
+              <span tabIndex={-1} ref={(node) => { node?.focus(); }}>Blocked {blocked.length} of {results.length} villas</span>
             </DialogTitle>
             <DialogDescription>
               {displayDate(dates.checkIn)} → {displayDate(dates.checkOut)}. Villas with a conflict were left open.
             </DialogDescription>
           </DialogHeader>
-          <ul className="grid gap-2 text-sm">
+          <ul className="grid max-h-[45dvh] gap-2 overflow-y-auto text-sm">
             {results.map((result) => (
               <li key={result.propertyId} className="rounded-lg border border-border px-3 py-2">
                 <span className="font-medium">{villaName(result.propertyId)}</span>
@@ -239,7 +247,7 @@ function HostBlockForm({
             Close a villa for an owner stay, maintenance or similar. Blocked nights cannot be booked and are shared with OTA calendars.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={submit} className="grid min-w-0 gap-4">
+        <form onSubmit={submit}>
           <fieldset disabled={busy} className="grid min-w-0 gap-4">
           {block ? (
             <div className="grid gap-2">
@@ -331,19 +339,19 @@ function HostBlockForm({
                 Remove block
               </Button>
             ) : null}
-            <Button type="button" variant="outline" onClick={onClose}>
+            <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
               Close
             </Button>
             <Button
               type="submit"
-              disabled={busy || propertyIds.length === 0 || !dates.checkIn || !dates.checkOut || !reason.trim() || conflicts || blockableCount === 0}
+              disabled={busy || propertyIds.length === 0 || !dates.checkIn || !dates.checkOut || !reason.trim() || conflicts || (propertyIds.length > 1 && !blockableCount)}
             >
               {busy ? <Spinner className="text-current" /> : null}
               {block
                 ? "Save block"
                 : propertyIds.length > 1
                   ? blockableCount === null
-                    ? `Block ${propertyIds.length} villas`
+                    ? "Checking villas…"
                     : `Save ${blockableCount} ${blockableCount === 1 ? "block" : "blocks"}${previewConflicts.length ? ` · skip ${previewConflicts.length}` : ""}`
                   : "Block dates"}
             </Button>

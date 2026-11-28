@@ -150,6 +150,18 @@ export function StaffRosterView() {
     };
   }, []);
 
+  const focusedLink = useRef(false);
+  useEffect(() => {
+    if (focusedLink.current || !link.staffId || !link.date) return;
+    const row = staff.findIndex((person) => person._id === link.staffId);
+    const col = dates.indexOf(link.date);
+    const target = gridRef.current?.querySelector<HTMLElement>(`[data-row="${row}"][data-col="${col}"]`);
+    if (!target) return;
+    focusedLink.current = true;
+    setFocus({ row, col });
+    target.focus();
+  }, [staff, dates, link.staffId, link.date]);
+
   /** Starts a new Shift range at `pos`, on top of the current selection. */
   function placeAnchor(pos: Pos) {
     setAnchor(pos);

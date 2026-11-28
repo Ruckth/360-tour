@@ -177,9 +177,20 @@ describe("service durations on the catalog", () => {
     expect(card.textContent).not.toContain("THB");
     for (const price of ["฿800", "฿1,100", "฿1,400"]) expect(card.textContent!.split(price)).toHaveLength(2);
     expect([...card.querySelectorAll("fieldset label")].map((label) => label.textContent)).toEqual(["60 min฿800", "90 min฿1,100", "120 min฿1,400"]);
+    expect(card.textContent).toContain("Default: 60 min");
     expect(card.querySelector("fieldset legend")?.textContent).toBe("Choose a duration");
     expect([...card.querySelectorAll<HTMLInputElement>("input[type=radio]")].map((radio) => [radio.value, radio.checked])).toEqual([["60", true], ["90", false], ["120", false]]);
     expect(link("Ask about this service").getAttribute("href")).toBe("/chat?service=thai-massage&duration=60");
+  });
+
+  it("shows the saved replacement default even when a shorter duration is offered", async () => {
+    const replacement = { ...thai, durationMin: 120, price: 140000 };
+    vi.mocked(getServiceCatalog).mockResolvedValue([{ categories: [], nextCategory: null }, { page: [replacement], continueCursor: "", isDone: true }]);
+    await render();
+    const card = document.querySelector("article")!;
+    expect(card.textContent).toContain("Default: 120 min");
+    expect(card.querySelector<HTMLInputElement>('input[type="radio"][value="120"]')?.checked).toBe(true);
+    expect(link("Ask about this service").getAttribute("href")).toBe("/chat?service=thai-massage&duration=120");
   });
 
   it("keeps a one-length service as it was: no chips and no duration in the link", async () => {

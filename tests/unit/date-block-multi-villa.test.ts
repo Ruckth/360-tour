@@ -55,13 +55,22 @@ it('F04: previews per-villa conflicts before any write and states how many block
 });
 
 it('F03: after a partial result, retry returns to the form with only skipped villas and keeps range and reason', async () => {
-  state.add.mockResolvedValue([{ propertyId: 'v1', blockId: 'b1', error: null }, { propertyId: 'v2', blockId: 'b2', error: null }, { propertyId: 'v3', blockId: null, error: 'These dates overlap a booking.' }]);
+  state.add.mockResolvedValue([{ propertyId: 'v1', blockId: 'b1', error: null }, { propertyId: 'v2', blockId: 'b2', error: null }]);
   await openWithAllVillas();
   await act(async () => document.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+  expect(state.add).toHaveBeenCalledWith({ propertyIds: ['v1', 'v2'], start: '2030-01-10', end: '2030-01-12', reason: 'Festival' });
   expect(document.body.textContent).toContain('Blocked 2 of 3 villas');
   await act(async () => button('Retry skipped villas')!.click());
   const checked = [...document.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')].map(box => box.checked);
   expect(checked).toEqual([false, false, true]);
   expect(document.querySelector<HTMLInputElement>('#block-reason')!.value).toBe('Festival');
   expect(button('Block dates')).toBeTruthy();
+});
+
+it('F04: the submit handler waits for a preview even when invoked directly', async () => {
+  state.preview = undefined;
+  await openWithAllVillas();
+  expect(button('Checking villas')?.disabled).toBe(true);
+  await act(async () => document.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+  expect(state.add).not.toHaveBeenCalled();
 });

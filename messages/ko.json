@@ -738,6 +738,7 @@
     "ask": "이 서비스 문의",
     "minutes": "분",
     "fromPrice": "{price}부터",
+    "defaultDuration": "기본: {duration}",
     "chooseDuration": "시간 선택",
     "next": "다음 서비스",
     "first": "첫 페이지로",

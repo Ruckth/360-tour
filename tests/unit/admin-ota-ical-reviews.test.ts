@@ -136,6 +136,7 @@ describe("OTA row edit focus & form target heading (M37)", () => {
           propertyId: "prop-1",
           platform: "agoda",
           nightlyRate: 499000,
+          urlChange: { kind: "preserve" },
         },
       ],
     ]);

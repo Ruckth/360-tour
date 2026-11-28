@@ -150,6 +150,31 @@ describe('appointment changes', () => {
 		expect(who('13:45')).toEqual([maliId]); // Nok is booked 13:30–14:45
 	});
 
+	it('resolves a linked appointment by ID after its date changes and requires operations access', async () => {
+		const { t, admin, book, nokId } = await setup();
+		const id = await book('09:00');
+		const next = addDays(date, 1);
+		await admin.mutation(api.services.commands.rescheduleAppointment.rescheduleAppointment, {
+			appointmentId: id, expectedRevision: 0, start: at('10:00', next), staffId: nokId
+		});
+		const resolve = api.services.admin.resolveCalendarAppointment;
+		expect(await admin.query(resolve, { appointmentId: id })).toEqual({ id, start: at('10:00', next), staffId: nokId });
+		expect(await admin.query(resolve, { appointmentId: 'invalid' })).toBeNull();
+		await expect(t.query(resolve, { appointmentId: id })).rejects.toThrow();
+	});
+
+	it('rechecks turnaround occupancy when a booking arrives after preview', async () => {
+		const { admin, book, get } = await setup();
+		const id = await book('09:00');
+		const preview = () => admin.query(api.services.admin.previewAppointmentTurnaround, { appointmentId: id, turnaroundMin: 45 });
+		expect(await preview()).toEqual({ problem: null, blocker: null, maxMin: null });
+		await book('10:30');
+		await expect(admin.mutation(api.services.commands.updateAppointmentTurnaround.updateAppointmentTurnaround, {
+			appointmentId: id, expectedRevision: 0, turnaroundMin: 45
+		})).rejects.toThrow("Mali isn't free");
+		expect(await get(id)).toMatchObject({ blockedUntil: at('10:15') });
+	});
+
 	it('changes one appointment turnaround with conflict checks, and later moves keep it', async () => {
 		const { admin, serviceId, book, get, history } = await setup();
 		const id = await book('09:00');

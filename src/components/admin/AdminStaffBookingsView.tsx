@@ -208,7 +208,7 @@ function StaffCalendar() {
   const branchId = useAdminBranch().current?.id;
   // A deep link (?date=&staff=&appointment=) opens that day, shows that person and the appointment once on arrival.
   const searchParams = useSearchParams();
-  const [link] = useState(() => parseStaffCalendarLink(searchParams));
+  const link = parseStaffCalendarLink(searchParams);
   const [range, setRange] = useState(() => link.date ? { from: resortMidnight(link.date), to: resortMidnight(link.date) + DAY_MS } : todayRange());
   const [search, setSearch] = useState("");
   // This device remembers the view and filters (rule 5); the date always starts today.
@@ -216,7 +216,7 @@ function StaffCalendar() {
   const phone = useIsMobile(640);
   const view: CalendarView = (STAFF_VIEWS as readonly string[]).includes(storedView) ? (storedView as CalendarView) : phone ? "agenda" : "resource";
   const [date, setDate] = useState(() => (link.date ? new Date(resortMidnight(link.date)) : new Date()));
-  const [hiddenStaff, setHiddenStaff] = useStoredSet(branchId ? `admin.staff.hiddenStaff:${branchId}` : "admin.staff.hiddenStaff");
+  const [savedHiddenStaff, setHiddenStaff] = useStoredSet(branchId ? `admin.staff.hiddenStaff:${branchId}` : "admin.staff.hiddenStaff");
   const [hiddenServices, setHiddenServices] = useStoredSet(branchId ? `admin.staff.hiddenServices:${branchId}` : "admin.staff.hiddenServices");
   const [hiddenStatuses, setHiddenStatuses] = useStoredSet("admin.staff.hiddenStatuses");
   // Cancelled appointments are kept but stay out of the working grid unless asked for.
@@ -224,23 +224,42 @@ function StaffCalendar() {
   const showCancelled = storedCancelled === "yes";
   const setShowCancelled = (next: boolean) => setStoredCancelled(next ? "yes" : "no");
   const [proposal, setProposal] = useState<Proposal | null>(null);
-  const [selectedId, setSelectedId] = useState<Id<"appointments"> | null>((link.appointmentId as Id<"appointments"> | undefined) ?? null);
+  const [selectedId, setSelectedId] = useState<Id<"appointments"> | null>(null);
   const [allDatesQuery, setAllDatesQuery] = useState<string | null>(null);
   const [offShift, setOffShift] = useState<{ staffId: Id<"staff">; start: number; end: number } | null>(null);
-  const linkedStaffShown = useRef(false);
-  useEffect(() => {
-    if (linkedStaffShown.current || !link.staffId) return;
-    linkedStaffShown.current = true;
-    if (hiddenStaff.has(link.staffId)) {
-      const next = new Set(hiddenStaff);
-      next.delete(link.staffId);
-      setHiddenStaff(next);
-    }
-  }, [link.staffId, hiddenStaff, setHiddenStaff]);
   const [draft, setDraft] = useState<AppointmentDraft | null>(null);
   const [editingTimeOff, setEditingTimeOff] = useState<Doc<"staffTimeOff"> | null>(null);
   const [error, setError] = useState("");
   const now = useNow();
+
+  const [dismissedLink, setDismissedLink] = useState<string | undefined>();
+  const linked = useQuery(api.services.admin.resolveCalendarAppointment,
+    link.appointmentId && link.appointmentId !== dismissedLink ? { appointmentId: link.appointmentId } : "skip");
+  const linkedStaffId = linked?.staffId ?? link.staffId;
+  const hiddenStaff = useMemo(() => {
+    const visible = new Set(savedHiddenStaff);
+    if (linkedStaffId) visible.delete(linkedStaffId);
+    return visible;
+  }, [savedHiddenStaff, linkedStaffId]);
+  const targetDay = linked ? resortIsoDate(linked.start) : link.date;
+  const linkKey = searchParams.toString();
+  const lastLink = useRef(linkKey);
+  const appliedDay = useRef(link.date);
+  useEffect(() => {
+    if (lastLink.current !== linkKey) {
+      lastLink.current = linkKey;
+      appliedDay.current = undefined;
+      setDismissedLink(undefined);
+      setEditingTimeOff(null);
+      setSelectedId(null);
+    }
+    if (targetDay && appliedDay.current !== targetDay) {
+      appliedDay.current = targetDay;
+      const from = resortMidnight(targetDay);
+      setDate(new Date(from));
+      setRange({ from, to: from + DAY_MS });
+    }
+  }, [linkKey, targetDay]);
 
   const data = useQuery(api.services.admin.listSchedule, range);
 
@@ -505,7 +524,7 @@ function StaffCalendar() {
     setProposal(null);
   }
 
-  const selected = data?.appointments.find((a) => a._id === selectedId) ?? null;
+  const selected = data?.appointments.find((a) => a._id === (selectedId ?? linked?.id)) ?? null;
   const filterCount = hiddenServices.size + hiddenStatuses.size;
   const proposedAppointment = proposal && proposal.kind !== "break"
     ? proposal.appointment
@@ -623,7 +642,7 @@ function StaffCalendar() {
                 {
                   title: "Staff",
                   items: (data?.staff ?? []).map((s) => ({ id: s._id, label: `${s.name} · ${allCountByStaff.get(s._id) ?? 0}`, detail: s.role })),
-                  hidden: hiddenStaff,
+                  hidden: savedHiddenStaff,
                   onChange: setHiddenStaff,
                 },
               ]}
@@ -714,6 +733,7 @@ function StaffCalendar() {
         </div>
       </Card>
 
+      {linked === null ? <p role="alert" className="text-sm text-destructive">This appointment is unavailable.</p> : null}
       <AppointmentSheet
         key={selected?._id ?? "closed"}
         appointment={selected}
@@ -722,10 +742,11 @@ function StaffCalendar() {
         serviceById={serviceById}
         onBookAgain={(appointment) => {
           if (activeServices.length === 0) return;
+          setDismissedLink(link.appointmentId);
           setSelectedId(null);
           setDraft({ date: resortIsoDate(Math.max(appointment.start, Date.now())), staffId: appointment.staffId, rebook: appointment });
         }}
-        onClose={() => setSelectedId(null)}
+        onClose={() => { setDismissedLink(link.appointmentId); setSelectedId(null); }}
       />
       {proposal?.kind === "reschedule" && proposedAppointment ? (
         <RescheduleDialog

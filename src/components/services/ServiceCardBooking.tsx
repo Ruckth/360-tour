@@ -17,13 +17,15 @@ type CardService = { slug: string; name: string; durationMin: number; price: num
  */
 export function ServiceCardBooking({ service, locale, t }: { service: CardService; locale: Locale; t: PublicMessages["ServiceCatalog"] }) {
   const options = serviceOptions(service);
-  const [durationMin, setDurationMin] = useState(() => serviceOption(service).durationMin);
+  const defaultDuration = serviceOption(service).durationMin;
+  const [durationMin, setDurationMin] = useState(defaultDuration);
   const chosen = serviceOption(service, durationMin);
   const money = (amount: number) =>
     `${currencyPrefix(service.currency)}${satangToBaht(amount).toLocaleString(locale, { maximumFractionDigits: 2 })}`;
   const multiple = options.length > 1;
   return (
     <>
+      {multiple ? <p className="text-sm">{t.defaultDuration.replace("{duration}", `${defaultDuration} ${t.minutes}`)}</p> : null}
       {multiple ? (
         <DurationChoice
           legend={t.chooseDuration}
