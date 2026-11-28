@@ -1,7 +1,8 @@
 "use client";
 
 import { api } from "convex/_generated/api";
-import { useQuery } from "convex/react";
+import type { FunctionReturnType } from "convex/server";
+import { useQueries } from "convex/react";
 import { useAdminNav } from "./staff-access";
 
 export type WaitingBadge = { text: string; label: string };
@@ -19,6 +20,9 @@ export function waitingBadge(waiting: number | null | undefined): WaitingBadge |
  */
 export function useWaitingChatsBadge(): WaitingBadge | null {
   const canOpenChats = useAdminNav().some((item) => item.href === "/admin/chats");
-  const queue = useQuery(api.messaging.adminChat.queueCounts, canOpenChats ? {} : "skip");
-  return waitingBadge(queue?.waiting);
+  const query = api.messaging.adminChat.queueCounts;
+  const { queue } = useQueries(canOpenChats ? { queue: { query, args: {} } } : {}) as {
+    queue?: FunctionReturnType<typeof query> | Error;
+  };
+  return queue instanceof Error ? null : waitingBadge(queue?.waiting);
 }

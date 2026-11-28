@@ -6,10 +6,11 @@ import { getFunctionName } from "convex/server";
 
 const mocks = vi.hoisted(() => ({ result: undefined as unknown, args: [] as unknown[] }));
 vi.mock("convex/react", () => ({
-  useQuery: (reference: Parameters<typeof getFunctionName>[0], args: unknown) => {
-    expect(getFunctionName(reference)).toBe("messaging/adminChat:queueCounts");
-    mocks.args.push(args);
-    return args === "skip" ? undefined : mocks.result;
+  useQueries: (requests: Record<string, { query: Parameters<typeof getFunctionName>[0] }>) => {
+    mocks.args.push(Object.keys(requests));
+    if (!requests.queue) return {};
+    expect(getFunctionName(requests.queue.query)).toBe("messaging/adminChat:queueCounts");
+    return { queue: mocks.result };
   },
 }));
 vi.mock("@/platform/navigation", () => ({ usePathname: () => "/admin/hotel" }));
@@ -55,16 +56,23 @@ describe("Needs you badge in navigation (D02)", () => {
     expect(chatsLink()?.querySelector('[data-testid="nav-waiting-badge"]')).toBeNull();
   });
 
+  it("keeps the Chats link available when the badge subscription fails", async () => {
+    mocks.result = new Error("Queue unavailable");
+    await act(async () => root.render(createElement(AdminTabBar)));
+    expect(chatsLink()).not.toBeNull();
+    expect(chatsLink()?.querySelector('[data-testid="nav-waiting-badge"]')).toBeNull();
+  });
+
   it("skips the waiting count for an operations manager outside the resort", async () => {
     await act(async () => root.render(createElement(StaffAccessProvider, { access: staffAccessFor("manager", undefined, [PHUKET]) }, createElement(AdminTabBar))));
     expect(chatsLink()).toBeNull();
-    expect(mocks.args).toContain("skip");
-    expect(mocks.args.every((args) => args === "skip")).toBe(true);
+    expect(mocks.args).toContainEqual([]);
+    expect(mocks.args.flat()).toEqual([]);
   });
 
   it("never asks for the count for a person without Chats", async () => {
     await act(async () => root.render(createElement(StaffAccessProvider, { access: staffAccessFor("cashier") }, createElement(AdminTabBar))));
     expect(chatsLink()).toBeNull();
-    expect(mocks.args.every((args) => args === "skip")).toBe(true);
+    expect(mocks.args.flat()).toEqual([]);
   });
 });
