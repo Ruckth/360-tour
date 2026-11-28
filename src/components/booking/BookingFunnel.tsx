@@ -58,7 +58,7 @@ import { arrivalCoupon, captureForBooking } from "@/lib/marketing/capture";
 import { finishGuestPerformanceClock, startGuestPerformanceClock } from "@/lib/marketing/analytics";
 
 const BookingDatePicker = dynamic(
-  () => import("@/components/booking/BookingDatePicker").then((mod) => mod.BookingDatePicker),
+  () => import("@/components/booking/LazyBookingDatePicker"),
   {
     ssr: false,
     loading: () => <BookingDatePickerSkeleton />,

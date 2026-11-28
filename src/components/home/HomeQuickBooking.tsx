@@ -13,7 +13,7 @@ import { finishGuestPerformanceClock, startGuestPerformanceClock } from "@/lib/m
 import { HomeSolidBookButton } from "@/components/home/HomeSolidBookButton";
 
 const BookingRangePicker = dynamic(
-  () => import("@/components/booking/BookingDatePicker").then((mod) => mod.BookingRangePicker),
+  () => import("@/components/booking/LazyBookingRangePicker"),
   {
     ssr: false,
     loading: () => <QuickBookingDateSkeleton />,
