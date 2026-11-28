@@ -760,7 +760,7 @@ describe("Desk attendance", () => {
         await ctx.db.insert("bookings", { ...fields, checkIn: isoInDays(-5), checkOut: isoInDays(-3), guestName: `Overdue ${i}`, stayStatus: "checked_in" });
       }
     });
-    const result = await admin.query(api.bookings.admin.listForAdmin, { from: isoInDays(-1), to: isoInDays(1), bookingsOnly: true });
+    const result = await admin.query(api.bookings.admin.listForAdmin, { from: isoInDays(-1), to: isoInDays(1), bookingsOnly: true, includeRecordedStays: true });
     expect(result.complete).toBe(false);
     expect(result.bookings).toHaveLength(21);
     expect(result.bookings).toEqual(expect.arrayContaining([expect.objectContaining({ _id: bookingId })]));

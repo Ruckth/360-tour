@@ -37,7 +37,7 @@ export function TodayStrip({ villaName, onOpen }: { villaName: (id: string) => s
   const today = serverTodayIso();
   // Stays touching today: from yesterday so a check-out today is included.
   const data = useQuery(api.bookings.admin.listForAdmin, {
-    from: addDaysIso(today, -1), to: addDaysIso(today, 1), bookingsOnly: true,
+    from: addDaysIso(today, -1), to: addDaysIso(today, 1), bookingsOnly: true, includeRecordedStays: true,
   });
   const [open, setOpen] = useState<TodayGroup | null>(null);
   const bookings = data?.bookings;

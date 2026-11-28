@@ -51,7 +51,7 @@ export const listCalendarProperties = adminQuery({
 export const listForAdmin = adminQuery({
 	args: {
 		from: v.string(), to: v.string(), propertyId: v.optional(v.id('properties')),
-		bookingsOnly: v.optional(v.boolean())
+		bookingsOnly: v.optional(v.boolean()), includeRecordedStays: v.optional(v.boolean())
 	},
 	handler: async (ctx, args) => {
 		assertValidIsoDate(args.from, 'From date');
@@ -85,6 +85,7 @@ export const listForAdmin = adminQuery({
 			bookings.push(...overlap.bookings);
 			complete &&= overlap.complete;
 			if (args.bookingsOnly) {
+				if (!args.includeRecordedStays) continue;
 				// Include recorded in-house guests outside the scheduled date window.
 				const overdue = ctx.db.query('bookings').withIndex('by_property_stayStatus_checkOut',
 					q => q.eq('propertyId', property._id).eq('stayStatus', 'checked_in').lte('checkOut', args.from));

@@ -130,8 +130,8 @@ export async function staffAccess(ctx: QueryCtx | MutationCtx | ActionCtx): Prom
 }
 
 /** Legacy resort records are owned by the primary branch. */
-export async function canAccessResortDesk(ctx: QueryCtx, capability: 'chats' | 'bookings') {
-  const actor = await staffAccess(ctx);
+export async function canAccessResortDesk(ctx: QueryCtx & { operationsAccess?: StaffAccess }, capability: 'chats' | 'bookings') {
+  const actor = ctx.operationsAccess ?? await staffAccess(ctx);
   if (!actor.capabilities[capability]) return false;
   if (actor.companyScope) return true;
   const branch = await readBranchByKey(ctx, PRIMARY_BRANCH.key);
