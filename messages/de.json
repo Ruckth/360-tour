@@ -194,7 +194,7 @@
     "emailExample": "maya@example.com",
     "emailError": "Geben Sie eine gültige E-Mail-Adresse ein.",
     "phoneExample": "+66 81 234 5678",
-    "phoneError": "Geben Sie eine Telefon- oder WhatsApp-Nummer mit mindestens 6 Ziffern ein.",
+    "phoneError": "Geben Sie eine gültige Telefon- oder WhatsApp-Nummer für das gewählte Land ein oder fügen Sie die Ländervorwahl mit + hinzu.",
     "reviewPay": "Prüfen und bezahlen",
     "livePaymentNote": "Ihre Buchung wird vor der Zahlung noch einmal geprüft.",
     "demoPaymentNote": "Die Demo-Zahlung erstellt keine echte Buchung.",
@@ -249,7 +249,9 @@
     "calendarKey": "Kalenderlegende",
     "legendAvailable": "Verfügbar",
     "legendBooked": "Belegt",
-    "legendNotSelectable": "Vergangen oder außerhalb der Aufenthaltsregeln"
+    "legendNotSelectable": "Vergangen oder außerhalb der Aufenthaltsregeln",
+    "editGuestDetails": "Gästedaten bearbeiten",
+    "phoneHint": "Wählen Sie Ihr Land oder beginnen Sie mit + und der Ländervorwahl."
   },
   "Coupon": {
     "haveCode": "Haben Sie einen Code?",

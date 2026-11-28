@@ -1,4 +1,4 @@
-import { parsePhoneNumberFromString } from "libphonenumber-js/min";
+import { parsePhoneNumberFromString, type CountryCode } from "libphonenumber-js/min";
 
 /** E.164 for recognizable contacts; undefined for ambiguous stored text the host must check. */
 export function normalizeGuestPhone(value: string): string | undefined {
@@ -26,4 +26,19 @@ export function customerPhoneError(value: string | undefined): string | undefine
   const international = /^[1-9]\d{9,14}$/.test(compact) ? parsePhoneNumberFromString(`+${compact}`) : undefined;
   if (normalizeGuestPhone(compact) || international?.isPossible()) return undefined;
   return "Enter a valid phone number. Include the country code for numbers outside Thailand.";
+}
+
+/**
+ * Booking guest input. A leading `+` or `00` is parsed on its own, independent of the country the
+ * guest picked; national digits use that country. Only a valid number yields E.164 (the stored
+ * contract). `country` is what the digits themselves identify, never inferred from a shared calling
+ * code alone (`+1` stays ambiguous until the number names its region).
+ */
+export function parseGuestPhoneInput(text: string, country: CountryCode): { e164?: string; country?: CountryCode } {
+  const trimmed = text.trim();
+  if (!trimmed || !/^\+?[\d\s().-]+$/.test(trimmed)) return {};
+  const explicit = trimmed.startsWith("+") || trimmed.startsWith("00");
+  const parsed = parsePhoneNumberFromString(explicit ? `+${trimmed.replace(/^(\+|00)/, "")}` : trimmed, explicit ? undefined : country);
+  if (!parsed || parsed.ext) return {};
+  return parsed.isValid() ? { e164: parsed.number, country: parsed.country } : { country: parsed.country };
 }

@@ -194,7 +194,7 @@
     "emailExample": "maya@example.com",
     "emailError": "有効なメールアドレスを入力してください。",
     "phoneExample": "+66 81 234 5678",
-    "phoneError": "6桁以上の電話番号またはWhatsApp番号を入力してください。",
+    "phoneError": "選択した国の有効な電話番号またはWhatsApp番号を入力するか、+と国番号を付けてください。",
     "reviewPay": "確認して支払い",
     "livePaymentNote": "支払い前に予約内容をもう一度確認します。",
     "demoPaymentNote": "デモ決済では実際の予約は作成されません。",
@@ -249,7 +249,9 @@
     "calendarKey": "カレンダーの凡例",
     "legendAvailable": "空室あり",
     "legendBooked": "予約済み",
-    "legendNotSelectable": "過去の日付または宿泊条件外"
+    "legendNotSelectable": "過去の日付または宿泊条件外",
+    "editGuestDetails": "ゲスト情報を編集",
+    "phoneHint": "国を選ぶか、+と国番号から入力してください。"
   },
   "Coupon": {
     "haveCode": "コードをお持ちですか？",

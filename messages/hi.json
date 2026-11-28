@@ -194,7 +194,7 @@
     "emailExample": "maya@example.com",
     "emailError": "एक मान्य ईमेल पता दर्ज करें।",
     "phoneExample": "+66 81 234 5678",
-    "phoneError": "कम से कम 6 अंकों वाला फोन या WhatsApp नंबर दर्ज करें।",
+    "phoneError": "चुने गए देश के लिए मान्य फ़ोन या WhatsApp नंबर दर्ज करें, या + के साथ देश कोड जोड़ें।",
     "reviewPay": "समीक्षा और भुगतान",
     "livePaymentNote": "भुगतान से पहले आपकी बुकिंग एक बार फिर जाँची जाएगी।",
     "demoPaymentNote": "डेमो भुगतान वास्तविक बुकिंग नहीं बनाएगा।",
@@ -249,7 +249,9 @@
     "calendarKey": "कैलेंडर संकेत",
     "legendAvailable": "उपलब्ध",
     "legendBooked": "बुक है",
-    "legendNotSelectable": "बीती तारीख या ठहराव नियमों से बाहर"
+    "legendNotSelectable": "बीती तारीख या ठहराव नियमों से बाहर",
+    "editGuestDetails": "मेहमान का विवरण बदलें",
+    "phoneHint": "अपना देश चुनें, या + और देश कोड से शुरू करें।"
   },
   "Coupon": {
     "haveCode": "क्या आपके पास कोड है?",

@@ -154,3 +154,46 @@ test("G28 the date picker shows the stay rule and a three-entry key at phone wid
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("booking-check-out")).toBeFocused();
 });
+
+test("G26 + G27 international phones keep their prefix; Review shows contact and edits in place", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/booking?checkin=${isoDaysFromNow(48)}&nights=2&adults=2&children=0&unit=garden-suite`);
+  await page.getByRole("button", { name: en.Booking.continue, exact: true }).click();
+  await page.getByLabel(en.Booking.fullName).fill("Test Guest");
+  await page.getByLabel(en.Booking.email).fill("guest@example.com");
+  const phone = page.getByLabel(en.Booking.phone);
+  const country = page.getByTestId("booking-phone-country");
+  const next = page.getByRole("button", { name: en.Booking.continue, exact: true });
+
+  await phone.pressSequentially("+91 98765 43210");
+  await expect(phone).toHaveValue("+91 98765 43210");
+  await expect(country).toHaveText("IN +91");
+  await expect(next).toBeEnabled();
+
+  await phone.fill("");
+  await phone.pressSequentially("+39 347 123 4567");
+  await expect(phone).toHaveValue("+39 347 123 4567");
+  await expect(country).toHaveText("IT +39");
+
+  await phone.fill("19876543210");
+  await phone.blur();
+  await expect(phone).toHaveValue("19876543210");
+  await expect(page.getByText(en.Booking.phoneError)).toBeVisible();
+  await expect(next).toBeDisabled();
+
+  await phone.fill("+39 06 1234 5678");
+  await next.click();
+  await expect(page.getByTestId("booking-review-name")).toHaveText("Test Guest");
+  await expect(page.getByTestId("booking-review-email")).toHaveText("guest@example.com");
+  await expect(page.getByTestId("booking-review-phone")).toHaveText("+39 06 1234 5678");
+  await expect(page).not.toHaveURL(/guest%40example|Test%20Guest|390612345678/);
+
+  await page.getByRole("button", { name: en.Booking.editGuestDetails }).click();
+  await expect(page.getByRole("button", { name: en.Booking.guestDetails, exact: true })).toHaveAttribute("aria-current", "step");
+  await expect(phone).toHaveValue("+39 06 1234 5678");
+  await page.getByLabel(en.Booking.email).fill("guest2@example.com");
+  await next.click();
+  await expect(page.getByTestId("booking-review-email")).toHaveText("guest2@example.com");
+  await expect(page.getByTestId("booking-review-dates")).toContainText("2 nights");
+  await expect(page.getByRole("button", { name: en.Booking.continueToPay })).toHaveCount(1);
+});

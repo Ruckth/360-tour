@@ -29,6 +29,7 @@ import {
   type BookingProperty,
   type BookingStep,
 } from "@/lib/booking/booking";
+import { emptyGuestPhone, guestPhoneE164, type GuestPhoneDraft } from "@/lib/booking/guest-phone";
 import { addDaysIso, dateToIso, isDateInIsoList, nightsBetweenIso, rangeIntersectsDates } from '@/lib/booking/dates';
 import { resortTodayIso as todayIsoResort } from 'convex/shared/time';
 import { calendarMonths, monthOf, stayMonths } from "convex/shared/calendar";
@@ -148,7 +149,8 @@ function LiveBookingFunnel({
   const [children, setChildren] = useState(startingChildren);
   const [guestName, setGuestName] = useState("");
   const [guestEmail, setGuestEmail] = useState("");
-  const [guestPhone, setGuestPhone] = useState("");
+  const [guestPhone, setGuestPhone] = useState<GuestPhoneDraft>(emptyGuestPhone);
+  const guestPhoneValue = guestPhoneE164(guestPhone);
   const [visibleMonth, setVisibleMonth] = useState(() =>
     monthOf(derivedInitialCheckOut || initialCheckIn || todayIso),
   );
@@ -221,7 +223,7 @@ function LiveBookingFunnel({
   const couponNoteMessage = summaryNote(activeCouponCode, phase, couponCopy.problemText);
   const couponNote = couponNoteMessage ? couponCopy.text(couponNoteMessage) : null;
   const couponChecking = phase.kind === "checking";
-  const infoValid = isValidGuestInfo(guestName, guestEmail, guestPhone);
+  const infoValid = isValidGuestInfo(guestName, guestEmail, guestPhoneValue ?? "");
   const invalidRange = Boolean(checkIn && checkOut && nights <= 0);
   const selectedStepIndex = bookingSteps.findIndex((item) => item.key === step);
   const selectValid = Boolean(
@@ -380,7 +382,8 @@ function LiveBookingFunnel({
         propertySlug: property.slug,
         guestName: guestName.trim(),
         guestEmail: guestEmail.trim(),
-        guestPhone: guestPhone.trim(),
+        // Normalized E.164 only; the step gate keeps an invalid draft from reaching here.
+        guestPhone: guestPhoneValue ?? guestPhone.text.trim(),
         checkIn,
         checkOut,
         guests,
@@ -503,6 +506,8 @@ function LiveBookingFunnel({
               nights={nights}
               checkIn={checkIn}
               checkOut={checkOut}
+              contact={{ name: guestName.trim(), email: guestEmail.trim(), phone: guestPhoneValue ?? "" }}
+              onEditContact={() => setStep("info")}
               price={
                 <PriceLines
                   currency={property.currency}
