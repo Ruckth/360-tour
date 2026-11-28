@@ -244,7 +244,12 @@
     "reference": "참조: {reference}",
     "returnHome": "홈으로 돌아가기",
     "exploreMoreVillas": "더 많은 빌라 보기",
-    "stepCompleted": "완료:"
+    "stepCompleted": "완료:",
+    "minStayHint": "최소 숙박: {count}박",
+    "calendarKey": "달력 범례",
+    "legendAvailable": "예약 가능",
+    "legendBooked": "예약됨",
+    "legendNotSelectable": "지난 날짜 또는 숙박 규칙 밖"
   },
   "Coupon": {
     "haveCode": "코드가 있으신가요?",

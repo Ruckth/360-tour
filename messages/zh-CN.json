@@ -244,7 +244,12 @@
     "reference": "参考：{reference}",
     "returnHome": "返回首页",
     "exploreMoreVillas": "探索更多别墅",
-    "stepCompleted": "已完成："
+    "stepCompleted": "已完成：",
+    "minStayHint": "最少入住：{count} 晚",
+    "calendarKey": "日历图例",
+    "legendAvailable": "可预订",
+    "legendBooked": "已订满",
+    "legendNotSelectable": "已过日期或不符合入住规则"
   },
   "Coupon": {
     "haveCode": "有优惠码吗？",

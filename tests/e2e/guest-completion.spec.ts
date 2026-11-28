@@ -1,5 +1,7 @@
 import en from "../../messages/en.json" with { type: "json" };
 import th from "../../messages/th.json" with { type: "json" };
+import { api } from "../../convex/_generated/api";
+import { localBackend } from "./backend";
 import { expect, test } from "./fixtures";
 
 /**
@@ -132,4 +134,23 @@ test("G24 switching contact apps keeps each app's draft", async ({ page }) => {
   await expect(handle).toHaveValue("+66 81 234 5678");
   await pick("line");
   await expect(handle).toHaveValue("@auralis-guest");
+});
+
+test("G28 the date picker shows the stay rule and a three-entry key at phone width", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const { bookingRules } = await localBackend().query(api.settings.settings.publicProfile, {});
+  await page.goto(`/booking?checkin=${isoDaysFromNow(47)}&nights=2&unit=garden-suite`);
+  await page.getByTestId("booking-check-out").click();
+  const dialog = page.getByRole("dialog", { name: en.Booking.chooseDates });
+  const key = dialog.getByTestId("booking-calendar-key");
+  await expect(key.getByRole("listitem")).toHaveText([en.Booking.legendAvailable, en.Booking.legendBooked, en.Booking.legendNotSelectable]);
+  await expect(dialog).toHaveAttribute("aria-describedby", (await key.getAttribute("id"))!);
+  await expect(key.getByTestId("booking-min-stay")).toHaveCount(bookingRules.minNights > 1 ? 1 : 0);
+  const box = (await key.boundingBox())!;
+  expect(box.x).toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width).toBeLessThanOrEqual(390);
+  // The key adds no tab stops: Escape still closes the picker back to its trigger.
+  await expect(key.locator("button, a, [tabindex]")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("booking-check-out")).toBeFocused();
 });

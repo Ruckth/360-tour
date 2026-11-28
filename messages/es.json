@@ -244,7 +244,12 @@
     "reference": "Referencia: {reference}",
     "returnHome": "Volver al inicio",
     "exploreMoreVillas": "Explorar más villas",
-    "stepCompleted": "Completado:"
+    "stepCompleted": "Completado:",
+    "minStayHint": "Estancia mínima: {count} noches",
+    "calendarKey": "Leyenda del calendario",
+    "legendAvailable": "Disponible",
+    "legendBooked": "Reservado",
+    "legendNotSelectable": "Pasado o fuera de las reglas de estancia"
   },
   "Coupon": {
     "haveCode": "¿Tienes un código?",
