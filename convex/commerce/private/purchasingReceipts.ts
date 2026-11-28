@@ -16,7 +16,7 @@ import type { holdHandoff, returnOutcome } from '../purchasingTables';
 import {
   actorOf, adjustIncoming, correctionClosesRemainder, deliveryKey, expectRevision, fail, ISSUED_OPEN, lineAcceptedValue, lineDue, lotEvidence, newReference,
   orderSummary, purchasingAccess, quantity, readItem, readOrderLines, reason, receiptEntryCount, receiptLotCount, recordEvent, requireActiveItems,
-  refreshFullyOrdered, replacementCoverage, requireSupplier, seedLegacyLine, runOnce, shiftCommitment, supplierSnapshot, text, uniqueBy, unitCost, type Actor,
+  isLegacyLine, refreshFullyOrdered, replacementCoverage, requireSupplier, seedLegacyLine, runOnce, shiftCommitment, supplierSnapshot, text, uniqueBy, unitCost, type Actor,
 } from './purchasingCore';
 import { readStockAccess, type StockPermission } from './stockAccess';
 import { allocationCounts, stockAvailability, type Allocation } from './stockAvailability';
@@ -361,10 +361,20 @@ export async function receiveOrder(ctx: MutationCtx, staff: StaffActor, args: Re
       }
     }
     // Pre-feature lines get their accepted value and rejections from receipt evidence before this receipt adds to them.
-    for (const plan of plans) {
+    // New lines are written with both counters (0). For legacy-shaped lines, one indexed check proves the whole order
+    // has no prior receipt (accepted, rejected-only or held): then every line with nothing accepted is exactly zero and
+    // needs no per-line scan. Any prior receipt falls back to the exact per-line reconstruction.
+    const legacyPlans = plans.filter(plan => {
       const line = orderLines.get(plan.orderLineId!)!;
-      if ((plan.accepted > 0 || plan.rejected > 0) && (line.acceptedValue === undefined || line.rejected === undefined)) {
-        orderLines.set(line._id, await seedLegacyLine(ctx, line));
+      return (plan.accepted > 0 || plan.rejected > 0) && isLegacyLine(line);
+    });
+    if (legacyPlans.length) {
+      const priorReceipt = await stockRead(ctx, () => ctx.db.query('supplierReceipts').withIndex('by_orderId', q => q.eq('orderId', order._id)).first());
+      for (const plan of legacyPlans) {
+        const line = orderLines.get(plan.orderLineId!)!;
+        orderLines.set(line._id, !priorReceipt && line.accepted === 0 && line.corrected === 0
+          ? { ...line, acceptedValue: line.acceptedValue ?? 0, rejected: line.rejected ?? 0 }
+          : await seedLegacyLine(ctx, line));
       }
     }
     const held = await planHeld(ctx, args.held);

@@ -113,17 +113,20 @@ it('supplies branch reorder points to both request lookups without changing stoc
     .rejects.toMatchObject({ data: { code: 'STOCK_FORBIDDEN' } });
   await expect(manager.mutation(stock.setReorderPoint, { ...args, quantity: 1.5 })).rejects.toThrow();
   await manager.mutation(stock.setReorderPoint, args);
-  const read = () => cashier.query(stock.selectedBalances, { branchId, variantIds: [variantId] });
+  const ordinary = await cashier.query(stock.listBalances, { branchId, search: 'robe', paginationOpts });
+  expect(ordinary.page[0]).toMatchObject({ variantId, onHand: 0, onOrder: 0 });
+  expect(ordinary.page[0]).not.toHaveProperty('reorderPoint');
+  const read = () => cashier.query(stock.selectedBalances, { branchId, variantIds: [variantId], includeReorderPoint: true });
   await expect(read()).resolves.toMatchObject([{
     variantId, reorderPoint: 12, reorderPointRevision: 1, onHand: 0, onOrder: 0, hasBalance: false, price: 74_900,
   }]);
-  await expect(cashier.query(stock.listBalances, { branchId, search: 'robe', paginationOpts }))
+  await expect(cashier.query(stock.listBalances, { branchId, search: 'robe', paginationOpts, includeReorderPoint: true }))
     .resolves.toMatchObject({ page: [{ variantId, reorderPoint: 12 }] });
   await owner.mutation(stock.setGrant, {
     branchId: otherBranchId, staffGrantId: managerId, roles: { ...emptyStockRoles, lead: true }, expectedRevision: 0,
   });
   await manager.mutation(stock.setReorderPoint, { ...args, branchId: otherBranchId, quantity: 5 });
-  await expect(manager.query(stock.selectedBalances, { branchId: otherBranchId, variantIds: [variantId] }))
+  await expect(manager.query(stock.selectedBalances, { branchId: otherBranchId, variantIds: [variantId], includeReorderPoint: true }))
     .resolves.toMatchObject([{ variantId, reorderPoint: 5 }]);
   await expect(manager.mutation(stock.setReorderPoint, { ...args, quantity: 15 }))
     .rejects.toMatchObject({ data: { code: 'STALE_REORDER_POINT' } });
@@ -531,4 +534,18 @@ it('relocates tracked lots independently and protects their assigned quantities 
   const { movementId } = await t.run(ctx => writeStockMovement(ctx, sale));
   await expect(t.run(ctx => ctx.db.query('stockLotMovements').withIndex('by_movementId', q => q.eq('movementId', movementId)).unique()))
     .resolves.toMatchObject({ allocations: [{ lotId: late._id, quantity: 1 }] });
+
+  const receipt = await t.run(ctx => writeStockMovement(ctx, {
+    ...scope, sourceKey: 'bin-tracked-receipt', kind: 'direct_receipt', delta: 2, actor: 'seed',
+    lotReceipt: { code: early.code, expiresAt: early.expiresAt },
+  }));
+  await expect(manager.query(stock.binBalances, scope)).resolves.toMatchObject({
+    onHand: 7, unassigned: 3, bins: [{ id: a, quantity: 1 }, { id: b, quantity: 3 }],
+    lots: [
+      { id: early._id, code: 'A', unassigned: 2, bins: [{ id: a, quantity: 1 }, { id: b, quantity: 3 }] },
+      { id: late._id, code: 'B', unassigned: 1, bins: [] },
+    ],
+  });
+  await expect(t.run(ctx => ctx.db.query('stockLotMovements').withIndex('by_movementId', q => q.eq('movementId', receipt.movementId)).unique()))
+    .resolves.toMatchObject({ allocations: [{ lotId: early._id, quantity: 2 }] });
 });

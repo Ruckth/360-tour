@@ -229,7 +229,8 @@ export async function prepareStockExpansionMovement(ctx: MutationCtx, args: Stoc
       return undefined;
     }
   }
-  const availability = await stockAvailability(ctx, args, before, now, tracking, knownBins);
+  // Stock increases land in Unassigned and leave all named positions and holds intact.
+  const availability = await stockAvailability(ctx, args, before, now, tracking, args.delta > 0 ? [] : knownBins);
   const reservation = args.reservationId
     ? availability.reservations.find(row => row._id === args.reservationId)
     : undefined;

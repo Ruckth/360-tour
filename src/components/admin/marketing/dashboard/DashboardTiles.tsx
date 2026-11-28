@@ -44,7 +44,7 @@ function RoasTile({ roas, eligible, campaignsHref, onAddSpend }: { roas: Roas; e
   const { capabilities } = useMarketingAccess();
   return (
     <Stat className="gap-1 px-4 py-3 sm:p-4" label="Return on ad spend" value={roas.kind === "value" ? formatRoas(roas.value) : "—"} info={info} hint={roas.kind === "all_properties_only" ? "All properties only" : roas.kind === "missing" ? "No spend entered" : `Net from ${pluralize(roas.campaigns, "campaign")} with spend${roas.missing.length ? `; ${pluralize(roas.missing.length, "sales campaign")} without spend excluded` : ""}`}>
-      {addable.length ? <div className="pt-1"><AddSpendLink onClick={() => onAddSpend(addable)} /></div> : roas.kind === "missing" && capabilities.spend ? <p className="text-xs">Add spend is available for active campaigns. <ButtonLink href={campaignsHref} variant="link" size="sm">Review campaigns</ButtonLink></p> : null}
+      {addable.length ? <div className="pt-1"><AddSpendLink onClick={() => onAddSpend(addable)} /></div> : roas.kind === "missing" && capabilities.spend ? <p className="text-xs">Add spend is available for active campaigns. <ButtonLink href={campaignsHref} variant="link" size="sm" className="pointer-coarse:min-h-11 pointer-coarse:min-w-11">Review campaigns</ButtonLink></p> : null}
     </Stat>
   );
 }

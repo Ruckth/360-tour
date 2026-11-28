@@ -87,14 +87,15 @@ export function useResolvedStockVariants(
     enabled?: boolean;
     knownRows?: readonly ResolvedBalanceRow[];
     includeRecountFallback?: boolean;
+    includeReorderPoint?: boolean;
   } = {},
 ) {
-  const { enabled = true, knownRows = NO_BALANCES, includeRecountFallback = false } = options;
+  const { enabled = true, knownRows = NO_BALANCES, includeRecountFallback = false, includeReorderPoint = false } = options;
   const known = useMemo(() => new Map(knownRows.map(row => [row.variantId, row])), [knownRows]);
   const lookup = useMemo(() => variantIds.filter(id => !known.has(id)), [known, variantIds]);
   const active = enabled && branchId !== null && variantIds.length > 0;
   const fetched = useQuery(api.commerce.stock.selectedBalances, active && lookup.length && branchId
-    ? { branchId, variantIds: lookup, includeRecount: includeRecountFallback }
+    ? { branchId, variantIds: lookup, includeRecount: includeRecountFallback, ...(includeReorderPoint ? { includeReorderPoint } : {}) }
     : "skip");
   return useMemo(() => {
     if (!active) return { items: [], missingIds: [], loading: false };

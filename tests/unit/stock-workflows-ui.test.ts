@@ -474,6 +474,9 @@ describe("Stock UI components and workflow regressions", () => {
     }))));
     const button = (label: string) => [...document.querySelectorAll("button")].find((b) => b.textContent === label);
     await act(async () => button("Add item")?.click());
+    expect(mockConvex.paginated).toHaveBeenCalledWith(getFunctionName(api.commerce.stock.listBalances), {
+      branchId, includeReorderPoint: true,
+    });
     for (const row of document.querySelectorAll<HTMLButtonElement>('button[aria-pressed="false"]')) {
       await act(async () => row.click());
     }
@@ -1054,6 +1057,9 @@ describe("Stock UI components and workflow regressions", () => {
     expect(mockNav.replace).toHaveBeenCalledWith("/admin/stock/purchasing?tab=requests&returnTo=%2Fadmin%2Fstock%2Fbalances");
     expect(document.body.textContent).toContain("Request stock · Koh Samui");
     expect(document.body.textContent).toContain("Spa Oil");
+    expect(mockConvex.query).toHaveBeenCalledWith(getFunctionName(api.commerce.stock.selectedBalances), expect.objectContaining({
+      branchId: "branch_1", variantIds: ["var_1"], includeReorderPoint: true,
+    }));
     expect(document.body.textContent).toContain(`Items (1/${STOCK_MAX_LINES})`);
     const quantity = document.querySelector<HTMLInputElement>("#pr-line-qty-var_1");
     expect(quantity?.value).toBe("4");

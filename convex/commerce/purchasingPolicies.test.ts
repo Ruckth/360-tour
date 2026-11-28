@@ -574,3 +574,23 @@ it('review v2: the cap compares exact receipt values on both sides for a pre-fea
   });
   expect((await ann.query(p.order, { orderId })).lines[0]).toMatchObject({ acceptedValue: 50_000, due: 6 });
 });
+
+it('bench fix: a first receipt on legacy-shaped lines needs no per-line scan; a rejected-only legacy line still reconstructs', async () => {
+  const { t, ann, ben, order, receive } = await setup();
+  // New lines are written with both counters.
+  const fresh = await order([{ quantity: 3, unitCost: 100 }]);
+  expect((await ann.query(p.order, { orderId: fresh.orderId })).lines[0]).toMatchObject({ acceptedValue: 0, rejected: 0 });
+  // Legacy-shaped line, no receipts yet: the first receipt values it from zero.
+  const first = await order([{ quantity: 4, unitCost: 250 }]);
+  let detail = await ann.query(p.order, { orderId: first.orderId });
+  await t.run(ctx => ctx.db.patch(detail.lines[0]._id, { acceptedValue: undefined, rejected: undefined }));
+  await receive(ben, first.orderId, 2);
+  expect((await ann.query(p.order, { orderId: first.orderId })).lines[0]).toMatchObject({ acceptedValue: 500, rejected: 0 });
+  // Legacy-shaped line whose earlier receipt rejected everything: the prior receipt forces the exact reconstruction.
+  const rejectedOnly = await order([{ quantity: 4, unitCost: 250 }]);
+  await receive(ben, rejectedOnly.orderId, 0, { rejected: 2, rejectReason: 'Broken', rejectReasonCode: 'damaged' });
+  detail = await ann.query(p.order, { orderId: rejectedOnly.orderId });
+  await t.run(ctx => ctx.db.patch(detail.lines[0]._id, { acceptedValue: undefined, rejected: undefined }));
+  await receive(ben, rejectedOnly.orderId, 1);
+  expect((await ann.query(p.order, { orderId: rejectedOnly.orderId })).lines[0]).toMatchObject({ acceptedValue: 250, rejected: 2 });
+});

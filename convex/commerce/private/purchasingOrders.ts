@@ -173,7 +173,7 @@ export async function saveOrderDraft(ctx: MutationCtx, staff: StaffActor, args: 
     for (const [sort, line] of args.lines.entries()) {
       const id = await ctx.db.insert('purchaseOrderLines', {
         orderId, branchId: args.branchId, variantId: line.variantId, item: reads[sort].item, requestLineId: line.requestLineId,
-        ordered: line.quantity, cancelled: 0, accepted: 0, corrected: 0, returned: 0, unitCost: line.unitCost,
+        ordered: line.quantity, cancelled: 0, accepted: 0, corrected: 0, returned: 0, rejected: 0, acceptedValue: 0, unitCost: line.unitCost,
         ...(line.priceTbc ? { priceTbc: true } : {}), open: false, sort,
       });
       lines.push((await ctx.db.get(id))!);
@@ -490,7 +490,7 @@ export function amendOrder(ctx: MutationCtx, staff: StaffActor, args: AmendArgs)
       await shiftCommitment(ctx, line.requestLineId, line.quantity);
       await ctx.db.insert('purchaseOrderLines', {
         orderId: order._id, branchId: order.branchId, variantId: line.variantId, item: reads[i].item, requestLineId: line.requestLineId,
-        ordered: line.quantity, cancelled: 0, accepted: 0, corrected: 0, returned: 0, unitCost: line.unitCost,
+        ordered: line.quantity, cancelled: 0, accepted: 0, corrected: 0, returned: 0, rejected: 0, acceptedValue: 0, unitCost: line.unitCost,
         ...(line.priceTbc ? { priceTbc: true } : {}), open: true, sort: sort++,
       });
       await adjustIncoming(ctx, order.branchId, line.variantId, line.quantity);

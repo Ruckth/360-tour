@@ -43,7 +43,7 @@ function SaleItem({ line, p, onOpenStay, orderHref }: { line: SaleLine; p: Prepa
         <ExternalLink aria-hidden className="size-3.5" />
       </Link>
     ) : (
-      <Link href={staffCalendarHref({ appointmentId: sale.id })} className="w-fit text-xs font-semibold underline">Open in Staff bookings</Link>
+      <Link href={staffCalendarHref({ appointmentId: sale.id })} className="inline-flex w-fit items-center text-xs font-semibold underline pointer-coarse:min-h-11 pointer-coarse:min-w-11">Open in Staff bookings</Link>
     );
   return (
     <li className="grid gap-2 py-3">
@@ -306,7 +306,7 @@ export function ExportDialog({
                 <tbody>{model.rows.slice(0, model.rows.length <= 4 ? 4 : 3).map((row, index) => <tr key={index}>{row.map((cell, column) => <td key={column} className="min-w-20 whitespace-pre-wrap border-b px-3 py-2">{cell}</td>)}</tr>)}</tbody>
               </table>
             </div>
-            <details className="text-xs text-muted-foreground"><summary>File metadata</summary><ul className="mt-2 grid gap-1">{model.metadata.map(([line]) => <li key={line}>{line}</li>)}</ul></details>
+            <details className="text-xs text-muted-foreground"><summary className="cursor-pointer pointer-coarse:min-h-11 pointer-coarse:content-center">File metadata</summary><ul className="mt-2 grid gap-1">{model.metadata.map(([line]) => <li key={line}>{line}</li>)}</ul></details>
           </> : null}
         </div>
         {stale || p.report.truncated ? <p role="status" className="text-sm text-amber-700 dark:text-amber-300">{stale ? "Refresh failed. This download uses the retained snapshot. " : ""}{p.report.truncated ? "The read limit was reached. The exported figures are partial." : ""}</p> : null}

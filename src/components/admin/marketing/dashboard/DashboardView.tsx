@@ -470,12 +470,12 @@ export function DashboardView({
     <div className={cn("mx-auto grid w-full min-w-0 max-w-7xl gap-4 px-4 py-4 sm:px-6", CHART_COLOR_VARS)}>
       <h1 className="text-xl font-semibold">Marketing dashboard</h1>
       {toolbar}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+      <section aria-label="Report scope" className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
         <p><strong>{formatRange(request.range.from, request.range.to)}</strong> · Bangkok · {request.basis === "cash" ? "Payments, refunds and coupon settlements dated in range" : "Sales made in range, with all their cash to date"}</p>
         <ViewOptions touch={touch} onTouch={setTouch} />
-        {p && !emptyRange && !emptyWithoutSetup ? <a href="#marketing-breakdown" onClick={(event) => { event.preventDefault(); document.getElementById("marketing-breakdown")?.focus(); }} className="underline underline-offset-2">Jump to breakdown</a> : null}
-      </div>
-      {propertyFilter !== "all" ? <p className="text-sm text-muted-foreground">Sales without this property are excluded. Tracked visits, booked rate and ROAS are available for all properties. <button type="button" className="underline" onClick={() => setProperty("all")}>Show all properties</button></p> : null}
+        {p && !emptyRange && !emptyWithoutSetup ? <a href="#marketing-breakdown" onClick={(event) => { event.preventDefault(); document.getElementById("marketing-breakdown")?.focus(); }} className="inline-flex items-center rounded underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:min-h-11 pointer-coarse:min-w-11">Jump to breakdown</a> : null}
+      </section>
+      {propertyFilter !== "all" ? <p className="text-sm text-muted-foreground">Sales without this property are excluded. Tracked visits, booked rate and ROAS are available for all properties. <button type="button" className="inline-flex items-center underline pointer-coarse:min-h-11 pointer-coarse:min-w-11" onClick={() => setProperty("all")}>Show all properties</button></p> : null}
       {context}
       <p role="status" className={drillNotice ? "text-xs text-muted-foreground" : "sr-only"}>{drillNotice}</p>
       {state.status === "ready" && state.refreshError ? (

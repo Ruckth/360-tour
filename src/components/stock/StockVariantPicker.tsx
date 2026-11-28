@@ -22,6 +22,7 @@ export function StockVariantPickerDialog({
   onOpenChange,
   branchId,
   selectedIds = [],
+  includeReorderPoint = false,
   maxLines = STOCK_MAX_LINES,
   title = "Select stock item",
   description = "Search the catalog by product name or SKU.",
@@ -33,6 +34,7 @@ export function StockVariantPickerDialog({
   branchId: Id<"branches">;
   maxLines?: number;
   selectedIds?: readonly string[];
+  includeReorderPoint?: boolean;
   title?: string;
   description?: string;
 } & (
@@ -56,7 +58,7 @@ export function StockVariantPickerDialog({
 
   const { results, status, loadMore } = usePaginatedQuery(
     api.commerce.stock.listBalances,
-    open ? { branchId, ...(debounced ? { search: debounced } : {}) } : "skip",
+    open ? { branchId, ...(debounced ? { search: debounced } : {}), ...(includeReorderPoint ? { includeReorderPoint } : {}) } : "skip",
     { initialNumItems: STOCK_PAGE_SIZE },
   );
 

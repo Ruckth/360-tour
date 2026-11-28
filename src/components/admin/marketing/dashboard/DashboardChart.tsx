@@ -53,6 +53,12 @@ export function DashboardChart({ p }: { p: Prepared }) {
   const dateBasis = !p.cash ? "by booking or sale date" : metric === "refunds" ? "by refund date" : metric === "net" ? "by payment and refund dates" : metric === "paid" ? "by first payment date" : "by payment date";
   const peak = totals.indexOf(Math.max(...totals));
 
+  function inspectBucket(index: number) {
+    setInspected(index);
+    setInspecting(true);
+    requestAnimationFrame(() => inspector.current?.focus());
+  }
+
   const table = (
     <table className="w-full min-w-[28rem] text-left text-sm">
       <caption className="sr-only">
@@ -168,18 +174,31 @@ export function DashboardChart({ p }: { p: Prepared }) {
                 {ticks.map((value) => (
                   <span key={value} className={cn("absolute inset-x-0 border-t", value === 0 ? "border-border" : "border-border/60")} style={{ bottom: `${((value + bottom) / scale) * 100}%` }} />
                 ))}
-                <div className="absolute inset-0 flex items-end gap-[2px] sm:gap-1">
+                <button
+                  type="button"
+                  aria-label="Inspect a date on the plot"
+                  onClick={(event) => {
+                    if (event.detail === 0) {
+                      inspectBucket(bucketIndex);
+                      return;
+                    }
+                    const { left, width } = event.currentTarget.getBoundingClientRect();
+                    const index = Math.floor((event.clientX - left) / width * data.buckets.length);
+                    inspectBucket(Math.max(0, Math.min(index, data.buckets.length - 1)));
+                  }}
+                  className="absolute inset-0 flex cursor-crosshair items-end rounded-md focus-visible:outline-2 focus-visible:outline-ring"
+                >
                   {data.buckets.map((b, i) => (
-                    <button type="button" key={b.from} tabIndex={-1} aria-label={`${b.long}, ${fmt(totals[i])}`} onClick={() => { setInspected(i); setInspecting(true); requestAnimationFrame(() => inspector.current?.focus()); }} className="relative h-full min-w-0 flex-1 hover:bg-muted/60 focus-visible:outline focus-visible:outline-ring">
-                      <span aria-hidden className="absolute inset-x-0 flex flex-col-reverse" style={{ bottom: `${bottom / scale * 100}%`, height: `${top / scale * 100}%` }}>
+                    <span aria-hidden key={b.from} title={`${b.long}, ${fmt(totals[i])}`} className="relative h-full min-w-0 flex-1 hover:bg-muted/60">
+                      <span aria-hidden className="absolute inset-x-px flex flex-col-reverse" style={{ bottom: `${bottom / scale * 100}%`, height: `${top / scale * 100}%` }}>
                         {visible.map((series) => <span key={series.key} style={{ height: `${top ? Math.max(0, b.values[series.key] ?? 0) / top * 100 : 0}%`, background: series.color }} />)}
                       </span>
-                      <span aria-hidden className="absolute inset-x-0 flex flex-col" style={{ top: `${top / scale * 100}%`, height: `${bottom / scale * 100}%` }}>
+                      <span aria-hidden className="absolute inset-x-px flex flex-col" style={{ top: `${top / scale * 100}%`, height: `${bottom / scale * 100}%` }}>
                         {visible.map((series) => <span key={series.key} style={{ height: `${bottom ? Math.max(0, -(b.values[series.key] ?? 0)) / bottom * 100 : 0}%`, background: series.color }} />)}
                       </span>
-                    </button>
+                    </span>
                   ))}
-                </div>
+                </button>
               </div>
             </div>
             <div aria-hidden className="absolute bottom-0 left-12 right-0 flex h-6 items-end gap-[2px] sm:gap-1">
@@ -204,14 +223,14 @@ export function DashboardChart({ p }: { p: Prepared }) {
                   const next = bucketIndex + (event.key === "ArrowDown" ? 1 : -1);
                   setInspected(Math.max(0, Math.min(next, data.buckets.length - 1)));
                 }}
-                className="rounded-md border border-input bg-background px-2 py-1.5"
+                className="rounded-md border border-input bg-background px-2 py-1.5 pointer-coarse:min-h-11"
               >
                 {data.buckets.map((entry) => <option key={entry.from} value={entry.from}>{entry.long}</option>)}
               </select>
             </label>
             <p role="status" className="flex flex-wrap gap-x-4 gap-y-1"><strong>Total {fmt(totals[bucketIndex])}</strong>{visible.filter((series) => bucket.values[series.key]).map((series) => <span key={series.key}>{series.label} {fmt(bucket.values[series.key])}</span>)}</p>
             <Button type="button" size="sm" variant="ghost" className="w-fit" onClick={() => { setInspecting(false); chart.current?.focus(); }}>Close date inspector</Button>
-            </> : <Button type="button" size="sm" variant="outline" className="w-fit" onClick={() => { setInspecting(true); requestAnimationFrame(() => inspector.current?.focus()); }}>Inspect dates</Button>}
+            </> : <Button type="button" size="sm" variant="outline" className="w-fit" onClick={() => inspectBucket(bucketIndex)}>Inspect dates</Button>}
           </div> : null}
           <div className="sr-only">{table}</div>
         </>

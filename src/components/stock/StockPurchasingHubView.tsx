@@ -162,6 +162,7 @@ export function StockPurchasingHubView() {
     loading: prefillLoading,
   } = useResolvedStockVariants(branch?.id ?? null, prefillIds, {
     enabled: Boolean(branch && access?.read && pendingAutoOpen && prefillIds.length > 0),
+    includeReorderPoint: pendingAutoOpen?.action === "request",
   });
 
   const rawVariant = tab === "requests" && reqFilterMode === "item" ? queue.requestVariantId
@@ -178,6 +179,7 @@ export function StockPurchasingHubView() {
   const filterVariantIds = filterVariantId ? [filterVariantId] : [];
   const { items: resolvedFilterVariants } = useResolvedStockVariants(branch?.id ?? null, filterVariantIds, {
     enabled: Boolean(access?.read),
+    includeReorderPoint: tab === "requests" && access?.lead === true,
   });
   const filterVariant = resolvedFilterVariants[0];
   const filterItemLabel = filterVariant ? `${filterVariant.productName} · ${filterVariant.label}`

@@ -105,13 +105,15 @@ export const setReorderPoint = staffMutation({
   },
 });
 
-async function stockBalanceRow(ctx: QueryCtx, branchId: Id<'branches'>, variant: Doc<'productVariants'>, loaded?: Doc<'stockLevels'>) {
+async function stockBalanceRow(ctx: QueryCtx, branchId: Id<'branches'>, variant: Doc<'productVariants'>,
+  { balance: loaded, includeReorderPoint }: { balance?: Doc<'stockLevels'>; includeReorderPoint?: boolean } = {},
+) {
   const [balance, incoming, product, reorderPoint] = await Promise.all([
     loaded ?? readStockLevel(ctx, branchId, variant._id),
     stockRead(ctx, () => ctx.db.query('stockIncoming').withIndex('by_branch_variant', q =>
       q.eq('branchId', branchId).eq('variantId', variant._id)).unique()),
     variant.productName ? null : stockRead(ctx, () => ctx.db.get(variant.productId)),
-    readReorderPoint(ctx, branchId, variant._id),
+    includeReorderPoint ? readReorderPoint(ctx, branchId, variant._id) : null,
   ]);
   const productStatus = variant.productStatus ?? product?.status ?? 'archived';
   return {
@@ -138,8 +140,8 @@ function countPage<T>(ctx: QueryCtx, result: PaginationResult<T>) {
 
 export const listBalances = staffQuery({
   capability: 'checkout', scope: selected,
-  args: { ...branchIdArg, ...paged, search: v.optional(v.string()), recountOnly: v.optional(v.boolean()) },
-  handler: async (ctx, { branchId, search, recountOnly, paginationOpts }) => {
+  args: { ...branchIdArg, ...paged, search: v.optional(v.string()), recountOnly: v.optional(v.boolean()), includeReorderPoint: v.optional(v.boolean()) },
+  handler: async (ctx, { branchId, search, recountOnly, includeReorderPoint, paginationOpts }) => {
     await requireStockAccess(ctx, ctx.staff, branchId, 'read');
     const options = stockPage(paginationOpts);
     const term = stockSearchTerm(search);
@@ -149,7 +151,7 @@ export const listBalances = staffQuery({
         q.eq('branchId', branchId).eq('needsRecount', true)).paginate(options));
       const page = await Promise.all(result.page.map(async balance => {
         const variant = await stockRead(ctx, () => ctx.db.get(balance.variantId));
-        return variant ? await stockBalanceRow(ctx, branchId, variant, balance) : null;
+        return variant ? await stockBalanceRow(ctx, branchId, variant, { balance, includeReorderPoint }) : null;
       }));
       return { ...result, page: page.filter(row => row !== null) };
     }
@@ -159,7 +161,7 @@ export const listBalances = staffQuery({
       : await ctx.db.query('productVariants').withIndex('by_active_product', q =>
         // Legacy variants sort before the active prefix until search fields are backfilled.
         q.eq('status', 'active').lte('productStatus', 'active')).paginate(options));
-    const page = await Promise.all(result.page.map(variant => stockBalanceRow(ctx, branchId, variant)));
+    const page = await Promise.all(result.page.map(variant => stockBalanceRow(ctx, branchId, variant, { includeReorderPoint })));
     return { ...result, page: page.filter(row => row.status === 'active') };
   },
 });
@@ -167,14 +169,14 @@ export const listBalances = staffQuery({
 /** Resolve items already selected in a form or deep link without paging the catalog. */
 export const selectedBalances = staffQuery({
   capability: 'checkout', scope: selected,
-  args: { ...branchIdArg, variantIds: v.array(v.string()), includeRecount: v.optional(v.boolean()) },
-  handler: async (ctx, { branchId, variantIds, includeRecount }) => {
+  args: { ...branchIdArg, variantIds: v.array(v.string()), includeRecount: v.optional(v.boolean()), includeReorderPoint: v.optional(v.boolean()) },
+  handler: async (ctx, { branchId, variantIds, includeRecount, includeReorderPoint }) => {
     await requireStockAccess(ctx, ctx.staff, branchId, 'read');
     if (variantIds.length > STOCK_LINE_LIMIT) stockError('INVALID_STOCK_LINES', 'Choose at most 50 different stock items.');
     const rows = await Promise.all([...new Set(variantIds)].map(async rawId => {
       const id = ctx.db.normalizeId('productVariants', rawId);
       const variant = id && await stockRead(ctx, () => ctx.db.get(id));
-      return variant ? await stockBalanceRow(ctx, branchId, variant) : null;
+      return variant ? await stockBalanceRow(ctx, branchId, variant, { includeReorderPoint }) : null;
     }));
     return rows.flatMap(row => row && (row.status === 'active' || includeRecount && row.needsRecount) ? [row] : []);
   },

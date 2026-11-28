@@ -179,7 +179,7 @@ export function RequestEditorSheet({
   const [note, setNote] = useState(initialNote);
   const [lines, setLines] = useState<StockLineDraft[]>(startingLines);
   const variantIds = useMemo(() => lines.map((line) => line.variantId), [lines]);
-  const { items: reorderRows } = useResolvedStockVariants(branchId, variantIds, { enabled: canSetReorderPoint });
+  const { items: reorderRows } = useResolvedStockVariants(branchId, variantIds, { enabled: canSetReorderPoint, includeReorderPoint: true });
   const [lineErrors, setLineErrors] = useState<StockLineFieldErrors>({});
   const [submitNow, setSubmitNow] = useState(!existing);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -450,6 +450,7 @@ export function RequestEditorSheet({
         branchId={branchId}
         selectedIds={lines.map((line) => line.variantId)}
         title="Add items to purchase request"
+        includeReorderPoint
         onSelectMany={(items) => {
           setLines((curr) => [
             ...curr,
