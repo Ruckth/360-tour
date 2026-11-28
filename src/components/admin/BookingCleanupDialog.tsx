@@ -28,14 +28,21 @@ const BATCH = 100;
 
 /** Lists deletable test / stale bookings (unpaid pending or cancelled) and deletes the selected ones in batches. */
 export function BookingCleanupDialog({ properties, onClose }: { properties: AdminProperty[]; onClose: () => void }) {
+  // The draft is what is typed; only a whole number of days is applied, so clearing the input never queries 0 days.
   const [days, setDays] = useState("7");
-  const olderThanDays = Math.max(0, Number(days) || 0);
+  const [olderThanDays, setOlderThanDays] = useState(7);
+  const draftDays = /^\d+$/.test(days.trim()) ? Number(days.trim()) : null;
+  const applyDays = () => {
+    if (draftDays === null) setDays(String(olderThanDays));
+    else setOlderThanDays(draftDays);
+  };
   const candidates = useQuery(api.bookings.admin.listCleanupCandidates, { olderThanDays });
   const deleteBookings = useMutation(api.bookings.commands.deleteBookings.deleteBookings);
   const confirm = useConfirm();
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ text: string; error?: boolean } | null>(null);
+  const [skippedRows, setSkippedRows] = useState<Array<{ bookingId: string; reason: string; guestName?: string }>>([]);
   const villaName = (id: string) => properties.find((p) => p._id === id)?.name ?? "Villa";
 
   const rows = candidates ?? [];
@@ -61,22 +68,34 @@ export function BookingCleanupDialog({ properties, onClose }: { properties: Admi
     if (!ok) return;
     setBusy(true);
     setMessage(null);
+    setSkippedRows([]);
     let deleted = 0;
-    const skipped: string[] = [];
+    let confirmedBatches = 0;
+    const skipped: Array<{ bookingId: string; reason: string; guestName?: string }> = [];
+    const names = new Map(chosen.map((b) => [b._id as string, b.guestName]));
+    const ids = chosen.map((b) => b._id as Id<"bookings">);
+    const batches = Math.ceil(ids.length / BATCH);
+    const plural = (n: number) => `${n} ${n === 1 ? "booking" : "bookings"}`;
     try {
-      const ids = chosen.map((b) => b._id as Id<"bookings">);
       for (let i = 0; i < ids.length; i += BATCH) {
         const result = await deleteBookings({ bookingIds: ids.slice(i, i + BATCH) });
         deleted += result.deleted;
-        skipped.push(...result.skipped.map((s) => s.reason));
+        confirmedBatches += 1;
+        skipped.push(...result.skipped.map((row) => ({ ...row, guestName: names.get(row.bookingId) })));
       }
       setSelected(new Set());
-      setMessage({
-        text: `Deleted ${deleted} ${deleted === 1 ? "booking" : "bookings"}.${skipped.length ? ` Skipped ${skipped.length}: ${[...new Set(skipped)].join(" ")}` : ""}`,
-      });
+      setMessage({ text: `Deleted ${plural(deleted)}.${skipped.length ? ` Skipped ${skipped.length}.` : ""}` });
     } catch (err) {
-      setMessage({ text: errorText(err, "Could not delete the bookings."), error: true });
+      // Earlier batches committed; the failed one is unconfirmed. The candidate list is live, so rows that were
+      // deleted drop out of it and the selection below only retries bookings that are still listed.
+      setMessage({
+        text: `Batch ${confirmedBatches + 1} of ${batches} did not confirm: ${errorText(err, "Could not delete the bookings.")} ` +
+          `Confirmed so far: deleted ${plural(deleted)}${skipped.length ? `, skipped ${skipped.length}` : ""}. ` +
+          "The list now shows only bookings that are still there; review it before retrying.",
+        error: true,
+      });
     } finally {
+      setSkippedRows(skipped);
       setBusy(false);
     }
   }
@@ -87,22 +106,37 @@ export function BookingCleanupDialog({ properties, onClose }: { properties: Admi
         <DialogHeader>
           <DialogTitle>Clean up test bookings</DialogTitle>
           <DialogDescription>
-            Unpaid pending or cancelled bookings that were entered by hand in admin, or created more than the chosen number of
-            days ago. Anything that was paid stays.
+            Unpaid pending or cancelled bookings. &ldquo;Older than&rdquo; applies to online bookings; ones entered by hand in admin are
+            listed at any age. Anything that was paid stays.
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-wrap items-end gap-3">
-          <div className="grid gap-1.5">
-            <Label htmlFor="cleanup-days">Older than (days)</Label>
-            <Input
-              id="cleanup-days"
-              type="number"
-              min={0}
-              value={days}
-              onChange={(event) => setDays(event.target.value)}
-              className="h-9 w-28"
-            />
-          </div>
+          <form
+            className="flex items-end gap-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              applyDays();
+            }}
+          >
+            <div className="grid gap-1.5">
+              <Label htmlFor="cleanup-days">Older than (days)</Label>
+              <Input
+                id="cleanup-days"
+                type="number"
+                min={0}
+                step={1}
+                inputMode="numeric"
+                value={days}
+                onChange={(event) => setDays(event.target.value)}
+                onBlur={applyDays}
+                aria-describedby="cleanup-days-hint"
+                className="h-9 w-28"
+              />
+            </div>
+            <Button type="submit" variant="outline" size="sm" className="h-9" disabled={draftDays === null || draftDays === olderThanDays}>
+              Apply
+            </Button>
+          </form>
           {rows.length ? (
             <label className="flex h-9 items-center gap-2 text-sm">
               <input
@@ -115,6 +149,10 @@ export function BookingCleanupDialog({ properties, onClose }: { properties: Admi
             </label>
           ) : null}
         </div>
+        <p id="cleanup-days-hint" className="text-xs text-muted-foreground">
+          Showing online bookings created more than {olderThanDays} {olderThanDays === 1 ? "day" : "days"} ago, plus hand-entered ones.
+          {draftDays === null ? " Enter a whole number of days; the current filter stays until you do." : null}
+        </p>
         {candidates === undefined ? (
           <ul role="status" aria-label="Loading bookings" className="grid gap-1 rounded-lg border border-border p-1">
             {Array.from({ length: 4 }, (_, i) => (
@@ -159,6 +197,18 @@ export function BookingCleanupDialog({ properties, onClose }: { properties: Admi
           <p role={message.error ? "alert" : "status"} className={message.error ? "text-sm text-destructive" : "text-sm text-muted-foreground"}>
             {message.text}
           </p>
+        ) : null}
+        {skippedRows.length ? (
+          <details className="text-sm">
+            <summary className="cursor-pointer text-muted-foreground">Skipped bookings ({skippedRows.length})</summary>
+            <ul className="mt-1 grid gap-1">
+              {skippedRows.map((row) => (
+                <li key={row.bookingId} className="text-xs">
+                  {row.guestName ? `${row.guestName} · ` : null}<span className="font-mono">…{row.bookingId.slice(-6)}</span> · {row.reason}
+                </li>
+              ))}
+            </ul>
+          </details>
         ) : null}
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>

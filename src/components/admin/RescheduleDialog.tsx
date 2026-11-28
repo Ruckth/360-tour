@@ -55,6 +55,8 @@ export function RescheduleDialog({
 
   const staffName = (id: Id<"staff">) => staffById.get(id)?.name ?? options?.staff.find((s) => s._id === id)?.name ?? "Staff";
   const staffChoices = options?.staff ?? [];
+  // Open starts per person on the selected day, shown beside names (zero included) so staff can compare without opening Time.
+  const openCount = (id: Id<"staff">) => (options?.slots ?? []).filter((slot) => slot.staffIds.includes(id)).length;
   const times = (options?.slots ?? []).filter((slot) => slot.staffIds.includes(staffId)).map((slot) => slot.start);
   const historical = start + original.blockedUntil - original.start <= now;
   const open = historical || times.includes(start);
@@ -116,6 +118,7 @@ export function RescheduleDialog({
               {(staffChoices.some((s) => s._id === staffId) ? staffChoices : [...staffChoices, { _id: staffId, name: staffName(staffId) }]).map((person) => (
                 <SelectItem key={person._id} value={person._id}>
                   {person.name}
+                  {options === undefined || historical ? "" : ` · ${openCount(person._id)} open`}
                 </SelectItem>
               ))}
             </SelectContent>

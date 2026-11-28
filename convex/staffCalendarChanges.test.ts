@@ -158,6 +158,11 @@ describe('appointment changes', () => {
 			admin.mutation(api.services.commands.updateAppointmentTurnaround.updateAppointmentTurnaround, { appointmentId: id, expectedRevision, turnaroundMin });
 		await expect(turnaround(7, 0)).rejects.toThrow('multiple of 5');
 		await expect(turnaround(15, 0)).rejects.toThrow('Nothing to change');
+		const preview = (turnaroundMin: number) => admin.query(api.services.admin.previewAppointmentTurnaround, { appointmentId: id, turnaroundMin });
+		// F10: the preview names the first blocker in the added interval and the longest turnaround that fits, without writing.
+		expect(await preview(45)).toEqual({ problem: null, blocker: { kind: 'appointment', start: at('10:30') }, maxMin: 30 });
+		expect(await preview(30)).toEqual({ problem: null, blocker: null, maxMin: null });
+		expect((await preview(7)).problem).toContain('multiple of 5');
 		await expect(turnaround(45, 0)).rejects.toThrow("Mali isn't free"); // next booking at 10:30
 		await turnaround(30, 0);
 		expect(await get(id)).toMatchObject({ end: at('10:00'), blockedUntil: at('10:30') });
@@ -170,6 +175,7 @@ describe('appointment changes', () => {
 		await admin.mutation(api.services.commands.rescheduleAppointment.rescheduleAppointment, { appointmentId: id, expectedRevision: 2, start: at('16:00'), staffId: (await get(id)).staffId });
 		expect(await get(id)).toMatchObject({ end: at('17:00'), blockedUntil: at('17:20') });
 		// Into the end of the shift.
+		expect(await preview(65)).toEqual({ problem: null, blocker: { kind: 'off_shift', start: at('18:00') }, maxMin: 60 });
 		await expect(turnaround(65, 3)).rejects.toThrow("Mali isn't free");
 	});
 
@@ -227,6 +233,7 @@ describe('appointment changes', () => {
 			await expect(caller.mutation(api.services.commands.updateAppointmentTurnaround.updateAppointmentTurnaround, { appointmentId: id, expectedRevision: 0, turnaroundMin: 30 })).rejects.toThrow(reason);
 			await expect(caller.mutation(api.services.commands.cancelAppointment.cancelAppointment, { appointmentId: id, expectedRevision: 0 })).rejects.toThrow(reason);
 			await expect(caller.query(api.services.admin.rescheduleOptions, { appointmentId: id, date })).rejects.toThrow(reason);
+			await expect(caller.query(api.services.admin.previewAppointmentTurnaround, { appointmentId: id, turnaroundMin: 30 })).rejects.toThrow(reason);
 			await expect(caller.query(api.services.admin.listAppointmentHistoryPage, { appointmentId: id, paginationOpts: { numItems: 100, cursor: null } })).rejects.toThrow(reason);
 			const change = { staffId: maliId, date, scope: 'day' as const, original: lunch, next: null, expectedPlan: patternPlan };
 			await expect(caller.query(api.services.roster.previewBreakChange, change)).rejects.toThrow(reason);

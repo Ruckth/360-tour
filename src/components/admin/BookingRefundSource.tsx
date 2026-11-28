@@ -4,6 +4,7 @@ import type { FunctionArgs, FunctionReturnType } from "convex/server";
 import type { api } from "convex/_generated/api";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { staffDate } from "@/lib/staff-time";
 import { PAYMENT_ORIGIN_LABELS } from "./admin-bookings-shared";
 import { formatMoney } from "./labels";
 
@@ -15,13 +16,18 @@ export type BookingRefundSource = {
 };
 
 /** Shared by standalone refunds and atomic cancellation/refund, including old receipt money. */
+/** Each option names the payment date and what is still refundable; a reference is added when those still collide. */
 export function bookingRefundSources(data: Financials): BookingRefundSource[] {
-  return [
-    ...data.payments.filter(p => p.status === "recorded" && p.refundable > 0).map(p => ({
-      value: `payment:${p._id}`, label: `${formatMoney(p.amount, p.currency)} · ${PAYMENT_ORIGIN_LABELS[p.origin]}${p.order ? ` (${p.order.title})` : ""}`,
-      left: p.refundable, stripe: p.origin === "online", reference: { paymentId: p._id },
-    })),
-  ];
+  const rows = data.payments.filter(p => p.status === "recorded" && p.refundable > 0).map(p => ({
+    p, base: `${formatMoney(p.amount, p.currency)} · ${PAYMENT_ORIGIN_LABELS[p.origin]}${p.order ? ` (${p.order.title})` : ""} · paid ${staffDate(p.effectiveAt)} · ${formatMoney(p.refundable, p.currency)} refundable`,
+  }));
+  const counts = new Map<string, number>();
+  for (const { base } of rows) counts.set(base, (counts.get(base) ?? 0) + 1);
+  return rows.map(({ p, base }) => ({
+    value: `payment:${p._id}`,
+    label: (counts.get(base) ?? 0) > 1 ? `${base} · ${p.method} ref …${p._id.slice(-6)}` : base,
+    left: p.refundable, stripe: p.origin === "online", reference: { paymentId: p._id },
+  }));
 }
 
 export function BookingRefundSourcePicker({ id, sources, value, onChange }: { id: string; sources: BookingRefundSource[]; value: string; onChange: (value: string) => void }) {

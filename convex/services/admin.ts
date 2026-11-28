@@ -5,7 +5,8 @@ import { adminQuery } from '../auth/model';
 import { appointmentHistoryPage } from './private/appointmentChanges';
 import { appointmentFinancials } from './private/appointmentFinance';
 import { findServiceOption } from './private/serviceCatalog';
-import { APPOINTMENT_LOOKBACK, TIME_OFF_LOOKBACK, assertAppointmentStart, boundedIntegrityRows, historicalWarnings, activeServiceStaff, serviceDayAvailability, scheduleDays, staffBusyRanges } from './private/serviceSlots';
+import { APPOINTMENT_LOOKBACK, TIME_OFF_LOOKBACK, assertAppointmentStart, boundedIntegrityRows, historicalWarnings, activeServiceStaff, serviceDayAvailability, scheduleDays, staffBusyRanges, firstStaffBlocker } from './private/serviceSlots';
+import { TURNAROUND_STEP_MIN, canEditTurnaround, turnaroundMinutes, turnaroundProblem, withTurnaround } from '../shared/appointmentWindow';
 import { blocksTime, localDateTimeUtc, localDayRange, planWorking } from '../shared/schedule';
 import { serviceOptions } from '../shared/serviceOptions';
 import { resortLocalParts } from '../shared/time';
@@ -187,6 +188,29 @@ export const previewAppointmentTime = adminQuery({
 			return { warnings: [], needsReason: false, problem };
 		}
 		return { ...await historicalWarnings(ctx, person, service, args.start, args.start + occupied, appointment?._id), problem: null };
+	}
+});
+
+/**
+ * Read-only preview of updateAppointmentTurnaround: the same checks, plus the first blocker inside the added
+ * interval and the longest turnaround that still fits. The mutation re-checks at write time.
+ */
+export const previewAppointmentTurnaround = adminQuery({
+	args: { appointmentId: v.id('appointments'), turnaroundMin: v.number() },
+	handler: async (ctx, args) => {
+		const appointment = await loadAppointment(ctx, args.appointmentId);
+		const none = { blocker: null, maxMin: null };
+		if (!canEditTurnaround(appointment)) return { ...none, problem: 'Turnaround can only change while the appointment is booked, arrived or in service' };
+		const problem = turnaroundProblem(args.turnaroundMin, (appointment.end - appointment.start) / MINUTE);
+		if (problem) return { ...none, problem };
+		const window = withTurnaround(appointment, args.turnaroundMin);
+		if (window.blockedUntil <= appointment.blockedUntil) return { ...none, problem: null };
+		const staff = await ctx.db.get(appointment.staffId);
+		if (!staff) return { ...none, problem: 'Staff member not found' };
+		const blocker = await firstStaffBlocker(ctx, staff, appointment.blockedUntil, window.blockedUntil, appointment._id);
+		if (!blocker) return { ...none, problem: null };
+		const extraMin = Math.floor((blocker.start - appointment.blockedUntil) / MINUTE / TURNAROUND_STEP_MIN) * TURNAROUND_STEP_MIN;
+		return { problem: null, blocker, maxMin: turnaroundMinutes(appointment) + extraMin };
 	}
 });
 

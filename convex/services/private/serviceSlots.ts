@@ -129,6 +129,31 @@ async function staffAvailability(
 	return { days, busy: mergeRanges(busy), appointmentCount, appointmentOverlap };
 }
 
+export type StaffBlocker = { kind: 'appointment' | 'time_off' | 'off_shift'; start: number };
+
+/** The earliest thing that makes this person unavailable within [from, to), by kind; null when free. */
+export async function firstStaffBlocker(ctx: ReadCtx, staff: Doc<'staff'>, from: number, to: number, ignoreAppointmentId?: Id<'appointments'>): Promise<StaffBlocker | null> {
+	if (to <= from) return null;
+	let first: StaffBlocker | null = null;
+	const consider = (kind: StaffBlocker['kind'], start: number, end: number) => {
+		if (start >= to || end <= from) return;
+		const at = Math.max(start, from);
+		if (!first || at < first.start) first = { kind, start: at };
+	};
+	for (const { date, plan } of await scheduleDays(ctx, staff, from, to)) {
+		for (const [start, end] of planBusy(date, plan)) consider('off_shift', start, end);
+	}
+	for await (const row of boundedIntegrityRows(ctx.db.query('staffTimeOff').withIndex('by_staff_start', (q) =>
+		q.eq('staffId', staff._id).gte('start', from - TIME_OFF_LOOKBACK).lt('start', to)
+	))) consider('time_off', row.start, row.end);
+	for await (const row of boundedIntegrityRows(ctx.db.query('appointments').withIndex('by_staff_start', (q) =>
+		q.eq('staffId', staff._id).gte('start', from - APPOINTMENT_LOOKBACK).lt('start', to)
+	))) {
+		if (row._id !== ignoreAppointmentId && blocksTime(row)) consider('appointment', row.start, row.blockedUntil);
+	}
+	return first;
+}
+
 /** All unavailable time within [from, to), including the gaps around working hours. */
 export async function staffBusyRanges(ctx: ReadCtx, staff: Doc<'staff'>, from: number, to: number, ignoreAppointmentId?: Id<'appointments'>) {
 	return (await staffAvailability(ctx, staff, from, to, ignoreAppointmentId)).busy;
