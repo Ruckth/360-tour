@@ -656,7 +656,7 @@ it('locates the schedule before and after the effective date for the selected se
   });
 });
 
-async function seedPagingReport(mature: boolean) {
+async function seedMaturePagingReport() {
   const { t, ids } = await setup();
   const identity = {
     email: 'report-paging@example.com',
@@ -670,7 +670,7 @@ async function seedPagingReport(mature: boolean) {
     updatedByEmail: email, createdAt: nov, updatedAt: nov,
   }));
   const historical: Id<'customers'>[] = [];
-  if (mature) {
+  {
     for (let offset = 0; offset < 4_001; offset += 250)
       historical.push(...await t.run(async (ctx) => {
         const batch = [];
@@ -693,7 +693,7 @@ async function seedPagingReport(mature: boolean) {
       return batch;
     }));
   }
-  if (mature) {
+  {
     const periodStart = resortMidnight(from);
     for (let offset = 0; offset < historical.length; offset += 250)
       await t.run(async (ctx) => {
@@ -739,112 +739,8 @@ async function seedPagingReport(mature: boolean) {
   return { t, financeUser, grant, from, to, lines };
 }
 
-it('pages a 10,000-row, 92-day snapshot within the warm-query budget and reauthorizes every read', async () => {
-  const { t, financeUser, grant, from, to, lines } = await seedPagingReport(false);
-  const ingestionReads = await t.run(async (ctx) => {
-    const facts = await readServiceFinanceFacts(ctx, from, to, true);
-    const { documents, ranges, bytes } = readBudget(ctx);
-    expect(facts.lines).toHaveLength(10_000);
-    expect(facts.customers).toHaveLength(2001);
-    return { documents, ranges, bytes };
-  });
-  const openStart = performance.now();
-  const viewId = await financeUser.mutation(api.marketing.profitViews.openView, { from, to, refresh: false });
-  const coldMs = performance.now() - openStart;
-  const source = await t.run((ctx) => ctx.db.query('serviceProfitViewChunks')
-    .withIndex('by_view', (q) => q.eq('viewId', viewId)).take(65));
-  const asOf = JSON.parse(source.map((chunk) => chunk.payload).join('')).asOf as number;
-  const scope = {
-    from,
-    to,
-    viewId,
-    overview: emptyFilters,
-    additional: emptyFilters,
-    metric: 'revenue' as const,
-    search: '',
-    category: '',
-    descending: true,
-  };
-  const prepareStart = performance.now();
-  const preparedViewId = await financeUser.mutation(finance.prepareTransactions, scope);
-  const prepareMs = performance.now() - prepareStart;
-  expect(await financeUser.mutation(finance.prepareTransactions, scope)).toBe(preparedViewId);
-  const readPage = (page: number) => financeUser.query(finance.report, { ...scope, preparedViewId, page });
-  const sorted = [...lines].sort((a, b) => b.day.localeCompare(a.day) || b.id.localeCompare(a.id));
-  const documentReads = vi.spyOn(ReadBudget.prototype, 'document');
-  await readPage(0);
-  const elapsed = [];
-  let maxResponseBytes = 0;
-  let maxEvidenceRows = 0;
-  for (let page = 0; page < 30; page++) {
-    const start = performance.now();
-    const response = await readPage(page);
-    elapsed.push(performance.now() - start);
-    expect(response.asOf).toBe(asOf);
-    expect(response.detail).toMatchObject({
-      count: 10_000,
-      sum: 1_000_000,
-      page,
-    });
-    expect(response.detail?.rows.map((row) => row.id)).toEqual(
-      sorted.slice(page * 25, (page + 1) * 25).map((row) => row.id),
-    );
-    maxResponseBytes = Math.max(maxResponseBytes, new TextEncoder().encode(JSON.stringify(response)).length);
-    maxEvidenceRows = Math.max(maxEvidenceRows, response.detail?.rows.length ?? 0);
-  }
-  const readPayloads = documentReads.mock.calls.map(([doc]) => doc as Doc<'serviceProfitViewChunks'>);
-  documentReads.mockRestore();
-  expect(readPayloads).toHaveLength(62);
-  expect(readPayloads.filter((chunk) => chunk.sequence >= 0)).toHaveLength(31);
-  const maxStoredRows = Math.max(...readPayloads.filter((chunk) => chunk.sequence >= 0)
-    .map((chunk) => (JSON.parse(chunk.payload) as unknown[]).length));
-  expect(maxStoredRows).toBeLessThanOrEqual(125);
-  // Prepared reads retrieve one indexed data chunk containing only the page, plus one metadata chunk.
-  const p95 = elapsed.sort((a, b) => a - b)[Math.ceil(elapsed.length * 0.95) - 1]!;
-  expect(p95).toBeLessThanOrEqual(400);
-  expect(maxResponseBytes).toBeLessThanOrEqual(128 * 1024);
-  expect(maxEvidenceRows).toBeLessThanOrEqual(125);
-  console.info('Profitability source and paging (Convex test harness)', {
-    coldMs, prepareMs, ingestionReads, maxStoredRows,
-    p95,
-    maxResponseBytes,
-    maxEvidenceRows,
-  });
-  const exportPage = (page: number, includeCustomer?: boolean) =>
-    financeUser.query(finance.report, { ...scope, preparedViewId, page, exportRows: true, includeCustomer });
-  let exported = 0;
-  let subtotal = 0;
-  for (let page = 0; page < 400; page++) {
-    const response = await exportPage(page);
-    expect(response.asOf).toBe(asOf);
-    expect(response.detail).toMatchObject({ count: 10_000, sum: 1_000_000, page });
-    expect(response.detail?.rows).toHaveLength(25);
-    expect(new TextEncoder().encode(JSON.stringify(response)).length).toBeLessThanOrEqual(128 * 1024);
-    for (const row of response.detail!.rows) {
-      expect(row).toMatchObject({ id: 'export-' + (exported + 1), ref: '', customer: '', day: sorted[exported].day });
-      subtotal += row.amount ?? 0;
-      exported++;
-    }
-  }
-  expect(exported).toBe(10_000);
-  expect(subtotal).toBe(1_000_000);
-  const last = await exportPage(399, true);
-  expect(last.detail).toMatchObject({ count: 10_000, sum: 1_000_000, page: 399 });
-  expect(last.detail?.rows).toHaveLength(25);
-  for (const [index, row] of last.detail!.rows.entries()) {
-    const expected = sorted[9975 + index];
-    expect(row).toMatchObject({ ref: expected.ref, customer: expected.customer, id: 'export-' + (9976 + index) });
-  }
-  expect((await readPage(500)).detail?.page).toBe(399);
-  await expect(exportPage(400)).rejects.toThrow('Invalid export page.');
-  await t.run((ctx) => ctx.db.patch(grant, { role: 'manager' }));
-  await expect(readPage(0)).rejects.toThrow('access');
-  await expect(exportPage(1, true)).rejects.toThrow('export');
-  await expect(exportPage(1)).rejects.toThrow('export');
-}, 150_000);
-
 it('assembles a mature 10,000-visit source with all financial history at one pinned timestamp', async () => {
-  const { t, financeUser, from, to, grant } = await seedPagingReport(true);
+  const { t, financeUser, from, to, grant, lines } = await seedMaturePagingReport();
   const readCounts = await t.run(async (ctx) => {
     await expect(readServiceFinanceFacts(ctx, from, to, true)).rejects.toThrow('reads too much data');
     const { bytes, documents, ranges } = readBudget(ctx);
@@ -894,27 +790,54 @@ it('assembles a mature 10,000-visit source with all financial history at one pin
     const preparedViewId = await financeUser.mutation(finance.prepareTransactions, scope);
     const page = (number: number) => financeUser.query(finance.report, { ...scope, preparedViewId, page: number });
     const durations = [];
+    const chronological = [...lines].sort((a, b) => b.day.localeCompare(a.day) || b.id.localeCompare(a.id));
     let maxBytes = 0;
-    for (let number = 0; number < 30; number++) {
-      const start = performance.now();
-      const result = await page(number);
-      durations.push(performance.now() - start);
-      maxBytes = Math.max(maxBytes, new TextEncoder().encode(JSON.stringify(result)).length);
-      expect(result.summary).toMatchObject({
-        revenue: 1_000_000, lifetime: 1_200_100, customerCount: 2001, newCount: 1, ltv: 600,
-      });
-      expect(result.detail).toMatchObject({ page: number, count: 10_001, sum: 1_000_000 });
-      expect(result.detail?.rows).toHaveLength(25);
+    const documentReads = vi.spyOn(ReadBudget.prototype, 'document');
+    try {
+      for (let number = 0; number < 30; number++) {
+        const start = performance.now();
+        const result = await page(number);
+        durations.push(performance.now() - start);
+        maxBytes = Math.max(maxBytes, new TextEncoder().encode(JSON.stringify(result)).length);
+        expect(result.summary).toMatchObject({
+          revenue: 1_000_000, lifetime: 1_200_100, customerCount: 2001, newCount: 1, ltv: 600,
+        });
+        expect(result.detail).toMatchObject({ page: number, count: 10_001, sum: 1_000_000 });
+        expect(result.detail?.rows.map((row) => row.id))
+          .toEqual(chronological.slice(number * 25, (number + 1) * 25).map((row) => row.id));
+      }
+      const payloads = documentReads.mock.calls.map(([doc]) => doc as Doc<'serviceProfitViewChunks'>);
+      expect(payloads).toHaveLength(60);
+      const evidenceRowCounts = payloads.filter((part) => part.sequence >= 0)
+        .map((part) => (JSON.parse(part.payload) as unknown[]).length);
+      expect(evidenceRowCounts).toHaveLength(30);
+      expect(Math.max(...evidenceRowCounts)).toBeLessThanOrEqual(125);
+    } finally {
+      documentReads.mockRestore();
     }
     const p95 = durations.sort((a, b) => a - b)[28]!;
     expect(p95).toBeLessThanOrEqual(400);
     expect(maxBytes).toBeLessThanOrEqual(128 * 1024);
     console.info('Mature profitability snapshot through pinned HTTP protocol test transport', {
-      buildMs, sourcePages: calls.length - 1, p95, maxBytes,
+      buildMs, sourcePages: calls.length - 1, p95, maxBytes, evidenceRowsPerPage: 25,
     });
+    const exportPage = (number: number, includeCustomer?: boolean) =>
+      financeUser.query(finance.report, { ...scope, preparedViewId, page: number, exportRows: true, includeCustomer });
+    const clamped = await page(500);
+    expect(clamped.detail).toMatchObject({ page: 400, count: 10_001 });
+    const last = clamped.detail!.rows[0];
+    const operational = await exportPage(400);
+    const identifiable = await exportPage(400, true);
+    expect(operational.detail?.rows).toEqual([expect.objectContaining({ ref: '', customer: '', id: 'export-10001' })]);
+    expect(identifiable.detail?.rows).toEqual([expect.objectContaining({
+      ref: last.ref, customer: last.customer, id: 'export-10001',
+    })]);
+    await expect(exportPage(401)).rejects.toThrow('Invalid export page.');
     await t.run((ctx) => ctx.db.patch(grant, { role: 'manager' }));
     await expect(financeUser.query(api.marketing.profitViews.sourceStatus, { id: viewId })).resolves.toBe('expired');
     await expect(page(0)).rejects.toThrow('access');
+    await expect(exportPage(1)).rejects.toThrow('export');
+    await expect(exportPage(1, true)).rejects.toThrow('export');
   } finally {
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();

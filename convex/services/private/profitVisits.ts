@@ -11,6 +11,17 @@ import { resortTodayIso } from '../../shared/time';
 type Visit = Doc<'appointments'>;
 const zeroCosts = { staff: 0, materials: 0, tools: 0 };
 
+/** Keep dense or mature scopes out of the synchronous source build before it does per-row work. */
+export async function needsPagedProfitSource(ctx: QueryCtx, end: number) {
+  const budget = readBudget(ctx);
+  if (!budget.range()) throw new ReadBudgetExceeded();
+  const probe = await ctx.db.query('appointments')
+    .withIndex('by_status_and_end', (q) => q.eq('status', 'completed').lt('end', end))
+    .take(1_001);
+  for (const visit of probe) if (!budget.document(visit)) throw new ReadBudgetExceeded();
+  return probe.length === 1_001;
+}
+
 // Share single gets and index ranges across the period and the histories of its active customers.
 export async function profitVisits(ctx: QueryCtx, start: number, end: number) {
   const budget = readBudget(ctx);

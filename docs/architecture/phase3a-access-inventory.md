@@ -60,8 +60,8 @@ The inventory test compares every source registration with this table and requir
 | `commerce/purchasing.copyPurchaseRequest` | `staffMutation` | checkout | Branch requester grant; own declined, closed or sent-back request only. Mutations check access before replay. |
 | `commerce/purchasing.approvePurchaseOrderIssue` | `staffMutation` | checkout | Branch approver grant; a different person from the creator and the approval requester. Mutations check access before replay. |
 | `commerce/purchasing.declinePurchaseOrderIssue` | `staffMutation` | checkout | Branch approver grant; not the approval requester. Mutations check access before replay. |
-| `commerce/purchasing.supplierMatches` | `staffQuery` | checkout | Branch purchasing grant, record state and revision checks. Mutations check access before replay. |
-| `commerce/purchasing.supplierImpact` | `staffQuery` | checkout | Branch purchasing grant, record state and revision checks. Mutations check access before replay. |
+| `commerce/purchasing.supplierMatches` | `staffQuery` | checkout | Branch buyer searches the shared supplier directory by normalized name or contact details. |
+| `commerce/purchasing.supplierImpact` | `staffQuery` | checkout | Branch buyer sees open orders in the selected branch. Organization owners with buyer access see the organization total once aggregates are ready. |
 | `commerce/stockExpansion.createTransfer` | `staffMutation` | checkout | Origin requester. The destination must be an active branch. |
 | `commerce/stockExpansion.editTransfer` | `staffMutation` | checkout | Origin buyer checks the draft revision and destination before editing. |
 | `commerce/stockExpansion.transferAvailability` | `staffQuery` | checkout | Read access to the requested branch. Up to twelve requested variants. |

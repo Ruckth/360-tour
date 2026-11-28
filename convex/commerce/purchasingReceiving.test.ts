@@ -81,7 +81,8 @@ it('records a fixed rejection code at the door and counts rejections by reason p
   const orderId = await order(10);
   expect(await code(receive(orderId, { accepted: 2, rejected: 1 }))).toBe('REASON_REQUIRED');
   // Free text alone no longer counts: every new rejection carries a fixed code.
-  expect(await code(receive(orderId, { accepted: 2, rejected: 1, rejectReason: 'Torn' }))).toBe('REASON_REQUIRED');
+  // A stale client (free text, no code) is told to reload; nothing posts.
+  expect(await code(receive(orderId, { accepted: 2, rejected: 1, rejectReason: 'Torn' }))).toBe('CLIENT_UPDATE_REQUIRED');
   const posted = await receive(orderId, { accepted: 6, rejected: 3, rejectReasonCode: 'damaged', rejectReason: 'Crushed carton' });
   await receive(orderId, { accepted: 0, rejected: 1, rejectReasonCode: 'expired' });
   const detail = await ann.query(p.receipt, { receiptId: posted.id as Id<'supplierReceipts'> });
@@ -166,10 +167,49 @@ it('requires a return outcome and shows returns awaiting credit on the order', a
   });
   expect(await code(ann.mutation(p.reverseReturn, {
     adjustmentId: replacementReturn._id, quantity: 1, reason: 'Never left', operationKey: key(),
-  }))).toBe('REPLACEMENT_EXISTS');
+  }))).toBe('REPLACEMENT_COVERS');
   await ann.mutation(p.deletePurchaseOrderDraft, { orderId: replacement.id as Id<'purchaseOrders'>, expectedRevision: replacement.revision!, operationKey: key() } as never);
   await ann.mutation(p.reverseReturn, { adjustmentId: replacementReturn._id, quantity: 1, reason: 'Never left', operationKey: key() });
   expect(await onHand()).toBe(8);
+});
+
+it('keeps one live replacement per return within its unreversed, uncovered units, and limits reversal to uncovered units', async () => {
+  const { ann, branchId, variantId, otherVariantId, supplierId, order, receive, onHand } = await setup();
+  const orderId = await order(10);
+  const posted = await receive(orderId, { accepted: 10 });
+  const receiptLineId = (await ann.query(p.receipt, { receiptId: posted.id as Id<'supplierReceipts'> })).lines[0]._id;
+  // Stale client without an outcome: explicit reload error, nothing posts.
+  expect(await code(ann.mutation(p.supplierReturn, { receiptLineId, quantity: 4, reason: 'Wrong item', operationKey: key() }))).toBe('CLIENT_UPDATE_REQUIRED');
+  expect(await onHand()).toBe(10);
+  const ret = await ann.mutation(p.supplierReturn, { receiptLineId, quantity: 4, outcome: 'replacement_expected', reason: 'Wrong item', operationKey: key() });
+  const returnId = ret.id as Id<'supplierReceiptAdjustments'>;
+  const draft = (lines: { variantId: Id<'productVariants'>; quantity: number }[]) =>
+    ann.mutation(p.saveOrder, { branchId, supplierId, replacesReturnId: returnId, lines, operationKey: key() });
+  expect(await code(draft([{ variantId, quantity: 5 }]))).toBe('REPLACEMENT_EXCEEDS');
+  expect(await code(draft([{ variantId: otherVariantId, quantity: 1 }]))).toBe('LINK_MISMATCH');
+  const first = await draft([{ variantId, quantity: 3 }]);
+  expect(await code(draft([{ variantId, quantity: 1 }]))).toBe('REPLACEMENT_EXISTS');
+  // 3 of 4 are covered: only 1 can be reversed.
+  const reverse = (quantity: number) => ann.mutation(p.reverseReturn, { adjustmentId: returnId, quantity, reason: 'Never left', operationKey: key() });
+  expect(await code(reverse(2))).toBe('REPLACEMENT_COVERS');
+  await reverse(1);
+  expect(await onHand()).toBe(7);
+  // Issue, receive 1, close short: the closed replacement covers only the accepted unit.
+  const firstId = first.id as Id<'purchaseOrders'>;
+  await ann.mutation(p.issuePurchaseOrder, { orderId: firstId, expectedRevision: first.revision!, operationKey: key() });
+  // An amendment cannot grow the replacement past the uncovered units (3 unreversed, all on this order).
+  let detail = await ann.query(p.order, { orderId: firstId });
+  expect(await code(ann.mutation(p.amendPurchaseOrder, {
+    orderId: firstId, expectedRevision: detail.order.revision, reason: 'More', lines: [{ orderLineId: detail.lines[0]._id, due: 4 }], operationKey: key(),
+  }))).toBe('REPLACEMENT_EXCEEDS');
+  await receive(firstId, { accepted: 1 });
+  detail = await ann.query(p.order, { orderId: firstId });
+  await ann.mutation(p.closePurchaseOrderRemainder, { orderId: firstId, expectedRevision: detail.order.revision, reason: 'Supplier short', operationKey: key() });
+  expect((await ann.query(p.order, { orderId: firstId })).order.status).toBe('closed_short');
+  expect(await code(reverse(3))).toBe('REPLACEMENT_COVERS');
+  await reverse(2);
+  // Everything is now reversed or replaced: no new replacement.
+  expect(await code(draft([{ variantId, quantity: 1 }]))).toBe('REPLACEMENT_EXCEEDS');
 });
 
 it('lets a buyer accept a hold onto its own open order from the queue, and shows only valid paths otherwise', async () => {

@@ -415,12 +415,12 @@ export function SupplierReceiptDetailView({ receiptId }: { receiptId: string }) 
                             Reverse return
                           </Button>
                         ) : null}
-                        {adj.kind === "supplier_return" && permissions.directOrder ? (
+                        {adj.kind === "supplier_return" && adj.quantity > adj.reversedQuantity && permissions.directOrder ? (
                           <Button
                             type="button"
                             variant="outline"
                             size="sm"
-                            onClick={() => setReplacementReturn(adj)}
+                            onClick={() => setReplacementReturn({ ...adj, quantity: adj.quantity - adj.reversedQuantity })}
                           >
                             Replacement order
                           </Button>

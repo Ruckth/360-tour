@@ -9,7 +9,7 @@ import type { StaffActor } from '../../auth/model';
 import { reserveWrites } from '../../lib/readBudget';
 import type { PurchasingResult } from '../purchasingTables';
 import {
-  actorOf, adjustIncoming, assertSafeTotals, availableApproval, draftChanges, expectRevision, fail, futureIsoDate, ISSUED_OPEN, itemLabel, lineCount, lineDue,
+  actorOf, adjustIncoming, assertReplacementLines, assertSafeTotals, availableApproval, draftChanges, expectRevision, fail, futureIsoDate, ISSUED_OPEN, itemLabel, lineCount, lineDue,
   newReference, orderSummary, otherHoldReplacement, purchasingAccess, quantity, readItem, readOrderLines, readRequestLines, reason,
   recordEvent, referenceCode, refreshFullyOrdered, requireActiveItems, requireSupplier, runOnce, shiftCommitment, supplierSnapshot, text, uniqueBy, unitCost,
   isLegacyLine, LEGACY_RECEIPT_SCAN, lineAcceptedValue, receiptValuation, seedLegacyLine, type Actor, type StockAccess,
@@ -121,6 +121,7 @@ export async function saveOrderDraft(ctx: MutationCtx, staff: StaffActor, args: 
     assertSafeTotals(args.lines.map(line => ({ ordered: line.quantity, cancelled: 0, unitCost: line.unitCost })));
     await validateSource(ctx, args.branchId, args.requestId, args.lines);
     await validateLink(ctx, args.branchId, args, args.lines.map(line => line.variantId), args.orderId);
+    if (args.replacesReturnId) await assertReplacementLines(ctx, args.replacesReturnId, args.lines, args.orderId);
     const supplier = await requireSupplier(ctx, args.supplierId);
     const reads = await Promise.all(args.lines.map(line => readItem(ctx, line.variantId)));
     const previous = args.orderId ? await ctx.db.get(args.orderId) : null;
@@ -236,15 +237,23 @@ async function saveSummary(ctx: MutationCtx, order: Doc<'purchaseOrders'>, patch
  * exempt from pricing and carry no unknown value.
  */
 export function directCommitment(order: Pick<Doc<'purchaseOrders'>, 'forHoldId' | 'replacesReturnId'>, lines: Doc<'purchaseOrderLines'>[]) {
-  let value = 0, unknown = 0;
+  let value = 0, unknown = 0, unknownUnits = 0;
   for (const line of lines) {
     if (line.requestLineId) continue;
     const committed = line.ordered - line.cancelled;
     value += lineAcceptedValue(line) + Math.max(0, lineDue(line)) * (line.unitCost ?? 0);
-    if (committed > 0 && line.unitCost === undefined && !order.forHoldId && !order.replacesReturnId) unknown++;
+    if (committed > 0 && line.unitCost === undefined && !order.forHoldId && !order.replacesReturnId) {
+      unknown++;
+      // More units of an unpriced line is more unvalued commitment, even with the same number of unpriced lines.
+      unknownUnits += committed;
+    }
   }
-  return { value, unknown };
+  return { value, unknown, unknownUnits };
 }
+
+/** Whether an amendment grew the direct commitment: more known value, more unpriced lines, or more unpriced units. */
+const commitmentGrew = (before: ReturnType<typeof directCommitment>, after: ReturnType<typeof directCommitment>) =>
+  after.value > before.value || after.unknown > before.unknown || after.unknownUnits > before.unknownUnits;
 
 const overLimit = (commitment: { value: number; unknown: number }, limit: number | null) =>
   limit !== null && (commitment.value > limit || commitment.unknown > 0);
@@ -373,7 +382,19 @@ export function amendOrder(ctx: MutationCtx, staff: StaffActor, args: AmendArgs)
     const added = args.addLines ?? [];
     if (args.lines.length > 50) fail('TOO_MANY_LINES', 'An order can hold at most 50 lines.');
     uniqueBy(args.lines, line => line.orderLineId, 'Each line can be amended once.');
-    const lines = new Map((await readOrderLines(ctx, order._id)).map(line => [line._id, line]));
+    let current = await readOrderLines(ctx, order._id);
+    if (access.policy.directOrderLimit !== null && current.some(line => !line.requestLineId && isLegacyLine(line))) {
+      // The cap compares exact values on both sides: value pre-feature direct lines from their receipt evidence first
+      // (exact values are persisted; a long history fails with the retryable VALUATION_PENDING).
+      current = await Promise.all(current.map(async line => {
+        if (line.requestLineId || !isLegacyLine(line)) return line;
+        const seeded = await seedLegacyLine(ctx, line);
+        reserveWrites(ctx, 1);
+        await ctx.db.patch(line._id, { acceptedValue: seeded.acceptedValue, rejected: seeded.rejected });
+        return seeded;
+      }));
+    }
+    const lines = new Map(current.map(line => [line._id, line]));
     if (lines.size + added.length > 50) fail('TOO_MANY_LINES', 'An order can hold at most 50 lines.');
     uniqueBy([...lines.values(), ...added], line => line.variantId, 'Each item can appear once per order. Amend the existing line instead.');
     const expectedDate = args.expectedDate === undefined ? order.expectedDate : futureIsoDate(args.expectedDate, 'Expected date', order.expectedDate);
@@ -408,6 +429,13 @@ export function amendOrder(ctx: MutationCtx, staff: StaffActor, args: AmendArgs)
       ]);
     }
     requirePrices(order, added.map((line, i) => ({ _id: `new:${i}` as Id<'purchaseOrderLines'>, unitCost: line.unitCost, priceTbc: line.priceTbc })));
+    if (order.replacesReturnId && (increases || added.length)) {
+      // Receiving worker (P32): a replacement may not grow past the return's unreversed, uncovered units.
+      await assertReplacementLines(ctx, order.replacesReturnId, [...[...lines.values()].map(line => {
+        const change = args.lines.find(c => c.orderLineId === line._id);
+        return { variantId: line.variantId, quantity: line.ordered - line.cancelled + (change?.due === undefined ? 0 : change.due - lineDue(line)) };
+      }), ...added], order._id);
+    }
     // New lines follow the issue rule: request-backed lines must match an approved line of the order's own request.
     for (const line of added) {
       if (line.requestLineId) {
@@ -479,7 +507,7 @@ export function amendOrder(ctx: MutationCtx, staff: StaffActor, args: AmendArgs)
     const limit = access.policy.directOrderLimit;
     const before = directCommitment(order, [...lines.values()]);
     const after = directCommitment(order, updated);
-    if (overLimit(after, limit) && (after.value > before.value || after.unknown > before.unknown)) {
+    if (overLimit(after, limit) && commitmentGrew(before, after)) {
       const fourEyes = access.approver && actor.actorKey !== order.createdByKey && actor.actorKey !== order.approvalRequestedByKey;
       if (!fourEyes) {
         fail('DIRECT_ORDER_LIMIT', 'This amendment takes the order above the direct order limit. Ask a different approver to amend it.', {

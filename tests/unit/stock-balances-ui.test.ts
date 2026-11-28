@@ -542,6 +542,95 @@ describe("Balances, counts, adjustments, opening & access improvements (S01-S24)
     expect(s1Buyer.disabled).toBe(false);
   });
 
+  it("reverts optimistic role and policy overlays when the first of two queued writes fails (S23)", async () => {
+    let rejectFirstRole!: (err: Error) => void;
+    const setGrant = getMutationSpy(api.commerce.stock.setGrant).mockImplementation(
+      () =>
+        new Promise<number>((_resolve, reject) => {
+          rejectFirstRole = reject;
+        }),
+    );
+    let rejectFirstPolicy!: (err: Error) => void;
+    const setPolicy = getMutationSpy(api.commerce.stock.setBranchPolicy).mockImplementation(
+      () =>
+        new Promise<number>((_resolve, reject) => {
+          rejectFirstPolicy = reject;
+        }),
+    );
+    mockConvex.query.mockImplementation((name) =>
+      name === getFunctionName(api.commerce.stock.branchPolicy)
+        ? { directOrder: false, directReceipt: false, separateReceiving: false, revision: 0 }
+        : undefined,
+    );
+    mockConvex.paginated.mockImplementation((name) => ({
+      results: name === getFunctionName(api.commerce.stock.listGrants)
+        ? [{ staffGrantId: "staff_1", email: "one@example.com", name: "One", role: "cashier" }]
+        : [],
+      status: "Exhausted",
+      loadMore: vi.fn(),
+    }));
+
+    await act(async () =>
+      root.render(
+        wrap(
+          createElement(BranchStockAccessSheet, {
+            branchId: "branch_1" as Id<"branches">,
+            branchName: "Koh Samui",
+            onClose: vi.fn(),
+            onSaved: vi.fn(),
+          }),
+        ),
+      ),
+    );
+
+    const s1Req = document.querySelector<HTMLInputElement>('input[aria-label="Requester for one@example.com"]')!;
+    const s1Buyer = document.querySelector<HTMLInputElement>('input[aria-label="Buyer for one@example.com"]')!;
+
+    // Queue 2 role writes on staff_1; both show optimistically checked while pending
+    await act(async () => {
+      s1Req.click();
+      s1Buyer.click();
+    });
+    expect(s1Req.checked).toBe(true);
+    expect(s1Buyer.checked).toBe(true);
+    expect(setGrant).toHaveBeenCalledTimes(1);
+
+    // First write rejects -> second queued write is skipped AND optimistic overlay clears back to false
+    await act(async () => {
+      rejectFirstRole(new Error("STALE_STOCK_GRANT"));
+    });
+    expect(setGrant).toHaveBeenCalledTimes(1);
+    expect(s1Req.checked).toBe(false);
+    expect(s1Buyer.checked).toBe(false);
+    expect(s1Req.disabled).toBe(false);
+    expect(s1Buyer.disabled).toBe(false);
+    expect(document.body.textContent).toContain("STALE_STOCK_GRANT");
+
+    // Same queued-failure cleanup for branch policies (separateReceiving + directOrder after confirm)
+    const policyBoxes = [...document.querySelectorAll<HTMLInputElement>('section[aria-label="Branch policies"] input[type="checkbox"]')];
+    const directOrderBox = policyBoxes[0];
+    const separateReceivingBox = policyBoxes[2];
+    await act(async () => {
+      separateReceivingBox.click();
+      directOrderBox.click();
+    });
+    const confirmBtn = [...document.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Enable direct orders")!;
+    await act(async () => {
+      confirmBtn.click();
+    });
+    expect(separateReceivingBox.checked).toBe(true);
+    expect(directOrderBox.checked).toBe(true);
+    expect(setPolicy).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      rejectFirstPolicy(new Error("STALE_STOCK_POLICY"));
+    });
+    expect(setPolicy).toHaveBeenCalledTimes(1);
+    expect(separateReceivingBox.checked).toBe(false);
+    expect(directOrderBox.checked).toBe(false);
+    expect(document.body.textContent).toContain("STALE_STOCK_POLICY");
+  });
+
   it("auto-advances empty non-terminal staff grant pages and offers manual Search more staff after cap without false empty copy (S24)", async () => {
     vi.useFakeTimers();
     try {

@@ -537,3 +537,40 @@ it('review: a pre-feature line with >100 mixed receipts blocks costing writes un
   });
   expect((await ann.query(p.order, { orderId })).order.receivedValue).toBe(value);
 });
+
+it('review v2: raising the quantity of a TBC line on an approved over-limit order needs a different approver', async () => {
+  const { ann, ben, setPolicy, order } = await setup();
+  await setPolicy({ directOrderLimit: 100_000 });
+  const { orderId, issued } = await order([{ quantity: 1, priceTbc: true }]);
+  expect(issued?.awaitingApproval).toBe(true);
+  let detail = await ann.query(p.order, { orderId });
+  await ben.mutation(p.approvePurchaseOrderIssue, { orderId, expectedRevision: detail.order.revision, operationKey: key() });
+  detail = await ann.query(p.order, { orderId });
+  expect(await code(ann.mutation(p.amendPurchaseOrder, {
+    orderId, expectedRevision: detail.order.revision, reason: 'More', lines: [{ orderLineId: detail.lines[0]._id, due: 5 }], operationKey: key(),
+  }))).toBe('DIRECT_ORDER_LIMIT');
+  expect((await ann.query(p.order, { orderId })).order.dueUnits).toBe(1);
+});
+
+it('review v2: the cap compares exact receipt values on both sides for a pre-feature direct line', async () => {
+  const { t, ann, ben, setPolicy, order, receive } = await setup();
+  // Received 5 at ฿100 while the line cost was ฿100; the line was later repriced to ฿300 before valuation existed.
+  const { orderId } = await order([{ quantity: 10, unitCost: 10_000 }]);
+  await receive(ben, orderId, 5);
+  let detail = await ann.query(p.order, { orderId });
+  await t.run(ctx => ctx.db.patch(detail.lines[0]._id, { unitCost: 30_000, acceptedValue: undefined, rejected: undefined }));
+  // Exact exposure: 5 × 100 received + 5 × 300 due = ฿2,000. The current-cost estimate (10 × 300 = ฿3,000) would hide a crossing.
+  await setPolicy({ directOrderLimit: 250_000 });
+  detail = await ann.query(p.order, { orderId });
+  // Repricing to ฿450 makes the exact exposure 500 + 5 × 450 = ฿2,750 (> ฿2,500); the ฿3,000 estimate would call it a decrease.
+  expect(await code(ann.mutation(p.amendPurchaseOrder, {
+    orderId, expectedRevision: detail.order.revision, reason: 'Price', lines: [{ orderLineId: detail.lines[0]._id, unitCost: 45_000 }], operationKey: key(),
+  }))).toBe('DIRECT_ORDER_LIMIT');
+  expect(await code(ann.mutation(p.amendPurchaseOrder, {
+    orderId, expectedRevision: detail.order.revision, reason: 'More', lines: [{ orderLineId: detail.lines[0]._id, due: 7 }], operationKey: key(),
+  }))).toBe('DIRECT_ORDER_LIMIT');
+  await ann.mutation(p.amendPurchaseOrder, {
+    orderId, expectedRevision: detail.order.revision, reason: 'A bit more', lines: [{ orderLineId: detail.lines[0]._id, due: 6 }], operationKey: key(),
+  });
+  expect((await ann.query(p.order, { orderId })).lines[0]).toMatchObject({ acceptedValue: 50_000, due: 6 });
+});

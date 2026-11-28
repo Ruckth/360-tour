@@ -193,12 +193,8 @@ export function BranchStockAccessSheet({
 
     const activeEntry = entry;
     const run = activeEntry.tail.then(async () => {
-      if (activeEntry.aborted) {
-        markBusy(key, false);
-        activeEntry.inFlight -= 1;
-        return;
-      }
       try {
+        if (activeEntry.aborted) return;
         const nextRevision = await setBranchPolicy({
           branchId,
           directOrder: nextDirectOrder,
@@ -221,8 +217,8 @@ export function BranchStockAccessSheet({
       } finally {
         markBusy(key, false);
         activeEntry.inFlight -= 1;
-        if (activeEntry.inFlight === 0) {
-          if (policyQueueRef.current === activeEntry) policyQueueRef.current = null;
+        if (activeEntry.inFlight === 0 && policyQueueRef.current === activeEntry) {
+          policyQueueRef.current = null;
           setOptimisticPolicy({});
         }
       }
@@ -283,12 +279,8 @@ export function BranchStockAccessSheet({
 
     const activeEntry = entry;
     const run = activeEntry.tail.then(async () => {
-      if (activeEntry.aborted) {
-        markBusy(cellKey, false);
-        activeEntry.inFlight -= 1;
-        return;
-      }
       try {
+        if (activeEntry.aborted) return;
         const nextRevision = await setGrant({
           branchId,
           staffGrantId: row.staffGrantId,
@@ -304,10 +296,8 @@ export function BranchStockAccessSheet({
       } finally {
         markBusy(cellKey, false);
         activeEntry.inFlight -= 1;
-        if (activeEntry.inFlight === 0) {
-          if (staffQueuesRef.current.get(row.staffGrantId) === activeEntry) {
-            staffQueuesRef.current.delete(row.staffGrantId);
-          }
+        if (activeEntry.inFlight === 0 && staffQueuesRef.current.get(row.staffGrantId) === activeEntry) {
+          staffQueuesRef.current.delete(row.staffGrantId);
           setOptimisticRoles((curr) => {
             if (!(row.staffGrantId in curr)) return curr;
             const copy = { ...curr };

@@ -454,8 +454,11 @@ export const supplierReturn = staffMutation({
   capability: 'checkout', scope: 'selectedBranch',
   args: {
     receiptLineId: v.id('supplierReceiptLines'), quantity: v.number(), reason: v.string(), supplierReference: v.optional(v.string()),
-    /** Required: credit note expected, replacement expected (a linked order follows) or no action. */
-    outcome: returnOutcome,
+    /**
+     * Required: credit note expected, replacement expected (a linked order follows) or no action. Optional here only so
+     * a stale client gets CLIENT_UPDATE_REQUIRED (nothing posted) rather than an argument validation error.
+     */
+    outcome: v.optional(returnOutcome),
     ...adjustmentLotEvidence, ...key,
   },
   returns: purchasingResult,

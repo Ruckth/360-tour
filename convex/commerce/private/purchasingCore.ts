@@ -517,3 +517,55 @@ export async function recordEvent(ctx: MutationCtx, actor: Actor, event: EventIn
   reserveWrites(ctx, 1);
   await ctx.db.insert('purchaseEvents', { ...event, ...actor, createdAt: Date.now() });
 }
+
+/**
+ * Units of a supplier return its replacement orders already cover: net ordered on a live (draft or open) order, accepted
+ * on a received or closed-short one; cancelled and deleted orders cover nothing. `remaining` is what may still be
+ * replaced or reversed. `active` is the one live replacement, if any. Bounded to 50 linked orders.
+ */
+export async function replacementCoverage(ctx: QueryCtx, ret: Doc<'supplierReceiptAdjustments'>, exceptOrderId?: Id<'purchaseOrders'>) {
+  const linked = await stockRead(ctx, () => ctx.db.query('purchaseOrders').withIndex('by_replacesReturnId', q =>
+    q.eq('replacesReturnId', ret._id)).take(PURCHASING_MAX_LINES + 1));
+  if (linked.length > PURCHASING_MAX_LINES) fail('TOO_MANY_REPLACEMENTS', 'This return has too many replacement orders. Review them before continuing.');
+  let covered = 0;
+  let active: Doc<'purchaseOrders'> | null = null;
+  const orders: Doc<'purchaseOrders'>[] = [];
+  for (const order of linked) {
+    if (order._id === exceptOrderId || order.status === 'deleted' || order.status === 'cancelled') continue;
+    const [line] = await stockRead(ctx, () => ctx.db.query('purchaseOrderLines').withIndex('by_orderId_and_variantId', q =>
+      q.eq('orderId', order._id).eq('variantId', ret.variantId)).take(1));
+    const live = order.phase === 'draft' || order.phase === 'open';
+    const units = !line ? 0 : live ? line.ordered - line.cancelled : Math.min(line.accepted, line.ordered - line.cancelled);
+    if (units <= 0 && !live) continue;
+    covered += units;
+    orders.push(order);
+    if (live) active ??= order;
+  }
+  const unreversed = ret.quantity - ret.reversedQuantity;
+  return { unreversed, covered, remaining: Math.max(0, unreversed - covered), active, orders };
+}
+
+/**
+ * A replacement order holds only the returned item, at most the units no other replacement covers, and a return has at
+ * most one live (draft or open) replacement. Called on draft save and on amendment with the order's net quantities.
+ */
+export async function assertReplacementLines(
+  ctx: QueryCtx, returnId: Id<'supplierReceiptAdjustments'>, lines: { variantId: Id<'productVariants'>; quantity: number }[],
+  orderId?: Id<'purchaseOrders'>,
+) {
+  const ret = await stockRead(ctx, () => ctx.db.get(returnId));
+  if (!ret || ret.kind !== 'supplier_return') fail('LINK_NOT_FOUND', 'The supplier return is not available.');
+  if (lines.some(line => line.variantId !== ret.variantId)) fail('LINK_MISMATCH', 'A replacement order holds only the returned item.');
+  const coverage = await replacementCoverage(ctx, ret, orderId);
+  if (coverage.active) {
+    fail('REPLACEMENT_EXISTS', `Replacement order ${coverage.active.reference} is already open for this return. Use or cancel it first.`, {
+      orderId: coverage.active._id, reference: coverage.active.reference,
+    });
+  }
+  const units = lines.reduce((sum, line) => sum + line.quantity, 0);
+  if (units > coverage.remaining) {
+    fail('REPLACEMENT_EXCEEDS', coverage.remaining > 0
+      ? `Replace at most ${coverage.remaining} units: the rest were reversed or are already replaced.`
+      : 'Nothing is left to replace on this return: its units were reversed or already replaced.', { remaining: coverage.remaining });
+  }
+}

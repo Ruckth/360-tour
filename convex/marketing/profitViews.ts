@@ -8,7 +8,7 @@ import { ReadBudgetExceeded } from '../lib/readBudget';
 import { MAX_REPORT_DAYS, reportDayCount, reportRangeBounds } from '../shared/marketingReport';
 import { retireView, storeSourceView, viewOwner } from './private/profitViews';
 import { discloseServiceFinanceFacts, expensesFor, readServiceFinanceFacts, type ReportFacts } from './private/serviceFinanceFacts';
-import { profitVisitPage } from '../services/model';
+import { needsPagedProfitSource, profitVisitPage } from '../services/model';
 import { profitFees } from '../pos/model';
 import { sha256 } from '../shared/displayTokens';
 import type { CustomerHistory } from '../shared/profitability';
@@ -35,12 +35,14 @@ export const openView = marketingMutation({
       (!refresh || previous.assemblyState === 'building')) return previous._id;
     let data: string | null = null;
     try {
-      data = JSON.stringify(await readServiceFinanceFacts(ctx, from, to, named));
+      const { end } = reportRangeBounds(from, to);
+      if (!await needsPagedProfitSource(ctx, end))
+        data = JSON.stringify(await readServiceFinanceFacts(ctx, from, to, named));
     } catch (error) {
       if (!(error instanceof ReadBudgetExceeded)) throw error;
-      if (process.env.PROFIT_PREPARATION_PAUSED === '1')
-        throw new ConvexError('This report exceeds the source read limit. Choose a shorter period.');
     }
+    if (data === null && process.env.PROFIT_PREPARATION_PAUSED === '1')
+      throw new ConvexError('This report exceeds the source read limit. Choose a shorter period.');
     if (data && new TextEncoder().encode(data).length > snapshotLimit)
       throw new ConvexError('Choose a shorter period to open this report.');
     const key = data === null ? crypto.randomUUID() + crypto.randomUUID() : null;

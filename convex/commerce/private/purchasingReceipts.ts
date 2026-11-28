@@ -16,7 +16,7 @@ import type { holdHandoff, returnOutcome } from '../purchasingTables';
 import {
   actorOf, adjustIncoming, correctionClosesRemainder, deliveryKey, expectRevision, fail, ISSUED_OPEN, lineAcceptedValue, lineDue, lotEvidence, newReference,
   orderSummary, purchasingAccess, quantity, readItem, readOrderLines, reason, receiptEntryCount, receiptLotCount, recordEvent, requireActiveItems,
-  refreshFullyOrdered, requireSupplier, seedLegacyLine, runOnce, shiftCommitment, supplierSnapshot, text, uniqueBy, unitCost, type Actor,
+  refreshFullyOrdered, replacementCoverage, requireSupplier, seedLegacyLine, runOnce, shiftCommitment, supplierSnapshot, text, uniqueBy, unitCost, type Actor,
 } from './purchasingCore';
 import { readStockAccess, type StockPermission } from './stockAccess';
 import { allocationCounts, stockAvailability, type Allocation } from './stockAvailability';
@@ -306,7 +306,11 @@ export async function receiveOrder(ctx: MutationCtx, staff: StaffActor, args: Re
       // Every new rejection records a fixed code so supplier quality can be counted; free text stays optional detail.
       const rejectReasonCode = rejected ? input.rejectReasonCode : undefined;
       const rejectReason = text(input.rejectReason, 'Rejection reason', 'reason');
-      if (rejected && !rejectReasonCode) fail('REASON_REQUIRED', 'Choose why goods were rejected.', { orderLineId: line._id });
+      if (rejected && !rejectReasonCode) {
+        // A client built before reason codes sends free text only: nothing posts and it is told to reload.
+        if (rejectReason) fail('CLIENT_UPDATE_REQUIRED', 'Reload this page to choose a rejection reason. Nothing was posted.', { orderLineId: line._id });
+        fail('REASON_REQUIRED', 'Choose why goods were rejected.', { orderLineId: line._id });
+      }
       const due = lineDue(line);
       if (input.accepted > due) {
         const allowance = overReceiptAllowance(line, tolerancePct);
@@ -703,8 +707,11 @@ export async function correctReceiptLine(ctx: MutationCtx, staff: StaffActor, ar
 export type ReturnOutcome = Infer<typeof returnOutcome>;
 export type SupplierReturnArgs = {
   receiptLineId: Id<'supplierReceiptLines'>; quantity: number; reason: string; supplierReference?: string;
-  /** What the supplier will do: credit note, replacement (a linked order follows) or nothing. */
-  outcome: ReturnOutcome;
+  /**
+   * What the supplier will do: credit note, replacement (a linked order follows) or nothing. Required; optional in the
+   * argument validator only so a client built before outcomes gets CLIENT_UPDATE_REQUIRED instead of a validation error.
+   */
+  outcome?: ReturnOutcome;
   lotAllocations?: ReceiptLotEvidence['lotAllocations']; operationKey: string;
 };
 
@@ -716,6 +723,7 @@ export async function returnToSupplier(ctx: MutationCtx, staff: StaffActor, args
   const { operationKey, ...payload } = args;
   return runOnce(ctx, actor, line.branchId, 'receipt.return', operationKey, payload, async commandId => {
     quantity(args.quantity, 'Return quantity');
+    if (!args.outcome) fail('CLIENT_UPDATE_REQUIRED', 'Reload this page to choose what the supplier will do. Nothing was posted.');
     const why = reason(args.reason);
     if (args.quantity > eligibleUnits(line)) fail('EXCEEDS_ELIGIBLE', 'Return at most the units still accepted on this line.', { eligible: eligibleUnits(line) });
     const { movementId } = await writeStockMovement(ctx, {
@@ -776,13 +784,14 @@ export async function reverseSupplierReturn(ctx: MutationCtx, staff: StaffActor,
     quantity(args.quantity, 'Reversal quantity');
     const why = reason(args.reason);
     if (args.quantity > original.quantity - original.reversedQuantity) fail('EXCEEDS_ELIGIBLE', 'Reverse at most the units returned.');
-    // Goods that never left cannot also be replaced: a live replacement order must be cancelled or closed first.
-    const replacements = await stockRead(ctx, () => ctx.db.query('purchaseOrders').withIndex('by_replacesReturnId', q =>
-      q.eq('replacesReturnId', original._id)).take(5));
-    const replacement = replacements.find(order => order.status !== 'deleted' && order.status !== 'cancelled');
-    if (replacement) {
-      fail('REPLACEMENT_EXISTS', `Replacement order ${replacement.reference} exists for this return. Cancel or close it before reversing the return.`, {
-        orderId: replacement._id, reference: replacement.reference,
+    // Goods that never left cannot also be replaced: only units no replacement order covers can be reversed.
+    const coverage = await replacementCoverage(ctx, original);
+    if (args.quantity > coverage.remaining) {
+      const by = coverage.orders.map(order => order.reference).join(', ');
+      fail('REPLACEMENT_COVERS', coverage.remaining > 0
+        ? `${coverage.covered} of these units are on replacement order ${by}. Reverse at most ${coverage.remaining}, or reduce or cancel the replacement first.`
+        : `All unreversed units are on replacement order ${by}. Reduce, close or cancel the replacement before reversing.`, {
+        remaining: coverage.remaining, covered: coverage.covered, orderIds: coverage.orders.map(order => order._id),
       });
     }
     const { line, receipt } = await loadReceiptLine(ctx, original.receiptLineId);
