@@ -33,6 +33,19 @@ export const countUpcomingAppointments = adminQuery({
 	}
 });
 
+/** The earliest appointment still blocking this person's time (the one that blocks archiving), or null. */
+export const firstUpcomingAppointment = adminQuery({
+	args: { staffId: v.id('staff') },
+	handler: async (ctx, { staffId }) => {
+		const now = Date.now();
+		const rows = ctx.db.query('appointments').withIndex('by_staff_start', (q) => q.eq('staffId', staffId).gte('start', now - APPOINTMENT_LOOKBACK));
+		for await (const appointment of boundedIntegrityRows(rows)) {
+			if (appointment.blockedUntil > now && blocksTime(appointment)) return { appointmentId: appointment._id, start: appointment.start };
+		}
+		return null;
+	}
+});
+
 export const upcomingOptionUsage = adminQuery({
 	args: { serviceId: v.id('services') },
 	returns: v.array(v.object({ durationMin: v.number(), count: v.number() })),

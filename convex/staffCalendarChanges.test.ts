@@ -159,7 +159,7 @@ describe('appointment changes', () => {
 		await expect(turnaround(7, 0)).rejects.toThrow('multiple of 5');
 		await expect(turnaround(15, 0)).rejects.toThrow('Nothing to change');
 		const preview = (turnaroundMin: number) => admin.query(api.services.admin.previewAppointmentTurnaround, { appointmentId: id, turnaroundMin });
-		// F10: the preview names the first blocker in the added interval and the longest turnaround that fits, without writing.
+		// F11: the preview names the first blocker in the added interval and the longest turnaround that fits, without writing.
 		expect(await preview(45)).toEqual({ problem: null, blocker: { kind: 'appointment', start: at('10:30') }, maxMin: 30 });
 		expect(await preview(30)).toEqual({ problem: null, blocker: null, maxMin: null });
 		expect((await preview(7)).problem).toContain('multiple of 5');

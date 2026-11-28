@@ -6,6 +6,8 @@ import { RecordHistoryPanel } from "./RecordHistoryPanel";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import Link from "@/platform/link";
+import { useSearchParams } from "@/platform/navigation";
+import { parseStaffRosterLink } from "@/lib/staff-links";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import {
@@ -96,8 +98,11 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 export function StaffRosterView() {
   const [historyPerson, setHistoryPerson] = useState("");
   const [today] = useState(() => resortIsoDate(Date.now()));
-  const [weekStart, setWeekStart] = useState(() => mondayOf(today));
-  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  // A deep link (?date=&staff=) opens that week with that person's day selected.
+  const searchParams = useSearchParams();
+  const [link] = useState(() => parseStaffRosterLink(searchParams));
+  const [weekStart, setWeekStart] = useState(() => mondayOf(link.date ?? today));
+  const [selected, setSelected] = useState<Set<string>>(() => (link.date && link.staffId ? new Set([cellKey(link.staffId, link.date)]) : new Set()));
   const [anchor, setAnchor] = useState<Pos | null>(null);
   const [focus, setFocus] = useState<Pos>({ row: 0, col: 0 });
   const [busy, setBusy] = useState(false);

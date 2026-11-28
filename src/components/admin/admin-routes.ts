@@ -11,14 +11,15 @@ export type AdminStaffTab = (typeof ADMIN_STAFF_TABS)[number];
 export const ADMIN_STAFF_TAB_LABELS: Record<AdminStaffTab, string> = {
   calendar: "Calendar",
   roster: "Roster",
-  staff: "Staff",
+  // Therapist profiles (who performs services); staff logins and access live in Settings → Team.
+  staff: "Therapists",
   services: "Services",
 };
 
 const STAFF_TAB_KEYWORDS: Record<AdminStaffTab, readonly string[]> = {
   calendar: ["appointments", "bookings"],
   roster: ["shifts", "schedule", "time off"],
-  staff: ["people", "team", "therapists"],
+  staff: ["staff", "people", "profiles"],
   services: ["treatments", "activities"],
 };
 

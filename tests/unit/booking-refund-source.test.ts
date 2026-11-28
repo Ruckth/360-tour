@@ -7,7 +7,7 @@ type Financials = NonNullable<FunctionReturnType<typeof api.bookings.admin.booki
 const at = (date: string) => Date.parse(`${date}T10:00:00+07:00`);
 const payment = { origin: 'manual', amount: 500000, currency: 'THB', method: 'cash', recordedAt: 0, recordedBy: 'desk', status: 'recorded', order: null, amendBlocker: null, cancelBlocker: null };
 
-it('F8: equal-value refund sources show payment date and refundable remainder, plus a reference when they still collide', () => {
+it('F09: equal-value refund sources show payment date and refundable remainder, plus a reference when they still collide', () => {
   const data = { payments: [
     { ...payment, _id: 'pay_aaaaaa111111', effectiveAt: at('2026-10-20'), refunded: 0, refundable: 500000 },
     { ...payment, _id: 'pay_bbbbbb222222', effectiveAt: at('2026-10-21'), refunded: 200000, refundable: 300000 },

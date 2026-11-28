@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "convex/react";
-import { useRouter, useSelectedLayoutSegment } from "@/platform/navigation";
+import { useRouter, useSearchParams, useSelectedLayoutSegment } from "@/platform/navigation";
 import { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
 import { canEditTurnaround, canCorrectAppointmentTime, turnaroundMinutes } from "convex/shared/appointmentWindow";
@@ -56,12 +56,14 @@ import {
   useNow,
   type AppointmentStatus,
 } from "@/lib/staff-bookings";
-import { STAFF_CALENDAR_FORMATS, staffTime } from "@/lib/staff-time";
+import { STAFF_CALENDAR_FORMATS, staffDate, staffTime } from "@/lib/staff-time";
 import { UNSAVED_CHANGES_MESSAGE, hasUnsavedChanges } from "@/lib/react/use-unsaved-changes";
 import { appointmentServiceLabel } from "@/lib/service-options";
 import { useAdminBranch } from "@/components/admin/branch/branch-context";
 import { useStoredState } from "@/lib/use-stored-state";
 import { cn } from "@/lib/utils";
+import { parseStaffCalendarLink, staffRosterHref } from "@/lib/staff-links";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 type Appointment = Doc<"appointments">;
 type EventData =
@@ -69,7 +71,7 @@ type EventData =
   /** The appointment's turnaround; it moves with the appointment and only its end resizes. */
   | { kind: "turnaround"; appointment: Appointment }
   | { kind: "block"; block: ScheduleData["blocks"][number] }
-  | { kind: "off" };
+  | { kind: "off"; staffId: Id<"staff">; start: number; end: number };
 /** The one change waiting for confirmation; `ghostId` is the calendar event drawn at the proposed place. */
 type Proposal = { ghostId: string; ghost?: Ghost } & (
   | { kind: "reschedule"; appointment: Appointment; start: number; staffId: Id<"staff"> }
@@ -108,6 +110,11 @@ function useStoredSet(key: string): [Set<string>, (next: Set<string>) => void] {
   return [value, update];
 }
 
+/** The staff filter trigger, e.g. "4 of 5 staff · 3 hidden appts": hiding people never hides their bookings silently. */
+export function staffFilterLabel(visible: number, total: number, hiddenAppointments: number) {
+  return `${visible} of ${total} staff${hiddenAppointments ? ` · ${hiddenAppointments} hidden ${hiddenAppointments === 1 ? "appt" : "appts"}` : ""}`;
+}
+
 const TABS = ADMIN_STAFF_TABS.map((tab) => [tab, ADMIN_STAFF_TAB_LABELS[tab]] as const);
 
 /**
@@ -135,11 +142,13 @@ export function AdminStaffTabs({ children }: { children: ReactNode }) {
     router.push(adminStaffTabPath(key));
   }
 
+  // Manual activation: arrows, Home and End only move focus; Enter or Space (the button's click) opens the
+  // focused route through openTab, which keeps the unsaved-draft confirmation.
   function onTabKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number) {
     const moves: Record<string, number> = { ArrowRight: index + 1, ArrowLeft: index - 1, Home: 0, End: TABS.length - 1 };
     if (!(event.key in moves)) return;
     event.preventDefault();
-    void openTab(moves[event.key]);
+    tabRefs.current[(moves[event.key] + TABS.length) % TABS.length]?.focus();
   }
 
   return (
@@ -195,13 +204,16 @@ export function AdminStaffBookingsView({ tab }: { tab: AdminStaffTab }) {
 
 function StaffCalendar() {
   const branchId = useAdminBranch().current?.id;
-  const [range, setRange] = useState(todayRange);
+  // A deep link (?date=&staff=&appointment=) opens that day, shows that person and the appointment once on arrival.
+  const searchParams = useSearchParams();
+  const [link] = useState(() => parseStaffCalendarLink(searchParams));
+  const [range, setRange] = useState(() => link.date ? { from: resortMidnight(link.date), to: resortMidnight(link.date) + DAY_MS } : todayRange());
   const [search, setSearch] = useState("");
   // This device remembers the view and filters (rule 5); the date always starts today.
   const [storedView, setView] = useStoredState("admin.staff.view", "auto");
   const phone = useIsMobile(640);
   const view: CalendarView = (STAFF_VIEWS as readonly string[]).includes(storedView) ? (storedView as CalendarView) : phone ? "agenda" : "resource";
-  const [date, setDate] = useState(() => new Date());
+  const [date, setDate] = useState(() => (link.date ? new Date(resortMidnight(link.date)) : new Date()));
   const [hiddenStaff, setHiddenStaff] = useStoredSet(branchId ? `admin.staff.hiddenStaff:${branchId}` : "admin.staff.hiddenStaff");
   const [hiddenServices, setHiddenServices] = useStoredSet(branchId ? `admin.staff.hiddenServices:${branchId}` : "admin.staff.hiddenServices");
   const [hiddenStatuses, setHiddenStatuses] = useStoredSet("admin.staff.hiddenStatuses");
@@ -210,7 +222,18 @@ function StaffCalendar() {
   const showCancelled = storedCancelled === "yes";
   const setShowCancelled = (next: boolean) => setStoredCancelled(next ? "yes" : "no");
   const [proposal, setProposal] = useState<Proposal | null>(null);
-  const [selectedId, setSelectedId] = useState<Id<"appointments"> | null>(null);
+  const [selectedId, setSelectedId] = useState<Id<"appointments"> | null>((link.appointmentId as Id<"appointments"> | undefined) ?? null);
+  const [offShift, setOffShift] = useState<{ staffId: Id<"staff">; start: number; end: number } | null>(null);
+  const linkedStaffShown = useRef(false);
+  useEffect(() => {
+    if (linkedStaffShown.current || !link.staffId) return;
+    linkedStaffShown.current = true;
+    if (hiddenStaff.has(link.staffId)) {
+      const next = new Set(hiddenStaff);
+      next.delete(link.staffId);
+      setHiddenStaff(next);
+    }
+  }, [link.staffId, hiddenStaff, setHiddenStaff]);
   const [draft, setDraft] = useState<AppointmentDraft | null>(null);
   const [editingTimeOff, setEditingTimeOff] = useState<Doc<"staffTimeOff"> | null>(null);
   const [error, setError] = useState("");
@@ -258,6 +281,15 @@ function StaffCalendar() {
     }
     return counts;
   }, [appointments]);
+  // Appointment coverage per person in the loaded range, independent of the staff filter, so hiding someone never hides their bookings silently.
+  const allCountByStaff = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const a of data?.appointments ?? []) {
+      if (a.status !== "cancelled" && a.start < range.to && a.end > range.from) counts.set(a.staffId, (counts.get(a.staffId) ?? 0) + 1);
+    }
+    return counts;
+  }, [data?.appointments, range]);
+  const hiddenAppointmentCount = [...hiddenStaff].reduce((sum, id) => sum + (allCountByStaff.get(id) ?? 0), 0);
 
   const resources = useMemo<EventCalendarResource[]>(
     () => visibleStaff.map((s) => ({ id: s._id, title: s.name, color: s.color })),
@@ -321,7 +353,7 @@ function StaffCalendar() {
             resourceId: person._id,
             color: BLOCK_COLOR,
             readOnly: true,
-            data: { kind: "off" },
+            data: { kind: "off", staffId: person._id, start: gap.start, end: gap.end },
           }));
         })
       : [];
@@ -505,6 +537,7 @@ function StaffCalendar() {
           onEventClick={(occurrence) => {
             const eventData = occurrence.event.data;
             if (eventData?.kind === "appointment") setSelectedId(eventData.appointment._id);
+            if (eventData?.kind === "off") setOffShift({ staffId: eventData.staffId, start: eventData.start, end: eventData.end });
             if (eventData?.kind === "turnaround" && canEditTurnaround(eventData.appointment)) {
               setProposal({ kind: "turnaround", appointment: eventData.appointment, ghostId: occurrence.event.id });
             }
@@ -581,11 +614,11 @@ function StaffCalendar() {
             </span>
             <CheckList
               icon={<Users aria-hidden className="size-4" />}
-              label={`${visibleStaff.length} of ${data?.staff.length ?? 0} staff`}
+              label={staffFilterLabel(visibleStaff.length, data?.staff.length ?? 0, hiddenAppointmentCount)}
               groups={[
                 {
                   title: "Staff",
-                  items: (data?.staff ?? []).map((s) => ({ id: s._id, label: s.name, detail: s.role })),
+                  items: (data?.staff ?? []).map((s) => ({ id: s._id, label: `${s.name} · ${allCountByStaff.get(s._id) ?? 0}`, detail: s.role })),
                   hidden: hiddenStaff,
                   onChange: setHiddenStaff,
                 },
@@ -693,6 +726,22 @@ function StaffCalendar() {
           initial={proposal.times}
           onClose={dismissProposal}
         />
+      ) : null}
+      {offShift ? (
+        <Dialog open onOpenChange={(open) => !open && setOffShift(null)}>
+          <DialogContent className="sm:max-w-sm">
+            <DialogHeader>
+              <DialogTitle>{staffById.get(offShift.staffId)?.name ?? "Staff"} is not working</DialogTitle>
+              <DialogDescription>
+                {staffDate(offShift.start, { weekday: true })} · {staffTime(offShift.start)}–{offShift.end - offShift.start >= DAY_MS ? "end of day" : staffTime(offShift.end)} is outside their rostered shift, so it can&apos;t be booked here.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="gap-2">
+              <Button variant="outline" onClick={() => setOffShift(null)}>Close</Button>
+              <ButtonLink href={staffRosterHref({ date: resortIsoDate(offShift.start), staffId: offShift.staffId })}>Open roster week</ButtonLink>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       ) : null}
       {editingTimeOff ? (
         <TimeOffDialog

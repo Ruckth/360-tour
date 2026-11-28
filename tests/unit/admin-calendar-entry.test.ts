@@ -31,7 +31,13 @@ const schedule = {
 vi.mock("@/components/admin/branch/branch-context", () => ({
   useAdminBranch: () => ({ current: observed.branch ? { id: observed.branch } : null }),
 }));
-vi.mock("@/components/admin/AppointmentSheet", () => ({ AppointmentSheet: () => null }));
+vi.mock("@/components/admin/AppointmentSheet", () => ({ AppointmentSheet: (props: { appointment: { _id: string } | null }) => props.appointment ? createElement("span", null, `Sheet ${props.appointment._id}`) : null }));
+const nav = vi.hoisted(() => ({ search: "" }));
+vi.mock("@/platform/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(nav.search),
+  usePathname: () => "/admin/staff/calendar",
+}));
 vi.mock("convex/react", () => ({
   useMutation: () => vi.fn(),
   useQuery: (ref: Parameters<typeof getFunctionName>[0], args: unknown) => {
@@ -57,7 +63,7 @@ beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date("2026-11-10T14:32:00+07:00"));
-  observed.calendar = null; observed.branch = undefined; observed.draft = null;
+  observed.calendar = null; observed.branch = undefined; observed.draft = null; nav.search = "";
   window.localStorage.clear();
   root = createRoot(document.body.appendChild(document.createElement("div")));
 });
@@ -113,4 +119,23 @@ it("applies remembered staff and service IDs only in their branch", async () => 
   await renderStaff();
   expect(observed.calendar?.resources?.map((resource) => resource.id)).toEqual(["staff-1", "staff-2"]);
   expect(observed.calendar?.events?.map((event) => event.id)).toContain("appointment-1");
+});
+
+it("D23/F12: a calendar deep link opens that date, shows the linked person and opens the appointment", async () => {
+  window.localStorage.setItem("admin.staff.hiddenStaff", '["staff-2"]');
+  nav.search = "date=2026-11-10&staff=staff-2&appointment=appointment-1";
+  await act(async () => root.render(createElement(AdminStaffBookingsView, { tab: "calendar" })));
+  expect(observed.calendar?.resources?.map((resource) => resource.id)).toEqual(["staff-1", "staff-2"]);
+  expect((observed.calendar as unknown as { date: Date }).date.getTime()).toBe(Date.parse("2026-11-10T00:00:00+07:00"));
+  expect(document.body.textContent).toContain("Sheet appointment-1");
+});
+
+it("D18: activating an off-shift block explains it and links to that person's roster week", async () => {
+  const props = () => observed.calendar as unknown as { onEventClick: (o: { event: { id: string; data: unknown } }) => void };
+  await act(async () => root.render(createElement(AdminStaffBookingsView, { tab: "calendar" })));
+  const start = Date.parse("2026-11-10T18:00:00+07:00");
+  await act(async () => props().onEventClick({ event: { id: "off", data: { kind: "off", staffId: "staff-2", start, end: start + 5 * 3600000 } } }));
+  expect(document.body.textContent).toContain("Mali is not working");
+  expect(document.body.textContent).toContain("18:00–23:00");
+  expect(document.querySelector<HTMLAnchorElement>('a[href="/admin/staff/roster?date=2026-11-10&staff=staff-2"]')?.textContent).toBe("Open roster week");
 });
