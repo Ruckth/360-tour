@@ -9,11 +9,14 @@ import type { AdminSession } from "@/components/admin/admin-chat-types";
 import "@/app.css";
 
 const now = Date.UTC(2026, 10, 11, 8);
-const closed = new URLSearchParams(location.search).has("closed");
+const flags = new URLSearchParams(location.search);
+const closed = flags.has("closed");
 const initialSession: AdminSession = {
   _id: "fixture-inbox" as Id<"conversations">,
   channel: "whatsapp",
   visitorName: "Returning guest with a longer name",
+  visitorEmail: "guest+chat@example.com",
+
   propertyName: "Tideglass Pool Residence",
   createdAt: now - 86_400_000,
   isActive: false,
@@ -21,7 +24,7 @@ const initialSession: AdminSession = {
   inboxState: "needs_staff",
   inboxReason: "send_failed",
   inboxSendError: "Message could not be delivered. Review before trying again.",
-  aiPaused: true,
+  aiPaused: !flags.has("automation"),
   keepWithStaff: true,
   staffTask: "Check the accessible room with housekeeping and update the guest before arrival.",
   latestGuestMessageId: "fixture-message" as Id<"messages">,
@@ -34,6 +37,10 @@ function Fixture() {
     const update = (event: Event) => {
       const args: unknown = (event as CustomEvent<unknown>).detail;
       if (!args || typeof args !== "object") return;
+      if ("paused" in args && typeof args.paused === "boolean") {
+        const aiPaused = args.paused;
+        setSession(current => ({ ...current, aiPaused }));
+      }
       if ("task" in args && (typeof args.task === "string" || args.task === null)) {
         const staffTask = args.task ?? undefined;
         setSession(current => ({ ...current, staffTask }));
@@ -45,10 +52,11 @@ function Fixture() {
   return <ConfirmProvider>
     <div data-fixture-ready style={{ height: "100dvh", minHeight: 0 }}>
       <AdminSessionActions key={session._id} session={session} onDeleted={() => {}}>
-        {({ actions, followUp, actionError, replyAction }) => <AdminSessionDetail
+        {({ actions, followUp, actionError, replyAction, handoff }) => <AdminSessionDetail
           selectedSession={session}
           compact
           actions={actions}
+          handoff={handoff}
           replyAction={replyAction}
           actionError={actionError}
           followUp={followUp}

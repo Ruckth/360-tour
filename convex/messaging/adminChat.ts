@@ -584,9 +584,23 @@ export const queueCounts = adminQuery({
 	handler: async ctx => {
 		if (!(await canAccessResortDesk(ctx, 'chats'))) return null;
 		if (!(await inboxProjectionReady(ctx))) return null;
-		const count = async (state: 'needs_staff' | 'processing') => (await ctx.db.query('conversations')
-			.withIndex('by_inboxState_and_latestMessageAt', q => q.eq('inboxState', state).gte('latestMessageAt', 0)).take(100)).length;
-		const [waiting, inProgress] = await Promise.all([count('needs_staff'), count('processing')]);
+		const count = async (states: Array<'needs_staff' | 'processing' | undefined>) => {
+			const cap = 100;
+			let total = 0;
+			for (const state of states) {
+				for (const status of [undefined, 'open'] as const) {
+					if (total === cap) return cap;
+					const rows = await ctx.db.query('conversations')
+						.withIndex('by_inboxState_and_adminStatus_and_latestMessageAt', q => q
+							.eq('inboxState', state).eq('adminStatus', status).gte('latestMessageAt', 0))
+						.take(cap - total);
+					total += rows.length;
+				}
+			}
+			return total;
+		};
+		// After projection, old non-waiting chats without an explicit inbox state still appear in progress.
+		const [waiting, inProgress] = await Promise.all([count(['needs_staff']), count(['processing', undefined])]);
 		return { waiting, inProgress };
 	}
 });
@@ -830,7 +844,7 @@ export const setAiPaused = adminMutation({
 });
 
 export const setStaffTask = adminMutation({
-	args: { sessionId: v.id('conversations'), task: v.union(v.string(), v.null()), dueAt: v.optional(v.number()), expectedRevision: v.optional(v.number()) },
+	args: { sessionId: v.id('conversations'), task: v.union(v.string(), v.null()), dueAt: v.optional(v.union(v.number(), v.null())), expectedRevision: v.optional(v.number()) },
 	handler: async (ctx, args) => {
 		await assertChatDesk(ctx);
 		const { email } = ctx.admin;
@@ -840,13 +854,13 @@ export const setStaffTask = adminMutation({
 			throw new Error('The follow-up changed. Reopen it and try again.');
 		}
 		const staffTaskRevision = (session.staffTaskRevision ?? 0) + 1;
-		if (args.dueAt !== undefined && (!Number.isSafeInteger(args.dueAt) || args.dueAt <= 0 || args.dueAt > 253402300799999)) {
+		if (typeof args.dueAt === 'number' && (!Number.isSafeInteger(args.dueAt) || args.dueAt <= 0 || args.dueAt > 253402300799999)) {
 			throw new Error('Enter a valid follow-up due time');
 		}
 		if (args.task !== null) {
 			const task = args.task.trim();
 			if (!task || task.length > 300) throw new Error('Enter a follow-up of 1–300 characters');
-			await ctx.db.patch(args.sessionId, { staffTask: task, staffTaskRevision, staffTaskDueAt: args.dueAt,
+			await ctx.db.patch(args.sessionId, { staffTask: task, staffTaskRevision, staffTaskDueAt: args.dueAt === null ? undefined : args.dueAt ?? session.staffTaskDueAt,
 				inboxState: session.inboxSendError ? 'needs_staff' : 'processing',
 				inboxReason: session.inboxSendError ? 'send_failed' : session.inboxReason === 'sending' ? 'sending' : 'follow_up',
 				adminStatus: undefined, resolvedAt: undefined, aiPaused: true, assignedAdminEmail: email });

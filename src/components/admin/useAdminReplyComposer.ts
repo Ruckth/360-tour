@@ -17,6 +17,7 @@ type ReplyEntry = {
 
 export type AdminReplyComposer = {
   draft: string;
+  prepareDiscard: () => Promise<(() => void) | null>;
   confirmLeave: () => Promise<boolean>;
   pending: boolean;
   error: string | null;
@@ -38,12 +39,19 @@ export function useAdminReplyComposer(sessionId: SessionId | null, replyToMessag
   const pendingSessions = useRef(new Set<SessionId>());
   const entry = sessionId ? entries[sessionId] : undefined;
   const { confirmDiscard } = useUnsavedGuard(Object.values(entries).some(value => Boolean(value?.draft.trim())));
+  async function prepareDiscard() {
+    const draft = sessionId ? entriesRef.current[sessionId]?.draft : undefined;
+    if (draft?.trim() && !(await confirmDiscard())) return null;
+    return () => {
+      if (!sessionId || draft === undefined || entriesRef.current[sessionId]?.draft !== draft) return;
+      update(sessionId, current => ({ ...current, draft: "" }));
+    };
+  }
+
   async function confirmLeave() {
-    if (!sessionId || !entriesRef.current[sessionId]?.draft.trim()) return true;
-    if (!(await confirmDiscard())) return false;
-    const cleared = { ...entriesRef.current, [sessionId]: { ...entriesRef.current[sessionId]!, draft: "" } };
-    entriesRef.current = cleared;
-    setEntries(cleared);
+    const discard = await prepareDiscard();
+    if (!discard) return false;
+    discard();
     return true;
   }
 
@@ -118,6 +126,7 @@ export function useAdminReplyComposer(sessionId: SessionId | null, replyToMessag
   return {
     draft: entry?.draft ?? "",
     confirmLeave,
+    prepareDiscard,
     pending: entry?.pending ?? false,
     error: entry?.error ?? null,
     status: entry?.status ?? null,

@@ -239,7 +239,7 @@ export function AdminSessionActions({
             const value = task.trim();
             if (!value) return;
             void run(async () => { const [date, time] = dueTime.split("T");
-              await setStaffTask({ sessionId, task: value, dueAt: dueTime ? resortDateTime(date, time) : undefined, expectedRevision: taskRevision }); setOpeningTask(value); setTask(value); setTaskOpen(false); });
+              await setStaffTask({ sessionId, task: value, dueAt: dueTime ? resortDateTime(date, time) : null, expectedRevision: taskRevision }); setOpeningTask(value); setTask(value); setTaskOpen(false); });
           }}>
             <label htmlFor={`follow-up-${sessionId}`} className="text-sm font-medium">What needs to be done?</label>
             <Input id={`follow-up-${sessionId}`} value={task} onChange={event => setTask(event.target.value)} disabled={pending} maxLength={300} placeholder="Check with housekeeping and update the guest" autoFocus required />

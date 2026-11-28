@@ -275,6 +275,7 @@ export function ChatsView() {
     setPageCursors([null]);
   }
   const queueCounts = useQuery(api.messaging.adminChat.queueCounts, {});
+  const queryText = urlSearchQuery.trim();
   const listRequests = Object.fromEntries(
     (invalidMessageDateRange ? [] : pageCursors).map((cursor, index) => [String(index), {
       query: api.messaging.adminChat.listSessions,
@@ -284,16 +285,16 @@ export function ChatsView() {
         adminStatus,
         empty: emptyFilter,
         channel: channelFilter,
-        searchQuery: urlSearchQuery.trim() || undefined,
-        messageStartAt: parsedMessageStartAt,
-        messageEndAt: parsedMessageEndAt,
-        now: status === "active" || status === "inactive" ? presenceMinute : undefined,
+        ...(queryText ? { searchQuery: queryText } : {}),
+        ...(parsedMessageStartAt === undefined ? {} : { messageStartAt: parsedMessageStartAt }),
+        ...(parsedMessageEndAt === undefined ? {} : { messageEndAt: parsedMessageEndAt }),
+        ...(status === "active" || status === "inactive" ? { now: presenceMinute } : {}),
       },
     }]),
   );
   const listResults = useQueries(listRequests) as Record<string, SessionListResult | Error | undefined>;
-  const lastPage = listResults[String(pageCursors.length - 1)];
-  if (lastPage instanceof Error) throw lastPage;
+  const tail = listResults[String(pageCursors.length - 1)];
+  const lastPage = tail instanceof Error ? undefined : tail;
   const firstPage = listResults["0"];
   const sessions = useMemo(() => {
     const byId = new Map<Id<"conversations">, AdminSession>();
@@ -383,8 +384,10 @@ export function ChatsView() {
     setSettlingMessageIds(new Set(settlingRef.current));
     setSettleError(null);
     try {
-      if (sessionId === selectedSessionId && !(await reply.confirmLeave())) return;
+      const discard = sessionId === selectedSessionId ? await reply.prepareDiscard() : undefined;
+      if (discard === null) return;
       await settleGuestMessageMutation({ sessionId, messageId });
+      discard?.();
     } catch (error) {
       setSettleError(error instanceof Error ? error.message : "Unable to mark the message as settled.");
     } finally {

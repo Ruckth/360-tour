@@ -24,6 +24,8 @@ const mocks = vi.hoisted(() => ({
   mutation: vi.fn(),
   page: [] as unknown[],
   listResult: {} as unknown,
+  olderPage: undefined as unknown,
+  nextCursor: null as string | null,
   listArgs: [] as Array<Record<string, unknown>>,
   detail: null as unknown,
   desktop: true,
@@ -51,6 +53,11 @@ vi.mock("convex/react", () => ({
     if (name === "messaging/adminChat:getSessionDetail") return mocks.detail;
     return mocks.empty;
   },
+  useQueries: (requests: Record<string, { args: { paginationOpts: { cursor: string | null } } }>) =>
+    Object.fromEntries(Object.entries(requests).map(([key, { args }]) => {
+      mocks.listArgs.push(args);
+      return [key, args.paginationOpts.cursor ? mocks.olderPage : mocks.listResult];
+    })),
   usePaginatedQuery: () => mocks.transcript,
 }));
 vi.mock("@/components/admin/ConfirmDialog", () => ({
@@ -93,8 +100,8 @@ function session(id: string, status: AdminSession["adminStatus"] = "open"): Admi
 async function render() {
   mocks.listResult = {
     sessions: mocks.page,
-    isDone: true,
-    continueCursor: null,
+    isDone: !mocks.nextCursor,
+    continueCursor: mocks.nextCursor,
   };
   await act(async () => {
     root.render(createElement(ChatsView));
@@ -142,6 +149,8 @@ beforeEach(() => {
     removeEventListener: () => {},
   }));
   mocks.search = new URLSearchParams("view=all&session=session-a");
+  mocks.nextCursor = null;
+  mocks.olderPage = undefined;
   mocks.page = [session("session-a"), session("session-b")];
   mocks.detail = {
     session: session("session-a"),
@@ -322,7 +331,7 @@ describe("inbox navigation", () => {
     expect(current.value).toBe("Follow up B");
     mocks.replace.mockClear();
     await act(async () => current.closest("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
-    expect(mocks.mutation).toHaveBeenCalledExactlyOnceWith({ sessionId: "session-b", task: "Follow up B" });
+    expect(mocks.mutation).toHaveBeenCalledExactlyOnceWith({ sessionId: "session-b", task: "Follow up B", dueAt: null, expectedRevision: 0 });
     expect(mocks.replace).not.toHaveBeenCalled();
   });
 
@@ -542,7 +551,7 @@ describe("settling guest messages", () => {
     };
   }
   function settleButtons() {
-    return [...document.querySelectorAll<HTMLButtonElement>('[aria-label^="Mark the message from"]')];
+    return [...document.querySelectorAll<HTMLButtonElement>('[aria-label^="No reply needed for"]')];
   }
 
   it("keeps a second settle pending when the first finishes", async () => {
@@ -648,4 +657,40 @@ describe("inbox defaults and list rows", () => {
     expect(rowText("silent")).toContain("Unknown");
     expect(rowText("silent")).not.toContain("1m ago");
   });
+});
+
+it("appends older chats without navigating, losing the draft, or restarting the selected detail", async () => {
+  mocks.nextCursor = "older";
+  await render();
+  await act(async () => latestDetail().onReplyDraftChange("Keep this exact draft\nSecond line"));
+  mocks.replace.mockClear();
+  await click("Load older chats");
+  expect(latestDetail().selectedSession?._id).toBe("session-a");
+  expect(latestDetail().replyDraft).toBe("Keep this exact draft\nSecond line");
+  expect(buttonByText("Loading older chats…").disabled).toBe(true);
+  mocks.olderPage = { sessions: [session("session-b"), session("session-c")], isDone: true, continueCursor: null };
+  await render();
+  expect(document.querySelectorAll("[data-session-id]")).toHaveLength(3);
+  expect(latestDetail().selectedSession?._id).toBe("session-a");
+  expect(latestDetail().replyDraft).toBe("Keep this exact draft\nSecond line");
+  expect(mocks.replace).not.toHaveBeenCalled();
+  mocks.search = new URLSearchParams("view=needs_reply&state=open&session=session-a");
+  await render();
+  expect(document.querySelectorAll("[data-session-id]")).toHaveLength(2);
+});
+
+it("preserves the draft when a confirmed list settlement fails", async () => {
+  const current = {
+    ...session("session-a"),
+    latestGuestMessageId: "message-a" as NonNullable<AdminSession["latestGuestMessageId"]>,
+  };
+  mocks.page = [current];
+  mocks.detail = { session: current, replyWindow: { applies: false } };
+  await render();
+  await act(async () => latestDetail().onReplyDraftChange("Keep if settlement fails"));
+  mocks.mutation.mockRejectedValueOnce(new Error("The chat changed"));
+  const settle = document.querySelector<HTMLButtonElement>('[aria-label^="No reply needed for"]')!;
+  await act(async () => settle.click());
+  expect(mocks.mutation).toHaveBeenCalledExactlyOnceWith({ sessionId: "session-a", messageId: "message-a" });
+  expect(latestDetail().replyDraft).toBe("Keep if settlement fails");
 });
