@@ -2,7 +2,7 @@
 import { act, createElement, useEffect, useSyncExternalStore } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { jsx } from 'react/jsx-runtime';
-import { beforeEach, afterEach, expect, it, vi } from 'vitest';
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { getFunctionName, type FunctionReference } from 'convex/server';
 import { ConvexError } from 'convex/values';
 import { AIChatPage } from '@/components/chat/AIChatWidget';
@@ -180,4 +180,68 @@ it('keeps guest messaging actions in flow between the transcript and composer so
   expect(messages.style.paddingBottom).toBe('');
   expect(actions.compareDocumentPosition(footer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(messages.compareDocumentPosition(actions) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+});
+
+describe('G22 restart confirmation', () => {
+  const createCalls = () => mocks.mutation.mock.calls.filter(([ref]) => getFunctionName(ref) === 'messaging/chat:createSession').length;
+  const panelButton = (name: string) => [...document.querySelectorAll<HTMLButtonElement>('[data-testid="chat-panel"] button')].find(button => button.textContent === name)!;
+  const restartButton = () => document.querySelector<HTMLButtonElement>('button[aria-label^="restartChat"]')!;
+  async function openOverlayWithTranscript() {
+    await mount(undefined, 'overlay');
+    await act(async () => { await vi.advanceTimersByTimeAsync(260); });
+    await publish([{ _id: 'u1', role: 'user', content: 'Keep me' }, { _id: 'a1', role: 'assistant', content: 'Reply' }]);
+  }
+
+  it('restarts an empty chat at once, without asking', async () => {
+    await mount(undefined, 'overlay');
+    await act(async () => { await vi.advanceTimersByTimeAsync(260); });
+    const before = createCalls();
+    await act(async () => restartButton().click());
+    expect(document.querySelector('[data-testid="chat-restart-confirm"]')).toBeNull();
+    expect(createCalls()).toBe(before + 1);
+  });
+
+  it('Keep chatting retains the transcript and draft and returns focus to Restart', async () => {
+    await openOverlayWithTranscript();
+    await act(async () => chat.setInput('half-typed'));
+    const before = createCalls();
+    await act(async () => restartButton().click());
+    const dialog = document.querySelector('[data-testid="chat-restart-confirm"]')!;
+    expect(dialog.getAttribute('role')).toBe('alertdialog');
+    expect(restartButton().getAttribute('aria-expanded')).toBe('true');
+    expect(document.activeElement).toBe(panelButton('restartKeep'));
+    await act(async () => panelButton('restartKeep').click());
+    expect(document.querySelector('[data-testid="chat-restart-confirm"]')).toBeNull();
+    expect(document.activeElement).toBe(restartButton());
+    expect(chat.messages.map(message => message.content)).toEqual(['Keep me', 'Reply']);
+    expect(chat.input).toBe('half-typed');
+    expect(createCalls()).toBe(before);
+  });
+
+  it('Escape cancels the question without closing the overlay', async () => {
+    await openOverlayWithTranscript();
+    await act(async () => restartButton().click());
+    await act(async () => { document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); });
+    expect(document.querySelector('[data-testid="chat-restart-confirm"]')).toBeNull();
+    expect(chat.open).toBe(true);
+    expect(document.activeElement).toBe(restartButton());
+  });
+
+  it('confirming restarts exactly once, even while a reply is pending', async () => {
+    await openOverlayWithTranscript();
+    const pendingSend = deferred<unknown>(); mocks.mutation.mockReturnValueOnce(pendingSend.promise);
+    let send: Promise<void>; await act(async () => { send = chat.sendMessage('Still waiting'); });
+    expect(chat.hasConversation).toBe(true);
+    const before = createCalls();
+    mocks.mutation.mockResolvedValueOnce({ sessionId: 'session-two', guestToken: 'token-two' });
+    await act(async () => restartButton().click());
+    await act(async () => panelButton('restartConfirm').click());
+    expect(createCalls()).toBe(before + 1);
+    await act(async () => pendingSend.resolve({ eventId: 'late' })); await send!;
+    await publish([]);
+    expect(chat.messages).toEqual([]);
+    expect(chat.input).toBe('');
+    expect(getStoredSessionId()).toBe('session-two');
+    expect(document.activeElement).toBe(restartButton());
+  });
 });

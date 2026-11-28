@@ -380,7 +380,11 @@
     "suggestionCancellation": "ยกเลิกการจองได้อย่างไร?",
     "suggestionAirport": "ช่วยจัดรถรับจากสนามบินได้ไหม?",
     "suggestionAmenitiesIncluded": "ในวิลล่ามีอะไรให้บ้าง?",
-    "suggestionLocation": "ใกล้ชายหาดและร้านอาหารแค่ไหน?"
+    "suggestionLocation": "ใกล้ชายหาดและร้านอาหารแค่ไหน?",
+    "restartConfirmTitle": "เริ่มบทสนทนาใหม่ไหม?",
+    "restartConfirmBody": "ข้อความและข้อความที่ยังไม่ได้ส่งจะถูกล้าง",
+    "restartKeep": "คุยต่อ",
+    "restartConfirm": "เริ่มแชตใหม่"
   },
   "Footer": {
     "bookDirect": "จองตรง",

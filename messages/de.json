@@ -380,7 +380,11 @@
     "suggestionCancellation": "Wie lautet die Stornierungsrichtlinie?",
     "suggestionAirport": "Können Sie beim Flughafentransfer helfen?",
     "suggestionAmenitiesIncluded": "Was ist in der Villa enthalten?",
-    "suggestionLocation": "Wie nah sind Strand und Restaurants?"
+    "suggestionLocation": "Wie nah sind Strand und Restaurants?",
+    "restartConfirmTitle": "Dieses Gespräch neu starten?",
+    "restartConfirmBody": "Ihre Nachrichten und nicht gesendeter Text werden gelöscht.",
+    "restartKeep": "Weiterchatten",
+    "restartConfirm": "Neuen Chat beginnen"
   },
   "Footer": {
     "bookDirect": "Direkt buchen",

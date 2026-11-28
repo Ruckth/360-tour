@@ -169,6 +169,8 @@ export function useChatSession(props: ChatExperienceProps) {
   return { ...props, ...viewport, ...handoff, mode, open, hydrated, mounted, title: activePropertyName ? t('propertyTitle', { propertyName: activePropertyName }) : t('defaultTitle'),
     chatHref: buildChatHref({ locale, pathname, propertySlug: activePropertySlug, search: searchParams.toString() }),
     hideFloatingTriggerOnMobileRoom: stripLocalePrefix(pathname).startsWith('/rooms/'), openChat, closeChat, restartChat,
+    // Restart asks first whenever it would discard a transcript, a pending reply or an unsent draft.
+    hasConversation: messages.length > 0 || isTyping || input.trim().length > 0,
     messages, messageActionCards, latestAssistantIndex, canShowMessageSuggestions: !isTyping && latestAssistantIndex >= 0 && latestAssistantIndex === messages.length - 1,
     visibleSuggestions, sendMessage, chatInputDisabled, isTyping, hasLatestActionCard: !!latestActionCard && latestActionCard.type !== 'none',
     contactForm, setContactForm, contactStatus, saveContact, input, setInput, sendError,

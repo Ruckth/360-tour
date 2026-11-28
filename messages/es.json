@@ -380,7 +380,11 @@
     "suggestionCancellation": "¿Cuál es la política de cancelación?",
     "suggestionAirport": "¿Pueden ayudar con recogida en el aeropuerto?",
     "suggestionAmenitiesIncluded": "¿Qué incluye la villa?",
-    "suggestionLocation": "¿Qué tan cerca están la playa y los restaurantes?"
+    "suggestionLocation": "¿Qué tan cerca están la playa y los restaurantes?",
+    "restartConfirmTitle": "¿Reiniciar esta conversación?",
+    "restartConfirmBody": "Se borrarán sus mensajes y cualquier texto sin enviar.",
+    "restartKeep": "Seguir conversando",
+    "restartConfirm": "Empezar un chat nuevo"
   },
   "Footer": {
     "bookDirect": "Reservar directo",

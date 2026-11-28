@@ -380,7 +380,11 @@
     "suggestionCancellation": "कैंसलेशन पॉलिसी क्या है?",
     "suggestionAirport": "क्या एयरपोर्ट पिकअप में मदद मिलेगी?",
     "suggestionAmenitiesIncluded": "विला में क्या-क्या शामिल है?",
-    "suggestionLocation": "बीच और रेस्टोरेंट कितने पास हैं?"
+    "suggestionLocation": "बीच और रेस्टोरेंट कितने पास हैं?",
+    "restartConfirmTitle": "क्या यह बातचीत फिर से शुरू करें?",
+    "restartConfirmBody": "आपके संदेश और बिना भेजा गया टेक्स्ट हटा दिया जाएगा।",
+    "restartKeep": "चैट जारी रखें",
+    "restartConfirm": "नई चैट शुरू करें"
   },
   "Footer": {
     "bookDirect": "सीधे बुक करें",

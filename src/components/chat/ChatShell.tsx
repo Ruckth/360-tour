@@ -3,7 +3,7 @@
 import Link from "@/platform/link";
 import { MessageCircle, RotateCcw, Sparkles, X } from "lucide-react";
 import { useTranslations } from "@/platform/intl";
-import { useEffect, useRef, type CSSProperties, type ReactNode, type RefObject } from "react";
+import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 import { Button } from "@/components/ui/button";
 import { ExpandableChat } from "@/components/ui/chat/expandable-chat";
 import { cn } from "@/lib/utils";
@@ -22,6 +22,7 @@ export function ChatShell({
   onOpen,
   onClose,
   onRestart,
+  hasConversation = false,
   children,
 }: {
   mode: "overlay" | "page";
@@ -37,11 +38,39 @@ export function ChatShell({
   onOpen: () => void;
   onClose: () => void;
   onRestart: () => void;
+  /** When true, Restart asks for confirmation before discarding the conversation. */
+  hasConversation?: boolean;
   children: ReactNode;
 }) {
   const t = useTranslations("Chat");
   const panelRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
+  const restartRef = useRef<HTMLButtonElement>(null);
+  const keepRef = useRef<HTMLButtonElement>(null);
+  const confirmId = useId();
+  const [confirmingRestart, setConfirmingRestart] = useState(false);
+  // Where focus goes after the confirmation closes: "keep" opens it, "restart" returns to the header.
+  const focusAfterConfirm = useRef<"keep" | "restart" | null>(null);
+  useEffect(() => {
+    const target = focusAfterConfirm.current;
+    focusAfterConfirm.current = null;
+    if (target === "keep") keepRef.current?.focus({ preventScroll: true });
+    else if (target === "restart") restartRef.current?.focus({ preventScroll: true });
+  }, [confirmingRestart]);
+  const requestRestart = () => {
+    if (!hasConversation) return onRestart();
+    focusAfterConfirm.current = "keep";
+    setConfirmingRestart(true);
+  };
+  const cancelRestart = () => {
+    focusAfterConfirm.current = "restart";
+    setConfirmingRestart(false);
+  };
+  const confirmRestart = () => {
+    focusAfterConfirm.current = "restart";
+    setConfirmingRestart(false);
+    onRestart();
+  };
 
   useEffect(() => {
     if (mode !== "overlay" || !open || !hydrated || !mounted) return;
@@ -83,8 +112,11 @@ export function ChatShell({
             type="button"
             variant="ghost"
             size="sm"
-            onClick={onRestart}
-            className="h-8 rounded-full px-2 text-sm font-semibold text-white hover:bg-white/10 hover:text-white"
+            ref={restartRef}
+            onClick={requestRestart}
+            aria-expanded={hasConversation ? confirmingRestart : undefined}
+            aria-controls={confirmingRestart ? confirmId : undefined}
+            className="h-8 rounded-full px-2 text-sm font-semibold text-white hover:bg-white/10 hover:text-white pointer-coarse:h-11"
             aria-label={`${t("restartChat")} - ${title}`}
           >
             <RotateCcw className="h-3.5 w-3.5" />
@@ -103,6 +135,33 @@ export function ChatShell({
           <X className="h-4 w-4" />
         </Button>
       </div>
+      {confirmingRestart ? (
+        <div
+          id={confirmId}
+          role="alertdialog"
+          aria-labelledby={`${confirmId}-title`}
+          aria-describedby={`${confirmId}-body`}
+          data-testid="chat-restart-confirm"
+          onKeyDown={(event) => {
+            if (event.key !== "Escape") return;
+            // Escape cancels the question only; it must not also close the desktop overlay.
+            event.stopPropagation();
+            cancelRestart();
+          }}
+          className="shrink-0 border-b border-border bg-muted/60 px-4 py-3 text-sm"
+        >
+          <p id={`${confirmId}-title`} className="font-semibold text-foreground">{t("restartConfirmTitle")}</p>
+          <p id={`${confirmId}-body`} className="mt-0.5 text-muted-foreground">{t("restartConfirmBody")}</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button ref={keepRef} type="button" size="sm" variant="outline" className="pointer-coarse:min-h-11" onClick={cancelRestart}>
+              {t("restartKeep")}
+            </Button>
+            <Button type="button" size="sm" variant="destructive" className="pointer-coarse:min-h-11" onClick={confirmRestart}>
+              {t("restartConfirm")}
+            </Button>
+          </div>
+        </div>
+      ) : null}
       {children}
     </div>
   );

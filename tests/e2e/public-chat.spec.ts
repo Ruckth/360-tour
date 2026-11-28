@@ -161,6 +161,8 @@ test("@smoke home page opens chat, shows server replies, and exposes contact cap
   // Start a new conversation before testing another automatic reply; never fake a resumed AI turn.
   await expect(page.getByRole("status").filter({ hasText: "A team member will reply here shortly." })).toBeVisible();
   await page.getByRole("button", { name: /Restart chat/i }).click();
+  // G22: a non-empty conversation asks before it is discarded.
+  await page.getByRole("button", { name: "Start a new chat", exact: true }).click();
   await expect(page.getByText("Ask anything?")).toBeVisible();
   const bookingInitial = await initialChipTexts(page);
   await page.getByPlaceholder("Ask a question").fill("What do I get when I book direct?");
@@ -172,6 +174,8 @@ test("@smoke home page opens chat, shows server replies, and exposes contact cap
   await expectFreshFollowUpChips(page, bookingInitial);
 
   await page.getByRole("button", { name: /Restart chat/i }).click();
+  // G22: a non-empty conversation asks before it is discarded.
+  await page.getByRole("button", { name: "Start a new chat", exact: true }).click();
   await expect(page.getByText("Ask anything?")).toBeVisible();
   await page.getByPlaceholder("Ask a question").fill("Do you have airport pickup?");
   await page.getByRole("button", { name: "Send message" }).click();
@@ -179,6 +183,8 @@ test("@smoke home page opens chat, shows server replies, and exposes contact cap
   await expectServerReplies(page, 1);
 
   await page.getByRole("button", { name: /Restart chat/i }).click();
+  // G22: a non-empty conversation asks before it is discarded.
+  await page.getByRole("button", { name: "Start a new chat", exact: true }).click();
   await expect(page.getByText("Do you have airport pickup?")).toHaveCount(0);
   await expect(page.getByText("Ask anything?")).toBeVisible();
   await expect(

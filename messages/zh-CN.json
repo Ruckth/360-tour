@@ -380,7 +380,11 @@
     "suggestionCancellation": "取消政策是什么？",
     "suggestionAirport": "可以安排机场接送吗？",
     "suggestionAmenitiesIncluded": "别墅包含哪些设施？",
-    "suggestionLocation": "离海滩和餐厅有多近？"
+    "suggestionLocation": "离海滩和餐厅有多近？",
+    "restartConfirmTitle": "要重新开始这段对话吗？",
+    "restartConfirmBody": "您的消息和未发送的文字将被清除。",
+    "restartKeep": "继续聊天",
+    "restartConfirm": "开始新聊天"
   },
   "Footer": {
     "bookDirect": "直接预订",

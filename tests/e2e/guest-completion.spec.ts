@@ -82,3 +82,33 @@ test.describe("G36 follow-up chips on a coarse pointer", () => {
     expect(overlap).toBe(false);
   });
 });
+
+test("G22 restart asks first; Keep chatting preserves the conversation", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 760 });
+  await page.goto("/chat");
+  const messages = page.getByTestId("chat-messages");
+  // Message bubbles render text in spans; suggestion chips hold bare text.
+  const sentBubble = messages.locator("span", { hasText: en.Chat.suggestionGuests });
+  await messages.getByTestId("chat-suggestions").getByRole("button", { name: en.Chat.suggestionGuests }).click();
+  await expect(sentBubble.first()).toBeVisible();
+  await page.getByPlaceholder(en.Chat.askPlaceholder).fill("Unsent follow-up");
+  const restart = page.getByRole("button", { name: /Restart chat/i });
+  await restart.click();
+  const confirm = page.getByRole("alertdialog", { name: en.Chat.restartConfirmTitle });
+  await expect(confirm).toBeVisible();
+  await expect(confirm.getByRole("button", { name: en.Chat.restartKeep })).toBeFocused();
+  await confirm.getByRole("button", { name: en.Chat.restartKeep }).click();
+  await expect(confirm).toHaveCount(0);
+  await expect(restart).toBeFocused();
+  await expect(sentBubble.first()).toBeVisible();
+  await expect(page.getByPlaceholder(en.Chat.askPlaceholder)).toHaveValue("Unsent follow-up");
+
+  await restart.click();
+  await page.keyboard.press("Escape");
+  await expect(confirm).toHaveCount(0);
+  await restart.click();
+  await page.getByRole("button", { name: en.Chat.restartConfirm, exact: true }).click();
+  await expect(sentBubble).toHaveCount(0);
+  await expect(page.getByText(en.Chat.initialPrompt)).toBeVisible();
+  await expect(page.getByPlaceholder(en.Chat.askPlaceholder)).toHaveValue("");
+});

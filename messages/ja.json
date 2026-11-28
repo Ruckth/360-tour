@@ -380,7 +380,11 @@
     "suggestionCancellation": "キャンセルポリシーは？",
     "suggestionAirport": "空港送迎はお願いできますか？",
     "suggestionAmenitiesIncluded": "ヴィラには何が含まれますか？",
-    "suggestionLocation": "ビーチやレストランまで近いですか？"
+    "suggestionLocation": "ビーチやレストランまで近いですか？",
+    "restartConfirmTitle": "この会話を最初からやり直しますか？",
+    "restartConfirmBody": "メッセージと未送信のテキストは消去されます。",
+    "restartKeep": "会話を続ける",
+    "restartConfirm": "新しいチャットを始める"
   },
   "Footer": {
     "bookDirect": "直接予約",

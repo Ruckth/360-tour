@@ -380,7 +380,11 @@
     "suggestionCancellation": "취소 정책은 어떻게 되나요?",
     "suggestionAirport": "공항 픽업을 도와줄 수 있나요?",
     "suggestionAmenitiesIncluded": "빌라에는 무엇이 포함되나요?",
-    "suggestionLocation": "해변과 레스토랑에서 얼마나 가까운가요?"
+    "suggestionLocation": "해변과 레스토랑에서 얼마나 가까운가요?",
+    "restartConfirmTitle": "이 대화를 다시 시작할까요?",
+    "restartConfirmBody": "메시지와 보내지 않은 텍스트가 지워집니다.",
+    "restartKeep": "계속 대화하기",
+    "restartConfirm": "새 채팅 시작"
   },
   "Footer": {
     "bookDirect": "직접 예약",

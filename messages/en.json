@@ -380,7 +380,11 @@
     "suggestionCancellation": "What is the cancellation policy?",
     "suggestionAirport": "Can you help with airport pickup?",
     "suggestionAmenitiesIncluded": "What is included with the villa?",
-    "suggestionLocation": "How close is it to the beach and restaurants?"
+    "suggestionLocation": "How close is it to the beach and restaurants?",
+    "restartConfirmTitle": "Restart this conversation?",
+    "restartConfirmBody": "Your messages and any unsent text will be cleared.",
+    "restartKeep": "Keep chatting",
+    "restartConfirm": "Start a new chat"
   },
   "Footer": {
     "bookDirect": "Book Direct",
