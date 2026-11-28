@@ -106,6 +106,17 @@ test.describe("manager on a phone", () => {
     expect(count.taps).toBe(1);
   });
 
+  test("a manager outside the resort keeps one-tap Checkout without resort desk links", async ({ page }) => {
+    await open(page, "?role=manager&scope=other&path=/admin/staff/calendar&pending=0");
+    const tabBar = sections(page);
+    await expect(tabBar.locator("a, button")).toHaveText(["Spa (Staff bookings)", "Checkout", "Menu"]);
+    await expect(tabBar.getByRole("link", { name: /Chats|Hotel/ })).toHaveCount(0);
+    const count = tapper();
+    await count.tap(tabBar.getByRole("link", { name: "Checkout" }));
+    await expect(page).toHaveURL(/\/admin\/checkout$/);
+    expect(count.taps).toBe(1);
+  });
+
   test("the order sheet leaves Approvals usable: approve over an open order in 2 taps", async ({ page }) => {
     await open(page, "?role=manager&path=/admin/checkout&pending=1");
     await page.getByRole("button", { name: /^View order/ }).click();

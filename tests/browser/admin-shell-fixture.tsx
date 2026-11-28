@@ -1,5 +1,6 @@
 import type { Id } from "convex/_generated/dataModel";
 import { DEFAULT_CASHIER_RULES } from "convex/shared/staffTypes";
+import { RESORT_BRANCH_KEY } from "convex/shared/resortBranch";
 import { IntlProvider } from "@/platform/intl";
 import { useState } from "react";
 import { createRoot } from "react-dom/client";
@@ -21,6 +22,7 @@ import "@/app.css";
  * Query parameters:
  *   role=owner|manager|cashier   who is signed in (manager by default)
  *   path=/admin/chats            the page: Chats (a reply draft) or /admin/checkout (the till)
+ *   scope=other                 give desk roles only a non-resort branch
  *   pending=0|1|2                cashier requests waiting (1 by default): a 15% discount, then ฿100 off
  */
 const params = new URLSearchParams(location.search);
@@ -30,9 +32,13 @@ const path = params.get("path") ?? "/admin/chats";
 const pending = Number(params.get("pending") ?? 1);
 const EMAILS = { owner: "narin@auraliscove.co", manager: "ploy@auraliscove.co", cashier: "mint@auraliscove.co" } as const;
 
+const resortBranch = { id: "fx-samui" as Id<"branches">, key: RESORT_BRANCH_KEY, slug: RESORT_BRANCH_KEY, name: "Koh Samui", state: "active" } as const;
+const otherBranch = { id: "fx-phuket" as Id<"branches">, key: "phuket", slug: "phuket", name: "Phuket", state: "active" } as const;
+const deskBranch = params.get("scope") === "other" ? otherBranch : resortBranch;
+
 const operations = role !== "cashier";
 const access: StaffAccessView = {
-  email: EMAILS[role], role, pendingInvitation: null, companyScope: role === "owner", branches: [], marketingInvitation: null, marketingRole: null, cashierRules: DEFAULT_CASHIER_RULES,
+  email: EMAILS[role], role, pendingInvitation: null, companyScope: role === "owner", branches: role === "owner" ? [] : [deskBranch], marketingInvitation: null, marketingRole: null, cashierRules: DEFAULT_CASHIER_RULES,
   capabilities: {
     checkout: true, approve: operations, operations, manageTeam: role === "owner", settings: role === "owner",
     bookings: operations, services: operations, customers: operations, orders: operations, chats: operations,
@@ -42,8 +48,8 @@ const access: StaffAccessView = {
 
 if (gate) {
   const branches: StaffAccessView["branches"] = [
-    { id: "fx-samui" as Id<"branches">, key: "samui", slug: "samui", name: "Koh Samui", state: "active" },
-    { id: "fx-phuket" as Id<"branches">, key: "phuket", slug: "phuket", name: "Phuket" + "ReservationOffice".repeat(5), state: "setup" },
+    resortBranch,
+    { ...otherBranch, name: "Phuket" + "ReservationOffice".repeat(5), state: "setup" },
   ];
   const gateAccess: StaffAccessView = {
     ...access,
