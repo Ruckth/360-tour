@@ -4,20 +4,29 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { getFunctionName, type FunctionReference } from 'convex/server';
 import type { Doc } from 'convex/_generated/dataModel';
-import { AllDatesResults, InlineNextStatus, NextAppointmentJump, inlineNextStatus } from '@/components/admin/AdminStaffBookingsView';
+import { InlineNextStatus, inlineNextStatus } from '@/components/admin/AdminStaffBookingsView';
 
-const state = vi.hoisted(() => ({ results: {} as Record<string, unknown>, args: [] as unknown[], mutate: vi.fn() }));
+import { AllDatesResults, NextAppointmentJump } from '@/components/admin/StaffCalendarLookup';
+
+const state = vi.hoisted(() => ({ results: {} as Record<string, unknown>, args: [] as unknown[], mutate: vi.fn(), query: vi.fn() }));
 vi.mock('@/platform/navigation', () => ({ useRouter: () => ({ push: vi.fn() }), useSearchParams: () => new URLSearchParams(), useSelectedLayoutSegment: () => null }));
-vi.mock('convex/react', () => ({
+vi.mock('convex/react', () => {
+  const client = { query: state.query };
+  return ({
   useMutation: () => state.mutate,
-  useQuery: (ref: FunctionReference<'query'>, args: unknown) => { state.args.push(args); return state.results[getFunctionName(ref).split(':').pop()!]; },
-}));
+  useConvex: () => client,
+  });
+});
 
 const start = Date.parse('2026-12-18T10:00:00+07:00');
 let root: Root;
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   state.results = {}; state.args = [];
+  state.query.mockReset().mockImplementation(async (ref: FunctionReference<'query'>, args: unknown) => {
+    state.args.push(args);
+    return state.results[getFunctionName(ref).split(':').pop()!];
+  });
   root = createRoot(document.body.appendChild(document.createElement('div')));
 });
 afterEach(async () => {
@@ -32,14 +41,24 @@ it('D14: the all-dates lookup lists bounded matches and one selection opens the 
   const staffById = new Map([['s1', { name: 'Mali' } as Doc<'staff'>]]);
   const serviceById = new Map([['v1', { name: 'Thai massage' } as Doc<'services'>]]);
   await act(async () => root.render(createElement(AllDatesResults, { query: 'Lena', staffById, serviceById, onOpen, onClose: vi.fn() })));
-  expect(state.args).toContainEqual({ query: 'Lena' });
+  expect(state.args).toContainEqual({ query: 'Lena', cursor: null });
   expect(document.body.textContent).toContain('1 match for “Lena” within 12 months of today');
   expect(document.body.textContent).toContain('Thai massage · Mali');
   await act(async () => [...document.querySelectorAll('button')].find(b => b.textContent?.includes('Lena Park'))!.click());
   expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ _id: 'a20', start }));
-  state.results.searchAppointments = { windowDays: 365, sampled: true, results: [] };
-  await act(async () => root.render(createElement(AllDatesResults, { query: 'Lee', staffById, serviceById, onOpen, onClose: vi.fn() })));
-  expect(document.body.textContent).toContain('only the best name matches were checked');
+  const first = state.results.searchAppointments as { results: unknown[]; windowDays: number };
+  state.results.searchAppointments = { ...first, continueCursor: 'more' };
+  await act(async () => root.render(createElement(AllDatesResults, { query: 'Park', staffById, serviceById, onOpen, onClose: vi.fn() })));
+  const click = async (label: string) => act(async () => [...document.querySelectorAll('button')].find(button => button.textContent === label)!.click());
+  state.query.mockRejectedValueOnce(new Error('offline'));
+  await click('Search more matches');
+  expect(document.querySelector('[role="alert"]')?.textContent).toContain('Try again');
+  expect(document.body.textContent).toContain('Lena Park');
+  state.results.searchAppointments = { ...first, results: [], continueCursor: null };
+  await click('Retry search');
+  expect(state.args).toContainEqual({ query: 'Park', cursor: 'more' });
+  expect(document.body.textContent).toContain('Lena Park');
+  expect(document.querySelector('[role="alert"]')).toBeNull();
 }, 30_000);
 
 it('D21: an empty range offers a jump to the next appointment the filters show, or names the exact searched window', async () => {
@@ -48,10 +67,22 @@ it('D21: an empty range offers a jump to the next appointment the filters show, 
   const filters = { hiddenStaffIds: ['s2'], hiddenServiceIds: [], hiddenStatuses: ['no_show'], includeCancelled: false } as never;
   state.results.nextAppointment = { appointment: { _id: 'a1', start, staffId: 's1' }, until: from + 30 * 86_400_000 };
   await act(async () => root.render(createElement(NextAppointmentJump, { from, filters, filtered: true, onOpen })));
-  expect(state.args).toContainEqual({ from, hiddenStaffIds: ['s2'], hiddenServiceIds: [], hiddenStatuses: ['no_show'], includeCancelled: false });
+  expect(state.args).toContainEqual(expect.objectContaining({ from, hiddenStaffIds: ['s2'], hiddenServiceIds: [], hiddenStatuses: ['no_show'], includeCancelled: false }));
   const jump = document.querySelector('button')!;
   expect(jump.textContent).toContain('Next matching appointment: Fri 18 Dec');
+  state.query.mockRejectedValueOnce(new Error('denied'));
   await act(async () => jump.click());
+  expect(document.body.textContent).toContain('Couldn’t verify');
+  expect(onOpen).not.toHaveBeenCalled();
+  const existing = state.results.nextAppointment;
+  state.results.nextAppointment = { appointment: null, until: from + 30 * 86_400_000 };
+  await act(async () => jump.click());
+  expect(state.args).toContainEqual(expect.objectContaining({ verify: { appointmentId: 'a1', start } }));
+  expect(document.body.textContent).toContain('no longer matches your calendar');
+  expect(onOpen).not.toHaveBeenCalled();
+  state.results.nextAppointment = existing;
+  await act(async () => document.querySelector('button')!.click());
+  await act(async () => document.querySelector('button')!.click());
   expect(onOpen).toHaveBeenCalledWith(start);
   state.results.nextAppointment = { appointment: null, until: from + 30 * 86_400_000 };
   await act(async () => root.render(createElement(NextAppointmentJump, { from: from + 1, filters: {} as never, filtered: false, onOpen })));

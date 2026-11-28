@@ -5,7 +5,7 @@ import { useMutation, useQuery } from "convex/react";
 import { useRouter, useSearchParams, useSelectedLayoutSegment } from "@/platform/navigation";
 import { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
-import type { FunctionArgs, FunctionReturnType } from "convex/server";
+import { AllDatesResults, NextAppointmentJump, type SearchResult } from "./StaffCalendarLookup";
 import { appointmentRevision, canEditTurnaround, canCorrectAppointmentTime, turnaroundMinutes } from "convex/shared/appointmentWindow";
 import { Ban, CalendarDays, Check, CircleDollarSign, Clock, Coffee, Filter, Play, PlusIcon, Timer, UserCheck, UserX, Users } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
@@ -599,7 +599,7 @@ function StaffCalendar() {
           renderEvent={renderEvent}
           renderAgendaEvent={renderEvent}
           renderResourceHeader={renderResourceHeader}
-          renderNoEvents={() => <div className="grid justify-items-center gap-3"><p className="text-sm text-muted-foreground">No appointments.</p>{data && !scopedDay && !search.trim() ? <NextAppointmentJump from={range.to} filters={{ hiddenStaffIds: [...hiddenStaff] as Id<"staff">[], hiddenServiceIds: [...hiddenServices] as Id<"services">[], hiddenStatuses: [...hiddenStatuses], includeCancelled: showCancelled }} filtered={hiddenStaff.size + filterCount > 0} onOpen={(start) => setDate(new Date(start))} /> : null}<Button disabled={!data || activeServices.length === 0} onClick={() => setDraft({ date: resortIsoDate(range.from) })}>New appointment</Button></div>}
+          renderNoEvents={() => <div className="grid justify-items-center gap-3"><p className="text-sm text-muted-foreground">No appointments.</p>{data && !scopedDay && !search.trim() ? <NextAppointmentJump key={`${view}:${date.getTime()}`} from={range.to} filters={{ hiddenStaffIds: [...hiddenStaff] as Id<"staff">[], hiddenServiceIds: [...hiddenServices] as Id<"services">[], hiddenStatuses: [...hiddenStatuses], includeCancelled: showCancelled }} filtered={hiddenStaff.size + filterCount > 0} onOpen={(start) => setDate(new Date(start))} /> : null}<Button disabled={!data || activeServices.length === 0} onClick={() => setDraft({ date: resortIsoDate(range.from) })}>New appointment</Button></div>}
           canDropEvent={canDropEvent}
           onEventClick={(occurrence) => {
             const eventData = occurrence.event.data;
@@ -876,59 +876,6 @@ function scopeLabel(range: { from: number; to: number }) {
   return resortIsoDate(range.from) === resortIsoDate(last)
     ? staffDate(range.from, { weekday: true })
     : `${staffDate(range.from, { weekday: true })} – ${staffDate(last, { weekday: true })}`;
-}
-
-type SearchResult = FunctionReturnType<typeof api.services.admin.searchAppointments>["results"][number];
-
-/** D14: a bounded, authorized lookup beyond the loaded dates; choosing a result opens it on its date. */
-export function AllDatesResults({ query, staffById, serviceById, onOpen, onClose }: {
-  query: string;
-  staffById: ReadonlyMap<string, Doc<"staff">>;
-  serviceById: ReadonlyMap<string, Doc<"services">>;
-  onOpen: (result: SearchResult) => void;
-  onClose: () => void;
-}) {
-  const found = useQuery(api.services.admin.searchAppointments, { query });
-  return (
-    <section aria-label="Appointments on all dates" className="border-b border-border px-4 py-2 text-sm">
-      <div className="flex items-center justify-between gap-2">
-        <p className="font-medium">
-          {found === undefined ? "Searching all dates…" : `${found.results.length === 0 ? "No" : found.results.length} ${found.results.length === 1 ? "match" : "matches"} for “${query}” within ${Math.round(found.windowDays / 30)} months of today`}
-          {found?.sampled ? <span className="block text-xs font-normal text-muted-foreground">Many guests share this name, so only the best name matches were checked. Add more of the name or use the booking reference.</span> : null}
-        </p>
-        <Button size="sm" variant="ghost" onClick={onClose}>Close</Button>
-      </div>
-      {found?.results.length ? (
-        <ul className="mt-1 grid gap-1">
-          {found.results.map((result) => (
-            <li key={result._id}>
-              <button type="button" className="flex min-h-11 w-full items-center justify-between gap-3 rounded-md px-2 text-start hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => onOpen(result)}>
-                <span className="min-w-0">
-                  <span className={cn("block truncate font-medium", result.status === "cancelled" && "line-through")}>{result.guestName || `Ref ${result.confirmationCode.slice(-6)}`}</span>
-                  <span className="block truncate text-xs text-muted-foreground">
-                    {serviceById.get(result.serviceId)?.name ?? "Service"} · {staffById.get(result.staffId)?.name ?? "Staff"}
-                  </span>
-                </span>
-                <span className="shrink-0 text-xs tabular-nums">{staffDate(result.start, { weekday: true })} · {staffTime(result.start)}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : null}
-    </section>
-  );
-}
-
-type NextFilters = Omit<FunctionArgs<typeof api.services.admin.nextAppointment>, "from">;
-
-/** D21: from an empty range, jump to the next appointment the current filters show, within a bounded window, or say none was found. */
-export function NextAppointmentJump({ from, filters, filtered, onOpen }: { from: number; filters: NextFilters; filtered: boolean; onOpen: (start: number) => void }) {
-  const next = useQuery(api.services.admin.nextAppointment, { from, ...filters });
-  if (next === undefined) return null;
-  // `until` is exclusive, so the last searched day is the one before it.
-  if (!next.appointment) return <p className="text-xs text-muted-foreground">No {filtered ? "matching " : ""}appointments from {staffDate(from, { weekday: true })} to {staffDate(next.until - 1, { weekday: true })} either. Use the date controls to look further.</p>;
-  const { start } = next.appointment;
-  return <Button variant="outline" onClick={() => onOpen(start)}>Next {filtered ? "matching " : ""}appointment: {staffDate(start, { weekday: true })} · {staffTime(start)}</Button>;
 }
 
 /** The first forward step the details sheet would offer, when it is an operational one; completion stays in the sheet with its payment cues. */

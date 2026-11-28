@@ -419,6 +419,16 @@ describe('admin services', () => {
 		expect((await admin.query(api.services.admin.nextAppointment, { from, hiddenStaffIds: [otherStaff] }))?.appointment?._id).toBe(visible.appointmentId);
 		expect((await admin.query(api.services.admin.nextAppointment, { from, hiddenStatuses: ['booked'] }))?.appointment).toBeNull();
 		expect((await admin.query(api.services.admin.nextAppointment, { from, hiddenServiceIds: [booking.serviceId] }))).toMatchObject({ appointment: null, until: from + 30 * 86_400_000 });
+		vi.setSystemTime(day(10));
+		const verify = { appointmentId: visible.appointmentId, start: day(5) };
+		const check = (hiddenStaffIds = [otherStaff]) => admin.query(api.services.admin.nextAppointment, { from, hiddenStaffIds, verify });
+		expect((await admin.query(api.services.admin.nextAppointment, { from, hiddenStaffIds: [otherStaff] })).appointment?._id).toBe(visible.appointmentId);
+		expect((await check()).appointment?._id).toBe(visible.appointmentId);
+		expect((await check([staffId])).appointment).toBeNull();
+		await t.run(ctx => ctx.db.patch(visible.appointmentId, { start: day(6) }));
+		expect((await check()).appointment).toBeNull();
+		await t.run(ctx => ctx.db.delete(visible.appointmentId));
+		expect((await check()).appointment).toBeNull();
 	});
 
 	it('D14: an in-window match behind many older name matches is still found, and a capped candidate read is reported', async () => {
@@ -436,6 +446,24 @@ describe('admin services', () => {
 		expect(found).toMatchObject({ sampled: false, results: [{ _id: current.appointmentId }] });
 		await copyOld(140, 120);
 		expect((await admin.query(api.services.admin.searchAppointments, { query: 'lena' })).sampled).toBe(true);
+		// Seed the in-window match last because convex-test paginates search results in insertion order.
+		const inWindow = await t.run(async (ctx) => {
+			const row = Object.fromEntries(Object.entries((await ctx.db.get(current.appointmentId))!).filter(([key]) => !key.startsWith('_'))) as WithoutSystemFields<Doc<'appointments'>>;
+			await ctx.db.delete(current.appointmentId);
+			return ctx.db.insert('appointments', { ...row, guestName: 'Lenara Park' });
+		});
+		const lookup = (cursor: string | null) => admin.query(api.services.admin.searchAppointments, { query: 'lena', cursor });
+		let page = await lookup(null);
+		let pages = 1;
+		while (page.continueCursor && pages < 15) {
+			expect(page.results).toEqual([]);
+			page = await lookup(page.continueCursor);
+			pages++;
+		}
+		expect(pages).toBe(14);
+		expect(page.results.map(row => row._id)).toEqual([inWindow]);
+		expect(page.continueCursor).toBeNull();
+		expect((await admin.query(api.services.admin.searchAppointments, { query: current.confirmationCode.toLowerCase(), cursor: null })).results.map(row => row._id)).toEqual([inWindow]);
 	});
 
 	it('excludes an orphan appointment from search when its calendar link cannot resolve', async () => {

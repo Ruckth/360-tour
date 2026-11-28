@@ -58,18 +58,23 @@ const NEXT_WINDOW_DAYS = 30;
  * within a year either side of today, at most 20, upcoming nearest first and then the most recent past.
  */
 export const searchAppointments = adminQuery({
-	args: { query: v.string() },
+	args: { query: v.string(), cursor: v.optional(v.union(v.string(), v.null())) },
 	handler: async (ctx, args) => {
 		const text = args.query.trim();
-		if (text.length < 2 || text.length > 100) return { results: [], windowDays: SEARCH_WINDOW_DAYS, sampled: false };
+		if (text.length < 2 || text.length > 100) return { results: [], windowDays: SEARCH_WINDOW_DAYS, sampled: false, continueCursor: null };
 		const now = Date.now();
 		const found = new Map<string, Doc<'appointments'>>();
-		const byCode = await ctx.db.query('appointments').withIndex('by_confirmationCode', (q) => q.eq('confirmationCode', text.toUpperCase())).take(5);
-		for (const row of byCode) found.set(row._id, row);
-		const byName = await ctx.db.query('appointments').withSearchIndex('search_guestName', (q) => q.search('guestName', text)).take(SEARCH_CANDIDATE_LIMIT);
+		if (args.cursor == null) {
+			const byCode = await ctx.db.query('appointments').withIndex('by_confirmationCode', (q) => q.eq('confirmationCode', text.toUpperCase())).take(5);
+			for (const row of byCode) found.set(row._id, row);
+		}
+		const names = ctx.db.query('appointments').withSearchIndex('search_guestName', (q) => q.search('guestName', text));
+		const page = args.cursor === undefined ? null : await names.paginate({
+			cursor: args.cursor, numItems: SEARCH_RESULT_LIMIT - found.size,
+		});
+		const byName = page ? page.page : await names.take(SEARCH_CANDIDATE_LIMIT);
 		for (const row of byName) found.set(row._id, row);
-		// Relevance order is not date order: past the candidate limit, nearer matches may be missing.
-		const sampled = byName.length === SEARCH_CANDIDATE_LIMIT;
+		const sampled = page ? !page.isDone : byName.length === SEARCH_CANDIDATE_LIMIT;
 		const inWindow = [...found.values()].filter((row) => Math.abs(row.start - now) <= SEARCH_WINDOW_DAYS * DAY);
 		const upcoming = inWindow.filter((row) => row.end >= now).sort((a, b) => a.start - b.start);
 		const past = inWindow.filter((row) => row.end < now).sort((a, b) => b.start - a.start);
@@ -88,6 +93,7 @@ export const searchAppointments = adminQuery({
 		return {
 			windowDays: SEARCH_WINDOW_DAYS,
 			sampled,
+			continueCursor: page && !page.isDone ? page.continueCursor : null,
 			results: openable.map((row) => ({
 				_id: row._id, start: row.start, end: row.end, staffId: row.staffId, serviceId: row.serviceId,
 				guestName: row.guestName, confirmationCode: row.confirmationCode, status: row.status,
@@ -107,6 +113,9 @@ export const nextAppointment = adminQuery({
 		hiddenServiceIds: v.optional(v.array(v.id('services'))),
 		hiddenStatuses: v.optional(v.array(v.string())),
 		includeCancelled: v.optional(v.boolean()),
+		// A fresh activation uses a distinct client query key.
+		requestedAt: v.optional(v.number()),
+		verify: v.optional(v.object({ appointmentId: v.id('appointments'), start: v.number() })),
 	},
 	handler: async (ctx, args) => {
 		const { from } = args;
@@ -116,11 +125,22 @@ export const nextAppointment = adminQuery({
 		const hiddenStaff = new Set<string>(args.hiddenStaffIds);
 		const hiddenServices = new Set<string>(args.hiddenServiceIds);
 		const hiddenStatuses = new Set(args.hiddenStatuses);
+		const visible = (row: Doc<'appointments'>) =>
+			(row.status !== 'cancelled' || args.includeCancelled) &&
+			!hiddenStaff.has(row.staffId) && !hiddenServices.has(row.serviceId) && !hiddenStatuses.has(row.status);
+		const result = (row: Doc<'appointments'>) => ({ appointment: { _id: row._id, start: row.start, staffId: row.staffId }, until });
+		if (args.verify) {
+			const row = await ctx.db.get(args.verify.appointmentId);
+			if (row && row.start === args.verify.start && row.start >= from && row.start < until &&
+				visible(row) && await ctx.db.get(row.staffId)) return result(row);
+			return { appointment: null, until };
+		}
 		const rows = ctx.db.query('appointments').withIndex('by_start', (q) => q.gte('start', from).lt('start', until));
+		const missingStaff = new Set<Id<'staff'>>();
 		for await (const row of boundedIntegrityRows(rows)) {
-			if (row.status === 'cancelled' && !args.includeCancelled) continue;
-			if (hiddenStaff.has(row.staffId) || hiddenServices.has(row.serviceId) || hiddenStatuses.has(row.status)) continue;
-			return { appointment: { _id: row._id, start: row.start, staffId: row.staffId }, until };
+			if (!visible(row) || missingStaff.has(row.staffId)) continue;
+			if (await ctx.db.get(row.staffId)) return result(row);
+			missingStaff.add(row.staffId);
 		}
 		return { appointment: null, until };
 	}
