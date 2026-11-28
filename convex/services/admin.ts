@@ -10,6 +10,7 @@ import { TURNAROUND_STEP_MIN, canEditTurnaround, turnaroundMinutes, turnaroundPr
 import { blocksTime, localDateTimeUtc, localDayRange, planWorking } from '../shared/schedule';
 import { serviceOptions } from '../shared/serviceOptions';
 import { resortLocalParts } from '../shared/time';
+import { addDays } from '../shared/dates';
 import { DAY, MINUTE, SELECTED_STAFF_READ_LIMIT, ScheduleBlock, adminStarts, assertPageSize, boundedStaff, countUpcoming, loadAppointment } from './private/administration';
 
 export const listStaff = adminQuery({
@@ -211,6 +212,32 @@ export const findOpenSlots = adminQuery({
 		const order = (a: Id<'staff'>, b: Id<'staff'>) => appointmentCounts.get(a)! - appointmentCounts.get(b)!
 			|| names.get(a)!.localeCompare(names.get(b)!) || a.localeCompare(b);
 		return slots.map((slot) => ({ ...slot, autoStaffId: [...slot.staffIds].sort(order)[0] }));
+	}
+});
+
+const NEXT_SLOT_DAYS = 14;
+
+/**
+ * The first future open start after `afterDate` for the same service, length and (optional) staff choice
+ * as findOpenSlots, searching at most 14 days; `through` names the last date searched.
+ */
+export const findNextOpenSlot = adminQuery({
+	args: { serviceId: v.id('services'), durationMin: v.optional(v.number()), afterDate: v.string(), staffId: v.optional(v.id('staff')) },
+	handler: async (ctx, args) => {
+		const today = resortLocalParts(Date.now()).date;
+		const first = addDays(args.afterDate < today ? today : args.afterDate, args.afterDate < today ? 0 : 1);
+		const through = addDays(first, NEXT_SLOT_DAYS - 1);
+		const service = await ctx.db.get(args.serviceId);
+		const option = service ? findServiceOption(service, args.durationMin) : null;
+		if (!service || !option || service.status !== 'active') return { slot: null, from: first, through };
+		const staff = await activeServiceStaff(ctx, service, args.staffId);
+		if (!staff.length) return { slot: null, from: first, through };
+		const occupyMs = (option.durationMin + service.bufferMin) * MINUTE;
+		for (let date = first; date <= through; date = addDays(date, 1)) {
+			const { slots } = await serviceDayAvailability(ctx, staff, localDayRange(date), occupyMs);
+			if (slots.length) return { slot: { date, start: slots[0].start }, from: first, through };
+		}
+		return { slot: null, from: first, through };
 	}
 });
 

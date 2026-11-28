@@ -401,6 +401,20 @@ describe('admin services', () => {
 		expect((await admin.query(api.services.admin.nextAppointment, { from: day(21, '00:00') })).appointment).toBeNull();
 	});
 
+	it('D20: finds the next open time across later dates for the same choices, within a bounded window', async () => {
+		const { t, admin, serviceId, staffId } = await setup();
+		const day = (offset: number, time: string) => localDateTimeUtc(addDays(date, offset), time);
+		// Off for the next two days; the first later opening is the morning after.
+		await admin.mutation(api.services.commands.addTimeOff.addTimeOff, { staffId, start: day(1, '00:00'), end: day(3, '00:00'), label: 'Leave' });
+		expect(await admin.query(api.services.admin.findNextOpenSlot, { serviceId, afterDate: date, staffId })).toEqual({
+			slot: { date: addDays(date, 3), start: day(3, '09:00') }, from: addDays(date, 1), through: addDays(date, 14),
+		});
+		// No match in the window: the searched range is returned, nothing invented.
+		await t.run(async (ctx) => { await ctx.db.patch(serviceId, { status: 'archived' }); });
+		expect(await admin.query(api.services.admin.findNextOpenSlot, { serviceId, afterDate: date })).toEqual({ slot: null, from: addDays(date, 1), through: addDays(date, 14) });
+		await expect(t.query(api.services.admin.findNextOpenSlot, { serviceId, afterDate: date })).rejects.toThrow('Not authenticated');
+	});
+
 	it('warns how many upcoming appointments stay booked when a service is archived', async () => {
 		const { admin, booking, serviceId, staffId } = await setup();
 		const kept = await admin.mutation(api.services.commands.createAppointment.createAppointment, { ...booking, start: at('09:00') });
