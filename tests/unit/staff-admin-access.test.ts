@@ -144,7 +144,7 @@ describe("stale admin bookmark recovery (N06)", () => {
   it("offers the Staff bookings pages a manager may open for an unknown staff sub-page", () => {
     const recovery = adminSectionRecovery("/admin/staff/old-tab", adminNavFor(staffAccessFor("manager")));
     expect(recovery?.label).toBe("Staff bookings");
-    expect(recovery?.links.map((link) => link.label)).toEqual(["Calendar", "Roster", "Staff", "Services"]);
+    expect(recovery?.links.map((link) => link.label)).toEqual(["Calendar", "Roster", "Therapists", "Services"]);
   });
 
   it("offers Marketing pages only with marketing access", () => {

@@ -84,7 +84,7 @@ it('adds a preset at the per-minute price, changes the default and saves options
   expect(price150.value).toBe('2000');
   expect(document.activeElement).toBe(price150);
   expect(button('150 min')).toBeUndefined();
-  expect(document.body.textContent).toContain('Guests see: Thai massage — 60 min ฿800 · 90 min ฿1,100 · 120 min ฿1,400 · 150 min ฿2,000');
+  expect(document.body.textContent).toContain('Guests see: Thai massage — 60 min ฿800 (default) · 90 min ฿1,100 · 120 min ฿1,400 · 150 min ฿2,000');
   await act(async () => input('Default length: 90 min').click());
   await save();
   expect(state.save).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({

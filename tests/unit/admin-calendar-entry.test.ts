@@ -29,7 +29,7 @@ const schedule = {
   blocks: [],
 };
 vi.mock("@/components/admin/branch/branch-context", () => ({
-  useAdminBranch: () => ({ current: observed.branch ? { id: observed.branch } : null }),
+  useAdminBranch: () => ({ branches: [{ id: "samui", key: "koh-samui" }, { id: "phuket", key: "phuket" }], current: observed.branch ? { id: observed.branch } : null }),
 }));
 vi.mock("@/components/admin/AppointmentSheet", () => ({ AppointmentSheet: (props: { appointment: { _id: string } | null }) => props.appointment ? createElement("span", null, `Sheet ${props.appointment._id}`) : null }));
 const nav = vi.hoisted(() => ({ search: "" }));
@@ -43,6 +43,10 @@ vi.mock("convex/react", () => ({
   useQuery: (ref: Parameters<typeof getFunctionName>[0], args: unknown) => {
     const name = getFunctionName(ref);
     if (name.endsWith(":listCalendarProperties") && args !== "skip") return villas;
+    if (name.endsWith(":resolveCalendarAppointment") && args !== "skip") {
+      const appointment = schedule.appointments.find((item) => item._id === (args as { appointmentId: string }).appointmentId);
+      return appointment ? { id: appointment._id, staffId: appointment.staffId, start: appointment.start } : null;
+    }
     if (name.endsWith(":listSchedule")) return schedule;
     if (name.endsWith(":listForAdmin")) return { properties: villas, bookings: [], dateBlocks: [], blocks: [], complete: true };
     return undefined;
@@ -94,16 +98,16 @@ it("refuses past calendar taps and drags while leaving explicit past-stay entry 
   expect(document.body.textContent).not.toContain("Booking form opened");
 });
 
-it("applies a remembered villa filter only in its branch", async () => {
+it("keeps the resort’s remembered villa filter when switching the working branch", async () => {
   window.localStorage.setItem("admin.hotel.villa:samui", villa._id);
-  window.localStorage.setItem("admin.hotel.villa", villa._id);
+  window.localStorage.setItem("admin.hotel.villa:phuket", "p2");
   observed.branch = "samui";
   await act(async () => root.render(createElement(AdminBookingsView)));
   expect(observed.calendar?.resources?.map((resource) => resource.id)).toEqual(["p1"]);
 
   observed.branch = "phuket";
   await act(async () => root.render(createElement(AdminBookingsView)));
-  expect(observed.calendar?.resources?.map((resource) => resource.id)).toEqual(["p1", "p2"]);
+  expect(observed.calendar?.resources?.map((resource) => resource.id)).toEqual(["p1"]);
 });
 
 it("applies remembered staff and service IDs only in their branch", async () => {

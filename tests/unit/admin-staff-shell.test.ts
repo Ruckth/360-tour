@@ -13,6 +13,7 @@ const state = vi.hoisted(() => ({
   tab: null as string | null,
   access: undefined as unknown,
   pending: 0,
+  stale: false,
   replace: vi.fn(),
   claim: vi.fn(async () => null),
   claimMarketing: vi.fn(async () => null),
@@ -32,8 +33,22 @@ vi.mock('convex/react', () => ({
     return { businessName: 'Audit resort' };
   }, useMutation: (ref: FunctionReference<'mutation'>) => (getFunctionName(ref) === 'auth/staffAccess:claimInvite' ? state.claim : getFunctionName(ref) === 'marketing/access:claimInvite' ? state.claimMarketing : async () => null), usePaginatedQuery: (ref: FunctionReference<'query'>, args: unknown) => {
     const pending = args !== 'skip' && getFunctionName(ref) === 'pos/staffApprovals:pendingPage' ? state.pending : 0;
-    return { results: Array.from({ length: pending }, (_, i) => ({ _id: `appr${i}`, kind: 'discount', requesterEmail: 'mint@example.com', createdAt: 0, expiresAt: 0, status: 'pending', label: 'discount', summary: { amount: 100 } })), status: 'Exhausted', loadMore: () => undefined };
-  }, useQueries: () => ({}) }));
+    const now = Date.now();
+    const stale = pending > 0 && state.stale;
+    const results = Array.from({ length: pending + (stale ? 2 : 0) }, (_, i) => ({
+      _id: `appr${i}`,
+      kind: 'discount',
+      requesterEmail: 'mint@example.com',
+      createdAt: now - 120_000,
+      expiresAt: now + (stale && i === pending ? -60_000 : 60_000),
+      status: 'pending',
+      label: 'discount',
+      summary: { amount: 100 },
+    }));
+    return { results, status: 'Exhausted', loadMore: () => undefined };
+  }, useQueries: (queries: Record<string, unknown>) => Object.fromEntries(
+    Object.keys(queries).map((id) => [id, state.stale && id === `appr${state.pending + 1}` ? 'revoked' : 'pending']),
+  ) }));
 vi.mock('@/platform/navigation', () => ({
   usePathname: () => state.pathname,
   useSearchParams: () => new URLSearchParams(state.tab ? `tab=${state.tab}` : ''),
@@ -51,7 +66,7 @@ const button = (text: string) => [...document.querySelectorAll('button')].find((
 
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
-  Object.assign(state, { pathname: '/admin/chats', tab: null, access: undefined, pending: 0 });
+  Object.assign(state, { pathname: '/admin/chats', tab: null, access: undefined, pending: 0, stale: false });
   state.replace.mockClear();
   state.claim.mockClear();
   // Wide enough for the full sidebar rather than the drawer.
@@ -94,6 +109,7 @@ it('gives a cashier the till alone: no navigation or approvals, Sign out in the 
 it('sends a manager from Settings › Team to Settings, with Approvals and the count in the header', async () => {
   as('manager');
   state.pending = 3;
+  state.stale = true;
   state.pathname = '/admin/settings';
   state.tab = 'team';
   await render();
