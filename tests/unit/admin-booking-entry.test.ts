@@ -7,7 +7,7 @@ import { IntlProvider } from "@/platform/intl";
 import messages from "../../messages/en.json";
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
 import { NewBookingDialog } from "@/components/admin/NewBookingDialog";
-import { TodayStrip } from "@/components/admin/TodayStrip";
+import { todayGroups, TodayStrip } from "@/components/admin/TodayStrip";
 import { serverTodayIso } from "@/components/admin/admin-bookings-shared";
 import { MoveBookingDialog, type Move } from "@/components/admin/AdminBookingsView";
 
@@ -338,6 +338,26 @@ describe("moving a booking on the calendar", () => {
     expect(mutations.editBooking).not.toHaveBeenCalled();
   });
 
+  it.each(["The price changed since you reviewed it.", "These dates are no longer available."])(
+    "requires a fresh quote and confirmation after a same-revision refusal (%s)", async (refusal) => {
+    const oldQuote = { subtotal: 2400000, discountAmount: 0, total: 2400000, currency: "THB", promotion: null, couponRemoved: false, repriced: true };
+    queries.getForAdmin.mockReturnValue(detail());
+    queries.quoteBookingEdit.mockImplementation(({ refreshKey }) => refreshKey ? undefined : oldQuote);
+    mutations.editBooking.mockRejectedValueOnce(new Error(refusal));
+    await render(createElement(MoveBookingDialog, props()));
+    await click(button("Move booking"));
+    expect(button("Move booking")).toBeUndefined();
+    await click(button("Refresh quote"));
+    expect(button("Move booking")?.disabled).toBe(true);
+    expect(mutations.editBooking).toHaveBeenCalledTimes(1);
+    queries.quoteBookingEdit.mockReturnValue({ ...oldQuote, subtotal: 2700000, total: 2700000 });
+    await render(createElement(MoveBookingDialog, props()));
+    await click(button("Move booking"));
+    expect(mutations.editBooking).toHaveBeenLastCalledWith(expect.objectContaining({
+      expectedRevision: detail().revision, checkIn: "2026-11-21", checkOut: "2026-11-24", expectedPrice: { total: 2700000, currency: "THB" },
+    }));
+  });
+
   it("shows the quoted currency and sends it for the server to check", async () => {
     queries.getForAdmin.mockReturnValue(detail());
     queries.quoteBookingEdit.mockReturnValue({ subtotal: 30000, discountAmount: 0, total: 30000, currency: "USD", promotion: null, couponRemoved: false, repriced: true });
@@ -372,4 +392,26 @@ describe("Today's balances", () => {
     await click(ben.firstElementChild);
     expect(onOpen).toHaveBeenCalledWith(usd, ben.firstElementChild);
   });
+});
+
+it("groups recorded and legacy attendance independently of payments at today's boundaries", () => {
+  const today = "2026-11-21";
+  const base: Move["booking"] = {
+    _id: "b1" as Move["booking"]["_id"], propertyId: villa._id, guestName: "", guestPhone: "",
+    checkIn: today, checkOut: today, status: "confirmed", paymentStatus: "pending", total: 200,
+    owed: 0, currency: "THB", guests: 2, nights: 1, source: "admin", createdAt: 0, revision: 0,
+    guestEmail: undefined, promotion: undefined, paymentMethod: undefined, amountPaid: undefined,
+    amountRefunded: undefined, chatSessionId: undefined, confirmationCode: undefined,
+  };
+  const groups = todayGroups([
+    { ...base, guestName: "Arrival", checkIn: today, checkOut: "2026-11-23", owed: 0 },
+    { ...base, guestName: "Due", checkIn: "2026-11-19", checkOut: today, stayStatus: "checked_in", owed: 200 },
+    { ...base, guestName: "Overdue", checkIn: "2026-11-19", checkOut: "2026-11-20", stayStatus: "checked_in", owed: 0 },
+    { ...base, guestName: "Early", checkIn: "2026-11-23", checkOut: "2026-11-24", stayStatus: "checked_in", owed: 200 },
+    { ...base, guestName: "Departed", checkIn: "2026-11-19", checkOut: today, stayStatus: "checked_out", owed: 200 },
+    { ...base, guestName: "Legacy", checkIn: "2026-11-19", checkOut: "2026-11-23", owed: 0 },
+  ], today);
+  expect(groups.arriving.map((row) => row.guestName)).toEqual(["Arrival"]);
+  expect(groups.leaving.map((row) => row.guestName)).toEqual(["Departed", "Due", "Overdue"]);
+  expect(groups.inHouse.map((row) => row.guestName)).toEqual(["Due", "Early", "Legacy", "Overdue"]);
 });

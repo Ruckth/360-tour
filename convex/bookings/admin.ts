@@ -14,7 +14,7 @@ import { readBudget } from '../lib/readBudget';
 import { stayFinancials } from './private/stayCorrections';
 import { MAX_ROWS_PER_NIGHT, scanOverlappingBookings, scanOverlappingDateBlocks } from './private/stayOverlap';
 import { assertValidIsoDate } from '../shared/validation';
-import { archivedVillaPolicy, assertBookingEditable, CLEANUP_SCAN_LIMIT, DAY_MS, deleteBlocker, GuestSuggestion, loadBooking, MAX_CALENDAR_DAYS, MAX_CALENDAR_VILLAS, MAX_GUEST_SUGGESTIONS, planBookingEditPricing, SEARCH_SCAN_LIMIT, toAdminBooking } from './private/stays';
+import { archivedVillaPolicy, assertBookingEditable, CLEANUP_SCAN_LIMIT, DAY_MS, deleteBlocker, GuestSuggestion, loadBooking, MAX_CALENDAR_DAYS, MAX_CALENDAR_VILLAS, MAX_GUEST_SUGGESTIONS, planBookingEditPricing, stayAttendanceEnabled, SEARCH_SCAN_LIMIT, toAdminBooking } from './private/stays';
 
 function calendarProperty(property: Doc<'properties'>) {
 	return {
@@ -86,16 +86,23 @@ export const listForAdmin = adminQuery({
 			complete &&= overlap.complete;
 			if (args.bookingsOnly) {
 				// Include recorded in-house guests outside the scheduled date window.
-				budget.range();
-				const checkedIn = ctx.db.query('bookings').withIndex('by_property_stayStatus_checkOut',
-					q => q.eq('propertyId', property._id).eq('stayStatus', 'checked_in'));
-				let count = 0;
-				for await (const booking of checkedIn) {
-					if (++count > MAX_ROWS_PER_NIGHT || !budget.document(booking)) {
+				const overdue = ctx.db.query('bookings').withIndex('by_property_stayStatus_checkOut',
+					q => q.eq('propertyId', property._id).eq('stayStatus', 'checked_in').lte('checkOut', args.from));
+				const early = ctx.db.query('bookings').withIndex('by_property_stayStatus_checkIn',
+					q => q.eq('propertyId', property._id).eq('stayStatus', 'checked_in').gte('checkIn', args.to));
+				for (const range of [overdue, early]) {
+					if (!budget.range()) {
 						complete = false;
 						break;
 					}
-					if (booking.checkOut <= args.from || booking.checkIn >= args.to) bookings.push(booking);
+					let count = 0;
+					for await (const booking of range) {
+						if (++count > MAX_ROWS_PER_NIGHT || !budget.document(booking)) {
+							complete = false;
+							break;
+						}
+						bookings.push(booking);
+					}
 				}
 				continue;
 			}
@@ -145,6 +152,7 @@ export const getForAdmin = adminQuery({
 		const redemption = booking.promotion ? await ctx.db.get(booking.promotion.redemptionId) : null;
 		return {
 			...toAdminBooking(booking),
+			stayAttendanceEnabled: stayAttendanceEnabled(),
 			redemption: redemption ? { state: redemption.state, overLimit: redemption.overLimit ?? false } : null,
 			/** Release 3a: which marketing link brought the booking (frozen at creation); null when none. */
 			marketingAttribution: booking.marketingAttribution ?? null,
@@ -281,7 +289,9 @@ export const findGuests = adminQuery({
 export const quoteBookingEdit = adminQuery({
 	args: {
 		bookingId: v.id('bookings'), propertySlug: v.string(), checkIn: v.string(), checkOut: v.string(), guests: v.number(),
-		clearPriceOverride: v.optional(v.boolean()), revision: v.optional(v.number())
+		clearPriceOverride: v.optional(v.boolean()), revision: v.optional(v.number()),
+		// A fresh subscription when the desk explicitly requests a new quote.
+		refreshKey: v.optional(v.string())
 	},
 	handler: async (ctx, args) => {
 		const admin = ctx.admin;

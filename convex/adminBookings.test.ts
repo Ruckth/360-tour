@@ -1,10 +1,10 @@
-import { asTestOwner } from './testing/staff.test-support';
+import { asTestOwner, seedTestBranch } from './testing/staff.test-support';
 import { addTestDateBlock } from './testing/dateBlocks.test-support';
 import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 
 import { convexTest } from "convex-test";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import schema from "./schema";
@@ -723,21 +723,55 @@ describe("international booking phone compatibility", () => {
   });
 });
 
+afterEach(() => vi.unstubAllEnvs());
+
 describe("Desk attendance", () => {
+  it("returns early and overdue recorded stays and marks a bounded outside-window read incomplete", async () => {
+    const { t, admin } = await setup();
+    const bookingId = await admin.mutation(api.bookings.commands.createBooking.createBooking, { ...stay, confirmed: true });
+    await t.run(async (ctx) => {
+      const booking = (await ctx.db.get(bookingId))!;
+      const { _id, _creationTime, ...fields } = booking;
+      await ctx.db.patch(_id, { stayStatus: "checked_in" });
+      for (let i = 0; i < 21; i++) {
+        await ctx.db.insert("bookings", { ...fields, checkIn: isoInDays(-5), checkOut: isoInDays(-3), guestName: `Overdue ${i}`, stayStatus: "checked_in" });
+      }
+    });
+    const result = await admin.query(api.bookings.admin.listForAdmin, { from: isoInDays(-1), to: isoInDays(1), bookingsOnly: true });
+    expect(result.complete).toBe(false);
+    expect(result.bookings).toHaveLength(21);
+    expect(result.bookings).toEqual(expect.arrayContaining([expect.objectContaining({ _id: bookingId })]));
+  });
+
   it("records legacy exceptions once and rejects stale transitions without changing booking finances", async () => {
     const { t, admin } = await setup();
     const bookingId = await admin.mutation(api.bookings.commands.createBooking.createBooking, { ...stay, confirmed: true });
     const record = api.bookings.commands.updateBooking.recordStayStatus;
     const detail = () => admin.query(api.bookings.admin.getForAdmin, { bookingId });
+    vi.stubEnv("HOTEL_STAY_ATTENDANCE_ENABLED", undefined);
     const before = (await detail())!;
     expect(before.stayStatus).toBeUndefined();
     const checkIn = { bookingId, expectedRevision: before.revision, status: "checked_in" as const };
+    expect(before.stayAttendanceEnabled).toBe(false);
     await expect(t.mutation(record, checkIn)).rejects.toThrow();
+    await expect(admin.mutation(record, checkIn)).rejects.toThrow(/disabled/i);
+    const managerIdentity = { email: "manager@example.com", emailVerified: true, tokenIdentifier: "manager-token" };
+    await t.run(async (ctx) => {
+      const branchId = await seedTestBranch(ctx);
+      await ctx.db.insert("staffGrants", { role: "manager", email: managerIdentity.email, tokenIdentifier: managerIdentity.tokenIdentifier, branchIds: [branchId], createdAt: 0, updatedAt: 0, updatedByEmail: adminEmail });
+    });
+    const manager = t.withIdentity(managerIdentity);
+    await expect(manager.mutation(record, checkIn)).rejects.toThrow(/disabled/i);
+    vi.stubEnv("HOTEL_STAY_ATTENDANCE_ENABLED", "true");
+    expect((await detail())?.stayAttendanceEnabled).toBe(true);
     await expect(admin.mutation(record, checkIn)).rejects.toThrow(/reason/i);
     await Promise.all([
       admin.mutation(record, { ...checkIn, reason: "Guest arrived early" }),
       admin.mutation(record, { ...checkIn, reason: "Guest arrived early" }),
     ]);
+    await expect(admin.mutation(record, { ...checkIn, reason: "Different report" })).rejects.toThrow(/changed/i);
+    const other = await asTestOwner(t, { emailVerified: true, email: "other@example.com", tokenIdentifier: "other-token" });
+    await expect(other.mutation(record, { ...checkIn, reason: "Guest arrived early" })).rejects.toThrow(/changed/i);
     const checkedIn = (await detail())!;
     expect(checkedIn).toMatchObject({
       stayStatus: "checked_in", revision: before.revision + 1,
@@ -763,6 +797,7 @@ describe("Desk review", () => {
     };
     const quote = api.bookings.admin.quoteBookingEdit;
     await expect(admin.query(quote, { ...target, revision })).resolves.toMatchObject({ currency: "THB" });
+    vi.stubEnv("HOTEL_STAY_ATTENDANCE_ENABLED", "true");
     await admin.mutation(api.bookings.commands.updateBooking.recordStayStatus, {
       bookingId, expectedRevision: revision, status: "checked_in", reason: "Guest arrived early",
     });
@@ -777,6 +812,20 @@ describe("Desk review", () => {
     const bookingId = await admin.mutation(api.bookings.commands.createBooking.createBooking, { ...stay, confirmed: true });
     await expect(t.query(api.bookings.admin.stayAppointments, { bookingId })).rejects.toThrow();
     await expect(admin.query(api.bookings.admin.stayAppointments, { bookingId })).resolves.toEqual({ appointments: [], complete: true });
+    const otherStay = await admin.mutation(api.bookings.commands.createBooking.createBooking, {
+      ...stay, checkIn: isoInDays(40), checkOut: isoInDays(42),
+    });
+    const linked = await t.run(async (ctx) => {
+      const staffId = await ctx.db.insert("staff", { name: "Staff", role: "Spa", color: "#fff", status: "active", workingHours: [], breaks: [], createdAt: 0, updatedAt: 0 });
+      const serviceId = await ctx.db.insert("services", { slug: "spa", name: "Massage", description: "", category: "spa", durationMin: 60, bufferMin: 0, price: 10000, currency: "THB", staffIds: [staffId], status: "active", createdAt: 0, updatedAt: 0 });
+      const appointment = { serviceId, staffId, start: 1000, end: 2000, blockedUntil: 2000, guestName: "Guest", guestPhone: "123", source: "admin", status: "booked", paymentStatus: "unpaid", price: 10000, currency: "THB", accessToken: "test", createdAt: 0 } as const;
+      await insertFixture(ctx, "appointments", { ...appointment, bookingId: otherStay, confirmationCode: "SPA-OTHER" });
+      return insertFixture(ctx, "appointments", { ...appointment, bookingId, confirmationCode: "SPA-LINKED" });
+    });
+    const result = await admin.query(api.bookings.admin.stayAppointments, { bookingId });
+    expect(result.complete).toBe(true);
+    expect(result.appointments).toHaveLength(1);
+    expect(result.appointments[0]).toMatchObject({ _id: linked, serviceName: "Massage", start: 1000, status: "booked" });
     await t.run(async (ctx) => ctx.db.delete(bookingId));
     await expect(admin.query(api.bookings.admin.stayAppointments, { bookingId })).rejects.toThrow(/not found/i);
   });
