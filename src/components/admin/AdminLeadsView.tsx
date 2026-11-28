@@ -6,7 +6,7 @@ import { api } from "convex/_generated/api";
 import type { Doc } from "convex/_generated/dataModel";
 import { format } from "date-fns";
 import { Download, Search, X } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { DisabledReason } from "@/components/admin/DisabledReason";
 import { EmptyState, SkeletonRows } from "@/components/admin/admin-bulk";
@@ -45,7 +45,10 @@ export function AdminLeadsView() {
   const convex = useConvex();
   const confirm = useConfirm();
   const [source, setSource] = useState<Source | "all">("all");
-  const [pending, setPending] = useState<string | null>(null);
+  const exporting = useRef(false);
+  const [exportPending, setExportPending] = useState(false);
+  const deleting = useRef(new Set<string>());
+  const [pendingDeletes, setPendingDeletes] = useState(new Set<string>());
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   // Exact email lookup across every page; list and CSV share the same server filters.
@@ -59,7 +62,9 @@ export function AdminLeadsView() {
   const villaName = (lead: Doc<"leads">) => (lead.propertyId ? propertyNames.get(lead.propertyId) : undefined);
 
   async function exportCsv() {
-    setPending("export");
+    if (exporting.current) return;
+    exporting.current = true;
+    setExportPending(true);
     setError(null);
     setNotice(null);
     try {
@@ -81,7 +86,8 @@ export function AdminLeadsView() {
     } catch (exportError) {
       setError(exportError instanceof Error ? exportError.message : "Unable to export leads.");
     } finally {
-      setPending(null);
+      exporting.current = false;
+      setExportPending(false);
     }
   }
 
@@ -95,21 +101,28 @@ export function AdminLeadsView() {
   }
 
   async function deleteLead(lead: Doc<"leads">) {
-    const confirmed = await confirm({
-      title: "Delete this lead permanently?",
-      description: `${lead.email} (${SOURCES[lead.source]}) is removed for good. This can't be undone.`,
-      confirmLabel: "Delete permanently",
-      destructive: true,
-    });
-    if (!confirmed) return;
-    setPending(lead._id);
-    setError(null);
+    if (deleting.current.has(lead._id)) return;
+    deleting.current.add(lead._id);
     try {
+      const confirmed = await confirm({
+        title: "Delete this lead permanently?",
+        description: `${lead.email} (${SOURCES[lead.source]}) is removed for good. This can't be undone.`,
+        confirmLabel: "Delete permanently",
+        destructive: true,
+      });
+      if (!confirmed) return;
+      setPendingDeletes((current) => new Set(current).add(lead._id));
+      setError(null);
       await removeLead({ leadId: lead._id });
     } catch (deleteError) {
       setError(deleteError instanceof Error ? deleteError.message : "Unable to delete lead.");
     } finally {
-      setPending(null);
+      deleting.current.delete(lead._id);
+      setPendingDeletes((current) => {
+        const next = new Set(current);
+        next.delete(lead._id);
+        return next;
+      });
     }
   }
 
@@ -163,10 +176,10 @@ export function AdminLeadsView() {
             <Button
               size="sm"
               variant="outline"
-              disabled={pending === "export" || results.length === 0 || properties === undefined}
+              disabled={exportPending || results.length === 0 || properties === undefined}
               onClick={() => void exportCsv()}
             >
-              {pending === "export" ? (
+              {exportPending ? (
                 <Spinner label="Exporting" className="text-current" />
               ) : (
                 <Download aria-hidden="true" className="size-4" />
@@ -231,7 +244,7 @@ export function AdminLeadsView() {
                       {[SOURCES[lead.source], villaName(lead), staffDateTime(lead.createdAt)].filter(Boolean).join(" · ")}
                     </p>
                   </div>
-                  <LeadActions lead={lead} pending={pending === lead._id} onDelete={() => void deleteLead(lead)} />
+                  <LeadActions lead={lead} pending={pendingDeletes.has(lead._id)} onDelete={() => void deleteLead(lead)} />
                 </li>
               ))}
             </ul>
@@ -264,7 +277,7 @@ export function AdminLeadsView() {
                     <td className="px-4 py-3 text-muted-foreground">{villaName(lead) ?? "—"}</td>
                     <td className="px-4 py-3 text-muted-foreground">{staffDateTime(lead.createdAt)}</td>
                     <td className="px-2 py-2 text-right">
-                      <LeadActions lead={lead} pending={pending === lead._id} onDelete={() => void deleteLead(lead)} />
+                      <LeadActions lead={lead} pending={pendingDeletes.has(lead._id)} onDelete={() => void deleteLead(lead)} />
                     </td>
                   </tr>
                 ))}

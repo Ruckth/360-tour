@@ -55,7 +55,7 @@ describe("Today home (D01)", () => {
     expect(linkCount("/admin/hotel?today=arriving")).toBe("Arriving2");
     expect(linkCount("/admin/hotel?today=leaving")).toBe("Leaving1");
     expect(linkCount("/admin/hotel?today=balanceDue")).toBe("Balance due1");
-    expect(linkCount(`/admin/staff/calendar?date=${today}`)).toBe("Appointments today1");
+    expect(linkCount(`/admin/staff/calendar?date=${today}&scope=open`)).toBe("Open appointments today1");
     expect(linkCount("/admin/chats")).toBe("Needs you3");
   });
 
@@ -64,7 +64,7 @@ describe("Today home (D01)", () => {
     expect(mocks.calls).toContainEqual(["bookings/admin:listForAdmin", "skip"]);
     expect(mocks.calls).toContainEqual(["messaging/adminChat:queueCounts", "skip"]);
     expect(host.querySelectorAll("a")).toHaveLength(1);
-    expect(linkCount(`/admin/staff/calendar?date=${today}`)).toBe("Appointments today1");
+    expect(linkCount(`/admin/staff/calendar?date=${today}&scope=open`)).toBe("Open appointments today1");
   });
 
   it("asks for nothing and links nowhere a cashier can't open", async () => {
@@ -78,11 +78,11 @@ describe("Today home (D01)", () => {
     vi.useFakeTimers();
     vi.setSystemTime(resortMidnight(tomorrow) - 30_000);
     await act(async () => root.render(createElement(AdminTodayView)));
-    expect(linkCount(`/admin/staff/calendar?date=${today}`)).toBeDefined();
+    expect(linkCount(`/admin/staff/calendar?date=${today}&scope=open`)).toBeDefined();
 
     await act(async () => { vi.advanceTimersByTime(60_000); });
-    expect(linkCount(`/admin/staff/calendar?date=${today}`)).toBeUndefined();
-    expect(linkCount(`/admin/staff/calendar?date=${tomorrow}`)).toBeDefined();
+    expect(linkCount(`/admin/staff/calendar?date=${today}&scope=open`)).toBeUndefined();
+    expect(linkCount(`/admin/staff/calendar?date=${tomorrow}&scope=open`)).toBeDefined();
     expect(mocks.calls).toContainEqual(["bookings/admin:listForAdmin", {
       from: today, to: addDaysIso(tomorrow, 1), bookingsOnly: true, includeRecordedStays: true,
     }]);

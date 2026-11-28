@@ -100,3 +100,12 @@ export function useNow(intervalMs = 60_000) {
   }, [intervalMs]);
   return now;
 }
+
+export function isOpenAppointmentStartingIn(
+  appointment: { start: number; status: string },
+  from: number,
+  to: number,
+) {
+  return appointment.start >= from && appointment.start < to &&
+    (appointment.status === "booked" || appointment.status === "arrived" || appointment.status === "in_service");
+}

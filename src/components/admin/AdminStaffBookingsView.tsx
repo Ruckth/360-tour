@@ -54,6 +54,7 @@ import {
   displayStatus,
   resortIsoDate,
   resortMidnight,
+  isOpenAppointmentStartingIn,
   useNow,
   type AppointmentStatus,
 } from "@/lib/staff-bookings";
@@ -210,11 +211,14 @@ function StaffCalendar() {
   const searchParams = useSearchParams();
   const link = parseStaffCalendarLink(searchParams);
   const [range, setRange] = useState(() => link.date ? { from: resortMidnight(link.date), to: resortMidnight(link.date) + DAY_MS } : todayRange());
+  const [dismissedScope, setDismissedScope] = useState<string>();
+  const scopedDay = link.openOnly && link.date !== dismissedScope ? link.date : undefined;
+  const openDayStart = scopedDay ? resortMidnight(scopedDay) : undefined;
   const [search, setSearch] = useState("");
   // This device remembers the view and filters (rule 5); the date always starts today.
   const [storedView, setView] = useStoredState("admin.staff.view", "auto");
   const phone = useIsMobile(640);
-  const view: CalendarView = (STAFF_VIEWS as readonly string[]).includes(storedView) ? (storedView as CalendarView) : phone ? "agenda" : "resource";
+  const view: CalendarView = scopedDay ? "agenda" : (STAFF_VIEWS as readonly string[]).includes(storedView) ? (storedView as CalendarView) : phone ? "agenda" : "resource";
   const [date, setDate] = useState(() => (link.date ? new Date(resortMidnight(link.date)) : new Date()));
   const [savedHiddenStaff, setHiddenStaff] = useStoredSet(branchId ? `admin.staff.hiddenStaff:${branchId}` : "admin.staff.hiddenStaff");
   const [hiddenServices, setHiddenServices] = useStoredSet(branchId ? `admin.staff.hiddenServices:${branchId}` : "admin.staff.hiddenServices");
@@ -238,9 +242,10 @@ function StaffCalendar() {
   const linkedStaffId = linked?.staffId ?? link.staffId;
   const hiddenStaff = useMemo(() => {
     const visible = new Set(savedHiddenStaff);
+    if (scopedDay) visible.clear();
     if (linkedStaffId) visible.delete(linkedStaffId);
     return visible;
-  }, [savedHiddenStaff, linkedStaffId]);
+  }, [savedHiddenStaff, linkedStaffId, scopedDay]);
   const targetDay = linked ? resortIsoDate(linked.start) : link.date;
   const linkKey = searchParams.toString();
   const lastLink = useRef(linkKey);
@@ -250,6 +255,7 @@ function StaffCalendar() {
       lastLink.current = linkKey;
       appliedDay.current = undefined;
       setDismissedLink(undefined);
+      setDismissedScope(undefined);
       setEditingTimeOff(null);
       setSelectedId(null);
     }
@@ -261,7 +267,7 @@ function StaffCalendar() {
     }
   }, [linkKey, targetDay]);
 
-  const data = useQuery(api.services.admin.listSchedule, range);
+  const data = useQuery(api.services.admin.listSchedule, openDayStart === undefined ? range : { from: openDayStart, to: openDayStart + DAY_MS });
 
   const staffById = useMemo(() => new Map((data?.staff ?? []).map((s) => [s._id as string, s])), [data?.staff]);
   const serviceById = useMemo(() => new Map((data?.services ?? []).map((s) => [s._id as string, s])), [data?.services]);
@@ -287,18 +293,20 @@ function StaffCalendar() {
   const appointments = useMemo(
     () =>
       (data?.appointments ?? []).filter(
-        (a) =>
-          !hiddenStaff.has(a.staffId) &&
-          (!search.trim() || `${appointmentGuestLabel(a)} ${serviceById.get(a.serviceId)?.name ?? ""} ${staffById.get(a.staffId)?.name ?? ""}`.toLowerCase().includes(search.trim().toLowerCase())) &&
-          !hiddenServices.has(a.serviceId) &&
-          !hiddenStatuses.has(a.status) &&
-          (showCancelled || a.status !== "cancelled"),
+        (a) => {
+          if (openDayStart !== undefined) return isOpenAppointmentStartingIn(a, openDayStart, openDayStart + DAY_MS);
+          return !hiddenStaff.has(a.staffId) &&
+            (!search.trim() || `${appointmentGuestLabel(a)} ${serviceById.get(a.serviceId)?.name ?? ""} ${staffById.get(a.staffId)?.name ?? ""}`.toLowerCase().includes(search.trim().toLowerCase())) &&
+            !hiddenServices.has(a.serviceId) &&
+            !hiddenStatuses.has(a.status) &&
+            (showCancelled || a.status !== "cancelled");
+        },
       ),
-    [data?.appointments, hiddenStaff, hiddenServices, hiddenStatuses, showCancelled, search, serviceById, staffById],
+    [data?.appointments, openDayStart, hiddenStaff, hiddenServices, hiddenStatuses, showCancelled, search, serviceById, staffById],
   );
 
   const appointmentsInRange = appointments.filter(a => a.start < range.to && a.end > range.from);
-  const noSearchMatches = data !== undefined && search.trim() !== "" && appointmentsInRange.length === 0;
+  const noSearchMatches = !scopedDay && data !== undefined && search.trim() !== "" && appointmentsInRange.length === 0;
   const visibleStarts = appointmentsInRange.filter(a => a.status !== "cancelled").map(a => Number(staffTime(a.start).split(":")[0]));
   const firstAppointmentHour = visibleStarts.length ? Math.min(...visibleStarts) : 8;
   // Scroll to the earliest appointment once per range, when data first arrives — never again while staff
@@ -351,6 +359,7 @@ function StaffCalendar() {
         data: { kind: "appointment", appointment },
       };
     });
+    if (scopedDay) return appointmentEvents;
     // Every staff member's daily breaks side by side are noise in the week view.
     const blockEvents = data.blocks
       .filter((block) => !hiddenStaff.has(block.staffId) && (view === "resource" || block.kind === "time_off"))
@@ -417,7 +426,7 @@ function StaffCalendar() {
           })
       : [];
     return [...offEvents, ...blockEvents, ...turnaroundEvents, ...appointmentEvents];
-  }, [data, appointments, proposal, serviceById, staffById, hiddenStaff, now, view, visibleStaff, range]);
+  }, [data, appointments, proposal, serviceById, staffById, hiddenStaff, now, view, visibleStaff, range, scopedDay]);
 
   const renderEvent = useCallback(
     ({ occurrence, view: currentView }: { occurrence: { event: CalendarEvent<EventData> }; view: CalendarView }) => {
@@ -544,16 +553,22 @@ function StaffCalendar() {
 
   return (
     <>
+      {scopedDay && (
+        <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 text-sm">
+          <p role="status">Open appointments · {staffDate(resortMidnight(scopedDay))}{data ? ` · ${appointments.length}` : ""}</p>
+          <Button size="sm" variant="outline" onClick={() => setDismissedScope(scopedDay)}>Show full calendar</Button>
+        </div>
+      )}
       <Card className="flex min-h-0 flex-1 flex-col gap-0 overflow-hidden py-0 [&_*]:border-border">
         <EventCalendar<EventData>
           events={events}
           view={view}
-          onViewChange={setView}
+          onViewChange={(next) => { setDismissedScope(scopedDay); setView(next); }}
           date={date}
-          onDateChange={setDate}
+          onDateChange={(next) => { if (scopedDay && resortIsoDate(next.getTime()) !== scopedDay) setDismissedScope(scopedDay); setDate(next); }}
           views={[...STAFF_VIEWS]}
           // listSchedule serves at most 14 days; the list defaults to 30.
-          agendaDayCount={7}
+          agendaDayCount={scopedDay ? 1 : 7}
           resources={resources}
           timeZone={RESORT_ZONE}
           dayStartHour={6}
@@ -567,7 +582,7 @@ function StaffCalendar() {
           renderEvent={renderEvent}
           renderAgendaEvent={renderEvent}
           renderResourceHeader={renderResourceHeader}
-          renderNoEvents={() => <div className="grid justify-items-center gap-3"><p className="text-sm text-muted-foreground">No appointments.</p>{data && !search.trim() ? <NextAppointmentJump from={range.to} onOpen={(start) => setDate(new Date(start))} /> : null}<Button disabled={!data || activeServices.length === 0} onClick={() => setDraft({ date: resortIsoDate(range.from) })}>New appointment</Button></div>}
+          renderNoEvents={() => <div className="grid justify-items-center gap-3"><p className="text-sm text-muted-foreground">No appointments.</p>{data && !scopedDay && !search.trim() ? <NextAppointmentJump from={range.to} onOpen={(start) => setDate(new Date(start))} /> : null}<Button disabled={!data || activeServices.length === 0} onClick={() => setDraft({ date: resortIsoDate(range.from) })}>New appointment</Button></div>}
           canDropEvent={canDropEvent}
           onEventClick={(occurrence) => {
             const eventData = occurrence.event.data;
@@ -632,7 +647,7 @@ function StaffCalendar() {
           scrollMode={view === "agenda" && phone ? "page" : "contained"}
           className={view === "agenda" && phone ? "w-full" : "h-[calc(100dvh-10rem)] min-h-96 w-full md:h-auto md:min-h-0 md:flex-1"}
         >
-          <AdminCalendarHeader search={<AdminCalendarSearch inline label="Search appointments" placeholder="Guest, service or staff" value={search} onChange={setSearch} />} primaryAction={<DisabledReason reason={data && activeServices.length === 0 && "Add a service first: appointments are for a service."}>
+          <AdminCalendarHeader search={scopedDay ? undefined : <AdminCalendarSearch inline label="Search appointments" placeholder="Guest, service or staff" value={search} onChange={setSearch} />} primaryAction={<DisabledReason reason={data && activeServices.length === 0 && "Add a service first: appointments are for a service."}>
                 <Button
                   size="sm"
                   aria-label="New appointment"
@@ -647,42 +662,46 @@ function StaffCalendar() {
               <CalendarDays aria-hidden className="size-3.5" />
               {bookedCount} {bookedCount === 1 ? "appointment" : "appointments"}
             </span>
-            <StaffCalendarFilter
-              icon={<Users aria-hidden className="size-4" />}
-              label={staffFilterLabel(visibleStaff.length, data?.staff.length ?? 0, hiddenAppointmentCount)}
-              groups={[
-                {
-                  title: "Staff",
-                  items: (data?.staff ?? []).map((s) => ({ id: s._id, label: `${s.name} · ${allCountByStaff.get(s._id) ?? 0}`, detail: s.role })),
-                  hidden: savedHiddenStaff,
-                  onChange: setHiddenStaff,
-                },
-              ]}
-            />
-            <StaffCalendarFilter
-              icon={<Filter aria-hidden className="size-4" />}
-              label="Filters"
-              count={filterCount}
-              extra={<label className="flex min-h-11 items-center gap-2 border-t border-border px-4 text-sm"><input type="checkbox" checked={showCancelled} onChange={e => setShowCancelled(e.target.checked)} className="size-4 accent-foreground" />Show cancelled</label>}
-              groups={[
-                {
-                  title: "Services",
-                  items: (data?.services ?? []).map((s) => ({ id: s._id, label: s.name })),
-                  hidden: hiddenServices,
-                  onChange: setHiddenServices,
-                },
-                {
-                  title: "Status",
-                  items: STATUS_FILTERS.map((status) => ({ id: status, label: appointmentStatus(status).label })),
-                  hidden: hiddenStatuses,
-                  onChange: setHiddenStatuses,
-                },
-              ]}
-            />
+            {!scopedDay && (
+              <>
+                <StaffCalendarFilter
+                  icon={<Users aria-hidden className="size-4" />}
+                  label={staffFilterLabel(visibleStaff.length, data?.staff.length ?? 0, hiddenAppointmentCount)}
+                  groups={[
+                    {
+                      title: "Staff",
+                      items: (data?.staff ?? []).map((s) => ({ id: s._id, label: `${s.name} · ${allCountByStaff.get(s._id) ?? 0}`, detail: s.role })),
+                      hidden: savedHiddenStaff,
+                      onChange: setHiddenStaff,
+                    },
+                  ]}
+                />
+                <StaffCalendarFilter
+                  icon={<Filter aria-hidden className="size-4" />}
+                  label="Filters"
+                  count={filterCount}
+                  extra={<label className="flex min-h-11 items-center gap-2 border-t border-border px-4 text-sm"><input type="checkbox" checked={showCancelled} onChange={e => setShowCancelled(e.target.checked)} className="size-4 accent-foreground" />Show cancelled</label>}
+                  groups={[
+                    {
+                      title: "Services",
+                      items: (data?.services ?? []).map((s) => ({ id: s._id, label: s.name })),
+                      hidden: hiddenServices,
+                      onChange: setHiddenServices,
+                    },
+                    {
+                      title: "Status",
+                      items: STATUS_FILTERS.map((status) => ({ id: status, label: appointmentStatus(status).label })),
+                      hidden: hiddenStatuses,
+                      onChange: setHiddenStatuses,
+                    },
+                  ]}
+                />
+              </>
+            )}
             {data === undefined ? <Spinner label="Loading appointments" /> : null}
           </AdminCalendarHeader>
           <p role="status" className="border-b border-border px-4 py-2 text-sm text-muted-foreground empty:sr-only">
-            {search.trim() ? (
+            {!scopedDay && search.trim() ? (
               <>
                 {noSearchMatches ? "No matching appointments" : "Searching"} in {scopeLabel(range)}.{" "}
                 {search.trim().length >= 2 ? (

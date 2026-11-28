@@ -78,6 +78,41 @@ describe("Leads view", () => {
     expect(host.querySelector("table")?.className).not.toContain("min-w-");
   });
 
+  it("keeps an export and each deletion pending until its own request settles", async () => {
+    const first = Promise.withResolvers<void>();
+    const second = Promise.withResolvers<void>();
+    const csv = Promise.withResolvers<{ rows: []; truncated: boolean; limit: number }>();
+    mocks.results = [lead, { ...lead, _id: "lead_2", email: "other@example.com" }];
+    mocks.confirm.mockResolvedValue(true);
+    mocks.remove.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    mocks.exportQuery.mockReturnValueOnce(csv.promise);
+    URL.createObjectURL = vi.fn(() => "blob:x");
+    await render();
+    const exportButton = [...host.querySelectorAll("button")].find((button) => button.textContent?.includes("Export CSV"))!;
+    await act(async () => exportButton.click());
+    const press = async (el: Element) => act(async () => {
+      for (const type of ["pointerdown", "mousedown", "pointerup", "mouseup", "click"]) el.dispatchEvent(new MouseEvent(type, { bubbles: true }));
+    });
+    async function remove(email: string) {
+      const trigger = host.querySelector(`ul[aria-label="Leads"] [aria-label="Actions for lead ${email}"]`)!;
+      await press(trigger);
+      const item = [...document.querySelectorAll('[role="menuitem"]')].find((el) => el.textContent === "Delete permanently")!;
+      await press(item);
+    }
+    await remove(lead.email);
+    await remove("other@example.com");
+    expect(mocks.remove).toHaveBeenCalledTimes(2);
+    expect(exportButton.disabled).toBe(true);
+    await act(async () => first.resolve());
+    expect(exportButton.disabled).toBe(true);
+    expect(host.querySelector('ul [aria-label="Actions for lead other@example.com"]')).toBeNull();
+    await act(async () => csv.resolve({ rows: [], truncated: false, limit: 5000 }));
+    expect(exportButton.disabled).toBe(false);
+    expect(host.querySelector('ul [aria-label="Actions for lead other@example.com"]')).toBeNull();
+    await act(async () => second.resolve());
+    expect(host.querySelector('ul [aria-label="Actions for lead other@example.com"]')).not.toBeNull();
+  });
+
   it("asks to confirm a permanent delete from the row menu and keeps the lead on cancel (D40)", async () => {
     await render();
     const press = async (el: Element) => act(async () => {

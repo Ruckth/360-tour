@@ -3,8 +3,8 @@
 import { api } from "convex/_generated/api";
 import { useQuery } from "convex/react";
 import { BedDouble, CalendarClock, MessageCircle, type LucideIcon } from "lucide-react";
-import { useMemo, type ReactNode } from "react";
-import { resortIsoDate, resortMidnight, useNow } from "@/lib/staff-bookings";
+import { type ReactNode } from "react";
+import { isOpenAppointmentStartingIn, resortIsoDate, resortMidnight, useNow } from "@/lib/staff-bookings";
 import { Skeleton } from "@/components/ui/skeleton";
 import Link from "@/platform/link";
 import { staffCalendarHref } from "@/lib/staff-links";
@@ -14,7 +14,6 @@ import { todayBookingArgs, todayGroups, type TodayGroup } from "./TodayStrip";
 import { waitingBadge } from "./waiting-chats";
 
 const DAY_MS = 86_400_000;
-const OPEN_APPOINTMENT = new Set(["booked", "arrived", "in_service"]);
 
 /** A link to the exact list a count describes: Hotel opens with that Today group expanded. */
 export function hotelTodayHref(group: TodayGroup) {
@@ -58,8 +57,8 @@ export function AdminTodayView() {
   const schedule = useQuery(api.services.admin.listSchedule, canOpenSpa ? { from: start, to: start + DAY_MS } : "skip");
   const queue = useQuery(api.messaging.adminChat.queueCounts, canOpenChats ? {} : "skip");
 
-  const groups = useMemo(() => (stays ? todayGroups(stays.bookings, today) : null), [stays, today]);
-  const appointments = schedule?.appointments.filter((appointment) => appointment.start >= start && appointment.start < start + DAY_MS && OPEN_APPOINTMENT.has(appointment.status));
+  const groups = stays ? todayGroups(stays.bookings, today) : null;
+  const appointments = schedule?.appointments.filter((appointment) => isOpenAppointmentStartingIn(appointment, start, start + DAY_MS));
   const waitingText = queue === undefined ? undefined : waitingBadge(queue?.waiting)?.text ?? (queue === null ? "—" : "0");
 
   return (
@@ -78,7 +77,7 @@ export function AdminTodayView() {
         ) : null}
         {canOpenSpa ? (
           <Tile title="Spa" icon={CalendarClock}>
-            <CountLink href={staffCalendarHref({ date: today })} label="Appointments today" count={appointments?.length} />
+            <CountLink href={staffCalendarHref({ date: today, openOnly: true })} label="Open appointments today" count={appointments?.length} />
           </Tile>
         ) : null}
         {canOpenChats ? (

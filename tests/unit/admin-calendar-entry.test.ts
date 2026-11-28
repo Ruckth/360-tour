@@ -174,3 +174,28 @@ it("opens a stay from an admin Search link and clears the link on close (D03)", 
   expect(document.querySelector('[data-testid="booking-sheet"]')).toBeNull();
   nav.search = "";
 });
+
+it("shows only open appointments starting on the linked resort day despite saved filters", async () => {
+  nav.search = "date=2026-11-10&scope=open";
+  window.localStorage.setItem("admin.staff.hiddenStaff", '["staff-2"]');
+  window.localStorage.setItem("admin.staff.hiddenServices", '["service-1"]');
+  window.localStorage.setItem("admin.staff.hiddenStatuses", '["booked"]');
+  const appointment = schedule.appointments[0];
+  const midnight = Date.parse("2026-11-10T00:00:00+07:00");
+  schedule.appointments.push(
+    { ...appointment, _id: "appointment-finished", status: "completed" },
+    { ...appointment, _id: "appointment-yesterday", start: midnight - 60_000, end: midnight + 60_000 },
+    { ...appointment, _id: "appointment-tomorrow", start: midnight + 86_400_000 },
+  );
+  try {
+    await act(async () => root.render(createElement(AdminStaffBookingsView, { tab: "calendar" })));
+    const ids = () => observed.calendar?.events?.map(({ id }) => id).filter((id) => id.startsWith("appointment-"));
+    expect(ids()).toEqual(["appointment-1"]);
+    const exit = [...document.querySelectorAll("button")].find((button) => button.textContent === "Show full calendar")!;
+    await act(async () => exit.click());
+    expect(ids()).toEqual([]);
+    expect(window.localStorage.getItem("admin.staff.hiddenStaff")).toBe('["staff-2"]');
+  } finally {
+    schedule.appointments.splice(1);
+  }
+});
