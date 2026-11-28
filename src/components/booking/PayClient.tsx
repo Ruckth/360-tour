@@ -121,9 +121,16 @@ export function PayClient({
           {t("livePaymentCopy")}
         </p>
         {payable ? (
-          <p data-testid="pay-amount-due" className="mt-4 rounded-xl border border-gold/30 bg-gold/5 px-3 py-2 text-sm font-semibold text-foreground">
-            {t("amountDueNow", { amount: `${currencyPrefix(booking.currency)}${satangToBaht(booking.amountDue).toLocaleString()}` })}
-          </p>
+          <div className="mt-4 rounded-xl border border-gold/30 bg-gold/5 px-3 py-2 text-sm">
+            <p data-testid="pay-amount-due" className="font-semibold text-foreground">
+              {t("amountDueNow", { amount: `${currencyPrefix(booking.currency)}${satangToBaht(booking.amountDue).toLocaleString(locale)}` })}
+            </p>
+            {booking.holdExpiresAt !== undefined ? (
+              <p className="mt-1 text-muted-foreground" data-testid="pay-hold-deadline">
+                {t("holdUntil", { time: new Date(booking.holdExpiresAt).toLocaleString(locale, { timeZone: "Asia/Bangkok", timeZoneName: "short" }) })}
+              </p>
+            ) : null}
+          </div>
         ) : null}
         {booking ? (
           // Shown only after the access token is verified; the summary never carries guest identifiers.
@@ -150,7 +157,12 @@ export function PayClient({
             {t("reference", { reference: booking.confirmationCode })}
           </div>
         ) : null}
-        {booking ? <BookedPrice booking={booking} className="mt-3" /> : null}
+        {booking?.subtotal !== undefined ? <BookedPrice booking={booking} className="mt-3" /> : booking ? (
+          <p className="mt-3 flex flex-wrap justify-between gap-1 rounded-xl bg-muted px-3 py-2 text-sm text-muted-foreground">
+            <span>{t("total")}</span>
+            <span>{currencyPrefix(booking.currency)}{satangToBaht(booking.total).toLocaleString(locale)}</span>
+          </p>
+        ) : null}
         {payable && quotedTotal !== null && booking.total !== quotedTotal ? (
           <Alert variant="warning" className="mt-3">
             <AlertDescription>

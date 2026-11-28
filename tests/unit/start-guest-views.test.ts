@@ -27,6 +27,14 @@ describe("shared guest views", () => {
     const chatLinks = [...html.matchAll(/<a[^>]*href="\/th\/chat"[^>]*>([^<]*)</g)].map((match) => match[1]);
     expect(chatLinks).toEqual([th.Experiences.secondaryCta, th.Experiences.secondaryCta]);
     expect(html).toContain(th.ServiceCatalog.all);
+    document.body.innerHTML = html;
+    const triggers = [...document.querySelectorAll('button[aria-haspopup="dialog"]')];
+    expect(triggers.map((trigger) => trigger.getAttribute("aria-label")))
+      .toEqual(Object.values(th.Experiences.items).map((item) => item.title));
+    for (const trigger of triggers) {
+      expect(document.getElementById(trigger.getAttribute("aria-describedby")!)?.textContent)
+        .toBe(th.Experiences.secondaryCta);
+    }
   });
 
   it("renders the service catalog's unavailable, empty and paged states", () => {

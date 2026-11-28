@@ -137,7 +137,9 @@ export const getById = publicQuery({
 		// Read only after access is established, so an unauthorized link learns nothing about the stay.
 		const property = await ctx.db.get(booking.propertyId);
 		const payState = guestPayState(booking, Date.now());
-		return { ...toPublicBooking(booking), propertyName: property?.name, payState, amountDue: checkoutBalance(booking) };
+		const holdExpiresAt = payState === 'payable' && booking.status === 'pending' && booking.source !== 'admin'
+			? bookingHoldExpiresAt(booking) : undefined;
+		return { ...toPublicBooking(booking), propertyName: property?.name, payState, amountDue: checkoutBalance(booking), holdExpiresAt };
 	}
 });
 
