@@ -120,6 +120,7 @@ describe("Start admin route components wiring", () => {
         options,
         useLoaderData: () => state.loaderData,
         useParams: () => state.params,
+        useNavigate: () => state.push,
         useSearch: () => (options.validateSearch as ((search: Record<string, unknown>) => unknown) | undefined)?.(state.search) ?? state.search,
         useRouteContext: () => state.routeContext,
       }),
