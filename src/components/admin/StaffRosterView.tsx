@@ -48,6 +48,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { appointmentGuestLabel, errorText, resortIsoDate, resortMidnight } from "@/lib/staff-bookings";
 import { staffDate, staffTime } from "@/lib/staff-time";
 import { cn } from "@/lib/utils";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 type Week = FunctionReturnType<typeof api.services.roster.getWeek>;
 type Cell = Week["cells"][number];
@@ -118,6 +119,9 @@ export function StaffRosterView() {
   // The selection when the anchor was set: Shift extends from it, so the range can shrink as well as grow.
   const anchorBase = useRef<Set<string>>(new Set());
   const confirm = useConfirm();
+  // Phones get one day at a time (no 56rem grid to pan); selection, presets and Custom… are the same.
+  const phone = useIsMobile(640);
+  const [dayCol, setDayCol] = useState(() => (new Date(utcDay(link.date ?? today)).getUTCDay() + 6) % 7);
 
   const data = useQuery(api.services.roster.getWeek, { weekStart });
   const historyStaff = useQuery(api.services.admin.listStaff, { includeArchived: true }) ?? [];
@@ -468,6 +472,54 @@ export function StaffRosterView() {
         </div>
       ) : null}
 
+      {phone && data ? (
+        <div className="grid gap-3 px-4 py-3">
+          <div role="group" aria-label="Day to edit" className="grid grid-cols-7 gap-1">
+            {dates.map((date, col) => (
+              <Button
+                key={date}
+                type="button"
+                size="sm"
+                variant={col === dayCol ? "default" : "outline"}
+                aria-pressed={col === dayCol}
+                aria-label={fullDay.format(date)}
+                className="h-12 min-w-0 flex-col gap-0 px-0"
+                onClick={() => setDayCol(col)}
+              >
+                <span className="text-[11px] font-medium">{weekdayShort.format(utcDay(date))}</span>
+                <span className="text-sm font-semibold">{new Date(utcDay(date)).getUTCDate()}</span>
+              </Button>
+            ))}
+          </div>
+          <ul aria-label={`Roster for ${dates[dayCol] ? fullDay.format(dates[dayCol]) : ""}`} className="grid gap-2">
+            {staff.map((person) => {
+              const date = dates[dayCol];
+              const key = cellKey(person._id, date);
+              const cell = cells.get(key);
+              if (!cell) return null;
+              const isSelected = selected.has(key);
+              return (
+                <li key={person._id}>
+                  <button
+                    type="button"
+                    aria-pressed={isSelected}
+                    aria-label={cellLabel(person.name, cell)}
+                    onClick={() => toggleKeys([key])}
+                    className={cn(
+                      "flex min-h-16 w-full items-center gap-3 rounded-lg border border-border px-3 text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      isSelected && "bg-primary/10 shadow-[inset_0_0_0_2px_var(--color-primary)]",
+                    )}
+                  >
+                    <StaffAvatar staff={person} className="size-8" />
+                    <span className="min-w-0 flex-1 truncate text-sm font-semibold">{person.name}</span>
+                    <span className="relative w-32 shrink-0"><CellContent cell={cell} /></span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ) : null}
       <div className="overflow-x-auto">
         <table
           ref={gridRef}
@@ -475,7 +527,7 @@ export function StaffRosterView() {
           aria-multiselectable="true"
           aria-busy={data === undefined}
           aria-label={`Roster for ${weekRange(weekStart, weekEnd)}`}
-          className="w-full min-w-[56rem] table-fixed border-collapse text-sm"
+          className={cn("w-full min-w-[56rem] table-fixed border-collapse text-sm", phone && data && "hidden")}
           onPointerMove={onGridPointerMove}
         >
           <colgroup>
