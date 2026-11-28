@@ -48,6 +48,8 @@ export const firstUpcomingAppointment = adminQuery({
 });
 
 const SEARCH_RESULT_LIMIT = 20;
+/** Name matches read before the date window is applied; reaching it is reported, never hidden. */
+const SEARCH_CANDIDATE_LIMIT = 256;
 const SEARCH_WINDOW_DAYS = 365;
 const NEXT_WINDOW_DAYS = 30;
 
@@ -59,12 +61,15 @@ export const searchAppointments = adminQuery({
 	args: { query: v.string() },
 	handler: async (ctx, args) => {
 		const text = args.query.trim();
-		if (text.length < 2 || text.length > 100) return { results: [], windowDays: SEARCH_WINDOW_DAYS };
+		if (text.length < 2 || text.length > 100) return { results: [], windowDays: SEARCH_WINDOW_DAYS, sampled: false };
 		const now = Date.now();
 		const found = new Map<string, Doc<'appointments'>>();
 		const byCode = await ctx.db.query('appointments').withIndex('by_confirmationCode', (q) => q.eq('confirmationCode', text.toUpperCase())).take(5);
 		for (const row of byCode) found.set(row._id, row);
-		for (const row of await ctx.db.query('appointments').withSearchIndex('search_guestName', (q) => q.search('guestName', text)).take(100)) found.set(row._id, row);
+		const byName = await ctx.db.query('appointments').withSearchIndex('search_guestName', (q) => q.search('guestName', text)).take(SEARCH_CANDIDATE_LIMIT);
+		for (const row of byName) found.set(row._id, row);
+		// Relevance order is not date order: past the candidate limit, nearer matches may be missing.
+		const sampled = byName.length === SEARCH_CANDIDATE_LIMIT;
 		const inWindow = [...found.values()].filter((row) => Math.abs(row.start - now) <= SEARCH_WINDOW_DAYS * DAY);
 		const upcoming = inWindow.filter((row) => row.end >= now).sort((a, b) => a.start - b.start);
 		const past = inWindow.filter((row) => row.end < now).sort((a, b) => b.start - a.start);
@@ -82,6 +87,7 @@ export const searchAppointments = adminQuery({
 		}
 		return {
 			windowDays: SEARCH_WINDOW_DAYS,
+			sampled,
 			results: openable.map((row) => ({
 				_id: row._id, start: row.start, end: row.end, staffId: row.staffId, serviceId: row.serviceId,
 				guestName: row.guestName, confirmationCode: row.confirmationCode, status: row.status,
@@ -90,15 +96,31 @@ export const searchAppointments = adminQuery({
 	}
 });
 
-/** The first non-cancelled appointment starting at or after `from`, within 30 days; null when none. */
+/**
+ * The first appointment starting in [from, until) (30 days) that the calendar's current filters would show; null when none.
+ * Cancelled ones count only when `includeCancelled`.
+ */
 export const nextAppointment = adminQuery({
-	args: { from: v.number() },
-	handler: async (ctx, { from }) => {
+	args: {
+		from: v.number(),
+		hiddenStaffIds: v.optional(v.array(v.id('staff'))),
+		hiddenServiceIds: v.optional(v.array(v.id('services'))),
+		hiddenStatuses: v.optional(v.array(v.string())),
+		includeCancelled: v.optional(v.boolean()),
+	},
+	handler: async (ctx, args) => {
+		const { from } = args;
 		if (!Number.isSafeInteger(from)) throw new Error('Invalid start');
+		if ((args.hiddenStaffIds?.length ?? 0) > 200 || (args.hiddenServiceIds?.length ?? 0) > 200 || (args.hiddenStatuses?.length ?? 0) > 20) throw new Error('Too many filters');
 		const until = from + NEXT_WINDOW_DAYS * DAY;
+		const hiddenStaff = new Set<string>(args.hiddenStaffIds);
+		const hiddenServices = new Set<string>(args.hiddenServiceIds);
+		const hiddenStatuses = new Set(args.hiddenStatuses);
 		const rows = ctx.db.query('appointments').withIndex('by_start', (q) => q.gte('start', from).lt('start', until));
 		for await (const row of boundedIntegrityRows(rows)) {
-			if (row.status !== 'cancelled') return { appointment: { _id: row._id, start: row.start, staffId: row.staffId }, until };
+			if (row.status === 'cancelled' && !args.includeCancelled) continue;
+			if (hiddenStaff.has(row.staffId) || hiddenServices.has(row.serviceId) || hiddenStatuses.has(row.status)) continue;
+			return { appointment: { _id: row._id, start: row.start, staffId: row.staffId }, until };
 		}
 		return { appointment: null, until };
 	}

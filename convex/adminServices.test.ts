@@ -4,7 +4,8 @@ import { asTestOwner } from './testing/staff.test-support';
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from './_generated/api';
-import type { Id } from './_generated/dataModel';
+import type { Doc, Id } from './_generated/dataModel';
+import type { WithoutSystemFields } from 'convex/server';
 import { createAppointmentRecord, localDateTimeUtc, validateService } from './services/model';
 import { addDays } from './shared/dates';
 import schema from './schema';
@@ -424,7 +425,7 @@ describe('admin services', () => {
 		const { t, admin, booking } = await setup();
 		const current = await admin.mutation(api.services.commands.createAppointment.createAppointment, { ...booking, guestName: 'Lena Park', start: localDateTimeUtc(addDays(date, 2), '10:00') });
 		const copyOld = (count: number, offset: number) => t.run(async (ctx) => {
-			const { _id, _creationTime, ...row } = (await ctx.db.get(current.appointmentId))!;
+			const row = Object.fromEntries(Object.entries((await ctx.db.get(current.appointmentId))!).filter(([key]) => !key.startsWith('_'))) as WithoutSystemFields<Doc<'appointments'>>;
 			const old = row.start - 3 * 365 * 86_400_000;
 			for (let i = 0; i < count; i++) {
 				await ctx.db.insert('appointments', { ...row, start: old - (offset + i) * 86_400_000, end: old - (offset + i) * 86_400_000 + 3_600_000, blockedUntil: old - (offset + i) * 86_400_000 + 3_600_000, confirmationCode: `SPA-OLD-${offset + i}` });

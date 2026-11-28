@@ -37,21 +37,26 @@ it('D14: the all-dates lookup lists bounded matches and one selection opens the 
   expect(document.body.textContent).toContain('Thai massage · Mali');
   await act(async () => [...document.querySelectorAll('button')].find(b => b.textContent?.includes('Lena Park'))!.click());
   expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ _id: 'a20', start }));
+  state.results.searchAppointments = { windowDays: 365, sampled: true, results: [] };
+  await act(async () => root.render(createElement(AllDatesResults, { query: 'Lee', staffById, serviceById, onOpen, onClose: vi.fn() })));
+  expect(document.body.textContent).toContain('only the best name matches were checked');
 }, 30_000);
 
-it('D21: an empty range offers a jump to the next appointment, or names the searched window', async () => {
+it('D21: an empty range offers a jump to the next appointment the filters show, or names the exact searched window', async () => {
   const from = Date.parse('2026-12-08T00:00:00+07:00');
   const onOpen = vi.fn();
+  const filters = { hiddenStaffIds: ['s2'], hiddenServiceIds: [], hiddenStatuses: ['no_show'], includeCancelled: false } as never;
   state.results.nextAppointment = { appointment: { _id: 'a1', start, staffId: 's1' }, until: from + 30 * 86_400_000 };
-  await act(async () => root.render(createElement(NextAppointmentJump, { from, onOpen })));
-  expect(state.args).toContainEqual({ from });
+  await act(async () => root.render(createElement(NextAppointmentJump, { from, filters, filtered: true, onOpen })));
+  expect(state.args).toContainEqual({ from, hiddenStaffIds: ['s2'], hiddenServiceIds: [], hiddenStatuses: ['no_show'], includeCancelled: false });
   const jump = document.querySelector('button')!;
-  expect(jump.textContent).toContain('Next appointment');
+  expect(jump.textContent).toContain('Next matching appointment: Fri 18 Dec');
   await act(async () => jump.click());
   expect(onOpen).toHaveBeenCalledWith(start);
   state.results.nextAppointment = { appointment: null, until: from + 30 * 86_400_000 };
-  await act(async () => root.render(createElement(NextAppointmentJump, { from: from + 1, onOpen })));
-  expect(document.body.textContent).toContain('None in the 30 days after');
+  await act(async () => root.render(createElement(NextAppointmentJump, { from: from + 1, filters: {} as never, filtered: false, onOpen })));
+  // Inclusive start, exclusive end: 8 Dec + 30 days searches through 6 Jan.
+  expect(document.body.textContent).toContain('No appointments from Tue 8 Dec to Wed 6 Jan 2027 either');
 }, 30_000);
 
 it('D16: a booked chip offers one inline next status through the guarded mutation, without opening the sheet', async () => {
