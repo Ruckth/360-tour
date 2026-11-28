@@ -7,6 +7,7 @@ import { BedDouble, CalendarClock, MessageCircle, type LucideIcon } from "lucide
 import { useMemo, type ReactNode } from "react";
 import { isOpenAppointmentStartingIn, resortMidnight, useResortBusinessDate } from "@/lib/staff-bookings";
 import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 import Link from "@/platform/link";
 import { staffCalendarHref } from "@/lib/staff-links";
 import { canOpenResortDesk } from "./admin-access";
@@ -21,10 +22,10 @@ export function hotelTodayHref(group: TodayGroup) {
   return `/admin/hotel?today=${group}`;
 }
 
-function Tile({ title, icon: Icon, children }: { title: string; icon: LucideIcon; children: ReactNode }) {
+function Tile({ title, icon: Icon, className, children }: { title: string; icon: LucideIcon; className?: string; children: ReactNode }) {
   return (
-    <section aria-label={title} className="grid content-start gap-3 rounded-xl border border-border bg-card p-4">
-      <h2 className="flex items-center gap-2 text-base font-semibold text-foreground">
+    <section aria-label={title} className={cn("grid min-w-0 content-start gap-2 rounded-xl border border-border bg-card p-3 sm:p-4", className)}>
+      <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground sm:text-base">
         <Icon aria-hidden="true" className="size-4 text-muted-foreground" />
         {title}
       </h2>
@@ -33,11 +34,12 @@ function Tile({ title, icon: Icon, children }: { title: string; icon: LucideIcon
   );
 }
 
+/** One count as a tappable stat: the label stays first so the link reads "Arriving 2". */
 function CountLink({ href, label, count }: { href: string; label: string; count: number | string | undefined }) {
   return (
-    <Link href={href} className="flex min-h-11 items-center justify-between gap-3 rounded-lg px-2 text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-      <span>{label}</span>
-      {<span role="status" className="text-right font-semibold tabular-nums">{count === undefined ? <><span className="sr-only">Loading count</span><Skeleton className="h-4 w-6" /></> : count}</span>}
+    <Link href={href} className="flex min-h-16 min-w-0 flex-col justify-between gap-1 rounded-lg bg-muted/40 px-3 py-2 text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <span className="text-muted-foreground">{label}</span>
+      <span role="status" className={cn("font-semibold tabular-nums text-foreground", count !== undefined && !/[a-z]/i.test(String(count)) ? "text-2xl leading-none" : "text-sm")}>{count === undefined ? <><span className="sr-only">Loading count</span><Skeleton className="h-6 w-8" /></> : count}</span>
     </Link>
   );
 }
@@ -73,17 +75,21 @@ export function AdminTodayView() {
   const appointments = schedule?.appointments.filter((appointment) => isOpenAppointmentStartingIn(appointment, start, start + DAY_MS));
   const waitingText = queue === undefined ? undefined : waitingBadge(queue?.waiting)?.text ?? (queue === null ? "Count unavailable" : "0");
 
+  // Spa or Chats alone fills the row instead of leaving an empty half.
+  const soloDesk = canOpenSpa !== canOpenChats;
   const hotelCount = (group: TodayGroup) => hotelFailed ? "Count unavailable" : groups ? stays?.complete === false ? `${groups[group].length} (partial)` : groups[group].length : undefined;
 
   return (
     <div className="mx-auto grid w-full max-w-5xl gap-4 px-4 py-4 sm:px-6">
       <p className="text-sm text-muted-foreground">Bangkok business date <time dateTime={today}>{today}</time></p>
       {!canOpenHotel && !canOpenSpa && !canOpenChats ? <p className="rounded-xl border p-4 text-sm">Your staff access has no Hotel, Spa or Chats queues on Today. Use the navigation to open your available workspaces.</p> : null}
-      <div className="grid gap-4 md:grid-cols-3">
+      {/* Phones and tablets keep every count above the fold: Hotel is one row (or a 2×2 on
+          phones) and Spa and Chats sit side by side; desktop fits all three tiles on one row. */}
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         {canOpenHotel ? (
-          <Tile title="Hotel" icon={BedDouble}>
+          <Tile title="Hotel" icon={BedDouble} className="col-span-2">
             {stays?.complete === false ? <p role="status" className="text-xs text-muted-foreground">Some of today’s stays could not be loaded.</p> : null}
-            <div className="grid">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               <CountLink href={hotelTodayHref("arriving")} label="Arriving" count={hotelCount("arriving")} />
               <CountLink href={hotelTodayHref("leaving")} label="Leaving" count={hotelCount("leaving")} />
               <CountLink href={hotelTodayHref("inHouse")} label="In house" count={hotelCount("inHouse")} />
@@ -92,12 +98,12 @@ export function AdminTodayView() {
           </Tile>
         ) : null}
         {canOpenSpa ? (
-          <Tile title="Spa" icon={CalendarClock}>
+          <Tile title="Spa" icon={CalendarClock} className={soloDesk ? "col-span-2" : undefined}>
             <CountLink href={staffCalendarHref({ date: today, openOnly: true })} label="Open appointments today" count={spaFailed ? "Count unavailable" : appointments?.length} />
           </Tile>
         ) : null}
         {canOpenChats ? (
-          <Tile title="Chats" icon={MessageCircle}>
+          <Tile title="Chats" icon={MessageCircle} className={soloDesk ? "col-span-2" : undefined}>
             <CountLink href="/admin/chats" label={queue === null ? "Open chat queue" : "Needs you"} count={waitingText} />
           </Tile>
         ) : null}

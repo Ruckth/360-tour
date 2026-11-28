@@ -5,7 +5,7 @@ import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import { useRef, useState, type FormEvent } from "react";
 import { EmptyState, SkeletonRows } from "@/components/admin/admin-bulk";
-import { STOCK_TABLE } from "./stock-table";
+import list from "./StockRecordList.module.css";
 import { Callout, ChoiceGroup, EditorSheet, NumberField, SheetForm } from "@/components/admin/marketing/MarketingBits";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -258,40 +258,40 @@ export function LotDetailPanel({
         </Callout>
       ) : (
         <>
-          <Card className="overflow-hidden">
+          <Card className={cn("overflow-hidden", list.frame)}>
             {balances.lots.length === 0 ? (
               <EmptyState>No active lots in stock at this branch yet.</EmptyState>
             ) : (
-              <table className={STOCK_TABLE.table}>
-                <thead className={STOCK_TABLE.head}>
+              <table role="table" className={list.table}>
+                <thead className="admin-eyebrow">
                   <tr>
-                    <th scope="col" className={STOCK_TABLE.th}>Lot code</th>
-                    <th scope="col" className={STOCK_TABLE.th}>Expires</th>
-                    <th scope="col" className={cn(STOCK_TABLE.th, "text-right")}>On hand</th>
-                    <th scope="col" className={cn(STOCK_TABLE.th, "text-right")}>Reserved</th>
-                    {balances.assigned > 0 ? <th scope="col" className={cn(STOCK_TABLE.th, "text-right")}>In bins</th> : null}
-                    <th scope="col" className={cn(STOCK_TABLE.th, "text-right")}>Sellable</th>
+                    <th scope="col">Lot code</th>
+                    <th scope="col">Expires</th>
+                    <th scope="col" className="text-right">On hand</th>
+                    <th scope="col" className="text-right">Reserved</th>
+                    {balances.assigned > 0 ? <th scope="col" className="text-right">In bins</th> : null}
+                    <th scope="col" className="text-right">Sellable</th>
                   </tr>
                 </thead>
-                <tbody className={STOCK_TABLE.body}>
+                <tbody>
                   {balances.lots.map((lot) => (
-                    <tr key={lot.lotId} className={STOCK_TABLE.row}>
-                      <td data-label="Lot code" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled, "font-mono font-medium")}>
+                    <tr key={lot.lotId}>
+                      <td data-label="Lot code" className="font-mono font-medium">
                         {lot.code ?? lot.lotId}
                       </td>
-                      <td data-label="Expires" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled, "tabular-nums text-xs")}>
+                      <td data-label="Expires" className="tabular-nums text-xs">
                         {staffDate(lot.expiresAt)}{lot.expired ? " · Expired" : ""}
                       </td>
-                      <td data-label="On hand" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled, "font-mono tabular-nums lg:text-right")}>
+                      <td data-label="On hand" className="font-mono tabular-nums text-right">
                         {lot.onHand}
                       </td>
-                      <td data-label="Reserved" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled, "font-mono tabular-nums lg:text-right")}>
+                      <td data-label="Reserved" className="font-mono tabular-nums text-right">
                         {lot.reserved}
                       </td>
-                      {balances.assigned > 0 ? <td data-label="In bins" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled, "font-mono tabular-nums lg:text-right")}>
+                      {balances.assigned > 0 ? <td data-label="In bins" className="font-mono tabular-nums text-right">
                         {lot.assigned}
                       </td> : null}
-                      <td data-label="Sellable" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled, "font-mono tabular-nums lg:text-right")}>
+                      <td data-label="Sellable" className="font-mono tabular-nums text-right">
                         {lot.available}
                       </td>
                     </tr>

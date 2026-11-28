@@ -197,11 +197,11 @@ function AuthorizedDetails({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-semibold">Supporting records</h2>
           {canWrite && (
-            <div className="flex flex-wrap items-end gap-2">
-              <label className="grid gap-1 text-xs">
+            <div className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-end gap-2 sm:flex sm:w-auto sm:flex-wrap">
+              <label className="grid min-w-0 gap-1 text-xs">
                 CSV export scope
                 <select
-                  className={inputStyle}
+                  className={inputStyle + ' w-full'}
                   value={includeCustomer ? 'identifiable' : 'operational'}
                   disabled={busy || exporting}
                   onChange={(event) => setExportChoice({ scope: exportScope, identifiable: event.target.value === 'identifiable' })}
@@ -236,18 +236,18 @@ function AuthorizedDetails({
             These records are excluded from gross profit until their service costs are entered.
           </p>
         )}
-        <div className="flex flex-wrap items-end gap-3">
+        <div className="grid grid-cols-2 items-end gap-2 sm:flex sm:flex-wrap sm:gap-3">
           <form
-            className="flex max-w-full flex-wrap items-end gap-1"
+            className="col-span-2 grid grid-cols-[minmax(0,1fr)_auto] items-end gap-1 sm:flex sm:max-w-full sm:flex-wrap"
             onSubmit={(e) => {
               e.preventDefault();
               submitSearch(search);
             }}
           >
-            <label className="grid max-w-full gap-1 text-xs">
+            <label className="grid min-w-0 max-w-full gap-1 text-xs">
               Search records
               <input
-                className={inputStyle}
+                className={inputStyle + ' w-full'}
                 type="search"
                 maxLength={120}
                 placeholder="Customer, service, reference"
@@ -259,7 +259,7 @@ function AuthorizedDetails({
               Search
             </Button>
             {search.trim() !== (request.search ?? '') && (
-              <p role="status" className="basis-full text-xs text-muted-foreground">
+              <p role="status" className="col-span-2 basis-full text-xs text-muted-foreground">
                 Apply search to update the records.{' '}
                 {request.search ? `Showing results for “${request.search}”.` : 'Showing all search results.'}
               </p>
@@ -269,6 +269,7 @@ function AuthorizedDetails({
                 type="button"
                 size="sm"
                 variant="ghost"
+                className="col-span-2 justify-self-start"
                 onClick={() => {
                   setSearch('');
                   submitSearch('');
@@ -278,19 +279,19 @@ function AuthorizedDetails({
               </Button>
             )}
           </form>
-          <label className="grid max-w-full gap-1 text-xs">
+          <label className="grid min-w-0 max-w-full gap-1 text-xs">
             Record category
-            <select className={inputStyle} value={category} onChange={(e) => setCategory(e.target.value)}>
+            <select className={inputStyle + ' w-full sm:w-auto'} value={category} onChange={(e) => setCategory(e.target.value)}>
               <option value="">All categories</option>
               {[...new Set([...detail.categories, ...(category ? [category] : [])])].map((v) => (
                 <option key={v}>{v}</option>
               ))}
             </select>
           </label>
-          <label className="grid gap-1 text-xs">
+          <label className="grid min-w-0 gap-1 text-xs">
             Transaction sort
             <select
-              className={inputStyle}
+              className={inputStyle + ' w-full sm:w-auto'}
               value={request.descending ? 'desc' : 'asc'}
               onChange={(event) => setDescending(event.target.value === 'desc')}
             >
@@ -474,7 +475,7 @@ function AuthorizedDetails({
           )}
         </span>
         {detail.count > 0 && (
-          <div className="flex items-center gap-2">
+          <div className="flex w-full items-center justify-between gap-2 sm:w-auto sm:justify-start">
             <Button
               size="sm"
               variant="outline"

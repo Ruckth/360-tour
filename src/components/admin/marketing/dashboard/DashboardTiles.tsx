@@ -116,10 +116,12 @@ export function DashboardTiles({ p, totals, onAddSpend, definitionsAction, campa
         </div>
         {definitionsAction}
       </header>
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+      {/* Tablets put the hero beside a two-column tile grid instead of stacking a full-width hero
+          over the tiles, so the chart starts about one tile row sooner; desktop gets three columns. */}
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
         <Stat hero label={p.cash ? "Business net" : "Tracked net"} value={thb(p.cash ? all.net : tracked.net)} hint={p.cash ? "Collected minus refunds" : undefined}
           info="Collected minus refunds (not profit); business total includes untracked and staff-entered sales."
-          className="col-span-2 flex flex-col gap-2 p-4">
+          className="@container col-span-2 flex flex-col gap-2 p-4 [&>p:first-of-type]:wrap-anywhere [&>p:first-of-type]:text-[clamp(1.75rem,12cqi,2.5rem)]">
           <div className="mt-1 grid gap-2 border-t border-border pt-2">
             {!p.cash ? <div className="flex flex-wrap items-baseline justify-between gap-2">
               <span className="text-[13px] text-muted-foreground">Business total</span>
@@ -131,7 +133,7 @@ export function DashboardTiles({ p, totals, onAddSpend, definitionsAction, campa
             </>}
           </div>
         </Stat>
-        <div className="col-span-2 grid grid-cols-2 gap-4 md:grid-cols-3 lg:col-span-3 [&>*:last-child:nth-child(odd)]:col-span-2">{tiles}</div>
+        <div className="col-span-2 grid grid-cols-2 gap-3 sm:gap-4 md:col-span-3 lg:grid-cols-3 [&>*:last-child:nth-child(odd)]:col-span-2">{tiles}</div>
       </div>
     </section>
   );

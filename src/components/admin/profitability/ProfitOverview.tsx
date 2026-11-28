@@ -130,7 +130,7 @@ export function Overview({
                         additional: null,
                       })}
                       aria-label={'Review ' + part + ' costs'}
-                      className="inline-flex min-h-6 items-center font-medium tabular-nums underline decoration-muted-foreground/60 underline-offset-2"
+                      className="inline-flex min-h-6 items-center font-medium tabular-nums underline pointer-coarse:min-h-11 decoration-muted-foreground/60 underline-offset-2"
                     >
                       {thb(s.costs[part])}
                     </Link>
@@ -189,7 +189,7 @@ export function Overview({
             <thead className="bg-muted/40 text-xs max-md:sr-only">
               <tr>
                 {['Service', 'Revenue', 'Known COGS', 'Gross profit', 'Missing costs'].map((column) => (
-                  <th key={column} scope="col" className="px-4 py-3">
+                  <th key={column} scope="col" className={'px-4 py-3' + (column === 'Service' ? '' : ' text-right')}>
                     {column}
                   </th>
                 ))}
@@ -212,23 +212,23 @@ export function Overview({
                     <th scope="row" className="break-words font-semibold max-md:col-span-2 md:px-4 md:py-3">
                       {row.name}
                     </th>
-                    <td className="py-2 md:px-4">
+                    <td className="py-2 md:px-4 md:text-right">
                       <span className="block text-xs text-muted-foreground md:hidden">Revenue</span>
-                      <Link className="underline tabular-nums" href={url('revenue')}>
+                      <Link className="inline-flex items-center pointer-coarse:min-h-11 underline tabular-nums" href={url('revenue')}>
                         {thb(row.revenue)}
                       </Link>
                     </td>
-                    <td className="py-2 tabular-nums md:px-4">
+                    <td className="py-2 tabular-nums md:px-4 md:text-right">
                       <span className="block text-xs text-muted-foreground md:hidden">Known COGS</span>
                       {row.gross === null ? money(null) : (
                         <details>
-                          <summary className="cursor-pointer">
+                          <summary className="cursor-pointer pointer-coarse:flex pointer-coarse:min-h-11 pointer-coarse:items-center md:justify-end">
                             {thb(costTotal(row.costs))}{row.missingCount > 0 && ' · Partial'}
                           </summary>
-                          <ul className="mt-1 space-y-2 text-xs">
+                          <ul className="mt-1 space-y-1 text-xs">
                             {(['staff', 'materials', 'tools'] as const).map((part) => (
                               <li key={part}>
-                                <Link className="capitalize underline" href={url('gross', part[0].toUpperCase() + part.slice(1))}>
+                                <Link className="inline-flex items-center pointer-coarse:min-h-11 capitalize underline" href={url('gross', part[0].toUpperCase() + part.slice(1))}>
                                   {part} {thb(row.costs[part])}
                                 </Link>
                               </li>
@@ -237,17 +237,17 @@ export function Overview({
                         </details>
                       )}
                     </td>
-                    <td className="py-2 md:px-4">
+                    <td className="py-2 md:px-4 md:text-right">
                       <span className="block text-xs text-muted-foreground md:hidden">Gross profit</span>
-                      <Link className="underline tabular-nums" href={url('gross')}>
+                      <Link className="inline-flex items-center pointer-coarse:min-h-11 underline tabular-nums" href={url('gross')}>
                         {money(row.gross)}
                       </Link>
                     </td>
-                    <td className="py-2 md:px-4">
+                    <td className="py-2 tabular-nums md:px-4 md:text-right">
                       <span className="block text-xs text-muted-foreground md:hidden">Missing costs</span>
                       {row.missingCount ? (
                         <Link
-                          className="text-primary underline"
+                          className="inline-flex items-center pointer-coarse:min-h-11 text-primary underline pointer-coarse:min-w-11"
                           href={url('gross', 'Awaiting cost')}
                           aria-label={'Review missing costs for ' + row.name}
                         >
@@ -277,7 +277,7 @@ export function Overview({
                 <dt>{e.kind}</dt>
                 <dd>
                   <Link
-                    className="tabular-nums underline-offset-4 hover:underline"
+                    className="inline-flex items-center pointer-coarse:min-h-11 tabular-nums underline-offset-4 hover:underline"
                     href={href(true, {
                       metric: 'net',
                       category: e.kind,

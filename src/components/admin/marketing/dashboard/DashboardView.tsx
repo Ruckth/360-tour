@@ -205,9 +205,9 @@ function LoadingBody() {
   return (
     <div role="status" className="grid gap-4">
       <span className="sr-only">Loading marketing results</span>
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
-        <Skeleton className="col-span-2 h-52 rounded-xl sm:h-[332px]" />
-        <div className="col-span-2 grid grid-cols-2 gap-4 md:grid-cols-3 lg:col-span-3 [&>*:last-child]:col-span-2">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
+        <Skeleton className="col-span-2 h-52 rounded-xl md:h-auto" />
+        <div className="col-span-2 grid grid-cols-2 gap-3 sm:gap-4 md:col-span-3 lg:grid-cols-3 [&>*:last-child]:col-span-2">
           {Array.from({ length: 5 }, (_, i) => <Skeleton key={i} className="h-[132px] rounded-xl" />)}
         </div>
       </div>

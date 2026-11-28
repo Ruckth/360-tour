@@ -8,7 +8,7 @@ import { flushSync } from "react-dom";
 import { ArrowRightLeft, Layers, Plus, Send } from "lucide-react";
 import { useMemo, useState, type FormEvent } from "react";
 import { EmptyState, SkeletonRows } from "@/components/admin/admin-bulk";
-import { STOCK_TABLE } from "./stock-table";
+import list from "./StockRecordList.module.css";
 import { useAdminBranch } from "@/components/admin/branch/branch-context";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import {
@@ -175,7 +175,7 @@ export function StockExpansionView() {
             </Select>
           </div>
 
-          <Card className="overflow-hidden">
+          <Card className={cn("overflow-hidden", list.frame)}>
             {transferStatus === "LoadingFirstPage" ? (
               <SkeletonRows label="Loading branch transfers" rows={4} />
             ) : transfers.length === 0 ? (
@@ -194,38 +194,38 @@ export function StockExpansionView() {
                   : `No incoming transfers to ${branch.name} yet.`}
               </EmptyState>
             ) : (
-              <table className={STOCK_TABLE.table}>
-                <thead className={STOCK_TABLE.head}>
+              <table role="table" className={list.table}>
+                <thead className="admin-eyebrow">
                   <tr>
-                    <th scope="col" className={STOCK_TABLE.th}>
+                    <th scope="col">
                       {direction === "origin" ? "Destination" : "Origin"}
                     </th>
-                    <th scope="col" className={STOCK_TABLE.th}>Status</th>
-                    <th scope="col" className={STOCK_TABLE.th}>Created</th>
-                    <th scope="col" className={STOCK_TABLE.th}>Sent</th>
-                    <th scope="col" className={cn(STOCK_TABLE.th, "text-right")}>Action</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">Created</th>
+                    <th scope="col">Sent</th>
+                    <th scope="col" className="text-right">Action</th>
                   </tr>
                 </thead>
-                <tbody className={STOCK_TABLE.body}>
+                <tbody>
                   {transfers.map((transfer) => (
-                    <tr key={transfer._id} className={STOCK_TABLE.row}>
+                    <tr key={transfer._id} className={list.rowWithActions}>
                       <td
                         data-label={direction === "origin" ? "Destination" : "Origin"}
-                        className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled, "font-medium text-foreground")}
+                        className="font-medium text-foreground"
                       >
                         <p>{transfer.otherBranch || "Branch"}</p>
                         <p className="font-mono text-xs text-muted-foreground">{transfer.reference}</p>
                       </td>
-                      <td data-label="Status" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled)}>
+                      <td data-label="Status">
                         <StatusBadge {...TRANSFER_STATE_META[transfer.state]} />
                       </td>
-                      <td data-label="Created" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled, "text-xs tabular-nums text-muted-foreground")}>
+                      <td data-label="Created" className="text-xs tabular-nums text-muted-foreground">
                         {staffDateTime(transfer.createdAt)}
                       </td>
-                      <td data-label="Sent" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled, "text-xs tabular-nums text-muted-foreground")}>
+                      <td data-label="Sent" className="text-xs tabular-nums text-muted-foreground">
                         {transfer.sentAt ? staffDateTime(transfer.sentAt) : "—"}
                       </td>
-                      <td className={cn(STOCK_TABLE.cell, "lg:text-right")}>
+                      <td className="lg:text-right">
                         <Button
                           type="button"
                           variant="outline"

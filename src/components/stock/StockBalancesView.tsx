@@ -5,7 +5,6 @@ import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import {
   CheckCircle2,
-  ClipboardCheck,
   PackageCheck,
   ShieldCheck,
   ShoppingCart,
@@ -14,7 +13,6 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
-  BulkActionBar,
   EmptyState,
   SearchBox,
   SelectCheckbox,
@@ -304,7 +302,7 @@ export function StockBalancesView() {
   }
 
   return (
-    <div className="grid gap-5">
+    <div className={cn("grid gap-3 sm:gap-4", selection.selectedKeys.length > 0 && "max-lg:pb-32")}>
       <NoticeBar notice={notice} onClose={clear} />
       {nextBatchPrompt ? (
         <Callout
@@ -347,7 +345,7 @@ export function StockBalancesView() {
         }}
         onClose={() => setBinTarget(null)} /> : null}
 
-      <div className="flex flex-wrap items-end justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
         <div>
           <h2 className="font-serif text-xl font-semibold text-foreground">Balances</h2>
         </div>
@@ -373,9 +371,9 @@ export function StockBalancesView() {
             </Button>
           ) : null}
           {access.canManageGrants ? (
-            <Button type="button" variant="outline" size="sm" onClick={() => setSettingsOpen(true)}>
+            <Button type="button" variant="ghost" size="sm" className="size-11 sm:w-auto" title="Branch stock access" onClick={() => setSettingsOpen(true)}>
               <ShieldCheck aria-hidden className="size-4" />
-              Branch stock access
+              <span className="sr-only sm:not-sr-only">Branch stock access</span>
             </Button>
           ) : null}
         </div>
@@ -455,6 +453,7 @@ export function StockBalancesView() {
               ) : null}
               <Button
                 type="button"
+                aria-pressed={mobileSelectMode}
                 variant={mobileSelectMode ? "secondary" : "outline"}
                 size="sm"
                 className="min-h-11"
@@ -470,83 +469,43 @@ export function StockBalancesView() {
             </div>
           </div>
 
-          <Card className="overflow-hidden">
-            <BulkActionBar
-              count={selection.selectedKeys.length}
-              noun={selection.selectedKeys.length === 1 ? "item" : "items"}
-              onClear={selection.clear}
+          {selection.selectedKeys.length > 0 ? (
+            <StickyActionBar
+              position="fixed"
+              role="toolbar"
+              aria-label={selectedRows.length === 1 ? "Actions for selected item" : "Actions for selected items"}
+              data-admin-bottom-bar="lg"
+              className="gap-1 px-3 py-1.5 sm:inset-x-auto sm:right-4 sm:bottom-[calc(var(--admin-tab-bar,0px)+0.5rem)] lg:sticky lg:inset-auto lg:top-0 lg:gap-2 lg:px-4"
             >
-              {selectedOnOrderTotal > 0 ? (
-                <span className="text-xs tabular-nums text-muted-foreground">
-                  ({selectedOnOrderTotal.toLocaleString("en-US")} already on order)
-                </span>
-              ) : null}
+              <span className="mr-auto text-sm font-medium">{selectedRows.length} selected</span>
+              {selectedOnOrderTotal > 0 ? <span className="text-xs text-muted-foreground max-lg:sr-only">({selectedOnOrderTotal} already on order)</span> : null}
               {access.receiver && allSelectedNeverStocked ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={() => openBatch("opening", selectedRows, "Selected items")}
-                >
-                  <PackageCheck aria-hidden className="size-4" />
-                  Record opening stock ({selectedRows.length})
+                <Button size="sm" onClick={() => openBatch("opening", selectedRows, "Selected items")}>
+                  <span className="hidden sm:inline">Record opening stock ({selectedRows.length})</span>
+                  <span className="sm:hidden">Opening stock</span>
                 </Button>
-              ) : null}
-              {access.receiver ? (
-                selectedUntrackedRows.length > 0 ? (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => openBatch("count", selectedRows, "Selected items")}
-                  >
-                    <ClipboardCheck aria-hidden className="size-4" />
-                    {selectedTrackedRows.length > 0
-                      ? `Count untracked (${selectedUntrackedRows.length})`
-                      : "Count selected"}
-                  </Button>
-                ) : selectedTrackedRows.length > 0 ? (
-                  <ButtonLink
-                    href={lotViewHref(selectedTrackedRows[0].variantId)}
-                    size="sm"
-                    variant="outline"
-                  >
-                    <ClipboardCheck aria-hidden className="size-4" />
-                    {selectedTrackedRows.length === 1 ? "Open lots" : "Open first in lot view"}
-                  </ButtonLink>
-                ) : null
-              ) : null}
-              {access.receiver ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => startPurchasingAction("receive", selectedRows)}
-                >
-                  Receive {selectedRows.length}
+              ) : access.receiver && selectedUntrackedRows.length > 0 ? (
+                <Button size="sm" onClick={() => openBatch("count", selectedRows, "Selected items")}>
+                  {selectedTrackedRows.length > 0 ? "Count untracked" : "Count selected"}
                 </Button>
+              ) : access.receiver && selectedTrackedRows.length > 0 ? (
+                <ButtonLink size="sm" href={lotViewHref(selectedTrackedRows[0].variantId)}>
+                  {selectedTrackedRows.length === 1 ? "Open lots" : "Open first in lot view"}
+                </ButtonLink>
               ) : null}
-              {access.requester ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => startPurchasingAction("request", selectedRows)}
-                >
-                  Request {selectedRows.length}
-                </Button>
-              ) : null}
-              {access.directOrder ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => startPurchasingAction("order", selectedRows)}
-                >
-                  Create order
-                </Button>
-              ) : null}
-            </BulkActionBar>
+              {access.receiver ? <Button variant="outline" size="sm" onClick={() => startPurchasingAction("receive", selectedRows)}>Receive {selectedRows.length}</Button> : null}
+              {access.requester ? <Button variant="outline" size="sm" onClick={() => startPurchasingAction("request", selectedRows)}>Request {selectedRows.length}</Button> : null}
+              {access.directOrder ? <Button variant="outline" size="sm" onClick={() => startPurchasingAction("order", selectedRows)}>Create order</Button> : null}
+              <Button size="icon" variant="ghost" aria-label="Clear selection" title="Clear selection" className="size-11" onClick={() => {
+                selection.clear();
+                setMobileSelectMode(false);
+              }}>
+                <X aria-hidden className="size-4" />
+              </Button>
+            </StickyActionBar>
+          ) : null}
 
+          <Card className="@container/balances overflow-hidden">
             {(access.receiver || access.lead) && selectedTrackedRows.length > 0 && !allSelectedNeverStocked ? (
               <div className="border-b border-border bg-muted/20 px-4 py-3">
                 <Callout tone="info" role="status" title="Lot-tracked items use per-lot counting">
@@ -611,8 +570,8 @@ export function StockBalancesView() {
                 </EmptyState>
               )
             ) : (
-              <table className="block w-full text-left text-sm lg:table">
-                <thead className="admin-eyebrow hidden border-b border-border bg-muted/40 lg:table-header-group">
+              <table className="block w-full text-left text-sm @2xl/balances:table">
+                <thead className="admin-eyebrow hidden border-b border-border bg-muted/40 @2xl/balances:table-header-group">
                   <tr>
                     <th scope="col" className="w-10 px-2 py-2">
                       <SelectCheckbox
@@ -620,7 +579,7 @@ export function StockBalancesView() {
                         indeterminate={selection.someSelected}
                         onChange={selection.toggleAll}
                         label="Select all visible items"
-                        className="lg:size-8 pointer-coarse:size-11"
+                        className="@2xl/balances:size-8 pointer-coarse:size-11"
                       />
                     </th>
                     <th scope="col" className="px-3 py-2">Item & SKU</th>
@@ -630,7 +589,7 @@ export function StockBalancesView() {
                     <th scope="col" className="px-3 py-2 text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="block lg:table-row-group">
+                <tbody className="block @2xl/balances:table-row-group">
                   {results.map((row) => (
                     <StockBalanceRow
                       key={row.variantId}
@@ -659,65 +618,6 @@ export function StockBalancesView() {
                 Load more items
               </Button>
             </div>
-          ) : null}
-
-          {mobileSelectMode && selection.selectedKeys.length > 0 ? (
-            <StickyActionBar position="fixed" className="lg:hidden">
-              <span className="text-sm font-medium text-foreground">
-                {selection.selectedKeys.length} selected
-              </span>
-              {access.receiver && allSelectedNeverStocked ? (
-                <Button type="button" size="sm" onClick={() => openBatch("opening", selectedRows, "Selected items")}>
-                  Opening ({selectedRows.length})
-                </Button>
-              ) : access.receiver ? (
-                selectedUntrackedRows.length > 0 ? (
-                  <Button type="button" size="sm" onClick={() => openBatch("count", selectedRows, "Selected items")}>
-                    {selectedTrackedRows.length > 0 ? "Count untracked" : "Count"}
-                  </Button>
-                ) : selectedTrackedRows.length > 0 ? (
-                  <ButtonLink
-                    href={lotViewHref(selectedTrackedRows[0].variantId)}
-                    size="sm"
-                  >
-                    Open lots
-                  </ButtonLink>
-                ) : null
-              ) : null}
-              {access.receiver ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => startPurchasingAction("receive", selectedRows)}
-                >
-                  Receive {selectedRows.length}
-                </Button>
-              ) : null}
-              {access.requester ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => startPurchasingAction("request", selectedRows)}
-                >
-                  Request {selectedRows.length}
-                </Button>
-              ) : null}
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                className="ml-auto"
-                onClick={() => {
-                  selection.clear();
-                  setMobileSelectMode(false);
-                }}
-              >
-                <X aria-hidden className="size-4" />
-                Clear
-              </Button>
-            </StickyActionBar>
           ) : null}
         </>
       )}
