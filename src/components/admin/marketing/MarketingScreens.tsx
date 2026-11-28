@@ -3,7 +3,6 @@
 import { useConvex, useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
-import { useRouter } from "@/platform/navigation";
 import { useMemo, useState, useSyncExternalStore, type ComponentProps } from "react";
 import { useNow } from "@/lib/staff-bookings";
 import { adminMarketingPath } from "../admin-routes";
@@ -13,7 +12,8 @@ import { CampaignEditor, CampaignsView } from "./CampaignsView";
 import { CouponEditor } from "./CouponEditor";
 import { CouponRefusalsCard } from "./CouponRefusalsCard";
 import { CouponsView } from "./CouponsView";
-import { LinksView } from "./LinksView";
+import { useRouter, useSearchParams } from "@/platform/navigation";
+import { LinksView, readLinkFilters, writeLinkFilters } from "./LinksView";
 import { bangkokToday, campaignPage } from "./marketing-format";
 import type { CampaignRow, CampaignTab, MarketingActions } from "./types";
 
@@ -100,6 +100,8 @@ function useOrigin() {
 }
 
 export function MarketingLinksScreen() {
+  const router = useRouter();
+  const filters = readLinkFilters(useSearchParams());
   const links = useQuery(api.marketing.queries.listLinks, {});
   const campaigns = useQuery(api.marketing.queries.listCampaignOptions, { projection: "attribution" });
   const coupons = useQuery(api.marketing.queries.listCoupons, {});
@@ -107,6 +109,11 @@ export function MarketingLinksScreen() {
   const profile = useQuery(api.settings.settings.publicProfile, {});
   return (
     <LinksView
+      filters={filters}
+      onFiltersChange={(next) => {
+        const params = writeLinkFilters(next).toString();
+        router.replace(adminMarketingPath("links") + (params ? "?" + params : ""), { scroll: false });
+      }}
       links={links}
       campaigns={campaigns}
       coupons={coupons}
@@ -181,6 +188,7 @@ export function MarketingCouponsScreen() {
 export function MarketingCouponScreen({ couponId }: { couponId: string }) {
   const router = useRouter();
   const isNew = couponId === "new";
+  const services = useQuery(api.services.publicServices.list, isNew ? "skip" : { paginationOpts: { cursor: null, numItems: 20 } });
   // getCoupon takes the raw route param and returns null for ids that don't resolve, so typos show "Coupon not found".
   const detail = useQuery(api.marketing.queries.getCoupon, isNew ? "skip" : { couponId });
   const coupons = useQuery(api.marketing.queries.listCoupons, {});
@@ -190,6 +198,7 @@ export function MarketingCouponScreen({ couponId }: { couponId: string }) {
   return (
     <CouponEditor
       detail={detail}
+      serviceNames={services?.page.map((service) => service.name)}
       isNew={isNew}
       coupons={coupons}
       campaigns={campaigns}

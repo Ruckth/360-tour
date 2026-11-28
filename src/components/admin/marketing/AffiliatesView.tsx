@@ -102,6 +102,8 @@ export function AffiliatesView({
   actions,
   onSelectPartner,
   selectedPartner,
+  focusedPartner,
+  missingPartner,
   origin,
   children,
 }: {
@@ -114,8 +116,10 @@ export function AffiliatesView({
   actions: AffiliateActions;
   origin: string;
   selectedPartner: string;
+  focusedPartner?: string;
+  missingPartner?: boolean;
   onSelectPartner: (id: string) => void;
-  children: ReactNode;
+  children: ReactNode | ((partnerFilter: ReactNode) => ReactNode);
 }) {
   const confirm = useConfirm();
   const sheet = useEditorSheet<{ partner?: AffiliateRow }>();
@@ -146,6 +150,24 @@ export function AffiliatesView({
       setBusy(null);
     }
   }
+  const partnerFilter = (
+      <div className="grid gap-1.5">
+        <Label htmlFor="affiliate-filter">Referral partner</Label>
+        <select
+          id="affiliate-filter"
+          className={fieldClass}
+          value={selectedPartner}
+          onChange={(e) => onSelectPartner(e.target.value)}
+        >
+          <option value="all">All partners</option>
+          {partners?.map((p) => (
+            <option key={p._id} value={p._id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+      </div>
+  );
   return (
     <div className="mx-auto grid w-full min-w-0 max-w-7xl gap-5 px-4 py-4 sm:px-6">
       <div className="flex flex-wrap items-start gap-3">
@@ -177,6 +199,7 @@ export function AffiliatesView({
       {campaigns?.length === 0 && !actions.saveCampaign && (
         <Callout>Create a campaign before adding a partner.</Callout>
       )}
+      {missingPartner && <p role="status">This partner is unavailable. Showing your referral partners.</p>}
       {partners === undefined ? (
         <p role="status">Loading partners…</p>
       ) : partners.length === 0 ? (
@@ -186,7 +209,7 @@ export function AffiliatesView({
         </Callout>
       ) : (
         <ul className="grid min-w-0 gap-3 md:grid-cols-2">
-          {partners.map((partner) => (
+          {partners.filter((partner) => !focusedPartner || partner._id === focusedPartner).map((partner) => (
             <li
               key={partner._id}
               className="grid min-w-0 gap-3 rounded-xl border border-border bg-card p-4"
@@ -271,23 +294,7 @@ export function AffiliatesView({
           ))}
         </ul>
       )}
-      <div className="grid gap-1.5">
-        <Label htmlFor="affiliate-filter">Referral partner</Label>
-        <select
-          id="affiliate-filter"
-          className={fieldClass}
-          value={selectedPartner}
-          onChange={(e) => onSelectPartner(e.target.value)}
-        >
-          <option value="all">All partners</option>
-          {partners?.map((p) => (
-            <option key={p._id} value={p._id}>
-              {p.name}
-            </option>
-          ))}
-        </select>
-      </div>
-      {children}
+      {typeof children === "function" ? children(partnerFilter) : <>{partnerFilter}{children}</>}
       <EditorSheet
         open={sheet.editing !== null}
         onClose={() => void sheet.close()}
@@ -625,12 +632,16 @@ function PartnerEditor({
 
 export function CreditList({
   credits,
+  partnerName = "All partners",
+  partnerFilter,
   partial,
   state,
   onState,
   onOpen,
 }: {
   credits: CreditRow[] | undefined;
+  partnerName?: string;
+  partnerFilter?: ReactNode;
   partial: boolean;
   state: string;
   onState: (value: string) => void;
@@ -639,6 +650,10 @@ export function CreditList({
   return (
     <section className="grid gap-3" aria-label="Referral credit review">
       <h2 className="text-lg font-semibold">Referral credit review</h2>
+      <div className="grid gap-2 sm:grid-cols-2">
+      {partnerFilter}
+      <label className="grid gap-1.5 text-sm font-medium">
+      Credit status
       <select
         className={fieldClass}
         aria-label="Credit status"
@@ -651,11 +666,18 @@ export function CreditList({
           </option>
         ))}
       </select>
+      </label>
+      </div>
       {partial && (
         <Callout tone="warning">
           This queue is limited. Filter by partner and status to narrow the
           results.
         </Callout>
+      )}
+      {credits !== undefined && (
+        <p role="status" className="text-sm text-muted-foreground">
+          {credits.length}{partial ? "+" : ""} results · {partnerName} · {state === "all" ? "All statuses" : state[0].toUpperCase() + state.slice(1)}
+        </p>
       )}
       {credits === undefined ? (
         <p role="status">Loading credits…</p>

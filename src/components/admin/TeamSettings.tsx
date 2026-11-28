@@ -232,6 +232,7 @@ function PeoplePanel({
   const setMarketingGrant = useMutation(api.marketing.access.setGrant);
   const renewMarketingInvitation = useMutation(api.marketing.access.renewInvitation);
   const confirm = useConfirm();
+  const [marketingRetries, setMarketingRetries] = useState<Record<string, MarketingRole | undefined>>({});
   const [inviting, setInviting] = useState(false);
   const peopleList = useRef<HTMLUListElement>(null);
   const inviteButton = useRef<HTMLButtonElement>(null);
@@ -248,8 +249,10 @@ function PeoplePanel({
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<{ text: string; error?: boolean; email: string } | null>(null);
 
+  const saveInProgress = useRef(false);
   async function save(email: string, task: () => Promise<unknown>, done: string) {
-    if (busy) return false;
+    if (saveInProgress.current) return false;
+    saveInProgress.current = true;
     setBusy(email);
     setMessage(null);
     try {
@@ -260,6 +263,7 @@ function PeoplePanel({
       setMessage({ text: errorText(err, "Couldn’t save. Try again."), error: true, email });
       return false;
     } finally {
+      saveInProgress.current = false;
       setBusy(null);
     }
   }
@@ -351,6 +355,7 @@ function PeoplePanel({
                     await setMarketingGrant({ expectedGrant: null, email, role: marketing });
                   } catch (err) {
                     if (!desk) throw err;
+                    setMarketingRetries((current) => ({ ...current, [email]: marketing }));
                     setInviting(false);
                     throw new Error(`Desk invitation saved. Review Marketing access in Team. ${errorText(err, "Couldn’t save the Marketing role.")}`);
                   }
@@ -383,7 +388,12 @@ function PeoplePanel({
               onDesk={(role, branchIds) => setDesk(person, role, branchIds)}
               onBranches={(branchIds) => setBranches(person, branchIds)}
               onRoleSaved={() => restoreRoleFocus(person.email)}
-              onMarketing={(role) => setMarketing(person, role)}
+              retryMarketing={person.marketingGrant ? undefined : marketingRetries[person.email]}
+              onMarketing={async (role) => {
+                const ok = await setMarketing(person, role);
+                if (ok) setMarketingRetries((current) => ({ ...current, [person.email]: undefined }));
+                return ok;
+              }}
               onRenew={() => {
                 const staff = person.staffGrant && !person.staffGrant.claimed ? person.staffGrant : null;
                 const marketing = person.marketingGrant && !person.marketingGrant.claimed ? person.marketingGrant : null;
@@ -541,6 +551,7 @@ function PersonRow({
   onDesk,
   onBranches,
   onMarketing,
+  retryMarketing,
   onRoleSaved,
   onRenew,
   onCopyLink,
@@ -554,6 +565,7 @@ function PersonRow({
   message: { text: string; error?: boolean } | null;
   onDesk: (role: StaffRole | null, branchIds?: readonly Id<"branches">[]) => Promise<boolean>;
   onBranches: (branchIds: Id<"branches">[]) => Promise<boolean>;
+  retryMarketing?: MarketingRole;
   onMarketing: (role: MarketingRole | null) => Promise<boolean>;
   onRoleSaved: () => void;
   onRenew: () => void;
@@ -566,6 +578,7 @@ function PersonRow({
       onRoleSaved();
     }
   }
+  const [recoveringMarketing, setRecoveringMarketing] = useState(false);
   const [changing, setChanging] = useState(false);
   const [branchError, setBranchError] = useState("");
   // A first desk role waits for its branches: the chips show before anything is saved.
@@ -658,6 +671,12 @@ function PersonRow({
 
       </div>
       {message ? <p role={message.error ? "alert" : "status"} className={cn("min-w-0 break-words text-[13px] [overflow-wrap:anywhere]", message.error ? "text-destructive" : "text-muted-foreground")}>{message.text}</p> : null}
+      {retryMarketing && canChangeRoles && !recoveringMarketing && (
+        <Button size="sm" variant="outline" disabled={busy} onClick={() => {
+          setRecoveringMarketing(true);
+          setChanging(true);
+        }}>Recover Marketing invitation</Button>
+      )}
       {changing && canChangeRoles ? (
         <div id={`${id}-roles`} className="flex min-w-0 flex-wrap gap-3 rounded-lg bg-muted/40 p-3">
           <p className="w-full min-w-0 break-words text-[13px] text-muted-foreground">{separateMarketing ? "Changes apply immediately to the separate Marketing account." : "Role and branch changes apply immediately."}</p>
@@ -725,7 +744,17 @@ function PersonRow({
           ) : null}
           <div className="grid min-w-0 max-w-full flex-1 basis-40 gap-1 sm:flex-none">
             <Label htmlFor={`${id}-marketing`} className="text-xs font-normal text-muted-foreground">Marketing</Label>
-            <RoleSelect id={`${id}-marketing`} label={separateMarketing ? `Marketing role for the separate account at ${person.email}` : `Marketing role for ${name}`} value={(marketing?.role ?? "") as MarketingRole | ""} disabled={busy} onChange={(value) => void changeRole(() => onMarketing(value || null))} options={MARKETING_OPTIONS} empty="None" />
+            {recoveringMarketing && retryMarketing ? (
+              <>
+                <p className="text-sm">{MARKETING_ROLE_LABELS[retryMarketing]}</p>
+                <Button size="sm" disabled={busy} onClick={() => void changeRole(async () => {
+                  const ok = await onMarketing(retryMarketing);
+                  if (ok) setRecoveringMarketing(false);
+                  return ok;
+                })}>Retry Marketing invitation</Button>
+                <Button size="sm" variant="ghost" onClick={() => setRecoveringMarketing(false)}>Cancel retry</Button>
+              </>
+            ) : <RoleSelect id={`${id}-marketing`} label={separateMarketing ? `Marketing role for the separate account at ${person.email}` : `Marketing role for ${name}`} value={(marketing?.role ?? "") as MarketingRole | ""} disabled={busy} onChange={(value) => void changeRole(() => onMarketing(value || null))} options={MARKETING_OPTIONS} empty="None" />}
           </div>
         </div>
       ) : null}

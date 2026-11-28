@@ -243,9 +243,18 @@ describe("dashboard view", () => {
     expect(text()).toContain("Paid uses");
   });
 
+  it("opens attribution options directly from the touch model label", () => {
+    render(ready());
+    const shortcut = buttons("Last touch")[0];
+    click(shortcut);
+    expect(text()).toContain("Attribution");
+    click(buttons("First touch")[0]);
+    expect(shortcut.textContent).toBe("First touch");
+  });
+
   it("asks for a new read when the basis changes", () => {
     render(ready());
-    const finance = [...document.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Finance")!;
+    const finance = [...document.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "FinancePayment and refund dates")!;
     click(finance);
     expect(calls.request).toEqual([{ ...DEFAULT_REQUEST(FIXTURE_TODAY), basis: "cash" }]);
   });

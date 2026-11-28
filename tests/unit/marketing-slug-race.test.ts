@@ -83,3 +83,18 @@ it('discards a pending response when checking is skipped, and after unmount', as
   expect(document.body.textContent).toBe('');
   expect(vi.getTimerCount()).toBe(0);
 });
+
+
+it('retries the current slug after an availability failure', async () => {
+  checkSlug.mockRejectedValueOnce(new Error('Availability service offline'))
+    .mockResolvedValueOnce({ ok: true, slug: 'alpha' });
+  await render();
+  await slug('alpha');
+  const retry = [...document.querySelectorAll('button')].find((button) => button.textContent === 'Retry availability check');
+  expect(retry).toBeDefined();
+  await act(async () => retry?.click());
+  await act(async () => vi.advanceTimersByTimeAsync(350));
+  expect(checkSlug.mock.calls).toEqual([[{ slug: 'alpha', linkId: undefined }], [{ slug: 'alpha', linkId: undefined }]]);
+  expect(document.body.textContent).toContain('is free');
+  expect(saveLink).not.toHaveBeenCalled();
+});

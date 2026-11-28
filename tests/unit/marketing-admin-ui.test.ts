@@ -9,7 +9,7 @@ import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
 import { historyChanges } from "@/components/admin/RecordHistoryPanel";
 import { CampaignsView } from "@/components/admin/marketing/CampaignsView";
 import { CouponEditor } from "@/components/admin/marketing/CouponEditor";
-import { LinksView } from "@/components/admin/marketing/LinksView";
+import { LinksView, readLinkFilters, writeLinkFilters } from "@/components/admin/marketing/LinksView";
 import { EMPTY_COUPON_FORM, couponFormErrors, couponFormFrom, couponFormKey, couponRulesFrom, type CouponForm } from "@/components/admin/marketing/coupon-form";
 import { countLabel, directOfferApplied, marketingErrorText, qrDirectPercent } from "@/components/admin/marketing/marketing-format";
 import type { CampaignRow, CouponDetail, LinkRow } from "@/components/admin/marketing/types";
@@ -333,5 +333,16 @@ describe("change history in the marketing editors", () => {
       { field: "destination", label: "Opens", before: "Home", after: "Villa page · mossbell" },
       { field: "medium", label: "Medium", before: "social", after: "paid_social" },
     ]);
+  });
+});
+
+describe("marketing link URL filters", () => {
+  it("round-trips all filters and defaults invalid or old URLs", () => {
+    const params = new URLSearchParams({ status: "draft", q: "Spa & QR", campaign: "j".repeat(32), offerIssues: "1" });
+    const filters = readLinkFilters(params);
+    expect(filters).toEqual({ tab: "draft", query: "Spa & QR", campaignFilter: "j".repeat(32), offerIssuesOnly: true });
+    expect(readLinkFilters(writeLinkFilters(filters))).toEqual(filters);
+    expect(readLinkFilters(new URLSearchParams("status=unknown&campaign=bad&offerIssues=true")))
+      .toEqual(readLinkFilters(new URLSearchParams()));
   });
 });
