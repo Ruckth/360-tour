@@ -8,7 +8,7 @@ type SearchValue = URLSearchParams | string | null | undefined;
 
 export function usesFloatingChatOnMobile(pathname: string) {
   const page = stripLocalePrefix(pathname).replace(/\/$/, "");
-  return page !== "" && page !== "/booking" && !page.startsWith("/rooms/");
+  return page !== "" && page !== "/booking" && !page.startsWith("/booking/") && !page.startsWith("/rooms/");
 }
 
 function normalizeSearch(search: SearchValue) {

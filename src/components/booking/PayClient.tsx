@@ -34,6 +34,7 @@ export function PayClient({
   const couponT = useTranslations("Coupon");
   const chatT = useTranslations("Chat");
   const villaT = useTranslations("Villa");
+  const navT = useTranslations("Nav");
   const convex = useConvex();
   const successHref = localizeHref(
     `/booking/success?bookingId=${encodeURIComponent(bookingId)}${accessToken ? `&token=${encodeURIComponent(accessToken)}` : ""}`,
@@ -117,9 +118,6 @@ export function PayClient({
         <h1 className="mt-5 font-serif text-3xl font-semibold text-foreground">
           {t("confirmPayment")}
         </h1>
-        <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-          {t("livePaymentCopy")}
-        </p>
         {payable ? (
           <div className="mt-4 rounded-xl border border-gold/30 bg-gold/5 px-3 py-2 text-sm">
             <p data-testid="pay-amount-due" className="font-semibold text-foreground">
@@ -127,7 +125,9 @@ export function PayClient({
             </p>
             {booking.holdExpiresAt !== undefined ? (
               <p className="mt-1 text-muted-foreground" data-testid="pay-hold-deadline">
-                {t("holdUntil", { time: new Date(booking.holdExpiresAt).toLocaleString(locale, { timeZone: "Asia/Bangkok", timeZoneName: "short" }) })}
+                {t("holdUntil", { time: new Date(booking.holdExpiresAt).toLocaleString(locale, {
+                  month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "Asia/Bangkok", timeZoneName: "short",
+                }) })}
               </p>
             ) : null}
           </div>
@@ -209,12 +209,14 @@ export function PayClient({
                   : t("pay")}
             </Button>
           )}
-          <Link
-            href={localizeHref("/booking", locale)}
-            className="text-center text-sm font-medium text-muted-foreground transition hover:text-foreground"
-          >
-            {t("backToBooking")}
-          </Link>
+          <div className="flex flex-wrap items-center justify-between gap-x-3 text-sm font-medium text-muted-foreground">
+            <Link href={localizeHref("/booking", locale)} className="inline-flex min-h-11 items-center hover:text-foreground">
+              {t("backToBooking")}
+            </Link>
+            <Link href={localizeHref("/chat", locale)} className="inline-flex min-h-11 items-center hover:text-foreground">
+              {navT("contact")}
+            </Link>
+          </div>
         </div>
       </div>
     </div>
