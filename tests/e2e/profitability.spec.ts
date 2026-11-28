@@ -72,7 +72,7 @@ test('@smoke finance enters historical costs and expenses and reconciles the fil
     await expect(page.getByLabel('Record category')).toHaveValue('Awaiting cost');
     await expect(page.getByRole('button', { name: 'Record actual costs' })).toBeVisible();
     await page.getByRole('link', { name: 'Profitability overview' }).click();
-    await page.getByRole('button', { name: 'Finance inputs' }).click();
+    await page.getByRole('button', { name: 'Finance inputs', exact: true }).click();
     await page.getByLabel('Effective from').fill(from);
     await page.getByRole('combobox', { name: 'Service', exact: true }).selectOption(serviceId);
     for (const [k, v] of [
@@ -85,7 +85,7 @@ test('@smoke finance enters historical costs and expenses and reconciles the fil
     await expect(card('Gross profit')).toContainText('฿500');
     await expect(cogs).toContainText('฿500');
     await expect(cogs.getByRole('link', { name: /missing costs/ })).toHaveCount(0);
-    await page.getByRole('button', { name: 'Finance inputs' }).click();
+    await page.getByRole('button', { name: 'Finance inputs', exact: true }).click();
     await page.getByRole('button', { name: 'Review monthly accounts for 2024-08' }).click();
     await expect(page.getByLabel('Accounting month')).toHaveValue('2024-08');
     const monthInput = page.getByLabel('Accounting month');
@@ -108,7 +108,7 @@ test('@smoke finance enters historical costs and expenses and reconciles the fil
     await page.getByRole('checkbox', { name: /I have included/ }).check();
     await page.getByRole('button', { name: 'Confirm monthly accounts' }).click();
     await expect(card('Net profit')).toContainText('฿405');
-    await page.getByRole('button', { name: 'Finance inputs' }).click();
+    await page.getByRole('button', { name: 'Finance inputs', exact: true }).click();
     await page.getByRole('link', { name: /without an identified attendee/ }).click();
     await page.getByRole('button', { name: 'Identify customer' }).click();
     await page.getByLabel('Find customer').fill(name);
