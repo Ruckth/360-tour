@@ -46,6 +46,51 @@ export const firstUpcomingAppointment = adminQuery({
 	}
 });
 
+const SEARCH_RESULT_LIMIT = 20;
+const SEARCH_WINDOW_DAYS = 365;
+const NEXT_WINDOW_DAYS = 30;
+
+/**
+ * Cross-date lookup for the calendar search: guest-name matches (word prefix) and an exact reference,
+ * within a year either side of today, at most 20, upcoming nearest first and then the most recent past.
+ */
+export const searchAppointments = adminQuery({
+	args: { query: v.string() },
+	handler: async (ctx, args) => {
+		const text = args.query.trim();
+		if (text.length < 2 || text.length > 100) return { results: [], windowDays: SEARCH_WINDOW_DAYS };
+		const now = Date.now();
+		const found = new Map<string, Doc<'appointments'>>();
+		const byCode = await ctx.db.query('appointments').withIndex('by_confirmationCode', (q) => q.eq('confirmationCode', text.toUpperCase())).take(5);
+		for (const row of byCode) found.set(row._id, row);
+		for (const row of await ctx.db.query('appointments').withSearchIndex('search_guestName', (q) => q.search('guestName', text)).take(100)) found.set(row._id, row);
+		const inWindow = [...found.values()].filter((row) => Math.abs(row.start - now) <= SEARCH_WINDOW_DAYS * DAY);
+		const upcoming = inWindow.filter((row) => row.end >= now).sort((a, b) => a.start - b.start);
+		const past = inWindow.filter((row) => row.end < now).sort((a, b) => b.start - a.start);
+		return {
+			windowDays: SEARCH_WINDOW_DAYS,
+			results: [...upcoming, ...past].slice(0, SEARCH_RESULT_LIMIT).map((row) => ({
+				_id: row._id, start: row.start, end: row.end, staffId: row.staffId, serviceId: row.serviceId,
+				guestName: row.guestName, confirmationCode: row.confirmationCode, status: row.status,
+			})),
+		};
+	}
+});
+
+/** The first non-cancelled appointment starting at or after `from`, within 30 days; null when none. */
+export const nextAppointment = adminQuery({
+	args: { from: v.number() },
+	handler: async (ctx, { from }) => {
+		if (!Number.isSafeInteger(from)) throw new Error('Invalid start');
+		const until = from + NEXT_WINDOW_DAYS * DAY;
+		const rows = ctx.db.query('appointments').withIndex('by_start', (q) => q.gte('start', from).lt('start', until));
+		for await (const row of boundedIntegrityRows(rows)) {
+			if (row.status !== 'cancelled') return { appointment: { _id: row._id, start: row.start, staffId: row.staffId }, until };
+		}
+		return { appointment: null, until };
+	}
+});
+
 export const upcomingOptionUsage = adminQuery({
 	args: { serviceId: v.id('services') },
 	returns: v.array(v.object({ durationMin: v.number(), count: v.number() })),

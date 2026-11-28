@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from './_generated/api';
 import type { Id } from './_generated/dataModel';
 import { createAppointmentRecord, localDateTimeUtc, validateService } from './services/model';
+import { addDays } from './shared/dates';
 import schema from './schema';
 
 const modules = import.meta.glob('./**/*.ts');
@@ -386,6 +387,20 @@ describe('admin services', () => {
 		})).rejects.toThrow('STALE_ADJUSTMENT_REVISION');
 	});
 
+	it('D14/D21: finds appointments beyond the loaded dates and the next one after an empty range, bounded', async () => {
+		const { admin, booking } = await setup();
+		const day = (offset: number, time = '10:00') => localDateTimeUtc(addDays(date, offset), time);
+		const later = await admin.mutation(api.services.commands.createAppointment.createAppointment, { ...booking, guestName: 'Lena Park', start: day(20) });
+		await admin.mutation(api.services.commands.createAppointment.createAppointment, { ...booking, guestName: 'Ben Ito', start: day(3) });
+		const found = await admin.query(api.services.admin.searchAppointments, { query: 'lena' });
+		expect(found.results.map((r) => r._id)).toEqual([later.appointmentId]);
+		expect(found.results[0]).toMatchObject({ start: day(20), guestName: 'Lena Park' });
+		expect((await admin.query(api.services.admin.searchAppointments, { query: 'l' })).results).toEqual([]);
+		expect(await admin.query(api.services.admin.nextAppointment, { from: day(0, '00:00') })).toMatchObject({ appointment: { start: day(3) } });
+		expect(await admin.query(api.services.admin.nextAppointment, { from: day(4, '00:00') })).toMatchObject({ appointment: { start: day(20) } });
+		expect((await admin.query(api.services.admin.nextAppointment, { from: day(21, '00:00') })).appointment).toBeNull();
+	});
+
 	it('warns how many upcoming appointments stay booked when a service is archived', async () => {
 		const { admin, booking, serviceId, staffId } = await setup();
 		const kept = await admin.mutation(api.services.commands.createAppointment.createAppointment, { ...booking, start: at('09:00') });
@@ -482,6 +497,8 @@ describe('admin services', () => {
 		await expect(t.query(api.services.admin.listTimeOffPage, { staffId, range: 'upcoming', paginationOpts: { numItems: 100, cursor: null } })).rejects.toThrow('Not authenticated');
 		await expect(t.query(api.services.admin.countUpcomingAppointments, { staffId })).rejects.toThrow('Not authenticated');
 		await expect(t.query(api.services.admin.firstUpcomingAppointment, { staffId })).rejects.toThrow('Not authenticated');
+		await expect(t.query(api.services.admin.searchAppointments, { query: 'guest' })).rejects.toThrow('Not authenticated');
+		await expect(t.query(api.services.admin.nextAppointment, { from: at('00:00') })).rejects.toThrow('Not authenticated');
 	});
 
 	it('adds time off for several staff, skipping those with booked appointments in the way', async () => {
