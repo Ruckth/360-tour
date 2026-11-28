@@ -83,14 +83,18 @@ export function RuleEditor({
   const [negate, setNegate] = useState(false);
   const [raw, setRaw] = useState('');
   const available = choices(field, options);
-  const value = raw || (field !== 'revenue' ? (available[0]?.value ?? '') : '');
+  const value = raw;
+  const hasSelection = selected.length > 0 && selected.every((value) => available.some((option) => option.value === value));
   function add() {
     let rule: ProfitRule;
     if (field === 'revenue') {
       const amount = parseMoneyInput(value.replace(/^-/, ''));
       if (!Number.isFinite(amount)) return;
       rule = { field, operator: negate ? 'at most' : 'at least', value: value.startsWith('-') ? -amount : amount };
-    } else rule = { field, operator: negate ? 'is not' : 'is', value: selected.length ? selected : value };
+    } else {
+      if (!hasSelection) return;
+      rule = { field, operator: negate ? 'is not' : 'is', value: selected.length === 1 ? selected[0] : selected };
+    }
     onChange({ ...group, rules: [...group.rules, rule] });
     close();
     setSelected([]);
@@ -200,9 +204,10 @@ export function RuleEditor({
                 className={inputStyle}
                 multiple
                 size={Math.min(4, Math.max(2, available.length))}
-                value={selected.length ? selected : value ? [value] : []}
+                value={selected}
                 onChange={(e) => setSelected([...e.target.selectedOptions].map((o) => o.value))}
               >
+                <option disabled value="">Choose a value</option>
                 {available.map((v) => (
                   <option key={v.value} value={v.value}>
                     {v.label}
@@ -211,7 +216,7 @@ export function RuleEditor({
               </select>
             )}
           </label>
-          <Button size="sm" type="submit" disabled={!value}>
+          <Button size="sm" type="submit" disabled={field === "revenue" ? !value : !hasSelection}>
             <Plus size={15} />
             Apply rule
           </Button>

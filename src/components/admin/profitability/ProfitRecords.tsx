@@ -130,6 +130,11 @@ export function Details({
             <Button type="submit" size="sm" variant="outline">
               Search
             </Button>
+            {search.trim() !== (request.search ?? "") && (
+              <p role="status" className="basis-full text-xs text-muted-foreground">
+                Apply search to update the records. {request.search ? `Showing results for “${request.search}”.` : "Showing all search results."}
+              </p>
+            )}
             {request.search && (
               <Button
                 type="button"

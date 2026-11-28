@@ -32,6 +32,11 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
   const today = resortTodayIso(),
     from = params.get('from') || today.slice(0, 8) + '01',
     to = params.get('to') || today;
+  const [dateDraft, setDateDraft] = useState({ from, to, start: from, end: to });
+  const dates = dateDraft.from === from && dateDraft.to === to ? dateDraft : { from, to, start: from, end: to };
+  const draftDays = reportDayCount(dates.start, dates.end);
+  const draftInvalid = draftDays === null || draftDays > MAX_REPORT_DAYS;
+  const [refreshRevision, setRefreshRevision] = useState<number | null>(null);
   const chosen = params.get('metric'),
     metric = profitMetrics.find((m) => m === chosen) ?? 'revenue';
   const overview = useMemo(() => readGroup(params.get('rules')), [params]),
@@ -51,6 +56,7 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
     if (financeEntry) financeHeading.current?.focus();
   }, [financeEntry]);
   const [revision, setRevision] = useState(0);
+  const refreshing = refreshRevision === revision;
   const expiredView = useRef<string | null>(null);
   const openView = useMutation(api.marketing.profitViews.openView);
   const viewKey = JSON.stringify([access.email, canWrite, from, to, revision]);
@@ -161,12 +167,14 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <span role="status" className="text-xs text-muted-foreground">
+            {report ? `${refreshing ? 'Report refreshed' : 'Report updated'} ${staffDateTime(report.asOf)}` : refreshing && loading ? 'Refreshing report…' : ''}
+          </span>
           {report && (
             <Button
               size="sm"
               variant="ghost"
-              onClick={() => setRevision((n) => n + 1)}
-              title={'Report opened ' + staffDateTime(report.asOf)}
+              onClick={() => { setRefreshRevision(revision + 1); setRevision(revision + 1); }}
             >
               Refresh report
             </Button>
@@ -175,7 +183,8 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
             <Button
               variant="outline"
               aria-expanded={Boolean(financeEntry)}
-              onClick={() => setFinanceEntry(financeEntry ? null : { mode: 'cost', date: to })}
+              disabled={Boolean(financeEntry)}
+              onClick={() => setFinanceEntry({ mode: 'cost', date: to })}
             >
               <SlidersHorizontal size={16} />
               Finance inputs
@@ -189,6 +198,7 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
             Service finance inputs
           </h2>
           <FinanceInputs
+            onClose={() => setFinanceEntry(null)}
             initialDate={financeEntry.date}
             initialMode={financeEntry.mode}
             onSave={() => setRevision((v) => v + 1)}
@@ -214,8 +224,8 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
               <input
                 type="date"
                 className={inputStyle + ' w-full'}
-                value={from}
-                onChange={(e) => update({ from: e.target.value })}
+                value={dates.start}
+                onChange={(e) => setDateDraft({ ...dates, start: e.target.value })}
               />
             </label>
             <label className="grid gap-1 text-xs">
@@ -223,14 +233,23 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
               <input
                 type="date"
                 className={inputStyle + ' w-full'}
-                value={to}
-                onChange={(e) => update({ to: e.target.value })}
+                value={dates.end}
+                onChange={(e) => setDateDraft({ ...dates, end: e.target.value })}
               />
             </label>
+            <Button size="sm" disabled={draftInvalid || (dates.start === from && dates.end === to)} onClick={() => {
+              if (!draftInvalid) {
+                setRefreshRevision(null);
+                update({ from: dates.start, to: dates.end });
+              }
+            }}>Apply dates</Button>
+            {draftInvalid && <p role="status" className="text-xs text-destructive">Choose a valid range of up to {MAX_REPORT_DAYS} days.</p>}
             <Button
               size="sm"
               variant="outline"
               onClick={() => {
+                setDateDraft({ from, to, start: from, end: to });
+                setRefreshRevision(null);
                 const { startDate, endDate } = monthBounds(shiftMonth(monthOf(today), -1));
                 update({ from: startDate, to: endDate });
               }}
@@ -240,7 +259,7 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
             <Button
               size="sm"
               variant="outline"
-              onClick={() => update({ from: monthOf(today) + '-01', to: today })}
+              onClick={() => { setDateDraft({ from, to, start: from, end: to }); setRefreshRevision(null); update({ from: monthOf(today) + '-01', to: today }); }}
             >
               Month to date
             </Button>
