@@ -44,6 +44,15 @@ describe('checkout open orders', () => {
 		}
 	});
 
+	it('shows the effective payment time on a recovered sale and falls back for older records', async () => {
+		const { owner, order } = await setup();
+		const recovered = await order({ status: 'paid', due: 0, paidAt: now, paymentEffectiveAt: now - 60000 });
+		const legacy = await order({ status: 'paid', due: 0, paidAt: now });
+		const rows = await owner.query(api.pos.orders.listOrders, { filter: 'paid', paginationOpts: { cursor: null, numItems: 20 } });
+		expect(rows.page.find(row => row._id === recovered)?.paidAt).toBe(now - 60000);
+		expect(rows.page.find(row => row._id === legacy)?.paidAt).toBe(now);
+	});
+
 	it('resolves the receipt namespace using the same visibility rules as order numbers', async () => {
 		const { cashier, owner, order } = await setup();
 		const open = await order();
