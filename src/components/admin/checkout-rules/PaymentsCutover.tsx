@@ -108,6 +108,29 @@ function OpenDirectPanels({ panels, onSaved }: { panels: DirectPanelRow[]; onSav
                 <input id={checkbox} type="checkbox" className="size-5" checked={confirmed} onChange={(event) => confirmStopped(panel, event.target.checked)} />
                 {t("pay.operatorStopped", { staff })}
               </label>
+              <details open className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs">
+                <summary className="cursor-pointer font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  Resolve open direct payment
+                </summary>
+                <dl className="mt-2 grid gap-1.5 text-muted-foreground sm:grid-cols-3">
+                  <div className="grid gap-0.5">
+                    <dt className="font-semibold text-foreground">{t("payments.reconcileRecorded")}</dt>
+                    <dd>
+                      {panel.canRecord
+                        ? "Payment is already accounted for by this order’s receipt."
+                        : "Unavailable until an unused receipt on this order accounts for this payment."}
+                    </dd>
+                  </div>
+                  <div className="grid gap-0.5">
+                    <dt className="font-semibold text-foreground">{t("payments.reconcileNothingTaken")}</dt>
+                    <dd>Guest did not pay; terminal, QR and drawer confirm no money was taken.</dd>
+                  </div>
+                  <div className="grid gap-0.5">
+                    <dt className="font-semibold text-foreground">{t("payments.reconcileUnrecorded")}</dt>
+                    <dd>Money was received without a receipt and requires a reason for reconciliation.</dd>
+                  </div>
+                </dl>
+              </details>
               <div className="flex flex-wrap gap-2">
                 <Button type="button" size="sm" className="h-11" disabled={!panel.canRecord || !idle} onClick={() => void reconcile(panel, "recorded")}>
                   {t("payments.reconcileRecorded")}

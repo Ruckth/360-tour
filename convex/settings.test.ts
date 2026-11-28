@@ -108,6 +108,53 @@ describe('settings get/update', () => {
 		expect(config.STRIPE_SECRET_KEY).toBe(false);
 		expect(Object.values(config).every((value) => typeof value === 'boolean')).toBe(true);
 	});
+
+	it('exposes the default owner notification email only to owners and never to managers or publicly', async () => {
+		const { t, admin } = await setup();
+		vi.stubEnv('OWNER_NOTIFICATION_EMAIL', 'alerts@example.com');
+		const branchId = await t.run(async (ctx) =>
+			await ctx.db.insert('branches', {
+				key: 'samui',
+				name: 'Samui',
+				slug: 'samui',
+				state: 'active',
+				issuer: { legalName: 'Co', taxId: '0105560000000', branchCode: '00000', address: 'Addr' },
+				stateChangedAt: Date.now(),
+				stateChangedByEmail: 'admin@example.com',
+				revision: 1,
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			})
+		);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('staffGrants', {
+				email: 'manager@example.com',
+				tokenIdentifier: 'manager-token',
+				role: 'manager',
+				branchIds: [branchId],
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+				updatedByEmail: 'admin@example.com',
+			});
+		});
+		const manager = t.withIdentity({ emailVerified: true, email: 'manager@example.com', tokenIdentifier: 'manager-token' });
+
+		const ownerSettings = await admin.query(api.settings.settings.get, {});
+		expect(ownerSettings.defaultOwnerNotificationEmail).toBe('alerts@example.com');
+		expect(ownerSettings.defaultOwnerNotificationConfigured).toBe(true);
+
+		const managerSettings = await manager.query(api.settings.settings.get, {});
+		expect(managerSettings.defaultOwnerNotificationEmail).toBeNull();
+		expect(managerSettings.defaultOwnerNotificationConfigured).toBe(true);
+
+		const pub = await t.query(api.settings.settings.publicProfile, {});
+		expect(pub).not.toHaveProperty('defaultOwnerNotificationEmail');
+
+		vi.stubEnv('OWNER_NOTIFICATION_EMAIL', '');
+		const unconfigured = await admin.query(api.settings.settings.get, {});
+		expect(unconfigured.defaultOwnerNotificationEmail).toBeNull();
+		expect(unconfigured.defaultOwnerNotificationConfigured).toBe(false);
+	});
 });
 
 describe('settings.channelHealth', () => {
