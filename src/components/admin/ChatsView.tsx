@@ -378,7 +378,8 @@ export function ChatsView() {
     return reply.send();
   }
 
-  async function settleGuestMessage(sessionId: Id<"conversations">, messageId: Id<"messages">) {
+  async function settleGuestMessage(session: AdminSession, messageId: Id<"messages">) {
+    const sessionId = session._id;
     if (settlingRef.current.has(messageId)) return;
     settlingRef.current.add(messageId);
     setSettlingMessageIds(new Set(settlingRef.current));
@@ -386,7 +387,7 @@ export function ChatsView() {
     try {
       const discard = sessionId === selectedSessionId ? await reply.prepareDiscard() : undefined;
       if (discard === null) return;
-      await settleGuestMessageMutation({ sessionId, messageId });
+      await settleGuestMessageMutation({ sessionId, messageId, expectedAssignedEmail: session.assignedAdminEmail ?? null });
       discard?.();
     } catch (error) {
       setSettleError(error instanceof Error ? error.message : "Unable to mark the message as settled.");
@@ -587,7 +588,7 @@ export function ChatsView() {
       if (!session?.needsReply || !session.latestMessage || settlingRef.current.has(session.latestMessage._id)) return;
       // Settled chats leave the "Needs reply" list, so move on to the next one.
       if (status === "needs_reply") moveSelection(selectedIndex < sessions.length - 1 ? 1 : -1);
-      void settleGuestMessage(session._id, session.latestGuestMessageId ?? session.latestMessage._id);
+      void settleGuestMessage(session, session.latestGuestMessageId ?? session.latestMessage._id);
     }
   });
 
@@ -887,7 +888,7 @@ export function ChatsView() {
                         type="button"
                         variant="ghost"
                         size="sm"
-                        onClick={() => settleGuestMessage(session._id, unansweredMessageId)}
+                        onClick={() => settleGuestMessage(session, unansweredMessageId)}
                         disabled={settlingMessageIds.has(unansweredMessageId) || (selected && reply.pending)}
                         aria-label={`No reply needed for ${visitorLabel(session)}`}
                         title="No reply needed (e)"

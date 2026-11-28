@@ -691,6 +691,6 @@ it("preserves the draft when a confirmed list settlement fails", async () => {
   mocks.mutation.mockRejectedValueOnce(new Error("The chat changed"));
   const settle = document.querySelector<HTMLButtonElement>('[aria-label^="No reply needed for"]')!;
   await act(async () => settle.click());
-  expect(mocks.mutation).toHaveBeenCalledExactlyOnceWith({ sessionId: "session-a", messageId: "message-a" });
+  expect(mocks.mutation).toHaveBeenCalledExactlyOnceWith({ sessionId: "session-a", messageId: "message-a", expectedAssignedEmail: null });
   expect(latestDetail().replyDraft).toBe("Keep if settlement fails");
 });

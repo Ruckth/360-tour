@@ -754,7 +754,7 @@ export const getSessionDetail = adminQuery({
 });
 
 export const settleGuestMessage = adminMutation({
-	args: { sessionId: v.id('conversations'), messageId: v.id('messages') },
+	args: { sessionId: v.id('conversations'), messageId: v.id('messages'), expectedAssignedEmail: v.optional(v.union(v.string(), v.null())) },
 	handler: async (ctx, args) => {
 		await assertChatDesk(ctx);
 
@@ -766,6 +766,9 @@ export const settleGuestMessage = adminMutation({
 		const session = await ctx.db.get(args.sessionId);
 		if (!session || (session.adminStatus && session.adminStatus !== 'open') ||
 			await latestGuestId(ctx, session) !== args.messageId) throw new Error('The chat changed. Review the latest message.');
+		if (args.expectedAssignedEmail !== undefined && args.expectedAssignedEmail !== (session.assignedAdminEmail ?? null)) {
+			throw new Error('Assignment changed. Review the current assignee.');
+		}
 		await assertNoPendingStaffSend(ctx, session);
 		await finishWithoutReply(ctx, args.sessionId);
 		await ctx.db.patch(args.sessionId, { settledGuestMessageId: args.messageId });

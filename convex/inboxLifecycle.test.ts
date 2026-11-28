@@ -580,13 +580,16 @@ describe("chat desk controls", () => {
   }
 
   it("allows eligible assignments, rejects stale writes and denies cross-branch access", async () => {
-    const { admin, manager, outsider, sessionId, detail } = await desk();
+    const { admin, manager, outsider, sessionId, guestId, detail } = await desk();
     const args = { sessionId, email: "desk@example.com", expectedEmail: null };
     await expect(outsider.mutation(chat.assignSession, args)).rejects.toThrow("Chat desk access required");
     await expect(admin.mutation(chat.assignSession, { ...args, email: "other@example.com" })).rejects.toThrow("does not have access");
     await manager.mutation(chat.assignSession, args);
     await expect(admin.mutation(chat.assignSession, args)).rejects.toThrow("Assignment changed");
     expect(await detail()).toMatchObject({ assignedAdminEmail: "desk@example.com" });
+    await expect(admin.mutation(chat.settleGuestMessage, {
+      sessionId, messageId: guestId, expectedAssignedEmail: null,
+    })).rejects.toThrow("Assignment changed");
     await expect(outsider.query(chat.getSessionDetail, { sessionId })).rejects.toThrow("Chat desk access required");
     expect(await outsider.query(chat.queueCounts, {})).toBeNull();
   });
@@ -668,6 +671,7 @@ describe("chat desk controls", () => {
       bookingId, propertyName: "Hill Villa", checkIn: "2026-12-02", checkOut: "2026-12-05",
     });
     expect(await outsider.query(api.bookings.admin.getForAdmin, { bookingId })).toBeNull();
+    expect(await admin.query(api.bookings.admin.getForAdmin, { bookingId: "bad-deep-link" })).toBeNull();
     await t.run(ctx => ctx.db.patch(bookingId, { chatSessionId: undefined }));
     expect((await admin.query(chat.getSessionDetail, { sessionId }))?.linkedStay).toBeNull();
   });
