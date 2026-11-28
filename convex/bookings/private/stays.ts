@@ -474,4 +474,3 @@ export function stayAttachProblem(booking: Doc<'bookings'> | null, appointmentDa
 	}
 	return null;
 }
-

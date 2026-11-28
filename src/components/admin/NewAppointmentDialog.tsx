@@ -584,4 +584,3 @@ export function StayAttachPicker({ date, value, onChange }: { date: string; valu
     </details>
   );
 }
-
