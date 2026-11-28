@@ -125,8 +125,10 @@ describe('choices', () => {
       .toEqual([{ kind: 'line', lineId: 'tote', units: 1, disposition: 'damaged' }]);
   });
 
-  it('sends no disposition for goods kept off a room charge, and clamps units to what is left', () => {
-    expect(chosenParts(parts, { tote: { units: 9, condition: 'guest' }, 'gold:sessions': { units: 2, condition: null } })).toEqual([
+  it('rejects out-of-cap units and sends no disposition for goods the guest keeps', () => {
+    const sessions = { 'gold:sessions': { units: 2, condition: null } };
+    expect(chosenParts(parts, { ...sessions, tote: { units: 9, condition: 'guest' } })).toBeNull();
+    expect(chosenParts(parts, { ...sessions, tote: { units: 2, condition: 'guest' } })).toEqual([
       { kind: 'content', lineId: 'gold', contentKey: 'sessions', units: 2 },
       { kind: 'line', lineId: 'tote', units: 2 },
     ]);
