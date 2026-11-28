@@ -733,6 +733,7 @@
     "ask": "Ask about this service",
     "minutes": "min",
     "fromPrice": "from {price}",
+    "defaultDuration": "Default: {duration}",
     "chooseDuration": "Choose a duration",
     "next": "Next services",
     "first": "Back to first page",

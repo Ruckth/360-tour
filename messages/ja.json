@@ -733,6 +733,7 @@
     "ask": "このサービスを相談",
     "minutes": "分",
     "fromPrice": "{price}から",
+    "defaultDuration": "標準：{duration}",
     "chooseDuration": "時間を選択",
     "next": "次のサービス",
     "first": "最初のページへ",

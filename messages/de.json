@@ -733,6 +733,7 @@
     "ask": "Dieses Angebot anfragen",
     "minutes": "Min.",
     "fromPrice": "ab {price}",
+    "defaultDuration": "Standard: {duration}",
     "chooseDuration": "Dauer wählen",
     "next": "Weitere Angebote",
     "first": "Zur ersten Seite",

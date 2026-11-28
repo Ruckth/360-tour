@@ -733,6 +733,7 @@
     "ask": "สอบถามบริการนี้",
     "minutes": "นาที",
     "fromPrice": "เริ่มต้น {price}",
+    "defaultDuration": "ค่าเริ่มต้น: {duration}",
     "chooseDuration": "เลือกระยะเวลา",
     "next": "บริการถัดไป",
     "first": "กลับหน้าแรก",

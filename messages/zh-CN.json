@@ -733,6 +733,7 @@
     "ask": "咨询此服务",
     "minutes": "分钟",
     "fromPrice": "{price}起",
+    "defaultDuration": "默认：{duration}",
     "chooseDuration": "选择时长",
     "next": "下一页服务",
     "first": "返回首页",

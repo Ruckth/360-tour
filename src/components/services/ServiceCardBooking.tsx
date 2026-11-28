@@ -15,7 +15,8 @@ type CardService = { slug: string; name: string; durationMin: number; price: num
  */
 export function ServiceCardBooking({ service, locale, t }: { service: CardService; locale: Locale; t: PublicMessages["ServiceCatalog"] }) {
   const options = serviceOptions(service);
-  const [durationMin, setDurationMin] = useState(() => serviceOption(service).durationMin);
+  const defaultDuration = serviceOption(service).durationMin;
+  const [durationMin, setDurationMin] = useState(defaultDuration);
   const chosen = serviceOption(service, durationMin);
   const money = (amount: number) =>
     `${service.currency} ${(amount / 100).toLocaleString(locale, { maximumFractionDigits: 2 })}`;
@@ -24,6 +25,7 @@ export function ServiceCardBooking({ service, locale, t }: { service: CardServic
     <>
       <p className="text-sm">
         {durationList(service, t.minutes)}
+        {multiple ? ` · ${t.defaultDuration.replace("{duration}", `${defaultDuration} ${t.minutes}`)}` : null}
         {multiple ? ` · ${priceFrom(service, money, (price) => t.fromPrice.replace("{price}", price))}` : null}
       </p>
       {multiple ? (

@@ -214,6 +214,17 @@ export const findOpenSlots = adminQuery({
 	}
 });
 
+/** Resolve a calendar link using the same operations access as the schedule. */
+export const resolveCalendarAppointment = adminQuery({
+	args: { appointmentId: v.string() },
+	handler: async (ctx, { appointmentId }) => {
+		const id = ctx.db.normalizeId('appointments', appointmentId);
+		const appointment = id ? await ctx.db.get(id) : null;
+		if (!appointment || !await ctx.db.get(appointment.staffId)) return null;
+		return { id: appointment._id, staffId: appointment.staffId, start: appointment.start };
+	}
+});
+
 /** The original booking reference for rebooked appointments, including ones outside the visible calendar dates. */
 export const getAppointmentReference = adminQuery({
 	args: { appointmentId: v.id('appointments') },

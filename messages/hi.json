@@ -733,6 +733,7 @@
     "ask": "इस सेवा के बारे में पूछें",
     "minutes": "मिनट",
     "fromPrice": "{price} से शुरू",
+    "defaultDuration": "डिफ़ॉल्ट: {duration}",
     "chooseDuration": "अवधि चुनें",
     "next": "अगली सेवाएँ",
     "first": "पहले पृष्ठ पर जाएँ",

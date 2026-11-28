@@ -733,6 +733,7 @@
     "ask": "Se renseigner",
     "minutes": "min",
     "fromPrice": "à partir de {price}",
+    "defaultDuration": "Par défaut : {duration}",
     "chooseDuration": "Choisissez la durée",
     "next": "Services suivants",
     "first": "Première page",

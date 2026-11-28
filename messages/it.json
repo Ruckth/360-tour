@@ -733,6 +733,7 @@
     "ask": "Chiedi informazioni",
     "minutes": "min",
     "fromPrice": "da {price}",
+    "defaultDuration": "Predefinita: {duration}",
     "chooseDuration": "Scegli la durata",
     "next": "Servizi successivi",
     "first": "Prima pagina",
