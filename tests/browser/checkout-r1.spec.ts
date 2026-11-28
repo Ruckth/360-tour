@@ -35,7 +35,7 @@ test("invalid order numbers never open a different order", async ({ page }) => {
   await open(page);
   await page.getByRole("button", { name: "Orders", exact: true }).click();
   const dialog = page.getByRole("dialog");
-  const lookup = dialog.getByLabel("Order number");
+  const lookup = dialog.getByLabel("Order or receipt number");
   for (const invalid of ["0", "-1042", "1042.5", "1042abc", "9007199254740992"]) {
     await lookup.fill(invalid);
     await dialog.getByRole("button", { name: "Go", exact: true }).click();
@@ -45,7 +45,7 @@ test("invalid order numbers never open a different order", async ({ page }) => {
   }
   await lookup.fill("R-001042");
   await dialog.getByRole("button", { name: "Go", exact: true }).click();
-  await expect(dialog.getByRole("alert")).toHaveText("That's the receipt number. Enter the order number, shown as Order #.");
+  await expect(dialog.getByRole("status")).toContainText("Not available");
   await lookup.fill("Order #1042");
   await dialog.getByRole("button", { name: "Go", exact: true }).click();
   await expect(dialog).toHaveCount(0);
