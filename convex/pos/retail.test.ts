@@ -4,6 +4,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { api } from '../_generated/api';
 import { resolveCommerceSettings, writeStockMovement } from '../commerce/model';
 import schema from '../schema';
+import { ReadBudget } from '../lib/readBudget';
 import { resortTodayIso } from '../shared/time';
 import { asTestOwner, seedTestBranch } from '../testing/staff.test-support';
 
@@ -305,8 +306,21 @@ it('settles explicitly packed lots by row and rejects returning the package with
   await expect(outsider.query(orders.packedLotOptions, { lineId })).resolves.toBeNull();
   await expect(outsider.mutation(orders.savePackedLots, { lineId, expectedRevision: options.revision, parts: [] })).rejects.toThrow('Order not found');
   const packed = (lotId: typeof early.lotId) => [{ lotId, quantity: 1 }];
+  const otherIdentity = { email: 'packing-peer@example.com', tokenIdentifier: 'packing-peer', emailVerified: true };
+  await t.run(ctx => ctx.db.insert('staffGrants', {
+    role: 'manager', branchIds: [branchId], email: otherIdentity.email, tokenIdentifier: otherIdentity.tokenIdentifier,
+    createdAt: Date.now(), updatedAt: Date.now(), updatedByEmail: 'stockowner@example.com',
+  }));
+  const peer = t.withIdentity(otherIdentity);
+  const peerDraft = (await peer.query(orders.packedLotOptions, { lineId }))!;
   await owner.mutation(orders.savePackedLots, {
     lineId, expectedRevision: options.revision, parts: [{ contentKey: 'product', allocations: packed(late.lotId) }],
+  });
+  await expect(peer.mutation(orders.savePackedLots, {
+    lineId, expectedRevision: peerDraft.revision, parts: [{ contentKey: 'product', allocations: packed(early.lotId) }],
+  })).rejects.toThrow('This order changed');
+  await expect(peer.query(orders.packedLotOptions, { lineId })).resolves.toMatchObject({
+    packing: [{ contentKey: 'product', allocations: packed(late.lotId) }],
   });
   const packageOptions = (await owner.query(orders.packedLotOptions, { lineId: packageLine }))!;
   await owner.mutation(orders.savePackedLots, {
@@ -352,4 +366,51 @@ it('settles explicitly packed lots by row and rejects returning the package with
   expect((await t.run(ctx => ctx.db.get(packageLine)))?.saleSnapshot?.contents[0].returnedPackedLots).toEqual(packed(early.lotId));
   expect(await owner.query(returns.lots, { orderId, parts: [{ lineId }] }))
     .toMatchObject([{ packed: true, lots: [{ code: '2026-B', quantity: 1 }] }]);
+}, 20_000);
+
+it('reads available lots once for twenty packed components sharing one variant', async () => {
+  const { t, owner, branchId, variantId } = await stockFixture(1, Date.now() + 3_600_000);
+  const { orderId } = await owner.mutation(retail.add, { branchId, variantId, quantity: 1, expectedPrice: 30000, clientKey: 'pack-budget-cart' });
+  const lineId = await t.run(async ctx => {
+    const now = Date.now();
+    for (let index = 0; index < 40; index++) {
+      const code = 'budget-lot-' + index;
+      const expiresAt = now + 3_600_000 + index;
+      const lotId = await ctx.db.insert('stockLots', { variantId, code, expiresAt });
+      await ctx.db.insert('stockLotBalances', { branchId, variantId, lotId, expiresAt, onHand: 1, inStock: true, revision: 1 });
+    }
+    const stock = (await ctx.db.query('stockLevels').withIndex('by_variantId_and_branchId', q =>
+      q.eq('variantId', variantId).eq('branchId', branchId)).unique())!;
+    await ctx.db.patch(stock._id, { onHand: 41 });
+    const packageId = await ctx.db.insert('packages', { name: 'Packing budget', status: 'active', sort: 0, revision: 0 });
+    const packageVersionId = await ctx.db.insert('packageVersions', {
+      packageId, version: 1, name: 'Packing budget', price: 30000, validityDays: 180, allowTransfer: false, estimatedSplit: [],
+      contents: Array.from({ length: 20 }, (_, index) => ({ kind: 'product' as const, contentKey: 'item-' + index, variantId, units: 1 })),
+    });
+    return ctx.db.insert('orderLines', {
+      orderId, kind: 'package', packageVersionId, name: 'Packing budget', currency: 'THB', qty: 1,
+      unitPrice: 30000, catalogUnitPrice: 30000, createdAt: now,
+    });
+  });
+  const documents = vi.spyOn(ReadBudget.prototype, 'document');
+  const ranges = vi.spyOn(ReadBudget.prototype, 'range');
+  try {
+    const options = (await owner.query(api.pos.orders.packedLotOptions, { lineId }))!;
+    expect(options.parts).toHaveLength(20);
+    expect(options.parts.every(part => part.lots.length === 41)).toBe(true);
+    expect(documents.mock.calls.length).toBeLessThan(100);
+    expect(ranges.mock.calls.length).toBeLessThan(60);
+    documents.mockClear();
+    ranges.mockClear();
+    await owner.mutation(api.pos.orders.savePackedLots, {
+      lineId, expectedRevision: options.revision, parts: options.parts.map((part, index) => ({
+        contentKey: part.contentKey, allocations: [{ lotId: part.lots[index].lotId, quantity: 1 }],
+      })),
+    });
+    expect(documents.mock.calls.length).toBeLessThan(55);
+    expect(ranges.mock.calls.length).toBeLessThan(15);
+  } finally {
+    documents.mockRestore();
+    ranges.mockRestore();
+  }
 }, 20_000);

@@ -1,9 +1,13 @@
+import type { PaginationOptions } from 'convex/server';
 import { ConvexError, type Infer } from 'convex/values';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { QueryCtx } from '../../_generated/server';
-import type { StaffActor } from '../../auth/model';
+import { findStaffGrantByEmail, type StaffActor } from '../../auth/model';
 import { requireBranchAccess } from '../../branches/model';
+import { readBudget } from '../../lib/readBudget';
 import { stockGrantRoles } from '../stockValidators';
+import { stockError, stockRead } from './stockLedger';
+import { stockPage } from './stockOperations';
 
 export type StockRoles = Infer<typeof stockGrantRoles>;
 export type StockPermission = keyof StockRoles | 'read';
@@ -103,4 +107,99 @@ export async function hasBranchStockRole(ctx: QueryCtx, staffGrantId: Id<'staffG
 
 export function readStockPolicy(ctx: QueryCtx, branchId: Id<'branches'>) {
   return ctx.db.query('stockBranchPolicies').withIndex('by_branch', q => q.eq('branchId', branchId)).unique();
+}
+
+export async function listBranchStockGrants(
+  ctx: QueryCtx,
+  branchId: Id<'branches'>,
+  paginationOpts: PaginationOptions,
+  email?: string,
+  rawSearch?: string,
+) {
+  const options = stockPage(paginationOpts);
+  const exactEmail = email?.trim();
+  if (exactEmail && exactEmail.length > 254) stockError('INVALID_EMAIL', 'Email search is limited to 254 characters.');
+  const partialTerm = rawSearch?.trim();
+  if (partialTerm && partialTerm.length > 254) stockError('INVALID_EMAIL', 'Staff search is limited to 254 characters.');
+
+  const enrich = async (staff: Doc<'staffGrants'>, loadedUser?: Doc<'users'> | null) => {
+    const [grant, user] = await Promise.all([
+      readStockGrant(ctx, branchId, staff._id),
+      loadedUser !== undefined
+        ? Promise.resolve(loadedUser)
+        : staff.tokenIdentifier
+          ? stockRead(ctx, () => ctx.db.query('users').withIndex('by_token', q => q.eq('tokenIdentifier', staff.tokenIdentifier!)).unique())
+          : Promise.resolve(null),
+    ]);
+    return {
+      staffGrantId: staff._id,
+      email: staff.email,
+      name: user?.name,
+      role: staff.role,
+      stockGrant: grant && { roles: grant.roles, revision: grant.revision },
+    };
+  };
+
+  if (exactEmail) {
+    const match = await stockRead(ctx, () => findStaffGrantByEmail(ctx, exactEmail.toLowerCase()));
+    const eligible = match && (match.role === 'owner' || match.branchIds.includes(branchId)) ? [match] : [];
+    return { isDone: true, continueCursor: '', page: await Promise.all(eligible.map(staff => enrich(staff))) };
+  }
+
+  // Stream staffGrants from keyset cursor (creationTime|id), checking branch eligibility and search before enriching displayed rows only.
+  const needle = partialTerm?.toLowerCase();
+  const cursorMatch = options.cursor ? /^(\d+(?:\.\d+)?)\|(.+)$/.exec(options.cursor) : null;
+  const cursorTime = cursorMatch ? Number(cursorMatch[1]) : undefined;
+  const cursorId = cursorMatch ? cursorMatch[2] : undefined;
+  const budget = readBudget(ctx);
+  budget.range();
+  const MAX_SCAN = 500;
+  const matched: { staff: Doc<'staffGrants'>; user?: Doc<'users'> | null }[] = [];
+  let scanned = 0;
+  let lastScanned: Doc<'staffGrants'> | null = null;
+  let hitScanCap = false;
+
+  const stream = cursorTime !== undefined
+    ? ctx.db.query('staffGrants').withIndex('by_creation_time', q => q.gte('_creationTime', cursorTime))
+    : ctx.db.query('staffGrants').withIndex('by_creation_time');
+
+  for await (const staff of stream) {
+    if (cursorTime !== undefined && cursorId !== undefined && staff._creationTime === cursorTime && staff._id <= cursorId) {
+      continue;
+    }
+    if (scanned >= MAX_SCAN) {
+      hitScanCap = true;
+      break;
+    }
+    scanned++;
+    lastScanned = staff;
+    budget.document(staff);
+    budget.assert();
+    if (staff.role !== 'owner' && !staff.branchIds.includes(branchId)) continue;
+
+    let loadedUser: Doc<'users'> | null | undefined;
+    if (needle) {
+      if (!staff.email.toLowerCase().includes(needle)) {
+        loadedUser = staff.tokenIdentifier
+          ? await stockRead(ctx, () => ctx.db.query('users').withIndex('by_token', q => q.eq('tokenIdentifier', staff.tokenIdentifier!)).unique())
+          : null;
+        if (!(loadedUser?.name?.toLowerCase().includes(needle) ?? false)) continue;
+      }
+    }
+
+    matched.push({ staff, user: loadedUser });
+    if (matched.length > options.numItems) break;
+  }
+
+  const hasMore = matched.length > options.numItems || hitScanCap;
+  const pageRows = matched.slice(0, options.numItems);
+  const cursorRow = matched.length > options.numItems
+    ? pageRows[pageRows.length - 1]?.staff ?? lastScanned
+    : lastScanned;
+  const continueCursor = hasMore && cursorRow ? `${cursorRow._creationTime}|${cursorRow._id}` : '';
+  return {
+    isDone: !hasMore,
+    continueCursor,
+    page: await Promise.all(pageRows.map(({ staff, user }) => enrich(staff, user))),
+  };
 }

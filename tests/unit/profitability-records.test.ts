@@ -63,10 +63,8 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 async function show(role: MarketingAccess['role'], overrides: Partial<Props> = {}) {
-  await act(async () => root.render(createElement(MarketingAccessProvider, {
-    value: { ...access, role },
-    children: createElement(Details, { ...props, ...overrides }),
-  })));
+  await act(async () => root.render(createElement(MarketingAccessProvider, { value: { ...access, role } },
+    createElement(Details, { ...props, ...overrides }))));
 }
 async function click(label: string) {
   const button = [...document.querySelectorAll('button')].find((element) => element.textContent?.trim() === label);

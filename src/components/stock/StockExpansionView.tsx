@@ -6,7 +6,7 @@ import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import { flushSync } from "react-dom";
 import { ArrowRightLeft, Layers, Plus, Send } from "lucide-react";
-import { useMemo, useRef, useState, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import { EmptyState, SkeletonRows } from "@/components/admin/admin-bulk";
 import { STOCK_TABLE } from "./stock-table";
 import { useAdminBranch } from "@/components/admin/branch/branch-context";

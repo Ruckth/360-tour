@@ -1,6 +1,8 @@
 "use client";
 
 import { useMutation, useQuery } from "convex/react";
+import type { FunctionArgs } from "convex/server";
+import { ConvexError } from "convex/values";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import { useEffect, useRef, useState } from "react";
@@ -10,8 +12,11 @@ import { Input } from "@/components/ui/input";
 
 const unassigned = "unassigned";
 
-export function StockBinPanel({ branchId, variantId, label, onClose }: {
+export type BinRelocation = FunctionArgs<typeof api.commerce.stock.relocateBinStock>;
+
+export function StockBinPanel({ branchId, variantId, label, onClose, pendingRelocation, onPendingRelocation }: {
   branchId: Id<"branches">; variantId: Id<"productVariants">; label: string; onClose: () => void;
+  pendingRelocation: BinRelocation | undefined; onPendingRelocation: (change?: BinRelocation) => void;
 }) {
   const data = useQuery(api.commerce.stock.binBalances, { branchId, variantId });
   const add = useMutation(api.commerce.stock.addBin);
@@ -25,7 +30,7 @@ export function StockBinPanel({ branchId, variantId, label, onClose }: {
   const [message, setMessage] = useState("");
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => heading.current?.focus(), []);
-  const key = useRef<{ payload: string; requestKey: string } | null>(null);
+  const relocationBusy = useRef(false);
   const lot = data?.lots.find(item => item.id === selectedLot);
   const locations = [{ id: unassigned, name: "Unassigned", quantity: lot?.unassigned ?? data?.unassigned ?? 0 },
     ...(data?.bins ?? []).map(bin => ({ ...bin, quantity: lot ? lot.bins.find(position => position.id === bin.id)?.quantity ?? 0 : bin.quantity })),
@@ -45,10 +50,28 @@ export function StockBinPanel({ branchId, variantId, label, onClose }: {
     }
   }
 
+  async function move(change: BinRelocation) {
+    if (relocationBusy.current) return;
+    relocationBusy.current = true;
+    onPendingRelocation(change);
+    await run(async () => {
+      try {
+        await relocate(change);
+        onPendingRelocation();
+        setUnits("");
+      } catch (error) {
+        if (error instanceof ConvexError) onPendingRelocation();
+        throw error;
+      } finally {
+        relocationBusy.current = false;
+      }
+    }, "Stock relocated.");
+  }
+
   return <Card className="grid gap-3 p-4">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <h3 ref={heading} tabIndex={-1} className="font-semibold">Bin custody · {label}</h3>
-      <Button variant="outline" onClick={onClose}>Close</Button>
+      <Button variant="outline" disabled={pending} onClick={onClose}>Close</Button>
     </div>
     {!data ? <p role="status">Loading bin balances…</p> : <>
       <p>Branch on hand: {data.onHand}</p>
@@ -74,13 +97,15 @@ export function StockBinPanel({ branchId, variantId, label, onClose }: {
           <label>New bin <Input value={name} onChange={event => setName(event.target.value)} maxLength={60} required /></label>
           <Button disabled={pending || !name.trim()}>Add bin</Button>
         </form>
-        {data.bins.length > 0 ? <form className="flex flex-wrap items-end gap-2" onSubmit={event => {
+        {pendingRelocation ? <div className="grid gap-2">
+          <p role="status">Confirm the result of the previous {pendingRelocation.quantity}-unit relocation before starting another.</p>
+          <Button className="justify-self-start" type="button" variant="outline" disabled={pending}
+            onClick={() => { void move(pendingRelocation); }}>Retry previous relocation</Button>
+        </div> : data.bins.length > 0 ? <form className="flex flex-wrap items-end gap-2" onSubmit={event => {
           event.preventDefault();
+          if (pending) return;
           const change = { branchId, variantId, from: binId(from), to: binId(to), ...(lot ? { lotId: lot.id } : {}), quantity: Number(units) };
-          const payload = JSON.stringify(change);
-          if (key.current?.payload !== payload) key.current = { payload, requestKey: crypto.randomUUID() };
-          const requestKey = key.current.requestKey;
-          void run(async () => { await relocate({ ...change, requestKey }); key.current = null; setUnits(""); }, "Stock relocated.");
+          void move({ ...change, requestKey: crypto.randomUUID() });
         }}>
           <label className="grid gap-1">From
             <select className="h-9 rounded-md border bg-background px-2" value={from} onChange={event => setFrom(event.target.value)}>

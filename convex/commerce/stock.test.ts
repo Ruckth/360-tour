@@ -103,7 +103,7 @@ it('returns absent balances from catalog search and joins On order, then audits 
 });
 
 it('supplies branch reorder points to both request lookups without changing stock or valuation', async () => {
-  const { t, owner, cashier, cashierId, manager, branchId, otherBranchId, variantId } = await fixture();
+  const { t, owner, cashier, cashierId, manager, managerId, branchId, otherBranchId, variantId } = await fixture();
   const args = { branchId, variantId, expectedRevision: 0, quantity: 12 };
   await owner.mutation(stock.setGrant, {
     branchId, staffGrantId: cashierId, roles: { ...emptyStockRoles, requester: true }, expectedRevision: 0,
@@ -119,8 +119,11 @@ it('supplies branch reorder points to both request lookups without changing stoc
   }]);
   await expect(cashier.query(stock.listBalances, { branchId, search: 'robe', paginationOpts }))
     .resolves.toMatchObject({ page: [{ variantId, reorderPoint: 12 }] });
-  await owner.mutation(stock.setReorderPoint, { ...args, branchId: otherBranchId, quantity: 5 });
-  await expect(owner.query(stock.selectedBalances, { branchId: otherBranchId, variantIds: [variantId] }))
+  await owner.mutation(stock.setGrant, {
+    branchId: otherBranchId, staffGrantId: managerId, roles: { ...emptyStockRoles, lead: true }, expectedRevision: 0,
+  });
+  await manager.mutation(stock.setReorderPoint, { ...args, branchId: otherBranchId, quantity: 5 });
+  await expect(manager.query(stock.selectedBalances, { branchId: otherBranchId, variantIds: [variantId] }))
     .resolves.toMatchObject([{ variantId, reorderPoint: 5 }]);
   await expect(manager.mutation(stock.setReorderPoint, { ...args, quantity: 15 }))
     .rejects.toMatchObject({ data: { code: 'STALE_REORDER_POINT' } });

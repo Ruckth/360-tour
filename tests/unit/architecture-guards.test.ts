@@ -209,6 +209,7 @@ const functionReferenceAllowlist: Record<string, string> = {
   "pos/staffApprovals:pending": "Pre-paging response read by admin tabs still on the previous bundle; ApprovalsPanel reads pendingPage. Remove one deploy later.",
   "commerce/purchasing:orderRevisions": "The previous purchasing bundle pages issued revisions through this endpoint during a guarded application rollback. The current order history links individual revisions.",
   "commerce/purchasing:backfillPurchasingLegacy": "Operator migration reconstructs historical PO line values and indexes existing documents during rollout.",
+  "commerce/purchasing:rebuildPurchaseLineValuation": "Operator migration: exact chunked valuation of one long-history PO line reported pending by backfillPurchasingLegacy (stock-dashboard-rollout.md).",
   "commerce/purchasing:backfillSupplierData": "Operator migration for existing supplier activity and contact search, documented in stock-dashboard-rollout.md.",
   "marketing/profitViews:drainPreparedViews": "Operator rollback command documented in profitability-snapshot-rollback.md.",
   "commerce/stock:backfillMovementFilters": "Optional operator command to refresh historical staff search keys without altering movement evidence.",

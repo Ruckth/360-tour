@@ -469,14 +469,71 @@ it('review: the legacy backfill adds reference codes and receipt exception flags
   });
   expect((await ann.query(p.purchaseReference, { branchId, reference: reference.slice(-5) })).orders).toEqual([]);
   expect((await ann.query(p.receipts, { branchId, exceptionsOnly: true, ...page })).page).toEqual([]);
-  for (const table of ['purchaseRequests', 'purchaseOrders', 'supplierReceipts'] as const) {
+  await runBackfill(t);
+  expect((await ann.query(p.purchaseReference, { branchId, reference: reference.slice(-5) })).orders.map(row => row._id)).toEqual([orderId]);
+  expect((await ann.query(p.receipts, { branchId, exceptionsOnly: true, ...page })).page).toHaveLength(1);
+});
+
+type TestConvex = Awaited<ReturnType<typeof setup>>['t'];
+
+/** Run the legacy backfill in its documented order, rebuilding any long-history line it reports. */
+async function runBackfill(t: TestConvex) {
+  for (const table of ['purchaseOrderLines', 'purchaseOrders', 'purchaseRequests', 'supplierReceipts'] as const) {
     let cursor: string | null = null;
     for (;;) {
-      const result: { isDone: boolean; continueCursor: string } = await t.mutation(internal.commerce.purchasing.backfillPurchasingLegacy, { table, cursor });
+      const result: { isDone: boolean; continueCursor: string; pending: Id<'purchaseOrderLines'>[] } =
+        await t.mutation(internal.commerce.purchasing.backfillPurchasingLegacy, { table, cursor });
+      for (const orderLineId of result.pending) {
+        let chunk = { cursor: null as string | null, acceptedValue: 0, rejected: 0 };
+        for (;;) {
+          const next: { isDone: boolean; continueCursor: string; acceptedValue: number; rejected: number } =
+            await t.mutation(internal.commerce.purchasing.rebuildPurchaseLineValuation, { orderLineId, ...chunk });
+          if (next.isDone) break;
+          chunk = { cursor: next.continueCursor, acceptedValue: next.acceptedValue, rejected: next.rejected };
+        }
+      }
       if (result.isDone) break;
       cursor = result.continueCursor;
     }
   }
-  expect((await ann.query(p.purchaseReference, { branchId, reference: reference.slice(-5) })).orders.map(row => row._id)).toEqual([orderId]);
-  expect((await ann.query(p.receipts, { branchId, exceptionsOnly: true, ...page })).page).toHaveLength(1);
+}
+
+it('review: a pre-feature line with >100 mixed receipts blocks costing writes until the exact chunked rebuild values it', async () => {
+  const { t, ann, ben, order, receive } = await setup();
+  const { orderId } = await order([{ quantity: 1_000, unitCost: 100 }]);
+  await receive(ben, orderId, 1);
+  let detail = await ann.query(p.order, { orderId });
+  const line = detail.lines[0];
+  const receiptId = (await ann.query(p.orderReceipts, { orderId, ...page })).page[0]._id;
+  // 250 more historical receipt lines at changing prices with rejections and corrections, written before valuation existed.
+  let accepted = 1, value = 100, rejected = 0;
+  await t.run(async ctx => {
+    const base = (await ctx.db.query('supplierReceiptLines').withIndex('by_orderLineId', q => q.eq('orderLineId', line._id)).first())!;
+    for (let i = 0; i < 250; i++) {
+      const cost = i % 3 === 0 ? undefined : 100 + i;
+      const row = { accepted: 2, corrected: i % 5 === 0 ? 1 : 0, rejected: i % 4 === 0 ? 1 : 0, unitCost: cost };
+      accepted += row.accepted - row.corrected;
+      value += (row.accepted - row.corrected) * (cost ?? 0);
+      rejected += row.rejected;
+      await ctx.db.insert('supplierReceiptLines', {
+        receiptId, branchId: base.branchId, orderId, orderLineId: line._id, variantId: base.variantId, item: base.item,
+        accepted: row.accepted, rejected: row.rejected, corrected: row.corrected, returned: 0, ...(cost === undefined ? {} : { unitCost: cost }),
+      });
+    }
+    await ctx.db.patch(line._id, { accepted, acceptedValue: undefined, rejected: undefined });
+  });
+  detail = await ann.query(p.order, { orderId });
+  expect(detail.order.receivedValue === undefined || detail.lines[0].acceptedValue === undefined).toBe(true);
+  expect(await code(ann.mutation(p.amendPurchaseOrder, {
+    orderId, expectedRevision: detail.order.revision, reason: 'Price', lines: [{ orderLineId: line._id, unitCost: 150 }], operationKey: key(),
+  }))).toBe('VALUATION_PENDING');
+  expect(await code(receive(ben, orderId, 1))).toBe('VALUATION_PENDING');
+  await runBackfill(t);
+  detail = await ann.query(p.order, { orderId });
+  expect(detail.lines[0]).toMatchObject({ acceptedValue: value, rejected });
+  expect(detail.order).toMatchObject({ receivedValue: value, outstandingValue: (1_000 - accepted) * 100 });
+  await ann.mutation(p.amendPurchaseOrder, {
+    orderId, expectedRevision: detail.order.revision, reason: 'Price', lines: [{ orderLineId: line._id, unitCost: 150 }], operationKey: key(),
+  });
+  expect((await ann.query(p.order, { orderId })).order.receivedValue).toBe(value);
 });

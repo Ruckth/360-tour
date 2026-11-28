@@ -1,4 +1,5 @@
 // @vitest-environment edge-runtime
+import type { FunctionReturnType } from 'convex/server';
 import { convexTest } from 'convex-test';
 import { expect, it } from 'vitest';
 import { api } from '../_generated/api';
@@ -87,8 +88,14 @@ it('returns recountCount and lastVerifiedCountAt from stock.access (S05, S07)', 
   expect(typeof after.lastVerifiedCountAt).toBe('number');
 });
 
-it('records optional unitCost and multi-line opening stock operations (S19, S20)', async () => {
-  const { manager, branchId, v1, v2 } = await setup();
+it('records optional unitCost, restricts cost visibility to buyers/leads, and supports multi-line opening stock (S19, S20)', async () => {
+  const { t, owner, manager, branchId, cashierId, v1, v2 } = await setup();
+  const cashier = t.withIdentity({ email: 'arch-e2e-cashier@example.com', emailVerified: true, tokenIdentifier: 'cashier' });
+  await owner.mutation(stock.setGrant, {
+    branchId, staffGrantId: cashierId,
+    roles: { ...emptyStockRoles, receiver: true },
+    expectedRevision: 0,
+  });
   const opId = await manager.mutation(stock.postOperation, {
     branchId,
     kind: 'opening',
@@ -100,38 +107,128 @@ it('records optional unitCost and multi-line opening stock operations (S19, S20)
       { variantId: v2, quantity: 8, expectedRevision: 0 },
     ],
   });
+  // Buyer/lead sees reference unitCost
   const op = await manager.query(stock.getOperation, { branchId, operationId: opId });
   expect(op.lines).toHaveLength(2);
   expect(op.lines[0]).toMatchObject({ variantId: v1, before: 0, after: 16, unitCost: 12_500 });
   expect(op.lines[1]).toMatchObject({ variantId: v2, before: 0, after: 8 });
   expect(op.lines[1].unitCost).toBeUndefined();
+
+  // Plain receiver without buyer/lead role does not receive unitCost (S19 cost visibility policy)
+  const cashierOp = await cashier.query(stock.getOperation, { branchId, operationId: opId });
+  expect(cashierOp.lines[0].unitCost).toBeUndefined();
 });
 
-it('supports partial name/email staff search and never returns an empty first page when eligible staff exist (S24)', async () => {
-  const { owner, branchId, otherBranchId } = await setup();
-  // Even with numItems=1 and an ineligible grant inserted before eligible staff, page 1 returns eligible staff
-  const firstPage = await owner.query(stock.listGrants, {
-    branchId, paginationOpts: { numItems: 1, cursor: null },
+it('paginates eligible staff and partial search beyond 200 company-wide grants without truncating to one page (S24)', async () => {
+  const { t, owner, branchId, otherBranchId } = await setup();
+  // Insert 205 ineligible grants on otherBranchId and 3 eligible grants on branchId AFTER the 200 cutoff
+  await t.run(async ctx => {
+    for (let i = 0; i < 205; i++) {
+      await ctx.db.insert('staffGrants', {
+        role: 'cashier',
+        branchIds: [otherBranchId],
+        email: `other-branch-${String(i).padStart(3, '0')}@example.com`,
+        tokenIdentifier: `other-bulk-${i}`,
+        createdAt: 10 + i,
+        updatedAt: 10 + i,
+        updatedByEmail: 'owner@example.com',
+      });
+    }
+    for (let i = 1; i <= 3; i++) {
+      await ctx.db.insert('staffGrants', {
+        role: 'cashier',
+        branchIds: [branchId],
+        email: `late-samui-${i}@example.com`,
+        tokenIdentifier: `late-samui-${i}`,
+        createdAt: 300 + i,
+        updatedAt: 300 + i,
+        updatedByEmail: 'owner@example.com',
+      });
+    }
   });
-  expect(firstPage.page).toHaveLength(1);
-  expect(firstPage.page[0].email).not.toBe('other-only@example.com');
 
-  // Partial email search finds arch-e2e-cashier@example.com
-  const byEmailPrefix = await owner.query(stock.listGrants, {
-    branchId, search: 'arch-e2e-cas', paginationOpts,
+  // Unfiltered real pagination reaches targets inserted after 205 ineligible grants
+  const seenEmails: string[] = [];
+  let cursor: string | null = null;
+  let guard = 0;
+  do {
+    const page: FunctionReturnType<typeof stock.listGrants> = await owner.query(stock.listGrants, {
+      branchId,
+      paginationOpts: { numItems: 2, cursor },
+    });
+    seenEmails.push(...page.page.map(r => r.email));
+    cursor = page.isDone ? null : page.continueCursor;
+    guard++;
+  } while (cursor !== null && guard < 10);
+  expect(seenEmails).toContain('late-samui-1@example.com');
+  expect(seenEmails).toContain('late-samui-3@example.com');
+  expect(seenEmails.some(e => e.startsWith('other-branch-'))).toBe(false);
+
+  // Partial search past 200 cutoff paginates across multiple result pages (numItems: 2 over 3 matches)
+  const searchP1 = await owner.query(stock.listGrants, {
+    branchId, search: 'late-samui', paginationOpts: { numItems: 2, cursor: null },
   });
-  expect(byEmailPrefix.page.map(r => r.email)).toEqual(['arch-e2e-cashier@example.com']);
-  expect(byEmailPrefix.page[0].name).toBe('Nadia Cashier');
+  expect(searchP1.page.map(r => r.email)).toEqual(['late-samui-1@example.com', 'late-samui-2@example.com']);
+  expect(searchP1.isDone).toBe(false);
+  expect(searchP1.continueCursor).not.toBe('');
 
-  // Partial display name search finds Nadia Cashier
+  const searchP2 = await owner.query(stock.listGrants, {
+    branchId, search: 'late-samui', paginationOpts: { numItems: 2, cursor: searchP1.continueCursor },
+  });
+  expect(searchP2.page.map(r => r.email)).toEqual(['late-samui-3@example.com']);
+  expect(searchP2.isDone).toBe(true);
+
+  // Partial email and display name search still work and respect branch isolation
   const byName = await owner.query(stock.listGrants, {
     branchId, search: 'nadia', paginationOpts,
   });
   expect(byName.page.map(r => r.email)).toEqual(['arch-e2e-cashier@example.com']);
+  expect(byName.page[0].name).toBe('Nadia Cashier');
 
-  // Branch scope respected: searching for branchId's cashier on otherBranchId returns empty
   const wrongBranch = await owner.query(stock.listGrants, {
     branchId: otherBranchId, search: 'arch-e2e-cas', paginationOpts,
   });
   expect(wrongBranch.page).toEqual([]);
+});
+
+it('returns a non-terminal continuation cursor after >500 non-matches and finds a match on the next page (S24)', async () => {
+  const { t, owner, branchId, otherBranchId } = await setup();
+  // Insert 505 ineligible grants on otherBranchId before one eligible match on branchId
+  await t.run(async ctx => {
+    for (let i = 0; i < 505; i++) {
+      await ctx.db.insert('staffGrants', {
+        role: 'cashier',
+        branchIds: [otherBranchId],
+        email: `skip-${String(i).padStart(4, '0')}@example.com`,
+        tokenIdentifier: `skip-${i}`,
+        createdAt: 1000 + i,
+        updatedAt: 1000 + i,
+        updatedByEmail: 'owner@example.com',
+      });
+    }
+    await ctx.db.insert('staffGrants', {
+      role: 'cashier',
+      branchIds: [branchId],
+      email: 'after-500-target@example.com',
+      tokenIdentifier: 'after-500-target',
+      createdAt: 2000,
+      updatedAt: 2000,
+      updatedByEmail: 'owner@example.com',
+    });
+  });
+
+  // Page 1 scans bounded 500 records -> 0 matches for 'after-500-target', but isDone is false with a valid cursor
+  const page1 = await owner.query(stock.listGrants, {
+    branchId, search: 'after-500-target', paginationOpts,
+  });
+  expect(page1.page).toEqual([]);
+  expect(page1.isDone).toBe(false);
+  expect(page1.continueCursor).not.toBe('');
+
+  // Page 2 resumes from cursor and finds the match past the 500 scan boundary
+  const page2 = await owner.query(stock.listGrants, {
+    branchId, search: 'after-500-target', paginationOpts: { numItems: 25, cursor: page1.continueCursor },
+  });
+  expect(page2.page.map(r => r.email)).toEqual(['after-500-target@example.com']);
+  expect(page2.isDone).toBe(true);
 });

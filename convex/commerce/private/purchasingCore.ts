@@ -332,42 +332,56 @@ export async function correctionClosesRemainder(ctx: QueryCtx, order: Doc<'purch
     !!(await otherHoldReplacement(ctx, order.forHoldId, order._id));
 }
 
+/** A pre-feature line: units were accepted before accepted value and rejection counts were kept. */
+export const isLegacyLine = (line: Pick<Doc<'purchaseOrderLines'>, 'accepted' | 'rejected' | 'acceptedValue'>) =>
+  line.acceptedValue === undefined || line.rejected === undefined;
+
 /**
- * Accepted value of a line: each receipt's recorded unit cost (kept in `acceptedValue`). Older lines without it value
- * accepted units at the line's current cost.
+ * Accepted value of a line at each receipt's recorded unit cost. A pre-feature line with accepted units has no exact
+ * value until it is reconstructed (`seedLegacyLine` or the chunked rebuild); policy checks that must compare amounts use
+ * this estimate only on both sides of the same comparison, and it is never persisted.
  */
 export const lineAcceptedValue = (line: Pick<Doc<'purchaseOrderLines'>, 'accepted' | 'unitCost' | 'acceptedValue'>) =>
   line.acceptedValue ?? line.accepted * (line.unitCost ?? 0);
 
-/** Receipt lines read per order line when reconstructing a pre-feature line (bounded; beyond it the estimate stays). */
-const LEGACY_RECEIPT_SCAN = 100;
+/** Receipt lines one transaction reads to reconstruct a pre-feature line; longer histories use the chunked rebuild. */
+export const LEGACY_RECEIPT_SCAN = 100;
+
+/** Exact accepted value and rejections from a slice of a line's receipt lines (accepted − corrected at recorded cost). */
+export const receiptValuation = (rows: Pick<Doc<'supplierReceiptLines'>, 'accepted' | 'corrected' | 'rejected' | 'unitCost'>[]) => ({
+  acceptedValue: rows.reduce((sum, row) => sum + (row.accepted - row.corrected) * (row.unitCost ?? 0), 0),
+  rejected: rows.reduce((sum, row) => sum + row.rejected, 0),
+});
 
 /**
- * Lines written before accepted value and rejection counts were kept have neither. Reconstruct both from the line's
- * immutable receipt lines (accepted − corrected at each receipt's recorded cost; rejected units), so repricing or a later
- * receipt never revalues history. Call before the current command writes any receipt line or correction for it. Lines
- * with more receipts than the bound keep the accepted × current cost estimate. Returns the line with both fields set.
+ * Lines written before accepted value and rejection counts were kept have neither. Reconstruct both exactly from the
+ * line's immutable receipt lines, so repricing or a later receipt never revalues history. Call before the current command
+ * writes any receipt line or correction for it. A line with more than LEGACY_RECEIPT_SCAN receipts is never estimated:
+ * the costing write fails with the retryable VALUATION_PENDING until the operator's chunked rebuild has valued it.
  */
 export async function seedLegacyLine(ctx: QueryCtx, line: Doc<'purchaseOrderLines'>): Promise<Doc<'purchaseOrderLines'>> {
-  if (line.acceptedValue !== undefined && line.rejected !== undefined) return line;
+  if (!isLegacyLine(line)) return line;
   const receipts = await stockRead(ctx, () => ctx.db.query('supplierReceiptLines')
     .withIndex('by_orderLineId', q => q.eq('orderLineId', line._id)).take(LEGACY_RECEIPT_SCAN + 1));
   if (receipts.length > LEGACY_RECEIPT_SCAN) {
-    return { ...line, acceptedValue: line.acceptedValue ?? lineAcceptedValue(line), rejected: line.rejected ?? 0 };
+    fail('VALUATION_PENDING', 'This order line has a long receipt history that is still being valued. Try again after the purchasing valuation backfill finishes.', {
+      orderLineId: line._id,
+    });
   }
-  const acceptedValue = receipts.reduce((sum, row) => sum + (row.accepted - row.corrected) * (row.unitCost ?? 0), 0);
-  const rejected = receipts.reduce((sum, row) => sum + row.rejected, 0);
-  return { ...line, acceptedValue: line.acceptedValue ?? acceptedValue, rejected: line.rejected ?? rejected };
+  const exact = receiptValuation(receipts);
+  return { ...line, acceptedValue: line.acceptedValue ?? exact.acceptedValue, rejected: line.rejected ?? exact.rejected };
 }
 
 /**
  * Header counters and status from its lines (≤ 50). An explicitly closed order stays closed.
  * Value: received at receipt costs plus the open commitment (due × current cost); `totalCost` is their sum, so a
  * repriced amendment changes only what is still outstanding. `unpricedLines` counts committed lines with no cost.
+ * While any line with accepted units is pre-feature, `receivedValue` is unknown (omitted) and `totalCost` keeps its
+ * pre-feature meaning (committed × current cost); no estimated historical value is stored.
  */
 export function orderSummary(order: Doc<'purchaseOrders'>, lines: Doc<'purchaseOrderLines'>[]) {
   let orderedUnits = 0, acceptedUnits = 0, dueUnits = 0, openLineCount = 0, receivedValue = 0, outstandingValue = 0;
-  let unpricedLines = 0, rejectedUnits = 0;
+  let unpricedLines = 0, rejectedUnits = 0, legacyTotal = 0, legacy = false;
   for (const line of lines) {
     const committed = line.ordered - line.cancelled;
     const due = lineDue(line);
@@ -376,8 +390,10 @@ export function orderSummary(order: Doc<'purchaseOrders'>, lines: Doc<'purchaseO
     rejectedUnits += line.rejected ?? 0;
     dueUnits += due;
     if (due > 0) openLineCount++;
-    receivedValue += lineAcceptedValue(line);
+    if (line.acceptedValue === undefined && line.accepted > 0) legacy = true;
+    receivedValue += line.acceptedValue ?? 0;
     outstandingValue += Math.max(0, due) * (line.unitCost ?? 0);
+    legacyTotal += committed * (line.unitCost ?? 0);
     if (committed > 0 && line.unitCost === undefined) unpricedLines++;
   }
   let status: OrderStatus = order.status;
@@ -387,8 +403,9 @@ export function orderSummary(order: Doc<'purchaseOrders'>, lines: Doc<'purchaseO
     status = dueUnits === 0 ? 'received' : acceptedUnits > 0 ? 'partially_received' : 'ordered';
   }
   return {
-    orderedUnits, acceptedUnits, dueUnits, openLineCount, totalCost: receivedValue + outstandingValue,
-    receivedValue, outstandingValue, unpricedLines, rejectedUnits, status, phase: phaseOf(status), lineCount: lines.length,
+    orderedUnits, acceptedUnits, dueUnits, openLineCount, totalCost: legacy ? legacyTotal : receivedValue + outstandingValue,
+    receivedValue: legacy ? undefined : receivedValue, outstandingValue, unpricedLines, rejectedUnits,
+    status, phase: phaseOf(status), lineCount: lines.length,
   };
 }
 

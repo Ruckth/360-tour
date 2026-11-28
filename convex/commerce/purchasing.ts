@@ -12,7 +12,7 @@ import {
 } from './private/purchasingReads';
 import { purchasingAccess } from './private/purchasingCore';
 import {
-  amendOrder, approveOrderIssue, backfillLegacyPage, closeOrderRemainder, declineOrderIssue, deleteOrderDraft, issueOrder, saveOrderDraft,
+  amendOrder, approveOrderIssue, backfillLegacyPage, closeOrderRemainder, rebuildLineValuationChunk, declineOrderIssue, deleteOrderDraft, issueOrder, saveOrderDraft,
 } from './private/purchasingOrders';
 import {
   acceptHoldOnOrder, correctReceiptLine, declineHold, receiveDirect, receiveOrder, recordHoldHandoff, returnToSupplier, reverseSupplierReturn,
@@ -647,13 +647,21 @@ export const backfillSupplierData = internalMutation({
 
 /**
  * Operator backfill for rows written before reference codes, receipt exception flags and order-line valuation existed.
- * Run per table until `isDone`, passing back `continueCursor`. Idempotent.
+ * Order: `purchaseOrderLines` (rebuild each returned `pending` line with `rebuildPurchaseLineValuation`), then
+ * `purchaseOrders`, `purchaseRequests`, `supplierReceipts`. Pass `continueCursor` back until `isDone`. Idempotent.
  */
 export const backfillPurchasingLegacy = internalMutation({
   args: {
-    table: v.union(v.literal('purchaseRequests'), v.literal('purchaseOrders'), v.literal('supplierReceipts')),
+    table: v.union(v.literal('purchaseOrderLines'), v.literal('purchaseOrders'), v.literal('purchaseRequests'), v.literal('supplierReceipts')),
     cursor: v.union(v.string(), v.null()),
   },
-  returns: v.object({ updated: v.number(), isDone: v.boolean(), continueCursor: v.string() }),
+  returns: v.object({ updated: v.number(), pending: v.array(v.id('purchaseOrderLines')), isDone: v.boolean(), continueCursor: v.string() }),
   handler: (ctx, { table, cursor }) => backfillLegacyPage(ctx, table, cursor),
+});
+
+/** Exact chunked valuation of one long-history order line; pass the returned totals and cursor back until `isDone`. */
+export const rebuildPurchaseLineValuation = internalMutation({
+  args: { orderLineId: v.id('purchaseOrderLines'), cursor: v.union(v.string(), v.null()), acceptedValue: v.number(), rejected: v.number() },
+  returns: v.object({ isDone: v.boolean(), continueCursor: v.string(), acceptedValue: v.number(), rejected: v.number() }),
+  handler: (ctx, args) => rebuildLineValuationChunk(ctx, args),
 });

@@ -22,7 +22,7 @@ import { cn } from "@/lib/utils";
 import Link from "@/platform/link";
 import { useRouter, useSearchParams } from "@/platform/navigation";
 import { HeldGoodsPanel } from "./HeldGoodsPanel";
-import { newRequestLine, OrderEditorSheet, RequestEditorSheet } from "./PurchasingEditorSheets";
+import { newRequestLine, OrderEditorSheet, RequestEditorSheet, RequestReorderPoint } from "./PurchasingEditorSheets";
 import { ReceiveDeliverySheet } from "./ReceiveDeliverySheet";
 import { PURCHASING_HUB_PATH, purchasingDetailHref, validatePurchasingSearch } from "./purchasing-location";
 import {
@@ -495,6 +495,11 @@ export function StockPurchasingHubView() {
               </div>
             ) : null}
           </div>
+
+          {reqFilterMode === "item" && access.lead && filterVariant ? (
+            <RequestReorderPoint key={`${branch.id}:${filterVariant.variantId}`} branchId={branch.id} row={filterVariant}
+              onSaved={(quantity) => show(quantity === undefined ? "Reorder point cleared." : `Reorder point saved at ${quantity}.`, "success")} />
+          ) : null}
 
           <Card className="overflow-hidden">
             {filterPending || reqStatus === "LoadingFirstPage" ? (

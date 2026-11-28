@@ -7,6 +7,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
 import { HeldGoodsPanel, type HeldGoodsRow } from "@/components/stock/HeldGoodsPanel";
+import { buildOrderReceiptLines, overReceiptErrors } from "@/components/stock/receive-order-lines";
+import type { ReceiveOrderDetail } from "@/components/stock/ReceiveDeliverySections";
 import { CorrectReceiptLineSheet, ReturnToSupplierSheet } from "@/components/stock/SupplierReceiptAdjustmentSheets";
 import { SupplierReceiptDetailView } from "@/components/stock/SupplierReceiptDetailView";
 import {
@@ -87,6 +89,28 @@ describe("receiving helpers", () => {
     expect(holdAge(now - 2 * DAY, now)).toMatchObject({ label: "Held 2 d", tone: "neutral" });
     expect(holdAge(now - 4 * DAY, now)).toMatchObject({ label: "Held 4 d", tone: "warning" });
     expect(holdAge(now - 8 * DAY, now)).toMatchObject({ label: "Held 8 d", tone: "danger" });
+  });
+});
+
+describe("order receipt line builder", () => {
+  const detail = {
+    overReceiptTolerancePct: 10,
+    lines: [{ _id: "ol_1", variantId: "variant_1", ordered: 12, cancelled: 0, accepted: 0, due: 12, item: { productName: "Sunscreen", variantLabel: "50 ml" } }],
+  } as unknown as ReceiveOrderDetail;
+  const inputs = (accepted: string, rejected = "", code?: "damaged") => ({
+    acceptedByLine: { ol_1: accepted }, rejectedByLine: { ol_1: rejected }, rejectReasonByLine: {}, rejectCodeByLine: { ol_1: code },
+    selectedHoldByLine: {}, lotCodeByKey: {}, lotExpiryByKey: {}, trackedVariantIds: new Set<Id<"productVariants">>(), eligibleHoldsByLine: new Map(),
+  });
+
+  it("accepts an overage inside the tolerance, refuses a larger one and requires a rejection code", () => {
+    expect(buildOrderReceiptLines(detail, inputs("13")).lineInputs).toEqual([{ orderLineId: "ol_1", accepted: 13 }]);
+    const over = buildOrderReceiptLines(detail, inputs("15"));
+    expect(over.errors.ol_1?.accepted).toBe("At most 13 (12 due + 1 tolerance). Hold the excess.");
+    expect(over.firstInvalidId).toBe("po-acc-ol_1");
+    expect(buildOrderReceiptLines(detail, inputs("2", "1")).errors.ol_1?.rejectReasonCode).toBe("Choose why Sunscreen was rejected.");
+    expect(buildOrderReceiptLines(detail, inputs("2", "1", "damaged")).lineInputs)
+      .toEqual([{ orderLineId: "ol_1", accepted: 2, rejected: 1, rejectReasonCode: "damaged" }]);
+    expect(overReceiptErrors([{ orderLineId: "ol_1", due: 12, allowance: 1 }]).errors.ol_1?.accepted).toContain("12 due + 1 tolerance");
   });
 });
 
@@ -201,6 +225,32 @@ describe("receiving sheets and queue", () => {
     await act(async () => button("Accept into On hand")!.click());
     expect(accept).toHaveBeenCalledWith(expect.objectContaining({ holdId: "hold_1", expectedRevision: 3, quantity: 4 }));
     expect(onNotice).toHaveBeenCalledWith("Held goods accepted into On hand on GR-261128-DDDDD.");
+  });
+
+  it("opens the prefilled linked replacement order after a 'Replacement expected' return", async () => {
+    const submit = mutation(api.commerce.purchasing.supplierReturn).mockResolvedValue({ id: "adj_9", reference: "GR-1" });
+    mockConvex.query.mockImplementation((name) => name === getFunctionName(api.commerce.purchasing.receipt) ? {
+      receipt: {
+        _id: "receipt_1", _creationTime: 1, branchId: "branch_1", reference: "GR-261128-AAAAA", kind: "order", orderId: "order_1",
+        orderReference: "PO-1", supplierId: "supplier_1", supplier: { name: "Coastal Supply" }, lineCount: 1, acceptedUnits: 5,
+        rejectedUnits: 0, heldUnits: 0, actorLabel: "Dan", createdAt: 1, revision: 1,
+      },
+      lines: [line], holds: [],
+      permissions: { requester: true, approver: true, buyer: true, receiver: true, lead: true, directOrder: true, directReceipt: true },
+    } : undefined);
+    await render(createElement(SupplierReceiptDetailView, { receiptId: "receipt_1" }));
+    await act(async () => button("Return")!.click());
+    await act(async () => {
+      setInputValue(document.querySelector<HTMLInputElement>("#ret-qty")!, "2");
+      setInputValue(document.querySelector<HTMLInputElement>("#ret-reason")!, "Wrong item supplied");
+    });
+    await act(async () => document.querySelector<HTMLInputElement>("#ret-outcome-replacement_expected")!.click());
+    await act(async () => button("Post supplier return")!.click());
+    expect(submit).toHaveBeenCalledWith(expect.objectContaining({ outcome: "replacement_expected", quantity: 2 }));
+    // The linked replacement order sheet opens with the returned item and quantity.
+    expect(text()).toContain("Create purchase order · Koh Samui");
+    expect(text()).toContain("Sunscreen");
+    expect([...document.querySelectorAll<HTMLInputElement>("input")].some((input) => input.value === "2")).toBe(true);
   });
 
   it.each([

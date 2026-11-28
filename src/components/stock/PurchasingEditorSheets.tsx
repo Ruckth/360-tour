@@ -58,7 +58,7 @@ function buildRequestSnapshotKey(needBy: string, note: string, lines: readonly {
   });
 }
 
-function RequestReorderPoint({
+export function RequestReorderPoint({
   branchId,
   row,
   disabled,
@@ -66,7 +66,7 @@ function RequestReorderPoint({
 }: {
   branchId: Id<"branches">;
   row: ResolvedBalanceRow;
-  disabled: boolean;
+  disabled?: boolean;
   onSaved: (point: number | undefined) => void;
 }) {
   const save = useMutation(api.commerce.stock.setReorderPoint);
@@ -74,10 +74,11 @@ function RequestReorderPoint({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const fieldId = `reorder-point-${row.variantId}`;
-  const stale = draft !== undefined && draft.revision !== row.reorderPointRevision;
+  const revision = row.reorderPointRevision ?? 0;
+  const stale = draft !== undefined && draft.revision !== revision;
 
   function reviewLatest() {
-    setDraft({ text: row.reorderPoint?.toString() ?? "", revision: row.reorderPointRevision });
+    setDraft({ text: row.reorderPoint?.toString() ?? "", revision });
     setError("");
   }
 

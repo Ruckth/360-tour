@@ -57,7 +57,11 @@ export const openView = marketingMutation({
       ...(key && { assemblyState: 'building' as const, assemblyKey: await sha256(key) }),
     });
     if (data !== null) await storeSourceView(ctx, id, data);
-    else if (key) await ctx.scheduler.runAfter(0, internal.marketing.profitViews.buildLargeSource, { id, key });
+    else if (key) {
+      await ctx.scheduler.runAfter(0, internal.marketing.profitViews.buildLargeSource, { id, key });
+      // Terminated or stalled actions should not leave the browser waiting for the full view lifetime.
+      await ctx.scheduler.runAfter(35_000, internal.marketing.profitViews.finishSource, { id, key, payload: null });
+    }
     await ctx.scheduler.runAfter(lifetime, internal.marketing.profitViews.expireView, { id });
     return id;
   },

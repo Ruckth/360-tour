@@ -569,7 +569,9 @@ async function packingParts(ctx: QueryCtx, line: Doc<'orderLines'>) {
   if (line.kind === 'product' && line.variantId) {
     return [{ contentKey: 'product', variantId: line.variantId, units: line.qty }];
   }
-  const version = line.kind === 'package' && line.packageVersionId ? await ctx.db.get(line.packageVersionId) : null;
+  const { packageVersionId } = line;
+  const version = line.kind === 'package' && packageVersionId
+    ? await readOrderProjection(ctx, () => ctx.db.get(packageVersionId)) : null;
   return (version?.contents ?? []).flatMap(part => {
     if (part.kind !== 'product' && part.kind !== 'chooseProduct') return [];
     const variantId = part.kind === 'product' ? part.variantId :
@@ -578,7 +580,7 @@ async function packingParts(ctx: QueryCtx, line: Doc<'orderLines'>) {
   });
 }
 
-async function packingOptions(ctx: QueryCtx, line: Doc<'orderLines'>, branchId: Id<'branches'>) {
+async function packingOptions(ctx: QueryCtx, line: Doc<'orderLines'>, branchId: Id<'branches'>, display = true) {
   const parts = await packingParts(ctx, line);
   const variantIds = new Set(parts.map(part => part.variantId));
   const now = Date.now();
@@ -588,9 +590,9 @@ async function packingOptions(ctx: QueryCtx, line: Doc<'orderLines'>, branchId: 
     const availability = await readStockAvailability(ctx, { branchId, variantId, onHand: stock?.onHand ?? 0 });
     if (!availability.tracking) return [variantId, null] as const;
     const [variant, lots] = await Promise.all([
-      readOrderProjection(ctx, () => ctx.db.get(variantId)),
+      display ? readOrderProjection(ctx, () => ctx.db.get(variantId)) : null,
       Promise.all(availability.lots.filter(lot => lot.available > 0 && lot.expiresAt > now).map(async lot => ({
-        lotId: lot.lotId, quantity: lot.available, code: (await readOrderProjection(ctx, () => ctx.db.get(lot.lotId)))?.code ?? '',
+        lotId: lot.lotId, quantity: lot.available, code: display ? (await readOrderProjection(ctx, () => ctx.db.get(lot.lotId)))?.code ?? '' : '',
       }))),
     ]);
     return [variantId, { label: variant?.label ?? line.name, lots }] as const;
@@ -630,7 +632,7 @@ export const savePackedLots = staffMutation({
     if (parts.length > COMMERCE_LIMITS.package.contents || new Set(parts.map(part => part.contentKey)).size !== parts.length) {
       throw new ConvexError('Choose each packed component once.');
     }
-    const options = parts.length ? await packingOptions(ctx, line, branchId) : [];
+    const options = parts.length ? await packingOptions(ctx, line, branchId, false) : [];
     for (const { contentKey, allocations } of parts) {
       const part = options.find(option => option.contentKey === contentKey);
       if (!part || allocations.length > part.lots.length ||

@@ -42,12 +42,10 @@ import {
 } from "./stock-format";
 import { AmendOrderSheet, CloseRemainderSheet, ReasonSheet } from "./PurchaseOrderSheets";
 
-import { StockStaleBanner, useStockDirtyGuard } from "./StockFormGuard";
 import { OrderEditorSheet } from "./StockPurchasingHubView";
 
 type OrderDetailResult = FunctionReturnType<typeof api.commerce.purchasing.order>;
 type OrderRow = OrderDetailResult["order"];
-type OrderLineRow = OrderDetailResult["lines"][number];
 
 export function PurchaseOrderDetailView({ orderId }: { orderId: string }) {
   const { current: branch, branches, select: selectBranch } = useAdminBranch();
@@ -488,7 +486,9 @@ export function PurchaseOrderDetailView({ orderId }: { orderId: string }) {
                           {line.unitCost !== undefined ? formatSatang(line.unitCost) : line.priceTbc ? "TBC" : <span className="text-destructive">Price missing</span>}
                         </td>
                         <td data-label="Line value" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled, "font-mono text-xs tabular-nums lg:text-right")}>
-                          <span className="block">Received {formatSatang(line.acceptedValue ?? line.accepted * (line.unitCost ?? 0))}</span>
+                          <span className="block">
+                            Received {line.acceptedValue !== undefined ? formatSatang(line.acceptedValue) : line.accepted > 0 ? "— (valuation pending)" : formatSatang(0)}
+                          </span>
                           <span className="block text-muted-foreground">
                             Outstanding {line.unitCost === undefined && line.due > 0 ? "unknown" : formatSatang(Math.max(0, line.due) * (line.unitCost ?? 0))}
                           </span>

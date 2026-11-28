@@ -853,9 +853,8 @@ it('assembles a mature 10,000-visit source with all financial history at one pin
   console.info('Mature source needs bounded pages', readCounts);
 
   const calls: { ts: string; batch: string }[] = [];
-  const monotonicMs = () => Number(process.hrtime.bigint()) / 1e6;
   const origin = 'http://127.0.0.1:4270';
-  vi.useFakeTimers();
+  vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] });
   vi.stubEnv('CONVEX_CLOUD_URL', origin);
   vi.stubGlobal('fetch', async (input: string | URL | Request, options?: RequestInit) => {
     const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input : input.url);
@@ -881,9 +880,9 @@ it('assembles a mature 10,000-visit source with all financial history at one pin
     await expect(financeUser.query(api.marketing.profitViews.sourceStatus, { id: viewId })).resolves.toBe('building');
     await expect(t.query(api.marketing.profitViews.sourceBatch, { id: viewId, key: 'x'.repeat(72), batch: 'visits', lane: 0, cursor: null }))
       .rejects.toThrow('access expired');
-    const buildStart = monotonicMs();
+    const buildStart = performance.now();
     await t.action(internal.marketing.profitViews.buildLargeSource, input);
-    const buildMs = monotonicMs() - buildStart;
+    const buildMs = performance.now() - buildStart;
     expect(calls[0]?.batch).toBe('extras');
     expect(calls.filter((call) => call.batch === 'visits').length).toBeGreaterThan(1);
     expect(new Set(calls.map((call) => call.ts))).toEqual(new Set(['pinned-finance-test']));
@@ -897,9 +896,9 @@ it('assembles a mature 10,000-visit source with all financial history at one pin
     const durations = [];
     let maxBytes = 0;
     for (let number = 0; number < 30; number++) {
-      const start = monotonicMs();
+      const start = performance.now();
       const result = await page(number);
-      durations.push(monotonicMs() - start);
+      durations.push(performance.now() - start);
       maxBytes = Math.max(maxBytes, new TextEncoder().encode(JSON.stringify(result)).length);
       expect(result.summary).toMatchObject({
         revenue: 1_000_000, lifetime: 1_200_100, customerCount: 2001, newCount: 1, ltv: 600,

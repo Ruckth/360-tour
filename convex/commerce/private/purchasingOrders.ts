@@ -12,7 +12,7 @@ import {
   actorOf, adjustIncoming, assertSafeTotals, availableApproval, draftChanges, expectRevision, fail, futureIsoDate, ISSUED_OPEN, itemLabel, lineCount, lineDue,
   newReference, orderSummary, otherHoldReplacement, purchasingAccess, quantity, readItem, readOrderLines, readRequestLines, reason,
   recordEvent, referenceCode, refreshFullyOrdered, requireActiveItems, requireSupplier, runOnce, shiftCommitment, supplierSnapshot, text, uniqueBy, unitCost,
-  lineAcceptedValue, seedLegacyLine, type Actor, type StockAccess,
+  isLegacyLine, LEGACY_RECEIPT_SCAN, lineAcceptedValue, receiptValuation, seedLegacyLine, type Actor, type StockAccess,
 } from './purchasingCore';
 
 type DraftLine = {
@@ -535,50 +535,77 @@ export function closeOrderRemainder(ctx: MutationCtx, staff: StaffActor, args: O
   });
 }
 
-/** Rows processed per backfill call (orders read ≤ 50 lines each, so they use a smaller page). */
-const BACKFILL_PAGE = { purchaseRequests: 50, purchaseOrders: 10, supplierReceipts: 50 } as const;
+/** Rows processed per backfill call. Order lines read ≤ 101 receipt lines each; order headers read ≤ 50 lines. */
+const BACKFILL_PAGE = { purchaseRequests: 50, purchaseOrders: 10, supplierReceipts: 50, purchaseOrderLines: 20 } as const;
+/** Receipt lines per chunk of the exact rebuild of one long-history order line. */
+const REBUILD_CHUNK = 200;
 
 /**
- * One page of the purchasing legacy backfill. Requests and orders get their 5-character reference code (fragment
- * search); receipts get the exceptions flag; order lines get accepted value and rejections reconstructed from receipt
- * evidence, and order headers their value summary. Idempotent: rows already carrying the fields are left unchanged.
+ * One page of the purchasing legacy backfill (idempotent; rows that already carry the fields are left unchanged).
+ * - purchaseOrderLines: exact accepted value and rejections from receipt evidence; a line with more than
+ *   LEGACY_RECEIPT_SCAN receipts is listed in `pending` for `rebuildLineValuationChunk` instead (never estimated).
+ * - purchaseOrders: the 5-character reference code, and the value summary once every line is valued.
+ * - purchaseRequests: the reference code. supplierReceipts: the exceptions flag.
+ * Run lines first, rebuild every pending line, then orders, requests and receipts.
  */
-export async function backfillLegacyPage(
-  ctx: MutationCtx, table: keyof typeof BACKFILL_PAGE, cursor: string | null,
-) {
+export async function backfillLegacyPage(ctx: MutationCtx, table: keyof typeof BACKFILL_PAGE, cursor: string | null) {
   const result = await ctx.db.query(table).paginate({ numItems: BACKFILL_PAGE[table], cursor });
   let updated = 0;
+  const pending: Id<'purchaseOrderLines'>[] = [];
   for (const row of result.page) {
-    if (table === 'supplierReceipts') {
+    if (table === 'purchaseOrderLines') {
+      const line = row as Doc<'purchaseOrderLines'>;
+      if (!isLegacyLine(line)) continue;
+      const receipts = await ctx.db.query('supplierReceiptLines').withIndex('by_orderLineId', q => q.eq('orderLineId', line._id))
+        .take(LEGACY_RECEIPT_SCAN + 1);
+      if (receipts.length > LEGACY_RECEIPT_SCAN) { pending.push(line._id); continue; }
+      const exact = receiptValuation(receipts);
+      await ctx.db.patch(line._id, { acceptedValue: line.acceptedValue ?? exact.acceptedValue, rejected: line.rejected ?? exact.rejected });
+      updated++;
+    } else if (table === 'supplierReceipts') {
       const receipt = row as Doc<'supplierReceipts'>;
-      if (receipt.hasExceptions === undefined) {
-        await ctx.db.patch(receipt._id, { hasExceptions: receipt.rejectedUnits > 0 || receipt.heldUnits > 0 });
-        updated++;
-      }
-      continue;
-    }
-    const document = row as Doc<'purchaseRequests'> | Doc<'purchaseOrders'>;
-    const patch: { referenceCode?: string } = document.referenceCode === undefined ? { referenceCode: referenceCode(document.reference) } : {};
-    if (table === 'purchaseOrders') {
+      if (receipt.hasExceptions !== undefined) continue;
+      await ctx.db.patch(receipt._id, { hasExceptions: receipt.rejectedUnits > 0 || receipt.heldUnits > 0 });
+      updated++;
+    } else if (table === 'purchaseOrders') {
       const order = row as Doc<'purchaseOrders'>;
       const lines = await readOrderLines(ctx, order._id);
-      const seeded = await Promise.all(lines.map(line => seedLegacyLine(ctx, line)));
-      for (const [i, line] of seeded.entries()) {
-        if (lines[i].acceptedValue === undefined || lines[i].rejected === undefined) {
-          await ctx.db.patch(line._id, { acceptedValue: line.acceptedValue, rejected: line.rejected });
-        }
+      const patch: Partial<Doc<'purchaseOrders'>> = order.referenceCode === undefined ? { referenceCode: referenceCode(order.reference) } : {};
+      if (!lines.some(isLegacyLine)) {
+        const { receivedValue, outstandingValue, unpricedLines, rejectedUnits, totalCost } = orderSummary(order, lines);
+        const values = { receivedValue, outstandingValue, unpricedLines, rejectedUnits, totalCost };
+        const stale = (Object.keys(values) as (keyof typeof values)[]).some(field => order[field] !== values[field]);
+        if (stale) Object.assign(patch, values);
       }
-      if (order.receivedValue === undefined || lines.some(line => line.acceptedValue === undefined)) {
-        const { receivedValue, outstandingValue, unpricedLines, rejectedUnits, totalCost } = orderSummary(order, seeded);
-        await ctx.db.patch(order._id, { ...patch, receivedValue, outstandingValue, unpricedLines, rejectedUnits, totalCost });
-        updated++;
-        continue;
-      }
-    }
-    if (patch.referenceCode) {
-      await ctx.db.patch(document._id, patch);
+      if (Object.keys(patch).length) { await ctx.db.patch(order._id, patch); updated++; }
+    } else {
+      const request = row as Doc<'purchaseRequests'>;
+      if (request.referenceCode !== undefined) continue;
+      await ctx.db.patch(request._id, { referenceCode: referenceCode(request.reference) });
       updated++;
     }
   }
-  return { updated, isDone: result.isDone, continueCursor: result.continueCursor };
+  return { updated, pending, isDone: result.isDone, continueCursor: result.continueCursor };
+}
+
+/**
+ * Exact, resumable valuation of one pre-feature order line with a long receipt history: sums REBUILD_CHUNK receipt
+ * lines per call and returns the running totals with the next cursor; pass them back until `isDone`, which writes the
+ * line. Costing writes on the line fail with VALUATION_PENDING until then, so its receipt lines cannot change mid-rebuild.
+ */
+export async function rebuildLineValuationChunk(ctx: MutationCtx, args: {
+  orderLineId: Id<'purchaseOrderLines'>; cursor: string | null; acceptedValue: number; rejected: number;
+}) {
+  const line = await ctx.db.get(args.orderLineId);
+  if (!line) fail('ORDER_LINE_NOT_FOUND', 'This order line no longer exists.');
+  if (!isLegacyLine(line)) return { isDone: true, continueCursor: '', acceptedValue: line.acceptedValue!, rejected: line.rejected! };
+  const page = await ctx.db.query('supplierReceiptLines').withIndex('by_orderLineId', q => q.eq('orderLineId', line._id))
+    .paginate({ numItems: REBUILD_CHUNK, cursor: args.cursor });
+  const chunk = receiptValuation(page.page);
+  const acceptedValue = args.acceptedValue + chunk.acceptedValue;
+  const rejected = args.rejected + chunk.rejected;
+  if (page.isDone) {
+    await ctx.db.patch(line._id, { acceptedValue: line.acceptedValue ?? acceptedValue, rejected: line.rejected ?? rejected });
+  }
+  return { isDone: page.isDone, continueCursor: page.continueCursor, acceptedValue, rejected };
 }

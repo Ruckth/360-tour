@@ -279,11 +279,318 @@ describe("Balances, counts, adjustments, opening & access improvements (S01-S24)
     expect(document.body.textContent).toContain("+1");
     expect(reasonInput.required).toBe(true);
 
-    // S12: Toggle Blind count hides Expected on unentered rows and persists
+    // S12: Toggle Blind count hides Expected on unentered rows and persists per staffKey
     const blindBtn = [...document.querySelectorAll("button")].find((b) => b.textContent?.includes("Blind count"))!;
     await act(async () => blindBtn.click());
     expect(window.localStorage.getItem("stock:blind-count-pref")).toBe("true");
     expect(document.querySelector('[aria-label="Hidden in blind count"]')).not.toBeNull();
+  });
+
+  it("isolates blind count preference per staff identity and suppresses stale balance numbers before entry (S12, S16)", async () => {
+    const item = makeRow({ variantId: "var_blind" as Id<"productVariants">, productName: "Blind Serum", onHand: 8, revision: 1 });
+    const liveItem = { ...item, onHand: 7, revision: 2 };
+
+    // Alice turns blind count ON on a shared device
+    await act(async () =>
+      root.render(
+        wrap(
+          createElement(StockCountSheet, {
+            branchId: "branch_1" as Id<"branches">,
+            branchName: "Koh Samui",
+            items: [item],
+            liveItems: [liveItem],
+            staffKey: "alice@example.com",
+            onClose: vi.fn(),
+            onSuccess: vi.fn(),
+          }),
+        ),
+      ),
+    );
+    const aliceBlindBtn = [...document.querySelectorAll("button")].find((b) => b.textContent?.includes("Blind count"))!;
+    await act(async () => aliceBlindBtn.click());
+    expect(window.localStorage.getItem("stock:blind-count-pref:alice@example.com")).toBe("true");
+    // While blind & unentered: stale banner must NOT leak old (8) or new (7) balance quantities
+    expect(document.body.textContent).toContain("Blind Serum (balance updated)");
+    expect(document.body.textContent).toContain("Use updated balance");
+    expect(document.body.textContent).not.toContain("8 → 7");
+    expect(document.body.textContent).not.toContain("Use new balance (7)");
+
+    // Entering a count reveals the stale numbers and action label
+    const input = document.getElementById("count-qty-var_blind") as HTMLInputElement;
+    await act(async () => setInputValue(input, "8"));
+    expect(document.body.textContent).toContain("8 → 7");
+    expect(document.body.textContent).toContain("Use new balance (7)");
+
+    // Bob opens Count sheet on the same device: blind preference is isolated and starts OFF
+    await act(async () => root.unmount());
+    root = createRoot(document.body.appendChild(document.createElement("div")));
+    await act(async () =>
+      root.render(
+        wrap(
+          createElement(StockCountSheet, {
+            branchId: "branch_1" as Id<"branches">,
+            branchName: "Koh Samui",
+            items: [item],
+            liveItems: [item],
+            staffKey: "bob@example.com",
+            onClose: vi.fn(),
+            onSuccess: vi.fn(),
+          }),
+        ),
+      ),
+    );
+    const bobBlindBtn = [...document.querySelectorAll("button")].find((b) => b.textContent?.includes("Blind count"))!;
+    expect(bobBlindBtn.getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("recovers when a bulk opening row is stocked elsewhere by removing only the ineligible line while keeping drafts (S20)", async () => {
+    const postOp = getMutationSpy(api.commerce.stock.postOperation).mockResolvedValue("op_open_2");
+    const itemA = makeRow({ variantId: "var_a" as Id<"productVariants">, productName: "Item A", hasBalance: false, onHand: 0 });
+    const itemB = makeRow({ variantId: "var_b" as Id<"productVariants">, productName: "Item B", hasBalance: false, onHand: 0 });
+
+    await act(async () =>
+      root.render(
+        wrap(
+          createElement(OpeningStockSheet, {
+            branchId: "branch_1" as Id<"branches">,
+            branchName: "Koh Samui",
+            items: [itemA, itemB],
+            liveItems: [itemA, itemB],
+            onClose: vi.fn(),
+            onSuccess: vi.fn(),
+          }),
+        ),
+      ),
+    );
+    await act(async () => {
+      setInputValue(document.getElementById("opening-qty-var_a") as HTMLInputElement, "10");
+      setInputValue(document.getElementById("opening-qty-var_b") as HTMLInputElement, "5");
+    });
+
+    // Item A gains a balance elsewhere mid-review
+    await act(async () =>
+      root.render(
+        wrap(
+          createElement(OpeningStockSheet, {
+            branchId: "branch_1" as Id<"branches">,
+            branchName: "Koh Samui",
+            items: [itemA, itemB],
+            liveItems: [{ ...itemA, hasBalance: true, onHand: 4, revision: 1 }, itemB],
+            onClose: vi.fn(),
+            onSuccess: vi.fn(),
+          }),
+        ),
+      ),
+    );
+
+    expect(document.body.textContent).toContain("Some items were stocked elsewhere");
+    // Submit blocked while ineligible item remains
+    await act(async () => {
+      document.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+    expect(postOp).not.toHaveBeenCalled();
+
+    // Remove the stocked item -> Item B draft ("5") is preserved and submits atomically
+    const removeBtn = [...document.querySelectorAll("button")].find((b) => b.textContent?.includes("Remove stocked item"))!;
+    await act(async () => removeBtn.click());
+    expect((document.getElementById("opening-qty-var_b") as HTMLInputElement).value).toBe("5");
+
+    await act(async () => {
+      document.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+    expect(postOp).toHaveBeenCalledWith(expect.objectContaining({
+      kind: "opening",
+      lines: [expect.objectContaining({ variantId: "var_b", quantity: 5 })],
+    }));
+  });
+
+  it("caps Count mode at 50 frozen items, validates invalid drafts before summary, and marks invalid drafts dirty (S08)", async () => {
+    const manyItems = Array.from({ length: 55 }, (_, i) =>
+      makeRow({ variantId: `var_${i + 1}` as Id<"productVariants">, productName: `SKU ${i + 1}`, onHand: 2 }),
+    );
+    const onClose = vi.fn();
+    await act(async () =>
+      root.render(
+        wrap(
+          createElement(StockCountMode, {
+            branchId: "branch_1" as Id<"branches">,
+            branchName: "Koh Samui",
+            items: manyItems,
+            liveItems: manyItems,
+            scopeLabel: "Visible catalog",
+            batchInfo: { batchNumber: 1, totalBatches: 2, remainingCount: 5 },
+            onClose,
+            onSuccess: vi.fn(),
+          }),
+        ),
+      ),
+    );
+    // Capped at 50 items with up-front scope & batch label
+    expect(document.body.textContent).toContain("Count mode · 1 of 50");
+    expect(document.body.textContent).toContain("Batch 1/2");
+
+    // Re-rendering with a shifted live array does NOT shift frozen target 1
+    await act(async () =>
+      root.render(
+        wrap(
+          createElement(StockCountMode, {
+            branchId: "branch_1" as Id<"branches">,
+            branchName: "Koh Samui",
+            items: manyItems.slice(10),
+            liveItems: manyItems.slice(10),
+            scopeLabel: "Visible catalog",
+            batchInfo: { batchNumber: 1, totalBatches: 2, remainingCount: 5 },
+            onClose,
+            onSuccess: vi.fn(),
+          }),
+        ),
+      ),
+    );
+    expect(document.body.textContent).toContain("SKU 1");
+
+    // Typing invalid draft text blocks Review and triggers dirty-discard confirmation on close
+    const input = document.getElementById("count-mode-input") as HTMLInputElement;
+    await act(async () => setInputValue(input, "abc"));
+    const reviewBtn = [...document.querySelectorAll("button")].find((b) => b.textContent?.includes("Review"))!;
+    await act(async () => reviewBtn.click());
+    expect(document.body.textContent).not.toContain("Count summary");
+    expect(document.body.textContent).toContain("whole number");
+
+    const exitBtn = document.querySelector<HTMLButtonElement>('button[aria-label="Exit count mode"]')!;
+    await act(async () => exitBtn.click());
+    expect(document.body.textContent).toContain("Discard unsaved changes?");
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("serializes simultaneous same-staff role toggles with merged roles and advancing revisions while running independent staff in parallel (S23)", async () => {
+    const resolvers: Record<string, (rev: number) => void> = {};
+    const setGrant = getMutationSpy(api.commerce.stock.setGrant).mockImplementation(
+      (args: { staffGrantId: string; expectedRevision: number }) =>
+        new Promise<number>((resolve) => {
+          resolvers[`${args.staffGrantId}:${args.expectedRevision}`] = resolve;
+        }),
+    );
+    mockConvex.query.mockImplementation((name) =>
+      name === getFunctionName(api.commerce.stock.branchPolicy)
+        ? { directOrder: false, directReceipt: false, revision: 0 }
+        : undefined,
+    );
+    mockConvex.paginated.mockImplementation((name) => ({
+      results: name === getFunctionName(api.commerce.stock.listGrants)
+        ? [
+            { staffGrantId: "staff_1", email: "one@example.com", name: "One", role: "cashier" },
+            { staffGrantId: "staff_2", email: "two@example.com", name: "Two", role: "cashier" },
+          ]
+        : [],
+      status: "Exhausted",
+      loadMore: vi.fn(),
+    }));
+
+    await act(async () =>
+      root.render(
+        wrap(
+          createElement(BranchStockAccessSheet, {
+            branchId: "branch_1" as Id<"branches">,
+            branchName: "Koh Samui",
+            onClose: vi.fn(),
+            onSaved: vi.fn(),
+          }),
+        ),
+      ),
+    );
+
+    const s1Req = document.querySelector<HTMLInputElement>('input[aria-label="Requester for one@example.com"]')!;
+    const s1Buyer = document.querySelector<HTMLInputElement>('input[aria-label="Buyer for one@example.com"]')!;
+    const s2Req = document.querySelector<HTMLInputElement>('input[aria-label="Requester for two@example.com"]')!;
+
+    // Trigger two sibling roles on staff_1 AND one role on staff_2 simultaneously
+    await act(async () => {
+      s1Req.click();
+      s1Buyer.click();
+      s2Req.click();
+    });
+
+    // staff_1 call #2 waits for call #1; staff_2 starts immediately in parallel
+    expect(setGrant).toHaveBeenCalledTimes(2);
+    expect(setGrant).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      staffGrantId: "staff_1",
+      expectedRevision: 0,
+      roles: expect.objectContaining({ requester: true, buyer: false }),
+    }));
+    expect(setGrant).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      staffGrantId: "staff_2",
+      expectedRevision: 0,
+      roles: expect.objectContaining({ requester: true }),
+    }));
+
+    // Resolve staff_1 call #1 with revision 1 -> call #2 automatically sends merged roles with expectedRevision: 1
+    await act(async () => {
+      resolvers["staff_1:0"](1);
+    });
+    expect(setGrant).toHaveBeenCalledTimes(3);
+    expect(setGrant).toHaveBeenNthCalledWith(3, expect.objectContaining({
+      staffGrantId: "staff_1",
+      expectedRevision: 1,
+      roles: expect.objectContaining({ requester: true, buyer: true }),
+    }));
+
+    await act(async () => {
+      resolvers["staff_1:1"](2);
+      resolvers["staff_2:0"](1);
+    });
+    expect(s1Req.disabled).toBe(false);
+    expect(s1Buyer.disabled).toBe(false);
+  });
+
+  it("auto-advances empty non-terminal staff grant pages and offers manual Search more staff after cap without false empty copy (S24)", async () => {
+    vi.useFakeTimers();
+    try {
+      const loadMore = vi.fn();
+      mockConvex.query.mockImplementation((name) =>
+        name === getFunctionName(api.commerce.stock.branchPolicy)
+          ? { directOrder: false, directReceipt: false, revision: 0 }
+          : undefined,
+      );
+      mockConvex.paginated.mockImplementation(() => ({
+        results: [],
+        status: "CanLoadMore",
+        loadMore,
+      }));
+
+      await act(async () =>
+        root.render(
+          wrap(
+            createElement(BranchStockAccessSheet, {
+              branchId: "branch_1" as Id<"branches">,
+              branchName: "Koh Samui",
+              onClose: vi.fn(),
+              onSaved: vi.fn(),
+            }),
+          ),
+        ),
+      );
+
+      // Must show loading while auto-advancing, never false "No eligible staff members assigned"
+      expect(document.body.textContent).toContain("Searching more staff");
+      expect(document.body.textContent).not.toContain("No eligible staff members assigned");
+
+      // Advance through the 4 bounded auto-advance steps
+      for (let i = 0; i < 4; i++) {
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(10);
+        });
+      }
+      expect(loadMore).toHaveBeenCalledTimes(4);
+
+      // After cap with still-empty non-terminal page: shows honest continuation message + accessible manual button
+      expect(document.body.textContent).toContain("More staff records remain");
+      const manualBtn = [...document.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Search more staff")!;
+      expect(manualBtn).toBeDefined();
+      await act(async () => manualBtn.click());
+      expect(loadMore).toHaveBeenCalledTimes(5);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("shows selected ReasonField chip with check icon and inverted contrast style (S15)", async () => {
@@ -366,6 +673,7 @@ describe("Balances, counts, adjustments, opening & access improvements (S01-S24)
       root.render(
         wrap(
           createElement(OpeningStockSheet, {
+            key: "bulk",
             branchId: "branch_1" as Id<"branches">,
             branchName: "Koh Samui",
             items: [item1, item2],

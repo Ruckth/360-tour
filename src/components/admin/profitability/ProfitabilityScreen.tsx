@@ -18,6 +18,7 @@ import { useMarketingAccess } from '../marketing/MarketingAccess';
 import { thb, marketingErrorText } from '../marketing/marketing-format';
 import { FinanceInputs, type FinanceInputsHandle } from './FinanceInputs';
 import { inputStyle, readGroup, RuleEditor, ruleLabel } from './report-controls';
+import { retryTransactionPreparation } from './prepare-transaction-retry';
 
 declare module '@tanstack/react-router' {
   interface HistoryState {
@@ -87,7 +88,7 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
   const days = reportDayCount(from, to),
     valid = days !== null && days <= MAX_REPORT_DAYS;
   useEffect(() => {
-    if (!valid) return;
+    if (!valid || invalidRules) return;
     let active = true;
     openView({ from, to, refresh: revision > 0 }).then(
       (id) => {
@@ -104,7 +105,7 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
     return () => {
       active = false;
     };
-  }, [openView, from, to, revision, valid, viewKey]);
+  }, [openView, from, to, revision, valid, invalidRules, viewKey]);
   const openedViewId = view?.key === viewKey ? view.id : undefined;
   const sourceStatus = useQuery(api.marketing.profitViews.sourceStatus, openedViewId ? { id: openedViewId } : 'skip');
   const viewId = sourceStatus === 'ready' ? openedViewId : undefined;
@@ -141,7 +142,8 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
     }),
     [from, to, overview, additional, submitted, category, descending, metric],
   );
-  const transactionKey = JSON.stringify([viewId, transactionScope]);
+  const [preparationRevision, setPreparationRevision] = useState(0);
+  const transactionKey = JSON.stringify([viewId, transactionScope, preparationRevision]);
   const [prepared, setPrepared] = useState<{
     key: string;
     id?: Request['preparedViewId'];
@@ -149,22 +151,21 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
   }>();
   useEffect(() => {
     if (!detailPage || !viewId || invalidRules) return;
-    let active = true;
-    prepareTransactions({ ...transactionScope, viewId }).then(
-      (id) => {
-        if (active) setPrepared({ key: transactionKey, id });
-      },
-      (err) => {
-        if (active)
-          setPrepared({
-            key: transactionKey,
-            error: marketingErrorText(err, 'Could not prepare transactions.'),
-          });
-      },
-    );
-    return () => {
-      active = false;
-    };
+    const controller = new AbortController();
+    retryTransactionPreparation(() => prepareTransactions({ ...transactionScope, viewId }), controller.signal)
+      .then(
+        (id) => {
+          if (!controller.signal.aborted && id) setPrepared({ key: transactionKey, id });
+        },
+        (err) => {
+          if (!controller.signal.aborted)
+            setPrepared({
+              key: transactionKey,
+              error: marketingErrorText(err, 'Could not prepare transactions.'),
+            });
+        },
+      );
+    return () => controller.abort();
   }, [detailPage, invalidRules, prepareTransactions, transactionKey, transactionScope, viewId]);
   const preparedViewId = prepared?.key === transactionKey ? prepared.id : undefined;
   const preparationError = prepared?.key === transactionKey ? prepared.error : undefined;
@@ -462,13 +463,17 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
       {!valid && <p role="alert">Choose a period of 1–92 days.</p>}
       {loading && (
         <p role="status" className="text-sm text-muted-foreground">
-          Updating report…
+          {sourceStatus === 'building' ? 'Building the profitability snapshot…' : 'Updating report…'}
         </p>
       )}
       {(sourceError || preparationError || (view?.key === viewKey && view.error) || (state?.key === key && state.error)) && (
         <div role="alert" className={box + ' p-4'}>
           {sourceError || preparationError || (view?.key === viewKey && view.error) || (state?.key === key && state.error)}{' '}
-          <Button size="sm" variant="outline" onClick={() => setRevision((v) => v + 1)}>
+          <Button size="sm" variant="outline" onClick={() => {
+            if (preparationError && viewId && !preparationError.includes('view expired'))
+              setPreparationRevision((n) => n + 1);
+            else setRevision((n) => n + 1);
+          }}>
             Retry
           </Button>
         </div>

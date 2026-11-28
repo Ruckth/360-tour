@@ -5,6 +5,8 @@ import type { Id } from "convex/_generated/dataModel";
 import { act, createElement, useState, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { PackedLotEditor } from "@/components/checkout/PackedLotEditor";
+import { StockBinPanel, type BinRelocation } from "@/components/stock/StockBinPanel";
 import { ReturnLotChoice } from "@/components/checkout/ReturnLotChoice";
 import { confirmedReturnLots, type Choice } from "@/components/checkout/returns-desk";
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
@@ -213,6 +215,77 @@ describe("Stock UI components and workflow regressions", () => {
     document.body.innerHTML = "";
     vi.unstubAllGlobals();
     vi.useRealTimers();
+  });
+
+  it("blocks stale packing from saving until the cashier reviews the newer revision", async () => {
+    const lineId = "packing-row" as Id<"orderLines">;
+    const lotA = "lot-a" as Id<"stockLots">;
+    const lotB = "lot-b" as Id<"stockLots">;
+    const parts = [{ contentKey: "product", label: "Pouch", units: 2, lots: [
+      { lotId: lotA, code: "A", quantity: 5 }, { lotId: lotB, code: "B", quantity: 5 },
+    ] }];
+    const allocation = (lotId: Id<"stockLots">, quantity: number) => ({ lotId, quantity });
+    const packing = (a: number, b: number) => [{ contentKey: "product", allocations: [allocation(lotA, a), allocation(lotB, b)] }];
+    const save = getMutationSpy(api.pos.orders.savePackedLots).mockResolvedValue(true);
+    const render = () => root.render(createElement(PackedLotEditor, { line: { _id: lineId, packing: undefined }, disabled: false }));
+    const button = (name: string) => [...document.querySelectorAll("button")].find(item => item.textContent === name)!;
+    mockConvex.queries.mockReturnValue({ packing: { revision: 1, packing: packing(2, 0), parts } });
+    await act(async () => render());
+    await act(async () => button("Confirm packed lots").click());
+    const [first] = document.querySelectorAll<HTMLInputElement>('input[type="number"]');
+    await act(async () => setInputValue(first, "1"));
+
+    mockConvex.queries.mockReturnValue({ packing: { revision: 2, packing: packing(0, 2), parts } });
+    await act(async () => render());
+    expect(button("Save packed lots").disabled).toBe(true);
+    await act(async () => button("Save packed lots").click());
+    expect(save).not.toHaveBeenCalled();
+    await act(async () => button("Refresh and keep my edits").click());
+    expect([...document.querySelectorAll<HTMLInputElement>('input[type="number"]')].map(input => input.value)).toEqual(["1", "2"]);
+    const [, second] = document.querySelectorAll<HTMLInputElement>('input[type="number"]');
+    await act(async () => setInputValue(second, "1"));
+    await act(async () => button("Save packed lots").click());
+    expect(save).toHaveBeenCalledWith({ lineId, expectedRevision: 2, parts: packing(1, 1) });
+  });
+
+  it("retries the exact previous bin relocation after a lost response and reopening the panel", async () => {
+    const branchId = "branch_1" as Id<"branches">;
+    const variantId = "bin-item" as Id<"productVariants">;
+    const binId = "bin-a" as Id<"stockBins">;
+    mockConvex.query.mockReturnValue({
+      onHand: 8, unassigned: 8, bins: [{ id: binId, name: "A", quantity: 0 }], tracking: false, lots: [], recent: [], canManage: true,
+    });
+    let complete: (result: string) => void = () => {};
+    const relocate = getMutationSpy(api.commerce.stock.relocateBinStock)
+      .mockRejectedValueOnce(new Error("Response lost"))
+      .mockImplementationOnce(() => new Promise<string>(resolve => { complete = resolve; }));
+    function Host() {
+      const [open, setOpen] = useState(true);
+      const [pendingRelocation, setPending] = useState<BinRelocation>();
+      return open
+        ? createElement(StockBinPanel, { branchId, variantId, label: "Pouch", pendingRelocation,
+          onPendingRelocation: setPending, onClose: () => setOpen(false) })
+        : createElement("button", { onClick: () => setOpen(true) }, "Reopen");
+    }
+    const button = (name: string) => [...document.querySelectorAll("button")].find(item => item.textContent === name)!;
+    await act(async () => root.render(createElement(Host)));
+    const [, to] = document.querySelectorAll("select");
+    await act(async () => {
+      to.value = binId;
+      to.dispatchEvent(new Event("change", { bubbles: true }));
+      setInputValue(document.querySelector<HTMLInputElement>('input[type="number"]')!, "3");
+    });
+    await act(async () => button("Relocate stock").click());
+    expect(relocate).toHaveBeenCalledTimes(1);
+    await act(async () => button("Close").click());
+    await act(async () => button("Reopen").click());
+    expect(button("Relocate stock")).toBeUndefined();
+    await act(async () => button("Retry previous relocation").click());
+    expect(button("Close").disabled).toBe(true);
+    expect(relocate).toHaveBeenCalledTimes(2);
+    expect(relocate.mock.calls[1]).toEqual(relocate.mock.calls[0]);
+    await act(async () => complete("success"));
+    expect(button("Relocate stock")).toBeDefined();
   });
 
   it("loads rejection reasons on demand for the selected branch and supplier", async () => {
@@ -990,11 +1063,16 @@ describe("Stock UI components and workflow regressions", () => {
     const setPoint = getMutationSpy(api.commerce.stock.setReorderPoint).mockResolvedValue(null);
     const button = (label: string) => [...document.querySelectorAll("button")].find((item) => item.textContent === label);
     await act(async () => button("Reorder point 12 · Edit")!.click());
-    expect(document.querySelector<HTMLInputElement>("#reorder-point-var_1")?.value).toBe("12");
+    const reorderField = document.querySelector<HTMLInputElement>("#reorder-point-var_1")!;
+    expect(reorderField.value).toBe("12");
+    await act(async () => setInputValue(reorderField, "15"));
     await act(async () => button("Save reorder point")!.click());
     expect(setPoint).toHaveBeenCalledWith({
-      branchId: "branch_1", variantId: "var_1", quantity: 12, expectedRevision: 3,
+      branchId: "branch_1", variantId: "var_1", quantity: 15, expectedRevision: 3,
     });
+    expect(quantity?.value).toBe("4");
+    expect(document.getElementById(quantity!.getAttribute("aria-describedby")!)?.textContent)
+      .toContain("Par 15 − on hand 6 − on order 2");
   });
 
   it("shows the requester note and branch stock context while reviewing an approval", async () => {

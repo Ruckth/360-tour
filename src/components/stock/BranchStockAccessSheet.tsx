@@ -53,6 +53,8 @@ const ROLE_META: { key: keyof StockRoles; label: string; shortLabel: string; des
   },
 ];
 
+const MAX_AUTO_ADVANCE_PAGES = 4;
+
 export function BranchStockAccessSheet({
   branchId,
   branchName,
@@ -73,6 +75,22 @@ export function BranchStockAccessSheet({
     { branchId, ...(searchTerm ? { search: searchTerm } : {}) },
     { initialNumItems: STOCK_PAGE_SIZE },
   );
+  const queryKey = `${branchId}|${searchTerm}`;
+  const [autoStep, setAutoStep] = useState<{ key: string; count: number }>({ key: queryKey, count: 0 });
+  const currentAutoSteps = autoStep.key === queryKey ? autoStep.count : 0;
+  const shouldAutoAdvance =
+    grants.length === 0 && status === "CanLoadMore" && currentAutoSteps < MAX_AUTO_ADVANCE_PAGES;
+  const emptyContinuationPaused =
+    grants.length === 0 && status === "CanLoadMore" && currentAutoSteps >= MAX_AUTO_ADVANCE_PAGES;
+
+  useEffect(() => {
+    if (!shouldAutoAdvance) return;
+    const timer = setTimeout(() => {
+      setAutoStep({ key: queryKey, count: currentAutoSteps + 1 });
+      loadMore(STOCK_PAGE_SIZE);
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [shouldAutoAdvance, queryKey, currentAutoSteps, loadMore]);
   const setBranchPolicy = useMutation(api.commerce.stock.setBranchPolicy);
   const setGrant = useMutation(api.commerce.stock.setGrant);
   const [busyKeys, setBusyKeys] = useState<Set<string>>(() => new Set());
@@ -352,19 +370,19 @@ export function BranchStockAccessSheet({
                 [
                   {
                     field: "directOrder",
-                    checked: policy?.directOrder ?? false,
+                    checked: optimisticPolicy.directOrder ?? policy?.directOrder ?? false,
                     title: "Allow direct purchase orders",
                     description: "Buyers can create and issue orders without an approved purchase request.",
                   },
                   {
                     field: "directReceipt",
-                    checked: policy?.directReceipt ?? false,
+                    checked: optimisticPolicy.directReceipt ?? policy?.directReceipt ?? false,
                     title: "Allow direct supplier receipts without PO",
                     description: "Receivers can post unplanned supplier deliveries with a reason after checking open orders.",
                   },
                   {
                     field: "separateReceiving",
-                    checked: policy?.separateReceiving ?? false,
+                    checked: optimisticPolicy.separateReceiving ?? policy?.separateReceiving ?? false,
                     title: "Separate ordering and receiving",
                     description: "The person who issued an order's current revision can't receive it. When off, such receipts post and are flagged in history.",
                   },
@@ -400,22 +418,7 @@ export function BranchStockAccessSheet({
                 badge={renderSaveBadge("policy-purchasing")}
                 onSave={async (values) => {
                   setError("");
-                  markBusy("policy-purchasing", true);
-                  try {
-                    await setBranchPolicy({
-                      branchId,
-                      directOrder: policy?.directOrder ?? false,
-                      directReceipt: policy?.directReceipt ?? false,
-                      expectedRevision: policy?.revision ?? 0,
-                      ...values,
-                    });
-                    flashSaved("policy-purchasing");
-                    onSaved("Branch purchasing policy updated.");
-                  } catch (cause) {
-                    setError(parseStockError(cause, "Could not update branch policy.").message);
-                  } finally {
-                    markBusy("policy-purchasing", false);
-                  }
+                  await enqueuePolicyWrite("policy-purchasing", values, "Branch purchasing policy updated.");
                 }}
               />
             </div>
@@ -430,8 +433,31 @@ export function BranchStockAccessSheet({
               onChange={setSearch}
               maxLength={254}
             />
-            {status === "LoadingFirstPage" ? (
-              <SkeletonRows label="Loading staff grants" rows={4} />
+            {status === "LoadingFirstPage" || (grants.length === 0 && (status === "LoadingMore" || shouldAutoAdvance)) ? (
+              <SkeletonRows
+                label={grants.length === 0 && status !== "LoadingFirstPage" ? "Searching more staff" : "Loading staff grants"}
+                rows={4}
+              />
+            ) : emptyContinuationPaused ? (
+              <EmptyState
+                action={
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setAutoStep({ key: queryKey, count: 0 });
+                      loadMore(STOCK_PAGE_SIZE);
+                    }}
+                  >
+                    Search more staff
+                  </Button>
+                }
+              >
+                {searchTerm
+                  ? `No matches for “${searchTerm}” in the scanned staff batch yet. More staff records remain.`
+                  : "No eligible staff found in the scanned batch yet. More staff records remain."}
+              </EmptyState>
             ) : grants.length === 0 ? (
               <EmptyState>
                 {searchTerm
@@ -458,7 +484,7 @@ export function BranchStockAccessSheet({
                     </thead>
                     <tbody className="divide-y divide-border">
                       {grants.map((row) => {
-                        const roles = row.stockGrant?.roles ?? {
+                        const roles = optimisticRoles[row.staffGrantId] ?? row.stockGrant?.roles ?? {
                           requester: false,
                           approver: false,
                           buyer: false,
@@ -521,7 +547,7 @@ export function BranchStockAccessSheet({
                 {/* Mobile cards with 44 px switches (S22) */}
                 <ul className="grid gap-3 sm:hidden">
                   {grants.map((row) => {
-                    const roles = row.stockGrant?.roles ?? {
+                    const roles = optimisticRoles[row.staffGrantId] ?? row.stockGrant?.roles ?? {
                       requester: false,
                       approver: false,
                       buyer: false,
@@ -593,9 +619,14 @@ export function BranchStockAccessSheet({
                 </ul>
               </>
             )}
-            {status === "CanLoadMore" ? (
+            {grants.length > 0 && status === "CanLoadMore" ? (
               <Button type="button" variant="outline" size="sm" onClick={() => loadMore(STOCK_PAGE_SIZE)}>
                 Load more staff
+              </Button>
+            ) : grants.length > 0 && status === "LoadingMore" ? (
+              <Button type="button" variant="outline" size="sm" disabled>
+                <Spinner label="Loading more staff" className="size-3.5 text-current" />
+                Loading more staff…
               </Button>
             ) : null}
           </section>

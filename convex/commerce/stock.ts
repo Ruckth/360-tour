@@ -6,12 +6,12 @@ import { v } from 'convex/values';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
-import { canReadCheckoutOrder, findStaffGrantByEmail, internalMutation, staffMutation, staffQuery, type StaffActor } from '../auth/model';
+import { canReadCheckoutOrder, internalMutation, staffMutation, staffQuery, type StaffActor } from '../auth/model';
 import { requireBranchAccess } from '../branches/model';
 import { readBudget } from '../lib/readBudget';
 import { MAX_MONEY } from '../shared/money';
 import { catalogueFields, recordCatalogueEdit } from './private/adjustments';
-import { purchasingPolicyPatch, readStockAccess, readStockGrant, readStockPolicy, requireStockAccess, type StockPermission } from './private/stockAccess';
+import { listBranchStockGrants, purchasingPolicyPatch, readStockAccess, readStockGrant, readStockPolicy, requireStockAccess, type StockPermission } from './private/stockAccess';
 import { getProductCategory, normalizeStockSku, refreshStockSearch, requireUniqueStockSku, stockSearchFields, stockSearchTerm } from './private/stockCatalog';
 import { normalizeStockFilter, readStockLevel, stockActorLabel, stockError, stockQuantity, stockRead, stockText, writeStockMovement } from './private/stockLedger';
 import { previewStockCorrection, previewStockOperation, requireBranchMovement, sameStockRevision, STOCK_LINE_LIMIT, stockOperationKey, stockPage, type StockOperationInputKind } from './private/stockOperations';
@@ -121,7 +121,10 @@ async function stockBalanceRow(ctx: QueryCtx, branchId: Id<'branches'>, variant:
     price: variant.price, onHand: balance?.onHand ?? 0, onOrder: incoming?.quantity ?? 0,
     revision: balance?.revision ?? 0, needsRecount: balance?.needsRecount ?? false, hasBalance: balance !== null,
     lotTracked: variant.lotTracked === true,
-    reorderPoint: reorderPoint?.quantity, reorderPointRevision: reorderPoint?.revision ?? 0,
+    ...(reorderPoint ? {
+      reorderPointRevision: reorderPoint.revision,
+      ...(reorderPoint.quantity === undefined ? {} : { reorderPoint: reorderPoint.quantity }),
+    } : {}),
   };
 }
 
@@ -829,94 +832,9 @@ export const branchPolicy = staffQuery({
 export const listGrants = staffQuery({
   capability: 'manageTeam', scope: selected,
   args: { ...branchIdArg, ...paged, email: v.optional(v.string()), search: v.optional(v.string()) },
-  handler: async (ctx, { branchId, paginationOpts, email, search: rawSearch }) => {
+  handler: async (ctx, { branchId, paginationOpts, email, search }) => {
     await requireBranchAccess(ctx, ctx.staff, branchId);
-    const options = stockPage(paginationOpts);
-    const exactEmail = email?.trim();
-    if (exactEmail && exactEmail.length > 254) stockError('INVALID_EMAIL', 'Email search is limited to 254 characters.');
-    const partialTerm = rawSearch?.trim();
-    if (partialTerm && partialTerm.length > 254) stockError('INVALID_EMAIL', 'Staff search is limited to 254 characters.');
-
-    const enrich = async (staff: Doc<'staffGrants'>, loadedUser?: Doc<'users'> | null) => {
-      const [grant, user] = await Promise.all([
-        readStockGrant(ctx, branchId, staff._id),
-        loadedUser !== undefined
-          ? Promise.resolve(loadedUser)
-          : staff.tokenIdentifier
-            ? stockRead(ctx, () => ctx.db.query('users').withIndex('by_token', q => q.eq('tokenIdentifier', staff.tokenIdentifier!)).unique())
-            : Promise.resolve(null),
-      ]);
-      return {
-        staffGrantId: staff._id,
-        email: staff.email,
-        name: user?.name,
-        role: staff.role,
-        stockGrant: grant && { roles: grant.roles, revision: grant.revision },
-      };
-    };
-
-    if (exactEmail) {
-      const match = await stockRead(ctx, () => findStaffGrantByEmail(ctx, exactEmail.toLowerCase()));
-      const eligible = match && (match.role === 'owner' || match.branchIds.includes(branchId)) ? [match] : [];
-      return { isDone: true, continueCursor: '', page: await Promise.all(eligible.map(staff => enrich(staff))) };
-    }
-
-    // Stream staffGrants from keyset cursor (creationTime|id), checking branch eligibility and search before enriching displayed rows only.
-    const needle = partialTerm?.toLowerCase();
-    const cursorMatch = options.cursor ? /^(\d+(?:\.\d+)?)\|(.+)$/.exec(options.cursor) : null;
-    const cursorTime = cursorMatch ? Number(cursorMatch[1]) : undefined;
-    const cursorId = cursorMatch ? cursorMatch[2] : undefined;
-    const budget = readBudget(ctx);
-    budget.range();
-    const MAX_SCAN = 500;
-    const matched: { staff: Doc<'staffGrants'>; user?: Doc<'users'> | null }[] = [];
-    let scanned = 0;
-    let lastScanned: Doc<'staffGrants'> | null = null;
-    let hitScanCap = false;
-
-    const stream = cursorTime !== undefined
-      ? ctx.db.query('staffGrants').withIndex('by_creation_time', q => q.gte('_creationTime', cursorTime))
-      : ctx.db.query('staffGrants').withIndex('by_creation_time');
-
-    for await (const staff of stream) {
-      if (cursorTime !== undefined && cursorId !== undefined && staff._creationTime === cursorTime && staff._id <= cursorId) {
-        continue;
-      }
-      if (scanned >= MAX_SCAN) {
-        hitScanCap = true;
-        break;
-      }
-      scanned++;
-      lastScanned = staff;
-      budget.document(staff);
-      budget.assert();
-      if (staff.role !== 'owner' && !staff.branchIds.includes(branchId)) continue;
-
-      let loadedUser: Doc<'users'> | null | undefined;
-      if (needle) {
-        if (!staff.email.toLowerCase().includes(needle)) {
-          loadedUser = staff.tokenIdentifier
-            ? await stockRead(ctx, () => ctx.db.query('users').withIndex('by_token', q => q.eq('tokenIdentifier', staff.tokenIdentifier!)).unique())
-            : null;
-          if (!(loadedUser?.name?.toLowerCase().includes(needle) ?? false)) continue;
-        }
-      }
-
-      matched.push({ staff, user: loadedUser });
-      if (matched.length > options.numItems) break;
-    }
-
-    const hasMore = matched.length > options.numItems || hitScanCap;
-    const pageRows = matched.slice(0, options.numItems);
-    const cursorRow = matched.length > options.numItems
-      ? pageRows[pageRows.length - 1]?.staff ?? lastScanned
-      : lastScanned;
-    const continueCursor = hasMore && cursorRow ? `${cursorRow._creationTime}|${cursorRow._id}` : '';
-    return {
-      isDone: !hasMore,
-      continueCursor,
-      page: await Promise.all(pageRows.map(({ staff, user }) => enrich(staff, user))),
-    };
+    return await listBranchStockGrants(ctx, branchId, paginationOpts, email, search);
   },
 });
 
