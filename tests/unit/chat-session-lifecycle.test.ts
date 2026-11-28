@@ -17,7 +17,7 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock('@/platform/intl', () => { const translate = (key: string) => key; return { useLocale: () => 'en', useTranslations: () => translate }; });
 vi.mock('@/platform/navigation', () => ({ usePathname: () => '/chat', useSearchParams: () => mocks.search, useRouter: () => mocks.router }));
-vi.mock('convex/react', async (importOriginal) => ({ ...await importOriginal<typeof import('convex/react')>(), ...(() => { const client = { mutation: (ref: FunctionReference<'mutation'>, args: unknown) => getFunctionName(ref) === 'messaging/chat:touchSession' ? mocks.touch(args) : ['messaging/chat:createSession','messaging/chat:sendMessage','messaging/chat:claimBrowserHandoff'].includes(getFunctionName(ref)) ? mocks.mutation(ref,args) : Promise.resolve(null), query: async () => [] }; return { useConvex: () => client }; })(), useQuery: (ref: FunctionReference<'query'>, args: unknown) => useSyncExternalStore(
+vi.mock('convex/react', async (importOriginal) => ({ ...await importOriginal<typeof import('convex/react')>(), ...(() => { const client = { mutation: (ref: FunctionReference<'mutation'>, args: unknown) => getFunctionName(ref) === 'messaging/chat:touchSession' ? mocks.touch(args) : ['messaging/chat:createSession','messaging/chat:sendMessage','messaging/chat:claimBrowserHandoff','messaging/chat:identifyVisitor'].includes(getFunctionName(ref)) ? mocks.mutation(ref,args) : Promise.resolve(null), query: async () => [] }; return { useConvex: () => client }; })(), useQuery: (ref: FunctionReference<'query'>, args: unknown) => useSyncExternalStore(
   listener => { mocks.listeners.add(listener); return () => mocks.listeners.delete(listener); },
   () => args === 'skip' ? undefined : getFunctionName(ref) === 'messaging/chat:getMessages' ? mocks.rows : mocks.session,
 ) }));
@@ -243,5 +243,52 @@ describe('G22 restart confirmation', () => {
     expect(chat.input).toBe('');
     expect(getStoredSessionId()).toBe('session-two');
     expect(document.activeElement).toBe(restartButton());
+  });
+});
+
+describe('G24 per-app contact drafts', () => {
+  const handleInput = () => document.querySelector<HTMLInputElement>('input[aria-label="contactHandle"]')!;
+  async function type(input: HTMLInputElement, value: string) {
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  }
+  // Radix Select's onValueChange only patches preferredApp; reproduce that update directly.
+  const choose = (app: 'whatsapp' | 'line') => act(async () => chat.setContactForm(current => ({ ...current, preferredApp: app })));
+  const identifyCalls = () => mocks.mutation.mock.calls.filter(([ref]) => getFunctionName(ref) === 'messaging/chat:identifyVisitor').map(([, args]) => args);
+
+  it('WhatsApp → LINE → WhatsApp restores each app draft and submits only the selected handle', async () => {
+    await mount();
+    await type(handleInput(), '+66 81 234 5678');
+    await choose('line');
+    expect(handleInput().value).toBe('');
+    await type(handleInput(), 'auralis-guest');
+    await choose('whatsapp');
+    expect(handleInput().value).toBe('+66 81 234 5678');
+    await act(async () => { handleInput().form!.requestSubmit(); });
+    expect(identifyCalls().at(-1)).toMatchObject({ contactApp: 'whatsapp', phone: '+66 81 234 5678', contactHandle: '+66 81 234 5678' });
+    await choose('line');
+    expect(handleInput().value).toBe('auralis-guest');
+    await act(async () => { handleInput().form!.requestSubmit(); });
+    expect(identifyCalls().at(-1)).toMatchObject({ contactApp: 'line', phone: undefined, contactHandle: 'auralis-guest' });
+  });
+
+  it('a failed save keeps the submitted draft, and editing clears the stale status', async () => {
+    await mount();
+    await type(handleInput(), 'line-id-1');
+    await choose('line');
+    await type(handleInput(), 'line-id-2');
+    mocks.mutation.mockImplementation(async (ref: FunctionReference<'mutation'>) => {
+      if (getFunctionName(ref) === 'messaging/chat:identifyVisitor') throw new Error('offline');
+      return getFunctionName(ref) === 'messaging/chat:createSession' ? { sessionId: 'session-one', guestToken: 'token-one' } : { eventId: 'event' };
+    });
+    await act(async () => { handleInput().form!.requestSubmit(); });
+    expect(chat.contactStatus).toBe('error');
+    expect(handleInput().value).toBe('line-id-2');
+    await choose('whatsapp');
+    expect(handleInput().value).toBe('line-id-1');
+    await type(handleInput(), 'line-id-1 edited');
+    expect(chat.contactStatus).toBe('idle');
   });
 });
