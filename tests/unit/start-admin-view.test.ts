@@ -13,6 +13,7 @@ import {
 const state = vi.hoisted(() => ({
   loaderData: { clerkConfigured: true, locale: "en", commerce: { Commerce: { ok: "OK" } } } as Record<string, unknown>,
   params: { id: "prop-123", orderId: "order-789" } as Record<string, string>,
+  search: {} as Record<string, unknown>,
   routeContext: { tab: "services" } as Record<string, unknown>,
   push: vi.fn(),
   sessionId: null as string | null,
@@ -91,6 +92,7 @@ describe("Start admin route components wiring", () => {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     state.push.mockReset();
     state.sessionId = null;
+    state.search = {};
     state.fetchCommerce.mockClear();
     vi.doMock("@/platform/auth", () => ({
       useAuth: () => ({ isLoaded: true, isSignedIn: Boolean(state.sessionId), sessionId: state.sessionId }),
@@ -102,6 +104,7 @@ describe("Start admin route components wiring", () => {
         options,
         useLoaderData: () => state.loaderData,
         useParams: () => state.params,
+        useSearch: () => (options.validateSearch as ((search: Record<string, unknown>) => unknown) | undefined)?.(state.search) ?? state.search,
         useRouteContext: () => state.routeContext,
       }),
       Outlet: () => React.createElement("div", { "data-testid": "admin-outlet" }, "outlet-child"),
@@ -129,8 +132,8 @@ describe("Start admin route components wiring", () => {
     }));
 
     vi.doMock("@/components/admin/AdminPropertyEditor", () => ({
-      AdminPropertyEditor: ({ propertyId }: { propertyId: string }) =>
-        React.createElement("div", { "data-property-id": propertyId }),
+      AdminPropertyEditor: ({ propertyId, tab }: { propertyId: string; tab?: string }) =>
+        React.createElement("div", { "data-property-id": propertyId, "data-property-tab": tab ?? "details" }),
     }));
 
     vi.doMock("@/components/admin/marketing/MarketingScreens", () => ({
@@ -246,7 +249,12 @@ describe("Start admin route components wiring", () => {
     const propertyMod = await import("@/start-app/routes/admin.properties.$id");
     const Property = (propertyMod.Route as unknown as { options: { component: React.ComponentType } }).options.component;
     state.params = { id: "villa-42" };
-    expect(renderToStaticMarkup(React.createElement(Property))).toContain('data-property-id="villa-42"');
+    state.search = { tab: "reviews" };
+    const propertyHtml = renderToStaticMarkup(React.createElement(Property));
+    expect(propertyHtml).toContain('data-property-id="villa-42"');
+    expect(propertyHtml).toContain('data-property-tab="reviews"');
+    state.search = { tab: ["reviews", "calendar"] };
+    expect(renderToStaticMarkup(React.createElement(Property))).toContain('data-property-tab="details"');
 
     const couponMod = await import("@/start-app/routes/admin.marketing.coupons.$id");
     const Coupon = (couponMod.Route as unknown as { options: { component: React.ComponentType } }).options.component;
