@@ -530,7 +530,7 @@ export async function planReturnMoney(
       : { kind: 'existingVoucher' as const, voucherId: voucher._id, codeMask: null };
     return [{ voucherId: voucher._id, paid, goodwill, destination }];
   });
-  return { external, credits, funding };
+  return { external, credits, funding, payments };
 }
 
 export function approvalReturnReview(

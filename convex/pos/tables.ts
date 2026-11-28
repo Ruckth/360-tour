@@ -70,7 +70,7 @@ export const posTables = {
       payload: storedApprovalPayload,
     }),
     v.object({ ...orderApprovalFields, kind: v.literal('returnItems'), payload: returnItemsApprovalPayload, status: storedApprovalStatus,
-      commerceRevision: v.optional(v.number()), payoutSummary: v.optional(v.array(v.object({ label: v.string(), amount: v.number() }))) }),
+      commerceRevision: v.optional(v.number()), payoutSummary: v.optional(v.array(v.object({ label: v.string(), amount: v.number(), destinationMask: v.optional(v.string()) }))) }),
     v.object({
       ...approvalFields,
       kind: v.literal('adjustment'),

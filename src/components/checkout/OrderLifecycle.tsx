@@ -72,9 +72,13 @@ export function OrderLifecycle({ orderId, onDone, onPending, onOpen }: {
   const [removed, setRemoved] = useState<string[]>([]);
   const [done, setDone] = useState(false);
   async function submit(removeConflictingRows = false) {
-    if (sending.current || !view) return;
-    const input = attempt ?? { orderId, expectedRevision: review!.revision, idempotencyKey: newAttemptKey(), removeConflictingRows };
-    if (!attempt) setWarnings(review!.conflicts.filter(c => !c.blocking).map(c => c.message));
+    if (sending.current || !view || !review) return;
+    if (!attempt && (view.order.revision !== review.revision || !review.discarded || review.rowsLeft === 0)) return;
+    const input = attempt ?? {
+      orderId, expectedRevision: view.order.revision, idempotencyKey: newAttemptKey(), removeConflictingRows,
+      reviewedConflictLineIds: review.conflicts.flatMap(c => c.blocking && c.lineId ? [c.lineId] : []),
+    };
+    if (!attempt) setWarnings(review.conflicts.filter(c => !c.blocking).map(c => c.message));
     setAttempt(input);
     sending.current = true; setPending(true); onPending(true); setError("");
     try {

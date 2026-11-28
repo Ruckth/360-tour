@@ -240,7 +240,12 @@ describe('restoring discarded orders', () => {
 		const { orderId } = await admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { bookingId });
 		await extra(orderId, 30000);
 		await discard(orderId);
+		const beforeConflict = (await admin.query(api.pos.orders.restoreCheck, { orderId }))!;
 		const { orderId: other } = await admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { bookingId });
+		const reviewed = { orderId, expectedRevision: beforeConflict.revision, idempotencyKey: 'reviewed-restore', removeConflictingRows: true };
+		await expect(admin.mutation(api.pos.commands.restoreOrder.restoreOrder, { ...reviewed, reviewedConflictLineIds: [] }))
+			.rejects.toThrow('The conflicting rows changed');
+		expect((await order(orderId)).lines).toHaveLength(2);
 
 		const check = await admin.query(api.pos.orders.restoreCheck, { orderId });
 		expect(check).toMatchObject({
@@ -253,7 +258,9 @@ describe('restoring discarded orders', () => {
 		await expect(restore(orderId)).rejects.toThrow('Not restored: Stay · Pool Villa is now on Order #2.');
 		expect((await order(orderId)).order.status).toBe('discarded');
 
-		const result = await restore(orderId, { removeConflictingRows: true });
+		const result = await admin.mutation(api.pos.commands.restoreOrder.restoreOrder, {
+			...reviewed, reviewedConflictLineIds: check!.conflicts.flatMap(c => c.blocking && c.lineId ? [c.lineId] : []),
+		});
 		expect(result.removed).toEqual([expect.objectContaining({ name: 'Stay · Pool Villa', reason: 'Stay · Pool Villa is now on Order #2.' })]);
 		const view = await order(orderId);
 		expect(view.order.state).toBe('unpaid');
@@ -261,6 +268,28 @@ describe('restoring discarded orders', () => {
 		expect(view.order.bookingId).toBe(bookingId);
 		expect((await order(other)).lines.filter((line) => line.bookingId === bookingId)).toHaveLength(1);
 		expect((await history(orderId)).map((row) => row.kind).slice(0, 2)).toEqual(['restored', 'line_removed']);
+	});
+
+	it('requires a fresh review when a second row conflicts without changing the discarded basket revision', async () => {
+		const { admin, bookingId, appointment, order, extra, discard } = await setup();
+		const { orderId } = await admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { bookingId });
+		const appointmentId = await appointment({ status: 'no_show' });
+		const fee = { appointmentId, kind: 'no_show' as const, amount: 60000 };
+		await admin.mutation(api.pos.commands.addAppointmentFee.addAppointmentFee, { ...fee, orderId });
+		await extra(orderId);
+		await discard(orderId);
+		await admin.mutation(api.pos.commands.openOrderForLink.openOrderForLink, { bookingId });
+		const check = (await admin.query(api.pos.orders.restoreCheck, { orderId }))!;
+		const reviewedConflictLineIds = check.conflicts.flatMap(c => c.blocking && c.lineId ? [c.lineId] : []);
+		expect(reviewedConflictLineIds).toHaveLength(1);
+		await admin.mutation(api.pos.commands.addAppointmentFee.addAppointmentFee, fee);
+		const fresh = (await admin.query(api.pos.orders.restoreCheck, { orderId }))!;
+		expect(fresh).toMatchObject({ revision: check.revision, blocking: 2 });
+		await expect(admin.mutation(api.pos.commands.restoreOrder.restoreOrder, {
+			orderId, expectedRevision: check.revision, idempotencyKey: 'second-conflict', removeConflictingRows: true, reviewedConflictLineIds,
+		})).rejects.toThrow('The conflicting rows changed');
+		expect((await order(orderId)).lines).toHaveLength(3);
+		expect((await order(orderId)).order.status).toBe('discarded');
 	});
 
 	it('refuses to restore when every row is now on another order', async () => {

@@ -126,7 +126,7 @@ function WaitingForManager({ requestId, view, summary, onWithdrawn, onBusyChange
           </li>)}</ul>
           <h3 className="font-medium">{t("returns.whereItGoes")}</h3>
           {summary.payouts ? <ul className="grid gap-1">
-            {summary.payouts.map((payout, index) => <li key={index} className="capitalize">{payout.label} · {money(payout.amount)}</li>)}
+            {summary.payouts.map((payout, index) => <li key={index} className="capitalize">{payout.label}{payout.destinationMask ? ` · ${payout.destinationMask}` : ""} · {money(payout.amount)}</li>)}
             {!summary.payouts.length ? <li>{t("returns.noPayout")}</li> : null}
           </ul> : <p className="text-muted-foreground">Payout details are unavailable for this request.</p>}
         </section> : null}

@@ -595,6 +595,18 @@ for (const [width, height] of ROUND2) {
       await panel.getByRole("button", { name: "Ask a manager" }).click();
       await expect(panel.locator("[data-return-waiting]")).toHaveText("Waiting for a manager");
 
+      const summary = panel.getByRole("region", { name: "Requested return" });
+      const expectMasks = async () => {
+        await expect(summary).toContainText("Replacement voucher · GV-••••-Q9XD · ฿250");
+        await expect(summary).toContainText("Replacement voucher · GV-••••-R8TB · ฿250");
+        await expect(summary).not.toContainText(/GV-(7KQ2|3HW5)-/);
+      };
+      await expectMasks();
+      await page.keyboard.press("Escape");
+      await expect(panel).toHaveCount(0);
+      await page.getByRole("button", { name: "Return items · Thai massage" }).click();
+      await expectMasks();
+
       const session = await page.evaluate(() => window.returnsFixture.session);
       const managerContext = await browser.newContext({ viewport: { width, height } });
       const settings = await managerContext.newPage();

@@ -16,7 +16,7 @@ import { lifecycleArgs, lineSnapshot, logOrder, refreshOrder } from '../private/
  */
 export const restoreOrder = staffMutation({
   capability: 'checkout',
-	args: { ...lifecycleArgs, removeConflictingRows: v.optional(v.boolean()) },
+	args: { ...lifecycleArgs, removeConflictingRows: v.optional(v.boolean()), reviewedConflictLineIds: v.optional(v.array(v.id("orderLines"))) },
 	handler: async (ctx, args) => {
 		const admin = ctx.staff;
 		const key = attemptKey(args.idempotencyKey);
@@ -30,6 +30,10 @@ export const restoreOrder = staffMutation({
 		const lines = await orderLines(ctx, order._id);
 		const conflicts = await restoreConflicts(ctx, order, lines, admin);
 		const blocking = conflicts.filter((conflict) => conflict.blocking);
+		const reviewed = args.reviewedConflictLineIds && new Set(args.reviewedConflictLineIds);
+		if (reviewed && (reviewed.size !== blocking.length || blocking.some(({ lineId }) => !lineId || !reviewed.has(lineId)))) {
+			throw new ConvexError('The conflicting rows changed. Review the order again before restoring.');
+		}
 		if (blocking.length && !args.removeConflictingRows) {
 			throw new ConvexError(`Not restored: ${blocking.map((conflict) => conflict.message).join(' ')} Restore without ${blocking.length === 1 ? 'that row' : 'those rows'}, or leave the order discarded.`);
 		}
