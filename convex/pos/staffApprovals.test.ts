@@ -504,6 +504,7 @@ it('checks active queue state per request and retains bounded expired history', 
   const s = await setup();
   const adjustmentId = await s.insertAdjustment();
   const staleReturn = await s.insertReturn();
+  const currentReturn = await s.insertReturn({ orderFingerprint: encodeReturnApprovalReview({ revisions: [], rows: [{ lineId: s.lineId, label: "Gift voucher" }] }) });
   const expiredPending = await s.insertReturn({ expiresAt: now - 1 });
   const expiredStored = await s.insertReturn({ status: 'expired', expiresAt: now - 2 });
   const serviceId = await s.t.run(ctx => ctx.db.insert('services', {
@@ -517,14 +518,14 @@ it('checks active queue state per request and retains bounded expired history', 
   expect(await s.manager.query(approvals.queueStatus, { requestId })).toBe('pending');
   expect(await s.manager.query(approvals.queueStatus, { requestId: adjustmentId })).toBe('pending');
   expect(await s.manager.query(approvals.queueStatus, { requestId: staleReturn })).toBe('stale');
-  await s.t.run(async ctx => {
-    await ctx.db.patch(orderId, { revision: 999 });
-    await ctx.db.patch(s.grantId, { updatedAt: now + 1 });
-  });
+  expect(await s.manager.query(approvals.queueStatus, { requestId: currentReturn })).toBe('pending');
+  await s.t.run(ctx => ctx.db.patch(orderId, { revision: 999 }));
+  expect(await s.manager.query(approvals.queueStatus, { requestId })).toBe('stale');
+  await s.t.run(ctx => ctx.db.patch(s.grantId, { updatedAt: now + 1 }));
   expect(await s.manager.query(approvals.queueStatus, { requestId })).toBe('revoked');
   expect(await s.manager.query(approvals.queueStatus, { requestId: adjustmentId })).toBe('revoked');
   expect(await s.manager.query(approvals.queueStatus, { requestId: expiredPending })).toBe('expired');
   const history = await s.manager.query(approvals.recentExpired, {});
-  expect(history.map(row => [row._id, row.actionable])).toEqual([[expiredPending, false], [expiredStored, false]]);
+  expect(history.map(row => [row._id, row.actionable, row.status])).toEqual([[expiredPending, false, 'expired'], [expiredStored, false, 'expired']]);
   await expect(s.cashier.query(approvals.recentExpired, {})).rejects.toThrow('Not authorized');
 });
