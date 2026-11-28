@@ -400,13 +400,13 @@ it("groups recorded and legacy attendance independently of payments at today's b
     _id: "b1" as Move["booking"]["_id"], propertyId: villa._id, guestName: "", guestPhone: "",
     checkIn: today, checkOut: today, status: "confirmed", paymentStatus: "pending", total: 200,
     owed: 0, currency: "THB", guests: 2, nights: 1, source: "admin", createdAt: 0, revision: 0,
-    guestEmail: undefined, promotion: undefined, paymentMethod: undefined, amountPaid: undefined,
-    amountRefunded: undefined, chatSessionId: undefined, confirmationCode: undefined,
+    guestEmail: undefined, promotion: undefined, paymentMethod: undefined, amountPaid: 0,
+    amountRefunded: 0, chatSessionId: undefined, confirmationCode: undefined,
   };
   const groups = todayGroups([
     { ...base, guestName: "Arrival", checkIn: today, checkOut: "2026-11-23", owed: 0 },
     { ...base, guestName: "Due", checkIn: "2026-11-19", checkOut: today, stayStatus: "checked_in", owed: 200 },
-    { ...base, guestName: "Overdue", checkIn: "2026-11-19", checkOut: "2026-11-20", stayStatus: "checked_in", owed: 0 },
+    { ...base, guestName: "Overdue", checkIn: "2026-11-19", checkOut: "2026-11-20", stayStatus: "checked_in", paymentStatus: "paid", amountPaid: 200, owed: 0 },
     { ...base, guestName: "Early", checkIn: "2026-11-23", checkOut: "2026-11-24", stayStatus: "checked_in", owed: 200 },
     { ...base, guestName: "Departed", checkIn: "2026-11-19", checkOut: today, stayStatus: "checked_out", owed: 200 },
     { ...base, guestName: "Legacy", checkIn: "2026-11-19", checkOut: "2026-11-23", owed: 0 },
