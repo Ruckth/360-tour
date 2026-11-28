@@ -170,6 +170,8 @@ describe("HotspotEditorDialog keyboard selection/repositioning and loading/error
 
     // Keyboard activation of the 3D marker selects the hotspot without pointerdown.
     const markerBtn = document.querySelector<HTMLButtonElement>('[data-testid="tour-hotspot"]')!;
+    await act(async () => markerBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 })));
+    expect(document.querySelector('input[aria-label="Heading"]')).toBeNull();
     await act(async () => markerBtn.click());
 
     const listAside = document.querySelector<HTMLElement>('aside[aria-label="Hotspot list"]')!;

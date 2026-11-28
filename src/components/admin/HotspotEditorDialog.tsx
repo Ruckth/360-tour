@@ -499,8 +499,6 @@ function PanoramaScene({
   const [texture, setTexture] = useState<Texture | null>(null);
   // The marker drag in progress, so unmounting mid-drag removes its window listeners.
   const endDrag = useRef<(() => void) | null>(null);
-  // Prevent pointerup + click from firing selection twice while allowing keyboard Enter/Space click.
-  const suppressPointerClick = useRef(false);
   useEffect(() => () => endDrag.current?.(), []);
 
   useEffect(() => {
@@ -541,7 +539,6 @@ function PanoramaScene({
   /** Press on a hotspot: drag moves it along the sphere, a click selects it. */
   function pressMarker(key: number, event: ReactPointerEvent<HTMLButtonElement>) {
     event.stopPropagation(); // keep the view from turning
-    suppressPointerClick.current = true;
     const start = { x: event.clientX, y: event.clientY };
     let dragging = false;
     const move = (moveEvent: PointerEvent) => {
@@ -558,9 +555,6 @@ function PanoramaScene({
       window.removeEventListener("pointerup", up);
       window.removeEventListener("pointercancel", stop);
       endDrag.current = null;
-      queueMicrotask(() => {
-        suppressPointerClick.current = false;
-      });
     };
     const up = () => {
       stop();
@@ -587,9 +581,10 @@ function PanoramaScene({
           onClick={
             preview
               ? () => onNavigate(marker.targetRoomSlug)
-              : () => {
-                  if (suppressPointerClick.current) return;
-                  onSelect(marker.key);
+              : (event) => {
+                  // Pointer selection is handled by pressMarker; keyboard and
+                  // assistive technology activate the button without a pointer click.
+                  if (event.detail === 0) onSelect(marker.key);
                 }
           }
           onPointerDown={preview ? undefined : (event) => pressMarker(marker.key, event)}
