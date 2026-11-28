@@ -23,3 +23,18 @@ test.describe("G19 services empty-state reset", () => {
     });
   }
 });
+
+test.describe("G21 Experiences Contact Concierge", () => {
+  for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 900 }]) {
+    test(`opens localized chat directly without sending (${viewport.width}px)`, async ({ page }) => {
+      await page.setViewportSize(viewport);
+      await page.goto("/th/experiences");
+      const links = page.getByRole("link", { name: th.Experiences.secondaryCta, exact: true });
+      await expect(links).toHaveCount(2);
+      await links.first().click();
+      await expect(page).toHaveURL(/\/th\/chat$/);
+      await expect(page.getByPlaceholder(th.Chat.askPlaceholder).first()).toHaveValue("");
+      await expect(page.getByTestId("chat-messages").getByText(th.Chat.sent)).toHaveCount(0);
+    });
+  }
+});

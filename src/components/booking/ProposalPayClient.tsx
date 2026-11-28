@@ -11,7 +11,7 @@ import { useLocale, useTranslations } from "@/platform/intl";
 import { useEffect, useRef, useState } from "react";
 import { CreditCard } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
+import { Button, ButtonLink } from "@/components/ui/button";
 import { localizeHref } from "@/i18n/routing";
 import { formatPickerDate } from "@/lib/dates/format";
 import { useConvex } from 'convex/react';
@@ -25,6 +25,7 @@ export function ProposalPayClient({ token }: { token: string }) {
   const locale = useLocale();
   const t = useTranslations("Booking");
   const couponT = useTranslations("Coupon");
+  const chatT = useTranslations("Chat");
   const [activeToken, setActiveToken] = useState(token);
   const submitting = useRef(false);
   const [summary, setSummary] = useState<Summary | null>(null);
@@ -123,9 +124,13 @@ export function ProposalPayClient({ token }: { token: string }) {
             {t("verifying")}
           </p>
         ) : expired ? (
-          <p className="mt-4" role="status">
-            {t("summaryExpired")}
-          </p>
+          <div className="mt-4 space-y-4">
+            <p role="status">{t("summaryExpired")}</p>
+            {/* Plain chat entry: the expired proposal token never travels to chat. */}
+            <ButtonLink href={localizeHref("/chat", locale)} className="w-full">
+              {chatT("open")}
+            </ButtonLink>
+          </div>
         ) : summary ? (
           <div className="mt-5 space-y-4">
             <h2 className="text-xl font-semibold">{summary.property}</h2>
