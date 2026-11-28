@@ -77,13 +77,15 @@ test("F03 F04 retry keeps only the villas skipped in preview and during save", a
   const block = api.bookings.calendar.addDateBlocks.addDateBlocks;
   await owner.mutation(block, { ...dates, propertyIds: [unavailable._id], reason: "Before review" });
 
-  let waitForWrite: Promise<void> | undefined;
-  let releaseWrite: (() => void) | undefined;
+  let notifyWriteRequested!: () => void;
+  const writeRequested = new Promise<void>(resolve => { notifyWriteRequested = resolve; });
+  let forwardWrite!: () => void;
+  const waitForWrite = new Promise<void>(resolve => { forwardWrite = resolve; });
   await page.routeWebSocket(/\/api\/[^/]+\/sync/, socket => {
     const server = socket.connectToServer();
     socket.onMessage(async message => {
       if (typeof message === "string" && message.includes('"type":"Mutation"') && message.includes("addDateBlocks:addDateBlocks")) {
-        releaseWrite?.();
+        notifyWriteRequested();
         await waitForWrite;
       }
       server.send(message);
@@ -98,9 +100,6 @@ test("F03 F04 retry keeps only the villas skipped in preview and during save", a
   await expect(dialog.getByText("2 of 3 villas can be blocked")).toBeVisible();
   await expect(dialog.getByRole("listitem").filter({ hasText: unavailable.name })).toBeVisible();
 
-  const writeRequested = new Promise<void>(resolve => { releaseWrite = resolve; });
-  let forwardWrite!: () => void;
-  waitForWrite = new Promise<void>(resolve => { forwardWrite = resolve; });
   try {
     await dialog.getByRole("button", { name: /Save 2 blocks.*skip 1/ }).click();
     await writeRequested;
