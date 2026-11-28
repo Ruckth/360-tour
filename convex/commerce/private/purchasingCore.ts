@@ -519,8 +519,8 @@ export async function recordEvent(ctx: MutationCtx, actor: Actor, event: EventIn
 }
 
 /**
- * Units of a supplier return its replacement orders already cover: net ordered on a live (draft or open) order, accepted
- * on a received or closed-short one; cancelled and deleted orders cover nothing. `remaining` is what may still be
+ * Units of a supplier return its replacement orders already cover: net ordered (or more if accepted) on a live order,
+ * every accepted unit on a received or closed-short one; cancelled and deleted orders cover nothing. `remaining` is what may still be
  * replaced or reversed. `active` is the one live replacement, if any. Bounded to 50 linked orders.
  */
 export async function replacementCoverage(ctx: QueryCtx, ret: Doc<'supplierReceiptAdjustments'>, exceptOrderId?: Id<'purchaseOrders'>) {
@@ -535,7 +535,8 @@ export async function replacementCoverage(ctx: QueryCtx, ret: Doc<'supplierRecei
     const [line] = await stockRead(ctx, () => ctx.db.query('purchaseOrderLines').withIndex('by_orderId_and_variantId', q =>
       q.eq('orderId', order._id).eq('variantId', ret.variantId)).take(1));
     const live = order.phase === 'draft' || order.phase === 'open';
-    const units = !line ? 0 : live ? line.ordered - line.cancelled : Math.min(line.accepted, line.ordered - line.cancelled);
+    // Every physically accepted replacement unit counts (even beyond the order), plus what a live order still expects.
+    const units = !line ? 0 : live ? Math.max(line.ordered - line.cancelled, line.accepted) : line.accepted;
     if (units <= 0 && !live) continue;
     covered += units;
     orders.push(order);

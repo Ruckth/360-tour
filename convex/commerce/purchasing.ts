@@ -423,7 +423,13 @@ export const updateReceipt = staffMutation({
 export const receiptAdjustments = staffQuery({
   capability: 'checkout', scope: 'selectedBranch',
   args: { receiptId: v.id('supplierReceipts'), ...paged },
-  returns: paginationResultValidator(adjustmentRowValidator),
+  returns: paginationResultValidator(v.object({
+    ...system('supplierReceiptAdjustments'), ...adjustmentPublic,
+    /** Supplier returns only: units still replaceable (unreversed, uncovered) and the live replacement, if any. */
+    replacement: v.optional(v.object({
+      remaining: v.number(), activeReference: v.optional(v.string()), activeOrderId: v.optional(v.id('purchaseOrders')),
+    })),
+  })),
   handler: (ctx, { receiptId, paginationOpts }) => listReceiptAdjustments(ctx, ctx.staff, receiptId, paginationOpts),
 });
 

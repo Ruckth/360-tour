@@ -294,7 +294,8 @@ export async function receiveOrder(ctx: MutationCtx, staff: StaffActor, args: Re
     const headerReason = text(args.reason, 'Reason', 'reason');
     const plans: ReceiptLinePlan[] = [];
     const overs: { orderLineId: Id<'purchaseOrderLines'>; due: number; allowance: number }[] = [];
-    const tolerancePct = access.policy.overReceiptTolerancePct;
+    // A replacement receives exactly its return entitlement: the general over-delivery tolerance never applies to it.
+    const tolerancePct = order.replacesReturnId ? 0 : access.policy.overReceiptTolerancePct;
     let overDeliveredUnits = 0;
     const overDelivered: { field: string; before: number; after: number }[] = [];
     const holds = new Map<Id<'purchaseHolds'>, Doc<'purchaseHolds'>>();

@@ -227,6 +227,38 @@ describe("receiving sheets and queue", () => {
     expect(onNotice).toHaveBeenCalledWith("Held goods accepted into On hand on GR-261128-DDDDD.");
   });
 
+  it.each([
+    [{ remaining: 2 }, true],
+    [{ remaining: 0 }, false],
+    [{ remaining: 2, activeReference: "PO-261128-RRRRR", activeOrderId: "order_r" }, false],
+  ])("offers a replacement order only for the authoritative remaining quantity (%o)", async (replacement, offered) => {
+    mockConvex.query.mockImplementation((name) => name === getFunctionName(api.commerce.purchasing.receipt) ? {
+      receipt: {
+        _id: "receipt_1", _creationTime: 1, branchId: "branch_1", reference: "GR-1", kind: "order", orderId: "order_1", supplierId: "supplier_1",
+        supplier: { name: "Coastal Supply" }, lineCount: 1, acceptedUnits: 5, rejectedUnits: 0, heldUnits: 0, actorLabel: "Dan", createdAt: 1, revision: 1,
+      },
+      lines: [line], holds: [],
+      permissions: { requester: true, approver: true, buyer: true, receiver: true, lead: true, directOrder: true, directReceipt: true },
+    } : undefined);
+    mockConvex.paginated.mockImplementation((name) => ({
+      results: name === getFunctionName(api.commerce.purchasing.receiptAdjustments) ? [{
+        _id: "adj_1", _creationTime: 1, kind: "supplier_return", branchId: "branch_1", receiptId: "receipt_1", receiptLineId: "line_1",
+        variantId: "variant_1", item: { productName: "Sunscreen", variantLabel: "50 ml" }, quantity: 5, reversedQuantity: 0, reason: "Wrong",
+        returnOutcome: "replacement_expected", movementId: "m_1", actorLabel: "Dan", createdAt: 1, replacement,
+      }] : [],
+      status: "Exhausted", loadMore: vi.fn(),
+    }));
+    await render(createElement(SupplierReceiptDetailView, { receiptId: "receipt_1" }));
+    expect(Boolean(button("Replacement order"))).toBe(offered);
+    if ("activeReference" in replacement) expect(text()).toContain("Replacement PO-261128-RRRRR open");
+    if (offered) {
+      await act(async () => button("Replacement order")!.click());
+      expect(text()).toContain("Create purchase order · Koh Samui");
+      expect([...document.querySelectorAll<HTMLInputElement>("input")].some((input) => input.value === "2")).toBe(true);
+      expect([...document.querySelectorAll<HTMLInputElement>("input")].some((input) => input.value === "5")).toBe(false);
+    }
+  });
+
   it("opens the prefilled linked replacement order after a 'Replacement expected' return", async () => {
     const submit = mutation(api.commerce.purchasing.supplierReturn).mockResolvedValue({ id: "adj_9", reference: "GR-1" });
     mockConvex.query.mockImplementation((name) => name === getFunctionName(api.commerce.purchasing.receipt) ? {

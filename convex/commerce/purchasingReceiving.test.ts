@@ -212,6 +212,56 @@ it('keeps one live replacement per return within its unreversed, uncovered units
   expect(await code(draft([{ variantId, quantity: 1 }]))).toBe('REPLACEMENT_EXCEEDS');
 });
 
+it('receives a replacement at its return entitlement even with branch tolerance on, and counts every accepted replacement unit', async () => {
+  const { t, ann, branchId, variantId, supplierId, order, receive, onHand } = await setup(10);
+  // Ordinary orders keep the P27 tolerance: 11 against 10 due posts.
+  const ordinary = await order(10);
+  await receive(ordinary, { accepted: 11 });
+  expect(await onHand()).toBe(11);
+  const receiptLineId = (await ann.query(p.receipt, {
+    receiptId: (await ann.query(p.orderReceipts, { orderId: ordinary, ...page() })).page[0]._id,
+  })).lines[0]._id;
+  const ret = await ann.mutation(p.supplierReturn, { receiptLineId, quantity: 10, outcome: 'replacement_expected', reason: 'Wrong item', operationKey: key() });
+  const returnId = ret.id as Id<'supplierReceiptAdjustments'>;
+  const draft = await ann.mutation(p.saveOrder, { branchId, supplierId, replacesReturnId: returnId, lines: [{ variantId, quantity: 10 }], operationKey: key() });
+  const replacementId = draft.id as Id<'purchaseOrders'>;
+  await ann.mutation(p.issuePurchaseOrder, { orderId: replacementId, expectedRevision: draft.revision!, operationKey: key() });
+  expect((await ann.query(p.order, { orderId: replacementId })).overReceiptTolerancePct).toBe(0);
+  // The replacement may not take the 10% overage.
+  expect(await code(receive(replacementId, { accepted: 11 }))).toBe('OVER_RECEIPT');
+  await receive(replacementId, { accepted: 10 });
+  const adjustments = async () => (await ann.query(p.receiptAdjustments, {
+    receiptId: (await ann.query(p.orderReceipts, { orderId: ordinary, ...page() })).page[0]._id, ...page(),
+  })).page.find(row => row._id === returnId)!;
+  expect((await adjustments()).replacement).toEqual({ remaining: 0 });
+  // Rows accepted beyond the order before this rule (or by any other path) still count: nothing is reversible.
+  await t.run(async ctx => {
+    const [line] = await ctx.db.query('purchaseOrderLines').withIndex('by_orderId_and_variantId', q => q.eq('orderId', replacementId).eq('variantId', variantId)).take(1);
+    await ctx.db.patch(line._id, { accepted: 11 });
+  });
+  expect(await code(ann.mutation(p.reverseReturn, { adjustmentId: returnId, quantity: 1, reason: 'Never left', operationKey: key() }))).toBe('REPLACEMENT_COVERS');
+});
+
+it('reports the authoritative replaceable quantity and live replacement on return rows', async () => {
+  const { ann, branchId, variantId, supplierId, order, receive } = await setup();
+  const orderId = await order(10);
+  const posted = await receive(orderId, { accepted: 10 });
+  const receiptId = posted.id as Id<'supplierReceipts'>;
+  const receiptLineId = (await ann.query(p.receipt, { receiptId })).lines[0]._id;
+  const ret = await ann.mutation(p.supplierReturn, { receiptLineId, quantity: 4, outcome: 'replacement_expected', reason: 'Wrong item', operationKey: key() });
+  const returnId = ret.id as Id<'supplierReceiptAdjustments'>;
+  const row = async () => (await ann.query(p.receiptAdjustments, { receiptId, ...page() })).page.find(r => r._id === returnId)!;
+  expect((await row()).replacement).toEqual({ remaining: 4 });
+  const draft = await ann.mutation(p.saveOrder, { branchId, supplierId, replacesReturnId: returnId, lines: [{ variantId, quantity: 3 }], operationKey: key() });
+  expect((await row()).replacement).toMatchObject({ remaining: 1, activeOrderId: draft.id });
+  await ann.mutation(p.issuePurchaseOrder, { orderId: draft.id as Id<'purchaseOrders'>, expectedRevision: draft.revision!, operationKey: key() });
+  await receive(draft.id as Id<'purchaseOrders'>, { accepted: 1 });
+  const detail = await ann.query(p.order, { orderId: draft.id as Id<'purchaseOrders'> });
+  await ann.mutation(p.closePurchaseOrderRemainder, { orderId: detail.order._id, expectedRevision: detail.order.revision, reason: 'Short', operationKey: key() });
+  // Closed short after 1 accepted: 3 replaceable, no live replacement.
+  expect((await row()).replacement).toEqual({ remaining: 3 });
+});
+
 it('lets a buyer accept a hold onto its own open order from the queue, and shows only valid paths otherwise', async () => {
   const { ann, bob, branchId, variantId, order, receive, onHand } = await setup();
   const orderId = await order(10);

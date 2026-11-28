@@ -10,7 +10,7 @@ import { PURCHASING_MAX_LINES, PURCHASING_PAGE_SIZE, PURCHASING_TEXT_LIMITS, typ
 import { addDays } from '../../shared/dates';
 import { resortTodayIso } from '../../shared/time';
 import {
-  actorOf, availableApproval, canSeeBranchRequests, correctionClosesRemainder, deliveryKey, fail, ISSUED_OPEN, lineDue, purchasingAccess, quantity, readIncoming,
+  replacementCoverage, actorOf, availableApproval, canSeeBranchRequests, correctionClosesRemainder, deliveryKey, fail, ISSUED_OPEN, lineDue, purchasingAccess, quantity, readIncoming,
   readOrderLines, readRequestLines, staffDisplayName, type StockAccess,
 } from './purchasingCore';
 import { readStockLevel } from './stockLedger';
@@ -378,7 +378,7 @@ export async function getOrder(ctx: QueryCtx, staff: StaffActor, orderId: Id<'pu
     addableRequestLines: await addableRequestLines(ctx, order, request, lines),
     holds: related.map(holdRow), acceptableHolds: ISSUED_OPEN.includes(order.status) ? acceptableHolds(order, lines, related) : [],
     permissions: permissions(access),
-    overReceiptTolerancePct: access.policy.overReceiptTolerancePct,
+    overReceiptTolerancePct: order.replacesReturnId ? 0 : access.policy.overReceiptTolerancePct,
     returnsAwaitingCredit: await returnsAwaitingCredit(ctx, order._id),
     sourceRequest: request ? { id: request._id, reference: request.reference, status: request.status } : null,
   };
@@ -617,8 +617,17 @@ export async function listReceiptAdjustments(ctx: QueryCtx, staff: StaffActor, r
   const receipt = await get(ctx, receiptId);
   if (!receipt) fail('RECEIPT_NOT_FOUND', 'This receipt no longer exists.');
   await purchasingAccess(ctx, staff, receipt.branchId, 'read');
+  // Supplier returns carry the authoritative replaceable quantity and any live replacement, for the replacement action.
   return mapPage(ctx, ctx.db.query('supplierReceiptAdjustments').withIndex('by_receiptId', q => q.eq('receiptId', receipt._id))
-    .order('desc').paginate(page(paginationOpts)), adjustmentRow);
+    .order('desc').paginate(page(paginationOpts)), async row => {
+    type Replacement = { remaining: number; activeReference?: string; activeOrderId?: Id<'purchaseOrders'> };
+    let replacement: Replacement | undefined;
+    if (row.kind === 'supplier_return') {
+      const coverage = await replacementCoverage(ctx, row);
+      replacement = { remaining: coverage.remaining, ...(coverage.active ? { activeReference: coverage.active.reference, activeOrderId: coverage.active._id } : {}) };
+    }
+    return { ...adjustmentRow(row), ...(replacement ? { replacement } : {}) } as ReturnType<typeof adjustmentRow> & { replacement?: Replacement };
+  });
 }
 
 /**
