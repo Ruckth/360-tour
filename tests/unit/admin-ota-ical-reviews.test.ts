@@ -122,6 +122,7 @@ describe("OTA row edit focus & form target heading (M37)", () => {
     expect(host.querySelector("#ota-form-heading")?.textContent).toBe("Edit Agoda rate");
     expect(rateInput.value).toBe("4990");
     expect(document.activeElement).toBe(rateInput);
+    expect(host.querySelector<HTMLInputElement>("#ota-url")?.value).toBe("https://www.agoda.com/villa");
 
     await act(async () => host.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
     expect(state.mutations).toEqual([
@@ -131,10 +132,22 @@ describe("OTA row edit focus & form target heading (M37)", () => {
           propertyId: "prop-1",
           platform: "agoda",
           nightlyRate: 499000,
-          url: "https://www.agoda.com/villa",
         },
       ],
     ]);
+  });
+
+  it("keeps a dirty platform draft when the staff member cancels row Edit", async () => {
+    await render(createElement(OtaRatesPanel, { propertyId: "prop-1" as Id<"properties"> }));
+    const rate = host.querySelector<HTMLInputElement>("#ota-rate")!;
+    await setInput(rate, "6400");
+    state.confirm.mockResolvedValueOnce(false);
+    const edit = [...host.querySelectorAll("button")].find(button => button.textContent === "Edit")!;
+    await act(async () => { edit.focus(); edit.click(); });
+    expect(state.confirm).toHaveBeenCalledOnce();
+    expect(document.activeElement).toBe(edit);
+    expect(rate.value).toBe("6400");
+    expect(host.querySelector("#ota-form-heading")?.textContent).toContain("Booking.com");
   });
 });
 
