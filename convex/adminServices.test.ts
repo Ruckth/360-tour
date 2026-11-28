@@ -356,7 +356,7 @@ describe('admin services', () => {
 			name: 'Nok', role: 'Therapist', color: '#def', workingHours: weekdays.map((weekday) => ({ weekday, start: '09:00', end: '18:00' })), breaks: []
 		});
 		await admin.mutation(api.services.commands.updateService.updateService, { serviceId, staffIds: [staffId, nokId] });
-		expect(await admin.mutation(api.services.commands.archiveStaff.archiveStaff, { staffId: nokId })).toEqual({ servicesUpdated: 1 });
+		expect(await admin.mutation(api.services.commands.archiveStaff.archiveStaff, { staffId: nokId })).toMatchObject({ servicesUpdated: 1, archivedAt: expect.any(Number) });
 		expect((await admin.query(api.services.admin.listServices, {}))[0].staffIds).toEqual([staffId]);
 		await expect(admin.mutation(api.services.commands.updateService.updateService, { serviceId, staffIds: [staffId, nokId] })).rejects.toThrow('Nok is archived');
 		// Archiving through updateStaff takes the same path.
@@ -375,17 +375,26 @@ describe('admin services', () => {
 		const { admin, staffId, serviceId } = await setup();
 		const current = async () => (await admin.query(api.services.admin.listServices, {}))[0];
 		const revision = (await current()).revision ?? 0;
-		await admin.mutation(api.services.commands.archiveStaff.archiveStaff, { staffId });
+		const { archivedAt } = await admin.mutation(api.services.commands.archiveStaff.archiveStaff, { staffId });
 		const archived = await current();
 		expect(archived).toMatchObject({ staffIds: [], revision: revision + 1 });
 		await expect(admin.mutation(api.services.commands.updateService.updateService, {
 			serviceId, staffIds: [staffId], expectedRevision: revision,
 		})).rejects.toThrow('STALE_ADJUSTMENT_REVISION');
-		await admin.mutation(api.services.commands.updateStaff.updateStaff, { staffId, status: 'active' });
+		await admin.mutation(api.services.commands.updateStaff.updateStaff, { staffId, status: 'active', expectedArchivedAt: archivedAt });
 		expect(await current()).toMatchObject({ staffIds: [staffId], revision: revision + 2 });
 		await expect(admin.mutation(api.services.commands.updateService.updateService, {
 			serviceId, name: 'Traditional massage', expectedRevision: archived.revision,
 		})).rejects.toThrow('STALE_ADJUSTMENT_REVISION');
+	});
+
+	it('refuses an archive undo after another operator changes the archived profile', async () => {
+		const { admin, staffId } = await setup();
+		const { archivedAt } = await admin.mutation(api.services.commands.archiveStaff.archiveStaff, { staffId });
+		vi.setSystemTime(archivedAt + 1);
+		await admin.mutation(api.services.commands.updateStaff.updateStaff, { staffId, name: 'Mali K' });
+		await expect(admin.mutation(api.services.commands.updateStaff.updateStaff, { staffId, status: 'active', expectedArchivedAt: archivedAt })).rejects.toThrow('changed after archiving');
+		expect(await admin.query(api.services.admin.listStaff, { includeArchived: true })).toMatchObject([{ name: 'Mali K', status: 'archived' }]);
 	});
 
 	it('D14/D21: finds appointments beyond the loaded dates and the next one after an empty range, bounded', async () => {

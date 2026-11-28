@@ -107,6 +107,8 @@ export function StaffRosterView() {
   const confirm = useConfirm();
   // Phones get one day at a time (no 56rem grid to pan); selection, presets and Custom… are the same.
   const phone = useIsMobile(640);
+  const [showWeek, setShowWeek] = useState(false);
+  const dayView = phone && !showWeek;
   const [dayCol, setDayCol] = useState(() => (new Date(utcDay(link.date ?? today)).getUTCDay() + 6) % 7);
 
   const data = useQuery(api.services.roster.getWeek, { weekStart });
@@ -134,7 +136,7 @@ export function StaffRosterView() {
   const selectedOnDate = (date: string | undefined) => selectedKeys.filter((key) => key.endsWith(`|${date}`)).length;
   // D24: on phones only one day is visible, so selections on the other days are named, not hidden.
   const shownDay = dates[dayCol];
-  const selectedElsewhere = phone ? selectedKeys.length - selectedOnDate(shownDay) : 0;
+  const selectedElsewhere = dayView ? selectedKeys.length - selectedOnDate(shownDay) : 0;
   const weekEnd = addDays(weekStart, 6);
 
   useEffect(() => {
@@ -409,6 +411,12 @@ export function StaffRosterView() {
           />
         </div>
         <div className="flex flex-wrap items-center gap-2 sm:ms-auto">
+          {phone ? (
+            <div role="group" aria-label="Roster view" className="flex rounded-lg border border-border p-0.5">
+              <Button type="button" size="sm" variant={dayView ? "secondary" : "ghost"} aria-pressed={dayView} onClick={() => setShowWeek(false)}>Day</Button>
+              <Button type="button" size="sm" variant={dayView ? "ghost" : "secondary"} aria-pressed={!dayView} onClick={() => setShowWeek(true)}>Week</Button>
+            </div>
+          ) : null}
           <Button size="sm" variant="outline" disabled={!data || busy || !staff.length} onClick={onMakeDefault}>
             Make this week the default
           </Button>
@@ -506,7 +514,7 @@ export function StaffRosterView() {
         </div>
       ) : null}
 
-      {phone && data ? (
+      {dayView && data ? (
         <div className="grid gap-3 px-4 py-3">
           <div role="group" aria-label="Day to edit" className="grid grid-cols-7 gap-1">
             {dates.map((date, col) => {
@@ -565,7 +573,7 @@ export function StaffRosterView() {
           aria-multiselectable="true"
           aria-busy={data === undefined}
           aria-label={`Roster for ${weekRange(weekStart, weekEnd)}`}
-          className={cn("w-full min-w-[56rem] table-fixed border-collapse text-sm", phone && data && "hidden")}
+          className={cn("w-full min-w-[56rem] table-fixed border-collapse text-sm", dayView && data && "hidden")}
           onPointerMove={onGridPointerMove}
         >
           <colgroup>
@@ -576,7 +584,7 @@ export function StaffRosterView() {
           </colgroup>
           <thead>
             <tr>
-              <th scope="col" className="border-b border-border p-0 text-start">
+              <th scope="col" className="sticky start-0 z-10 border-b border-border bg-card p-0 text-start">
                 <button
                   type="button"
                   className="flex h-12 w-full items-center px-4 text-xs font-semibold text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
@@ -646,7 +654,7 @@ export function StaffRosterView() {
               const full = rowKeys.every((key) => selected.has(key));
               return (
                 <tr key={person._id}>
-                  <th scope="row" className="border-t border-border p-0 text-start font-normal">
+                  <th scope="row" className="sticky start-0 z-10 border-t border-border bg-card p-0 text-start font-normal">
                     <button
                       type="button"
                       aria-pressed={full}

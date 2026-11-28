@@ -243,6 +243,8 @@ describe('setup checklist', () => {
 			sent.push(JSON.parse(String(init?.body ?? '{}')));
 			return new Response(JSON.stringify({ id: 'email_1' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
 		}));
+		expect(await admin.action(api.settings.emails.sendTestEmail, { expectedRecipient: 'previous@example.com' })).toMatchObject({ ok: false, to: 'previous@example.com' });
+		expect(sent).toEqual([]);
 		expect(await admin.action(api.settings.emails.sendTestEmail, {})).toMatchObject({ ok: true, to: 'owner@example.com' });
 		expect(sent).toEqual([expect.objectContaining({ to: 'owner@example.com' })]);
 		await expect(t.action(api.settings.emails.sendTestEmail, {})).rejects.toThrow();

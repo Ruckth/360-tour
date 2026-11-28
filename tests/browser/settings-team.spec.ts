@@ -151,8 +151,20 @@ for (const [size, viewport] of Object.entries(SIZES)) {
       expect(names).toEqual(["Refund permission", "Void permission", "Custom price permission", "Correct payment permission"]);
     });
 
-    test("the Team tab starts on screen", async ({ page }) => {
+    test("Team is available from the first settings screen", async ({ page }) => {
       await open(page, "?view=settings");
+      if (size === "phone") {
+        await page.getByRole("button", { name: "Settings sections: Business", exact: true }).click();
+        const picker = page.getByRole("dialog", { name: "Settings sections" });
+        await picker.getByRole("searchbox", { name: "Search settings sections" }).fill("Settings Team");
+        const team = picker.getByRole("button", { name: "Team", exact: true });
+        await expect(team).toBeInViewport({ ratio: 1 });
+        expect((await team.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+        await team.click();
+        await expect(picker).toBeHidden();
+        await expect(page.locator("body")).toHaveAttribute("data-navigation", "/admin/settings?tab=team");
+        return;
+      }
       const team = page.getByRole("tablist", { name: "Settings sections" }).getByRole("tab", { name: "Team" });
       const box = (await team.boundingBox())!;
       expect(box.x).toBeGreaterThanOrEqual(0);
@@ -263,6 +275,28 @@ test.describe("Settings panels", () => {
     await expect(page.getByTestId("read-only-banner")).toBeVisible();
     await expectAtMostSentences(page.getByRole("region", { name: "Business profile" }), 3);
   });
+});
+
+test("phone picker guards drafts and hides owner-only sections from managers", async ({ page }) => {
+  await page.setViewportSize(SIZES.phone);
+  await open(page, "?view=settings&tab=business");
+  const draft = page.getByRole("textbox", { name: "Business name", exact: true });
+  await draft.fill("Unfinished business name");
+  await page.getByRole("button", { name: "Settings sections: Business", exact: true }).click();
+  const picker = page.getByRole("dialog", { name: "Settings sections" });
+  await picker.getByRole("button", { name: "Team", exact: true }).click();
+  const discard = page.getByRole("alertdialog", { name: "Discard unsaved changes?" });
+  await discard.getByRole("button", { name: "Keep editing" }).click();
+  await expect(picker).toBeVisible();
+  await picker.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(draft).toHaveValue("Unfinished business name");
+  await page.getByRole("button", { name: "Discard", exact: true }).click();
+
+  await open(page, "?view=settings&role=manager&tab=business");
+  await page.getByRole("button", { name: "Settings sections: Business", exact: true }).click();
+  await expect(picker.getByRole("button", { name: "Team", exact: true })).toHaveCount(0);
+  await expect(picker.getByRole("button", { name: "Branches", exact: true })).toHaveCount(0);
+  await expect(picker.getByRole("button", { name: "Booking rules", exact: true })).toBeVisible();
 });
 
 test.describe("Round 1 settings drafts", () => {

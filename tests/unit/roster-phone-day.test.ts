@@ -65,6 +65,20 @@ it('F13/D18: a roster deep link opens that week with the person-day selected', a
   expect([...document.querySelectorAll('li button')].find(b => b.textContent?.includes('Nok'))!.getAttribute('aria-pressed')).toBe('true');
 }, 30_000);
 
+it('opens the week grid with staff names pinned and returns to the selected day', async () => {
+  await act(async () => root.render(createElement(ConfirmProvider, null, createElement(StaffRosterView))));
+  const friday = () => document.querySelector<HTMLButtonElement>('[aria-label^="Fri 4 Dec"]')!;
+  await act(async () => friday().click());
+  const [day, week] = Array.from(document.querySelectorAll<HTMLButtonElement>('[aria-label="Roster view"] button'));
+  await act(async () => week.click());
+  expect(week.getAttribute('aria-pressed')).toBe('true');
+  const table = document.querySelector('table')!;
+  expect(table.classList.contains('hidden')).toBe(false);
+  expect(table.querySelector('th[scope="row"]')?.classList.contains('sticky')).toBe(true);
+  await act(async () => day.click());
+  expect(friday().getAttribute('aria-pressed')).toBe('true');
+}, 30_000);
+
 it('D24: selections on days that are not shown are counted and named, and changing week asks before clearing them', async () => {
   await act(async () => root.render(createElement(ConfirmProvider, null, createElement(StaffRosterView))));
   await act(async () => document.querySelector<HTMLButtonElement>('[aria-label^="Fri 4 Dec"]')!.click());

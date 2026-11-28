@@ -1,15 +1,19 @@
 // HTML emails use Resend's fetch API and can run in the default Convex runtime.
 import { Resend } from 'resend';
+import { v } from 'convex/values';
 import { adminAction } from '../auth/model';
 import { footerHtml, fromHeader, loadSettings, ownerNotificationEmail } from './emailTransport';
 
-/** Setup checklist: sends a short test email to the owner notification address (or the signed-in admin). */
+/** Sends a short test email to the owner notification address (or the signed-in admin). */
 export const sendTestEmail = adminAction({
-	args: {},
-	handler: async (ctx): Promise<{ ok: boolean; to: string; message: string }> => {
+	args: { expectedRecipient: v.optional(v.string()) },
+	handler: async (ctx, { expectedRecipient }): Promise<{ ok: boolean; to: string; message: string }> => {
 		const admin = ctx.admin;
 		const settings = await loadSettings(ctx);
-		const to = ownerNotificationEmail(settings) || admin.email;
+		const to = ownerNotificationEmail(settings)?.trim() || admin.email;
+		if (expectedRecipient !== undefined && expectedRecipient !== to) {
+			return { ok: false, to: expectedRecipient, message: 'The saved test recipient changed. Review the address and send again.' };
+		}
 		const apiKey = process.env.RESEND_API_KEY;
 		const from = process.env.EMAIL_FROM;
 		if (!apiKey || !from) return { ok: false, to, message: 'Set RESEND_API_KEY and EMAIL_FROM in Convex first.' };

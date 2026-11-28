@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils";
 import { ADMIN_PROPERTY_TABS, adminPropertyTabPath, type AdminPropertyTab } from "./admin-routes";
 import { useConfirm } from "./ConfirmDialog";
 import { IcalSourcesPanel } from "./IcalSourcesDialog";
+import { MobileSectionPicker } from "./MobileSectionPicker";
 import { OtaRatesPanel } from "./OtaRatesDialog";
 import { PropertyPhotosEditor } from "./PropertyPhotosEditor";
 import { PropertyReviewsEditor } from "./PropertyReviewsEditor";
@@ -32,13 +33,21 @@ type Property = Doc<"properties">;
 const TABS = ADMIN_PROPERTY_TABS;
 type Tab = AdminPropertyTab;
 
-export function AdminPropertyEditor({ propertyId, tab = "details" }: { propertyId: string; tab?: Tab }) {
+export function AdminPropertyEditor({ propertyId, tab = "details", onDirtyChange, onDeleted }: { propertyId: string; tab?: Tab; onDirtyChange?: (dirty: boolean) => void; onDeleted?: () => void }) {
   const router = useRouter();
   const data = useQuery(api.catalog.adminProperties.get, { propertyId });
   const focusDirectPriceRef = useRef(false);
   const tabRefs = useRef<Array<HTMLAnchorElement | null>>([]);
   const priceInputRef = useRef<HTMLInputElement>(null);
   const [visitedPricing, setVisitedPricing] = useState(tab === "pricing");
+  const [dirtyDetails, setDirtyDetails] = useState(false);
+  const [dirtySlug, setDirtySlug] = useState(false);
+  const [dirtyRates, setDirtyRates] = useState(false);
+  const dirty = dirtyDetails || dirtySlug || dirtyRates;
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+    return () => onDirtyChange?.(false);
+  }, [dirty, onDirtyChange]);
   // Keep the OTA draft mounted while staff compare it with the direct price.
   if (tab === "pricing" && !visitedPricing) setVisitedPricing(true);
 
@@ -90,8 +99,12 @@ export function AdminPropertyEditor({ propertyId, tab = "details" }: { propertyI
         <div className="space-y-4"><p className="text-sm text-muted-foreground">This villa doesn&apos;t exist (it may have been deleted).</p><RecordHistoryPanel entityType="property" entityId={propertyId} /><ConfigurationHistoryRecords /></div>
       ) : (
         <>
-          <PropertyHeader property={data.property} deleteBlocker={data.deleteBlocker} />
-          <div role="tablist" aria-label="Villa sections" className="flex gap-6 overflow-x-auto border-b border-border">
+          <PropertyHeader property={data.property} deleteBlocker={data.deleteBlocker} dirty={dirty} onDeleted={onDeleted ?? (() => router.push("/admin/properties"))} />
+          <MobileSectionPicker label="Villa sections" sections={TABS.map(([value, label]) => ({ value, label }))} value={tab} onSelect={(next) => {
+            selectTab(next);
+            return true;
+          }} />
+          <div role="tablist" aria-label="Villa sections" className="hidden gap-6 overflow-x-auto border-b border-border sm:flex">
             {TABS.map(([key, label], index) => (
               <Link
                 key={key}
@@ -111,7 +124,7 @@ export function AdminPropertyEditor({ propertyId, tab = "details" }: { propertyI
                 }}
                 onKeyDown={(event) => onTabKeyDown(event, index)}
                 className={cn(
-                  "-mb-px shrink-0 border-b-2 px-1 pb-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  "-mb-px inline-flex min-h-11 shrink-0 items-center border-b-2 px-1 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   tab === key ? "border-foreground text-foreground" : "border-transparent text-muted-foreground hover:text-foreground",
                 )}
               >
@@ -121,8 +134,8 @@ export function AdminPropertyEditor({ propertyId, tab = "details" }: { propertyI
           </div>
           <div role="tabpanel" id="villa-tabpanel" aria-labelledby={`villa-tab-${tab}`} className="grid gap-4">
             <div key={data.property._id} hidden={tab !== "details"} className="grid gap-4">
-              <DetailsForm property={data.property} priceInputRef={priceInputRef} />
-              <SlugForm property={data.property} locked={data.slugLocked} />
+              <DetailsForm property={data.property} priceInputRef={priceInputRef} onDirtyChange={setDirtyDetails} />
+              <SlugForm property={data.property} locked={data.slugLocked} onDirtyChange={setDirtySlug} />
             </div>
             {visitedPricing ? (
               <div hidden={tab !== "pricing"}>
@@ -143,7 +156,7 @@ export function AdminPropertyEditor({ propertyId, tab = "details" }: { propertyI
                     </Link>
                   }
                 >
-                  <OtaRatesPanel propertyId={data.property._id} />
+                  <OtaRatesPanel propertyId={data.property._id} onDirtyChange={setDirtyRates} />
                 </Section>
               </div>
             ) : null}
@@ -167,7 +180,7 @@ export function AdminPropertyEditor({ propertyId, tab = "details" }: { propertyI
   );
 }
 
-function PropertyHeader({ property, deleteBlocker }: { property: Property; deleteBlocker: string | null }) {
+function PropertyHeader({ property, deleteBlocker, dirty, onDeleted }: { property: Property; deleteBlocker: string | null; dirty: boolean; onDeleted: () => void }) {
   const setStatus = useMutation(api.catalog.adminProperties.setStatus);
   const deleteDraft = useMutation(api.catalog.adminProperties.deleteDraft);
   const duplicate = useMutation(api.catalog.adminProperties.duplicate);
@@ -196,14 +209,14 @@ function PropertyHeader({ property, deleteBlocker }: { property: Property; delet
   async function remove() {
     const ok = await confirm({
       title: `Delete ${property.name}?`,
-      description: "Its rooms, reviews, OTA rates and calendar feeds are deleted too. This can't be undone.",
+      description: `Its rooms, reviews, OTA rates and calendar feeds are deleted too. This can't be undone.${dirty ? " Your unsaved changes will be discarded." : ""}`,
       confirmLabel: "Delete villa",
       destructive: true,
     });
     if (!ok) return;
     await act(async () => {
       await deleteDraft({ propertyId: property._id });
-      router.push("/admin/properties");
+      onDeleted();
     });
   }
 
@@ -223,13 +236,14 @@ function PropertyHeader({ property, deleteBlocker }: { property: Property; delet
             </a>
           ) : null}
         </p>
+        {dirty ? <p className="mt-1 text-xs font-medium text-muted-foreground">Unsaved changes</p> : null}
         {error ? <p role="alert" className="mt-1 text-sm text-destructive">{error}</p> : null}
       </div>
       <Button
         variant="outline"
         size="sm"
-        disabled={busy}
-        title="New draft with these details, photos, 360 rooms and OTA rates"
+        disabled={busy || dirty}
+        title={dirty ? "Save changes before duplicating this villa" : "New draft with these details, photos, 360 rooms and OTA rates"}
         onClick={() =>
           act(async () => {
             const copyId = await duplicate({ propertyId: property._id });
@@ -289,23 +303,31 @@ function PropertyHeader({ property, deleteBlocker }: { property: Property; delet
   );
 }
 
-function useVillaFormSaver() {
+function useVillaFormSaver(onDirtyChange: (dirty: boolean) => void) {
   const save = useSaver();
   const [editedSinceSubmit, setEditedSinceSubmit] = useState(false);
+  const edits = useRef(0);
   return {
     ...save,
     saved: save.saved && !editedSinceSubmit,
-    markEdited: () => setEditedSinceSubmit(true),
-    run(action: () => Promise<unknown>) {
+    markEdited: () => {
+      edits.current++;
+      setEditedSinceSubmit(true);
+      onDirtyChange(true);
+    },
+    async run(action: () => Promise<unknown>) {
+      const submitting = edits.current;
       setEditedSinceSubmit(false);
-      return save.run(action);
+      const saved = await save.run(action);
+      if (saved && edits.current === submitting) onDirtyChange(false);
+      return saved;
     },
   };
 }
 
-function DetailsForm({ property, priceInputRef }: { property: Property; priceInputRef: RefObject<HTMLInputElement | null> }) {
+function DetailsForm({ property, priceInputRef, onDirtyChange }: { property: Property; priceInputRef: RefObject<HTMLInputElement | null>; onDirtyChange: (dirty: boolean) => void }) {
   const update = useMutation(api.catalog.properties.update);
-  const save = useVillaFormSaver();
+  const save = useVillaFormSaver(onDirtyChange);
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -376,10 +398,10 @@ function DetailsForm({ property, priceInputRef }: { property: Property; priceInp
   );
 }
 
-function SlugForm({ property, locked }: { property: Property; locked: boolean }) {
+function SlugForm({ property, locked, onDirtyChange }: { property: Property; locked: boolean; onDirtyChange: (dirty: boolean) => void }) {
   const setSlug = useMutation(api.catalog.adminProperties.setSlug);
   const [slug, setSlugValue] = useState(property.slug);
-  const save = useVillaFormSaver();
+  const save = useVillaFormSaver(onDirtyChange);
 
   return (
     <Section title="Web address" description="The villa page lives at /rooms/<web address>. Lowercase letters, numbers and dashes.">
