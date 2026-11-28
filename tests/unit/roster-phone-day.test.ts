@@ -85,3 +85,25 @@ it('D24: selections on days that are not shown are counted and named, and changi
   expect(document.body.textContent).not.toContain('not on Thu');
 }, 30_000);
 
+it('D24: a concurrent change while the editor is open is sent as the reviewed plan, refused safely, and re-reviewed', async () => {
+  const render = () => act(async () => root.render(createElement(ConfirmProvider, null, createElement(StaffRosterView))));
+  await render();
+  await act(async () => document.querySelector<HTMLButtonElement>('[aria-label^="Fri 4 Dec"]')!.click());
+  for (const name of ['Mali', 'Nok', 'Pim']) await act(async () => [...document.querySelectorAll<HTMLButtonElement>('li button')].find(b => b.textContent?.includes(name))!.click());
+  await act(async () => byText('Custom').click());
+  // Another operator saves Mali's Friday while this editor is open; the live query updates underneath it.
+  const evening = [{ start: '14:00', end: '22:00' }];
+  week = { ...week, cells: week.cells.map(cell => cell.staffId === 'staff0' && cell.date === '2026-12-04' ? { ...cell, shifts: evening, override: true } : cell) };
+  await render();
+  state.apply.mockReset().mockRejectedValue(new Error('This roster day changed since you opened it. Review the latest schedule and try again.'));
+  await act(async () => document.querySelector('[role="dialog"] form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+  const malisFriday = () => (state.apply.mock.calls.at(-1)![0] as { cells: Array<{ staffId: string; expectedPlan: unknown }> }).cells.find(cell => cell.staffId === 'staff0')!.expectedPlan;
+  expect(malisFriday()).toEqual({ shifts: [{ start: '09:00', end: '17:00' }], breaks: [] });
+  expect(document.querySelector('[role="alert"]')!.textContent).toContain('changed since you opened it');
+  expect(document.body.textContent).toContain('3 cells selected');
+  // After reviewing what is shown now, retrying expects the plan on screen.
+  state.apply.mockReset().mockResolvedValue({ ok: true, batchId: 'b2', warnings: [], skipped: [], changed: 3 });
+  await act(async () => byText('Custom').click());
+  await act(async () => document.querySelector('[role="dialog"] form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+  expect(malisFriday()).toEqual({ shifts: evening, breaks: [] });
+}, 30_000);

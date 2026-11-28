@@ -122,6 +122,15 @@ export function StaffRosterView() {
   const allKeys = useMemo(() => staff.flatMap((s) => dates.map((date) => cellKey(s._id, date))), [staff, dates]);
   const selectedKeys = allKeys.filter((key) => selected.has(key));
   const allSelected = allKeys.length > 0 && selectedKeys.length === allKeys.length;
+  // D24: each selected day's plan as the operator saw it when selecting it. Saves send this, not whatever the live query shows at Apply.
+  const reviewed = useRef(new Map<string, Plan & { note?: string }>());
+  useEffect(() => {
+    for (const key of [...reviewed.current.keys()]) if (!selected.has(key)) reviewed.current.delete(key);
+    for (const key of selected) {
+      const cell = cells.get(key);
+      if (cell && !reviewed.current.has(key)) reviewed.current.set(key, planOf(cell));
+    }
+  }, [selected, cells]);
   const selectedOnDate = (date: string | undefined) => selectedKeys.filter((key) => key.endsWith(`|${date}`)).length;
   // D24: on phones only one day is visible, so selections on the other days are named, not hidden.
   const shownDay = dates[dayCol];
@@ -281,7 +290,7 @@ export function StaffRosterView() {
       const [staffId, date] = key.split("|");
       // The day as reviewed: the server refuses it if someone saved a different plan since.
       const cell = cells.get(key);
-      const expectedPlan = cell ? planOf(cell) : undefined;
+      const expectedPlan = reviewed.current.get(key) ?? (cell ? planOf(cell) : undefined);
       return { staffId: staffId as Id<"staff">, date, ...(expectedPlan ? { expectedPlan } : {}) };
     });
   }
@@ -308,7 +317,14 @@ export function StaffRosterView() {
           : applyCells({ cells: targets, ...plan, skipConflicts }),
       "Could not update the roster.",
     );
-    if (!result) return;
+    if (!result) {
+      // Refused (for example, changed by someone else): keep the selection and review what is shown now before retrying.
+      for (const target of targets) {
+        const cell = cells.get(cellKey(target.staffId, target.date));
+        if (cell) reviewed.current.set(cellKey(target.staffId, target.date), planOf(cell));
+      }
+      return;
+    }
     if (!result.ok) {
       const blocked = new Set(result.conflicts.map((c) => cellKey(c.staffId, c.date)));
       const others = targets.filter((c) => !blocked.has(cellKey(c.staffId, c.date)));
