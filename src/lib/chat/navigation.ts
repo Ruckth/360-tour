@@ -6,6 +6,11 @@ const CHAT_RETURN_ORIGIN = "https://seaview.local";
 
 type SearchValue = URLSearchParams | string | null | undefined;
 
+export function usesFloatingChatOnMobile(pathname: string) {
+  const page = stripLocalePrefix(pathname).replace(/\/$/, "");
+  return page !== "" && page !== "/booking" && !page.startsWith("/rooms/");
+}
+
 function normalizeSearch(search: SearchValue) {
   const value = typeof search === "string" ? search : search?.toString() ?? "";
   return value.startsWith("?") ? value.slice(1) : value;

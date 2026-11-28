@@ -2,8 +2,9 @@
 
 import { cn } from "@/lib/utils";
 import { Button, type ButtonProps } from "@/components/ui/button";
+import type { Ref } from "react";
 
-type HomeSolidBookButtonProps = Omit<ButtonProps, "variant">;
+type HomeSolidBookButtonProps = Omit<ButtonProps, "variant"> & { ref?: Ref<HTMLButtonElement> };
 
 export function HomeSolidBookButton({
   className,

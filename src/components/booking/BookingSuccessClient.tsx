@@ -11,6 +11,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { localizeHref } from "@/i18n/routing";
 import { type PublicBooking } from '@/lib/booking/backend-types';
+import { resort } from "@/lib/data/resort-config";
+import { formatPickerDate } from "@/lib/dates/format";
 
 import { useConvex } from 'convex/react';
 
@@ -40,6 +42,7 @@ export function BookingSuccessClient({
 }) {
   const locale = useLocale();
   const t = useTranslations("Booking");
+  const navT = useTranslations("Nav");
   const convex = useConvex();
   const [booking, setBooking] = useState<PublicBooking | null>(null);
   const [phase, setPhase] = useState<Phase>(accessToken ? "verifying" : "invalid");
@@ -139,9 +142,13 @@ export function BookingSuccessClient({
           <h1 className="mt-5 font-serif text-3xl font-semibold text-foreground">{title}</h1>
           <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{copy}</p>
         </div>
-        <p className="mt-4 rounded-xl bg-muted px-3 py-2 text-sm text-muted-foreground">
-          {t("reference", { reference: booking?.confirmationCode ?? bookingId })}
-        </p>
+        {booking && !verifying ? (
+          <div className="mt-4 space-y-1 rounded-xl bg-muted px-3 py-2 text-sm text-muted-foreground">
+            <p>{t("reference", { reference: booking.confirmationCode ?? bookingId })}</p>
+            {booking.propertyName ? <p className="font-semibold text-foreground">{booking.propertyName}</p> : null}
+            <p>{formatPickerDate(booking.checkIn, locale)} – {formatPickerDate(booking.checkOut, locale)}</p>
+          </div>
+        ) : null}
         {booking && !verifying ? <BookedPrice booking={booking} showSaving={confirmed} className="mt-4" /> : null}
         {error ? (
           <Alert variant="destructive" className="mt-4 text-left">
@@ -158,6 +165,11 @@ export function BookingSuccessClient({
           <Button asChild variant={phase === "pending" ? "outline" : undefined}>
             <Link href={localizeHref("/", locale)}>{t("returnHome")}</Link>
           </Button>
+          {booking && !verifying ? (
+            <Button asChild variant="ghost" className="min-h-11">
+              <a href={`mailto:${resort.contactEmail}`}>{navT("contact")}</a>
+            </Button>
+          ) : null}
           <Link
             href={localizeHref("/#villas", locale)}
             className="text-sm font-medium text-muted-foreground transition hover:text-foreground"

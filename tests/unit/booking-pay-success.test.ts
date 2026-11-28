@@ -106,6 +106,23 @@ describe("G30 pay screen follows the link and the backend payment rules", () => 
     await act(async () => payButton()!.click());
     expect(client.action.mock.calls[0][1]).toEqual({ bookingId: "b1", accessToken: "secret" });
   });
+
+  it("requires a read-only status check after a checkout response is lost", async () => {
+    client.query.mockResolvedValueOnce(booking)
+      .mockResolvedValue({ ...booking, payState: "settled", status: "confirmed", paymentStatus: "paid", amountDue: 0 });
+    client.action.mockRejectedValue(new Error("Provider response unavailable"));
+    await show(createElement(PayClient, { bookingId: "b1", accessToken: "secret" }));
+    await act(async () => payButton()!.click());
+    expect(payButton()).toBeUndefined();
+    expect(document.body.textContent).toContain(en.Booking.paymentCouldNotConfirm);
+    expect(document.body.textContent).not.toContain("Provider response unavailable");
+    const check = [...document.querySelectorAll("button")].find((button) => button.textContent === en.Booking.checkAgain);
+    await act(async () => check!.click());
+    expect(client.query).toHaveBeenCalledTimes(2);
+    expect(client.action).toHaveBeenCalledTimes(1);
+    expect(payButton()).toBeUndefined();
+    expect(document.body.textContent).toContain(en.Booking.viewConfirmation);
+  });
 });
 
 describe("G31 confirmation verification states", () => {

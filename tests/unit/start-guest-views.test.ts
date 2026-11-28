@@ -42,7 +42,7 @@ describe("shared guest views", () => {
       continueCursor: "next-1",
     } as never, { category: "Spa", query: "massage", cursor: "c0" });
     expect(html).toContain("Thai massage");
-    expect(html).toContain('href="/th/chat?service=thai-massage"');
+    expect(html).toContain('href="/th/chat?service=thai-massage&amp;returnTo=');
     expect(html).toContain('href="/th/services?category=Spa&amp;q=massage&amp;cursor=next-1"');
     expect(html).toContain('href="/th/services?category=Spa&amp;q=massage"');
     expect(html).toContain('action="/th/services"');

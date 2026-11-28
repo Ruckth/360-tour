@@ -246,12 +246,11 @@ describe("Slice 2: Home, rooms, reviews, and 360 tour UX", () => {
     expect(nextBtn.getAttribute("aria-disabled")).toBe("true");
     expect(prevBtn.getAttribute("aria-disabled")).toBe("false");
 
-    // G12: overlay tour button is desktop-only (`hidden ... md:inline-flex`), mobile button is `md:hidden`.
-    const overlayTour = [...container.querySelectorAll("button")].find((b) => b.textContent?.trim() === en.Villa.explore360);
-    const mobileTour = [...container.querySelectorAll("button")].find((b) => b.textContent?.trim() === en.Villa.exploreIn360);
-    expect(overlayTour?.className).toContain("hidden");
-    expect(overlayTour?.className).toContain("md:inline-flex");
-    expect(mobileTour?.className).toContain("md:hidden");
+    // A single in-gallery tour control presents the matching label at each width.
+    const openers = container.querySelectorAll('[data-testid="room-gallery-tour"]');
+    expect(openers).toHaveLength(1);
+    expect(openers[0].getAttribute("aria-haspopup")).toBe("dialog");
+    expect(openers[0].querySelector("span")?.textContent).toBe(en.Villa.exploreIn360);
   });
 
   it("G14: StarRating exposes one localized screen-reader rating label and hides decorative star icons", async () => {

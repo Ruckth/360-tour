@@ -560,6 +560,7 @@
     }
   },
   "Tour": {
+    "scene": "장면",
     "detail": {
       "available": "고해상도 이미지 보기",
       "loading": "고해상도 이미지 로딩 중…",

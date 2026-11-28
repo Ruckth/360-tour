@@ -25,7 +25,7 @@ export function ExperiencesView({
 
   return (
     <>
-      <section className="relative overflow-hidden bg-navy pt-24 text-white md:pt-28">
+      <section className="relative overflow-hidden bg-navy pt-20 text-white md:pt-28">
         <Image
           src={experienceHeroImage}
           alt={messages.heroAlt}
@@ -37,18 +37,18 @@ export function ExperiencesView({
         <div className="absolute inset-0 bg-gradient-to-r from-navy/90 via-navy/60 to-navy/10" />
         <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-background to-transparent" />
 
-        <div className="relative mx-auto flex min-h-[620px] max-w-7xl items-end px-5 pb-14 md:min-h-[690px] md:px-8 md:pb-20">
+        <div className="relative mx-auto flex min-h-[340px] max-w-7xl items-end px-5 pb-8 md:min-h-[690px] md:px-8 md:pb-20">
           <div className="max-w-3xl">
             <p className="text-xs font-semibold uppercase tracking-[0.25em] text-gold-light md:text-sm">
               {messages.eyebrow}
             </p>
-            <h1 className="mt-4 font-serif text-4xl font-semibold leading-tight text-white md:text-6xl lg:text-7xl">
+            <h1 className="mt-2 font-serif text-4xl font-semibold leading-tight text-white md:mt-4 md:text-6xl lg:text-7xl">
               {messages.title}
             </h1>
-            <p className="mt-6 max-w-2xl text-base leading-relaxed text-white/80 md:text-lg">
+            <p className="mt-3 max-w-2xl text-sm leading-relaxed text-white/90 md:mt-6 md:text-lg">
               {messages.intro}
             </p>
-            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+            <div className="mt-5 flex flex-col gap-2 sm:flex-row md:mt-8 md:gap-3">
               <ButtonLink
                 href={localizeHref("/booking", locale)}
                 variant="gold"
@@ -71,7 +71,7 @@ export function ExperiencesView({
         </div>
       </section>
 
-      <section className="py-20 md:py-28">
+      <section className="py-9 md:py-28">
         <div className="mx-auto max-w-7xl px-5 md:px-8">
           <div className="mx-auto max-w-3xl text-center">
             <p className="text-xs font-semibold uppercase tracking-[0.25em] text-gold md:text-sm">
@@ -85,8 +85,8 @@ export function ExperiencesView({
             </p>
           </div>
 
-          <div className="mt-8 text-center"><ButtonLink href={localizeHref("/services", locale)} variant="outline">{publicMessages.ServiceCatalog.all}</ButtonLink></div>
-          <div className="mt-12 grid gap-6 md:mt-16 lg:grid-cols-2 lg:gap-8">
+          <div className="mt-4 text-center md:mt-8"><ButtonLink href={localizeHref("/services", locale)} variant="outline">{publicMessages.ServiceCatalog.all}</ButtonLink></div>
+          <div className="mt-6 grid gap-4 md:mt-16 md:gap-6 lg:grid-cols-2 lg:gap-8">
             {experienceItems.map((item) => {
               const Icon = experienceIcons[item.icon];
               const content = messages.items[item.id];

@@ -15,7 +15,7 @@ export function ChatShell({
   mounted,
   title,
   chatHref,
-  hideFloatingTriggerOnMobileRoom,
+  hideFloatingTriggerOnMobile,
   keyboardLayoutMode,
   chatPanelStyle,
   inputRef,
@@ -31,7 +31,7 @@ export function ChatShell({
   mounted: boolean;
   title: string;
   chatHref: string;
-  hideFloatingTriggerOnMobileRoom: boolean;
+  hideFloatingTriggerOnMobile: boolean;
   keyboardLayoutMode: string;
   chatPanelStyle?: CSSProperties;
   inputRef: RefObject<HTMLTextAreaElement | null>;
@@ -170,7 +170,7 @@ export function ChatShell({
 
   return (
     <>
-      {!hideFloatingTriggerOnMobileRoom ? (
+      {!hideFloatingTriggerOnMobile ? (
         <Link
           href={chatHref}
           className="fixed bottom-5 right-5 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-gold text-navy shadow-2xl shadow-black/20 transition hover:scale-105 md:hidden"

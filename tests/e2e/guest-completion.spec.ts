@@ -47,6 +47,36 @@ function isoDaysFromNow(days: number) {
   return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, "0"), String(date.getDate()).padStart(2, "0")].join("-");
 }
 
+test.describe("reference booking on phones", () => {
+  for (const width of [360, 390, 430]) {
+    test(`keeps dates, in-flow consent and sticky payment controls separate at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 780 });
+      await page.goto(`/booking?checkin=${isoDaysFromNow(128)}&nights=2&unit=garden-suite`);
+      const consent = page.getByRole("region", { name: en.Consent.label });
+      const actions = page.getByTestId("booking-actions");
+      const next = actions.getByRole("button", { name: en.Booking.continue, exact: true });
+      const checkIn = page.getByTestId("booking-check-in");
+      const checkOut = page.getByTestId("booking-check-out");
+
+      await expect(actions).toHaveCSS("position", "sticky");
+      await expect(actions).toContainText(en.Booking.total);
+      await expect(next).toBeEnabled();
+      await expect(next).toBeInViewport();
+      await expect(consent).toHaveCSS("position", "static");
+      const [arrival, departure] = await Promise.all([checkIn.boundingBox(), checkOut.boundingBox()]);
+      expect(arrival?.y).toBe(departure?.y);
+      expect(arrival?.height).toBeGreaterThanOrEqual(44);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+
+      await consent.getByRole("button", { name: en.Consent.decline, exact: true }).click();
+      await expect(consent).toHaveCount(0);
+      await expect(next).toBeFocused();
+      await next.click();
+      await expect(page.getByRole("button", { name: en.Booking.guestDetails, exact: true })).toHaveAttribute("aria-current", "step");
+    });
+  }
+});
+
 test("G35 step bar shows one current step and a completed mark", async ({ page }) => {
   await page.goto(`/booking?checkin=${isoDaysFromNow(126)}&nights=2&adults=2&children=0&unit=garden-suite`);
   await page.getByRole("button", { name: en.Booking.continue, exact: true }).click();
