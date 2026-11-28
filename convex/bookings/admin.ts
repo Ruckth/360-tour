@@ -5,7 +5,7 @@ import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
 import { parsePhoneNumberFromString } from 'libphonenumber-js/min';
 import type { Doc, Id } from '../_generated/dataModel';
-import { adminQuery } from '../auth/model';
+import { canAccessResortDesk, adminQuery } from '../auth/model';
 import { isHistoricalStay, resolveNotify } from '../shared/bookingMoney';
 import { stayMoney } from '../shared/stayMoney';
 import { assertCapacity, assertStayDates, assertStayFree } from './private/bookingWrites';
@@ -124,6 +124,7 @@ export const listForAdmin = adminQuery({
 export const getForAdmin = adminQuery({
 	args: { bookingId: v.id('bookings') },
 	handler: async (ctx, args) => {
+		if (!(await canAccessResortDesk(ctx, 'bookings'))) return null;
 		const booking = await ctx.db.get(args.bookingId);
 		if (!booking) return null;
 		const property = await ctx.db.get(booking.propertyId);

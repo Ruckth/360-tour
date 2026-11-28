@@ -1,11 +1,11 @@
 import { v } from 'convex/values';
 import { internal } from '../_generated/api';
-import { adminMutation } from '../auth/model';
+import { adminMutation, canAccessResortDesk } from '../auth/model';
 import { patchSessionAfterMessages } from './adminChatMetadata';
 import { getChannelReplyWindow } from './channelReplyWindow';
 import { answerAccepted, assertNoPendingStaffSend, latestGuestId, sendFailed } from './inboxState';
 
-const MAX_REPLY_LENGTH = 1000;
+import { MAX_ADMIN_REPLY_LENGTH } from '../shared/adminReply';
 
 function recipientForSession(session: {
   channel: 'web' | 'line' | 'facebook' | 'whatsapp' | 'instagram';
@@ -28,12 +28,13 @@ export const claim = adminMutation({
     replyToMessageId: v.optional(v.id('messages')),
   },
   handler: async (ctx, args) => {
+    if (!(await canAccessResortDesk(ctx, 'chats'))) throw new Error('Chat desk access required');
     const { email } = ctx.admin;
     const requestId = args.requestId.trim();
     const content = args.content.trim();
     if (!requestId || requestId.length > 100) throw new Error('Invalid reply request');
-    if (!content || content.length > MAX_REPLY_LENGTH) {
-      throw new Error(`Reply must be between 1 and ${MAX_REPLY_LENGTH} characters`);
+    if (!content || content.length > MAX_ADMIN_REPLY_LENGTH) {
+      throw new Error(`Reply must be between 1 and ${MAX_ADMIN_REPLY_LENGTH} characters`);
     }
 
     const existing = await ctx.db
@@ -86,6 +87,7 @@ export const claim = adminMutation({
 export const complete = adminMutation({
   args: { requestId: v.string() },
   handler: async (ctx, args) => {
+    if (!(await canAccessResortDesk(ctx, 'chats'))) throw new Error('Chat desk access required');
     const attempt = await ctx.db
       .query('adminReplyAttempts')
       .withIndex('by_requestId', (q) => q.eq('requestId', args.requestId))
@@ -118,6 +120,7 @@ export const complete = adminMutation({
 export const fail = adminMutation({
   args: { requestId: v.string(), error: v.string() },
   handler: async (ctx, args) => {
+    if (!(await canAccessResortDesk(ctx, 'chats'))) throw new Error('Chat desk access required');
     const attempt = await ctx.db
       .query('adminReplyAttempts')
       .withIndex('by_requestId', (q) => q.eq('requestId', args.requestId))

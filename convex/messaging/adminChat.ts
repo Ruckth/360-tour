@@ -1,9 +1,11 @@
+import { readChatLinkedStay } from '../bookings/model';
+import { PRIMARY_BRANCH, readBranchByKey } from '../branches/model';
 import { inboxProjectionReady } from './inboxProjection';
 import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
-import { adminMutation, adminQuery, internalMutation, type MutationCtx, type QueryCtx } from '../auth/model';
+import { adminMutation, adminQuery, internalMutation, findStaffGrantByEmail, canAccessResortDesk, validStaffEmail, type MutationCtx, type QueryCtx } from '../auth/model';
 import { isChatSessionActive } from '../shared/chatPresence';
 import { getAdminChatMessageCount, getAdminChatSortAt, normalizeAdminSearchText } from './adminChatMetadata';
 import { getChannelReplyWindow } from './channelReplyWindow';
@@ -314,8 +316,11 @@ async function filterMatchingSessions(
 }
 
 /** Cached heads are internal storage, never additional browser response fields. */
-function adminSessionMetadata(session: Doc<'conversations'>): Omit<Doc<'conversations'>, 'lastMessagePreview' | 'lastDeliveryStatus' | 'inboxProjectionVersion' | 'lastActivityAt'> {
-  const metadata = { ...session };
+function adminSessionMetadata(session: Doc<'conversations'>) {
+  const { pendingBookingQuote, pendingCancellation, pendingServiceQuote, pendingServiceCancellation,
+    guestTokenHash, ...metadata } = session;
+  void pendingBookingQuote; void pendingCancellation; void pendingServiceQuote;
+  void pendingServiceCancellation; void guestTokenHash;
   delete metadata.lastMessagePreview;
   delete metadata.lastDeliveryStatus;
   delete metadata.inboxProjectionVersion;
@@ -570,6 +575,40 @@ async function listFilteredSessions(
 	};
 }
 
+async function assertChatDesk(ctx: QueryCtx) {
+	if (!(await canAccessResortDesk(ctx, 'chats'))) throw new Error('Chat desk access required');
+}
+
+export const queueCounts = adminQuery({
+	args: {},
+	handler: async ctx => {
+		if (!(await canAccessResortDesk(ctx, 'chats'))) return null;
+		if (!(await inboxProjectionReady(ctx))) return null;
+		const count = async (state: 'needs_staff' | 'processing') => (await ctx.db.query('conversations')
+			.withIndex('by_inboxState_and_latestMessageAt', q => q.eq('inboxState', state).gte('latestMessageAt', 0)).take(100)).length;
+		const [waiting, inProgress] = await Promise.all([count('needs_staff'), count('processing')]);
+		return { waiting, inProgress };
+	}
+});
+
+export const assignSession = adminMutation({
+	args: { sessionId: v.id('conversations'), email: v.string(), expectedEmail: v.union(v.string(), v.null()) },
+	handler: async (ctx, args) => {
+		await assertChatDesk(ctx);
+		const session = await ctx.db.get(args.sessionId);
+		if (!session || session.adminStatus === 'archived') throw new Error('Chat is unavailable');
+		if ((session.assignedAdminEmail ?? null) !== args.expectedEmail) throw new Error('Assignment changed. Review the current assignee.');
+		await assertNoPendingStaffSend(ctx, session);
+		const email = validStaffEmail(args.email);
+		const [grant, branch] = await Promise.all([findStaffGrantByEmail(ctx, email), readBranchByKey(ctx, PRIMARY_BRANCH.key)]);
+		if (!grant?.tokenIdentifier || (grant.role !== 'owner' &&
+			(grant.role !== 'manager' || !branch || branch.state === 'archived' || !grant.branchIds.includes(branch._id)))) {
+			throw new Error('This teammate does not have access to the chat desk');
+		}
+		await ctx.db.patch(session._id, { assignedAdminEmail: email });
+	}
+});
+
 export const listSessions = adminQuery({
 	args: {
 		paginationOpts: v.optional(paginationOptsValidator),
@@ -586,6 +625,7 @@ export const listSessions = adminQuery({
 		now: v.optional(v.number())
 	},
 	handler: async (ctx, args) => {
+		await assertChatDesk(ctx);
 
 		const now = args.now ?? Date.now();
 		const status = args.status ?? 'active';
@@ -634,6 +674,7 @@ export const listSessions = adminQuery({
 export const getSessionDetail = adminQuery({
 	args: { sessionId: v.id('conversations'), now: v.optional(v.number()) },
 	handler: async (ctx, args) => {
+		await assertChatDesk(ctx);
 
 		const now = args.now ?? Date.now();
 		const session = await ctx.db.get(args.sessionId);
@@ -675,6 +716,8 @@ export const getSessionDetail = adminQuery({
 			createSessionLookups(ctx).latestMessage(session._id)
 		]);
 
+		const linkedStay = await readChatLinkedStay(ctx, session._id);
+
 		return {
 			session: {
 				...adminSessionMetadata(session),
@@ -687,6 +730,7 @@ export const getSessionDetail = adminQuery({
 				isActive: isChatSessionActive(session, now)
 			},
 			replyWindow,
+			linkedStay,
 			lineEvents,
 			facebookEvents,
 			whatsappEvents,
@@ -698,15 +742,19 @@ export const getSessionDetail = adminQuery({
 export const settleGuestMessage = adminMutation({
 	args: { sessionId: v.id('conversations'), messageId: v.id('messages') },
 	handler: async (ctx, args) => {
+		await assertChatDesk(ctx);
 
 		const message = await ctx.db.get(args.messageId);
 		if (!message || message.sessionId !== args.sessionId || message.role !== 'user') {
 			throw new Error('Guest message not found');
 		}
 
-		await ctx.db.patch(args.sessionId, { settledGuestMessageId: args.messageId });
 		const session = await ctx.db.get(args.sessionId);
-		if (session && await latestGuestId(ctx, session) === args.messageId) await finishWithoutReply(ctx, args.sessionId);
+		if (!session || (session.adminStatus && session.adminStatus !== 'open') ||
+			await latestGuestId(ctx, session) !== args.messageId) throw new Error('The chat changed. Review the latest message.');
+		await assertNoPendingStaffSend(ctx, session);
+		await finishWithoutReply(ctx, args.sessionId);
+		await ctx.db.patch(args.sessionId, { settledGuestMessageId: args.messageId });
 		return null;
 	}
 });
@@ -717,6 +765,7 @@ export const listTranscriptMessages = adminQuery({
 		paginationOpts: paginationOptsValidator
 	},
 	handler: async (ctx, args) => {
+		await assertChatDesk(ctx);
 
 		// No session read: it is patched by every guest heartbeat, which would rerun this live
 		// transcript each time. A deleted chat's messages are removed with it, so it pages empty.
@@ -732,6 +781,7 @@ export const setSessionStatus = adminMutation({
 	args: { sessionId: v.id('conversations'), status: adminStatusValidator,
 		expectedGuestMessageId: v.optional(v.union(v.id('messages'), v.null())) },
 	handler: async (ctx, args) => {
+		await assertChatDesk(ctx);
 		const session = await ctx.db.get(args.sessionId);
 		if (!session) throw new Error('Session not found');
 
@@ -750,6 +800,8 @@ export const setSessionStatus = adminMutation({
 			inboxState: args.status === 'open' ? 'processing' : 'done',
 			inboxReason: args.status === 'open' ? 'follow_up' : 'archived',
 			staffTask: args.status === 'open' ? (session.staffTask ?? 'Review conversation') : undefined,
+			staffTaskDueAt: args.status === 'open' ? session.staffTaskDueAt : undefined,
+			staffTaskRevision: (session.staffTaskRevision ?? 0) + 1,
 			aiPaused: args.status === 'open' ? true : session.keepWithStaff ? true : undefined,
 			resolutionSource: undefined,
 			inboxSendRequestId: undefined,
@@ -761,32 +813,45 @@ export const setSessionStatus = adminMutation({
 });
 
 export const setAiPaused = adminMutation({
-	args: { sessionId: v.id('conversations'), paused: v.boolean() },
+	args: { sessionId: v.id('conversations'), paused: v.boolean(), expectedPaused: v.optional(v.boolean()) },
 	handler: async (ctx, args) => {
+		await assertChatDesk(ctx);
 		const { email } = ctx.admin;
 		const session = await ctx.db.get(args.sessionId);
 		if (!session) throw new Error('Session not found');
 
+		if (args.expectedPaused !== undefined && args.expectedPaused !== Boolean(session.aiPaused)) {
+			throw new Error('AI state changed. Review the current state.');
+		}
+		if (args.expectedPaused !== undefined && args.paused) await assertNoPendingStaffSend(ctx, session);
 		await changeStaffOwnership(ctx, args.sessionId, email, { paused: args.paused });
 		return null;
 	}
 });
 
 export const setStaffTask = adminMutation({
-	args: { sessionId: v.id('conversations'), task: v.union(v.string(), v.null()) },
+	args: { sessionId: v.id('conversations'), task: v.union(v.string(), v.null()), dueAt: v.optional(v.number()), expectedRevision: v.optional(v.number()) },
 	handler: async (ctx, args) => {
+		await assertChatDesk(ctx);
 		const { email } = ctx.admin;
 		const session = await ctx.db.get(args.sessionId);
 		if (!session) throw new Error('Session not found');
+		if (args.expectedRevision !== undefined && args.expectedRevision !== (session.staffTaskRevision ?? 0)) {
+			throw new Error('The follow-up changed. Reopen it and try again.');
+		}
+		const staffTaskRevision = (session.staffTaskRevision ?? 0) + 1;
+		if (args.dueAt !== undefined && (!Number.isSafeInteger(args.dueAt) || args.dueAt <= 0 || args.dueAt > 253402300799999)) {
+			throw new Error('Enter a valid follow-up due time');
+		}
 		if (args.task !== null) {
 			const task = args.task.trim();
 			if (!task || task.length > 300) throw new Error('Enter a follow-up of 1–300 characters');
-			await ctx.db.patch(args.sessionId, { staffTask: task,
+			await ctx.db.patch(args.sessionId, { staffTask: task, staffTaskRevision, staffTaskDueAt: args.dueAt,
 				inboxState: session.inboxSendError ? 'needs_staff' : 'processing',
 				inboxReason: session.inboxSendError ? 'send_failed' : session.inboxReason === 'sending' ? 'sending' : 'follow_up',
 				adminStatus: undefined, resolvedAt: undefined, aiPaused: true, assignedAdminEmail: email });
 		} else {
-			await ctx.db.patch(args.sessionId, { staffTask: undefined });
+			await ctx.db.patch(args.sessionId, { staffTask: undefined, staffTaskDueAt: undefined, staffTaskRevision });
 			// Task edits must not finish a reply before the channel confirms it.
 			if (session.inboxReason === 'sending') return null;
 			const guestId = await latestGuestId(ctx, session);
@@ -804,6 +869,7 @@ export const setStaffTask = adminMutation({
 export const setKeepWithStaff = adminMutation({
 	args: { sessionId: v.id('conversations'), keep: v.boolean() },
 	handler: async (ctx, args) => {
+		await assertChatDesk(ctx);
 		const { email } = ctx.admin;
 		const session = await ctx.db.get(args.sessionId);
 		if (!session) throw new Error('Session not found');
@@ -861,6 +927,7 @@ export const deleteSessionChildren = internalMutation({
 export const deleteArchivedSession = adminMutation({
 	args: { sessionId: v.id('conversations') },
 	handler: async (ctx, args) => {
+		await assertChatDesk(ctx);
 		const session = await ctx.db.get(args.sessionId);
 		if (!session) throw new Error('Session not found');
 		if (session.adminStatus !== 'archived') throw new Error('Archive the chat before deleting it');

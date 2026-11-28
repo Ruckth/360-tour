@@ -102,7 +102,7 @@ export const httpAction: HttpActionBuilder = handler => rawHttpAction((ctx, requ
 );
 // Auth-owned plain ctx implementations. Registrations stay in users.ts/staffAccess.ts.
 export { requireAdmin, requireOwner } from './private/adminAuth';
-export { accessForIdentity, assertCashierDiscount, canAccessCheckoutOrderBranch, canReadCheckoutOrder, findStaffGrantByEmail, requireCashierAction, requireStaff, staffAccess, staffCapabilities, staffInvitationExpiry, type StaffAccess, type StaffActor, type StaffCapability, type StaffRole } from './private/staffAccess';
+export { accessForIdentity, canAccessResortDesk, assertCashierDiscount, canAccessCheckoutOrderBranch, canReadCheckoutOrder, findStaffGrantByEmail, requireCashierAction, requireStaff, staffAccess, staffCapabilities, staffInvitationExpiry, validStaffEmail, type StaffAccess, type StaffActor, type StaffCapability, type StaffRole } from './private/staffAccess';
 
 export { manualReduction } from '../shared/staffDiscount';
 

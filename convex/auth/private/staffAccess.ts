@@ -4,7 +4,7 @@ import { ConvexError } from 'convex/values';
 import { internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { ActionCtx, MutationCtx, QueryCtx } from '../../_generated/server';
-import { listAssignedBranches } from '../../branches/model';
+import { listAssignedBranches, PRIMARY_BRANCH, readBranchByKey } from '../../branches/model';
 import { resortTodayIso } from '../../shared/time';
 import { isOpenOrder, isSettledOrder } from '../../pos/model';
 import { type PricedLine } from '../../shared/orderMath';
@@ -138,6 +138,15 @@ export async function accessForIdentity(ctx: QueryCtx, identity: StaffIdentity |
 export async function staffAccess(ctx: QueryCtx | MutationCtx | ActionCtx): Promise<StaffAccess> {
   if (!('db' in ctx)) return await ctx.runQuery(internal.auth.staffAccess.currentInternal, {});
   return await accessForIdentity(ctx, await ctx.auth.getUserIdentity());
+}
+
+/** Legacy resort records are owned by the primary branch. */
+export async function canAccessResortDesk(ctx: QueryCtx, capability: 'chats' | 'bookings') {
+  const actor = await staffAccess(ctx);
+  if (!actor.capabilities[capability]) return false;
+  if (actor.companyScope) return true;
+  const branch = await readBranchByKey(ctx, PRIMARY_BRANCH.key);
+  return !!branch && branch.state !== 'archived' && actor.branchIds.includes(branch._id);
 }
 
 export async function requireStaff(ctx: QueryCtx | MutationCtx | ActionCtx, capability: StaffCapability, scope?: 'selectedBranch'): Promise<StaffActor & { accessReads: number }> {
