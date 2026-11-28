@@ -197,3 +197,44 @@ test("G26 + G27 international phones keep their prefix; Review shows contact and
   await expect(page.getByTestId("booking-review-dates")).toContainText("2 nights");
   await expect(page.getByRole("button", { name: en.Booking.continueToPay })).toHaveCount(1);
 });
+
+test.describe("G30 + G31 pay summary and confirmation states", () => {
+  async function book(offset: number) {
+    const checkIn = isoDaysFromNow(offset);
+    const checkOut = isoDaysFromNow(offset + 2);
+    const booking = await localBackend().mutation(api.bookings.bookings.create, {
+      propertySlug: "garden-suite", checkIn, checkOut, guests: 2,
+      guestName: "Completion Guest", guestEmail: `completion-${offset}@example.com`, guestPhone: `+66812345${600 + offset}`, // Unique per test: phone rate limit.
+    });
+    return { ...booking, checkIn, checkOut };
+  }
+
+  test("a valid pay link shows villa, dates and guests above Pay; a wrong token shows none", async ({ page }) => {
+    const { bookingId, accessToken } = await book(60);
+    await page.goto(`/th/booking/pay?bookingId=${bookingId}&token=${accessToken}`);
+    const summary = page.getByTestId("pay-stay-summary");
+    await expect(summary.getByTestId("pay-stay-villa")).toHaveText(/Mossbell Garden Suite/);
+    await expect(summary.getByTestId("pay-stay-guests")).toHaveText(th.Villa.guests.replace("{count}", "2"));
+    const summaryBox = (await summary.boundingBox())!;
+    const payBox = (await page.getByRole("button", { name: th.Booking.pay, exact: true }).boundingBox())!;
+    expect(summaryBox.y).toBeLessThan(payBox.y);
+    await page.goto(`/booking/pay?bookingId=${bookingId}&token=wrong`);
+    await expect(page.getByRole("button", { name: en.Booking.pay, exact: true })).toBeDisabled();
+    await expect(page.getByTestId("pay-stay-summary")).toHaveCount(0);
+  });
+
+  test("an unpaid success link shows progress, then offers Check again without a warning during polling", async ({ page }) => {
+    test.setTimeout(90_000);
+    const { bookingId, accessToken } = await book(64);
+    await page.goto(`/booking/success?bookingId=${bookingId}&token=${accessToken}`);
+    const card = page.getByTestId("booking-success");
+    await expect(card).toHaveAttribute("data-phase", "verifying");
+    await expect(page.getByText(en.Booking.verifyingCopy)).toBeVisible();
+    await expect(page.getByText(en.Booking.notConfirmedCopy)).toHaveCount(0);
+    await expect(page.getByRole("button", { name: en.Booking.checkAgain })).toHaveCount(0);
+    await expect(card).toHaveAttribute("data-phase", "pending", { timeout: 40_000 });
+    await page.getByRole("button", { name: en.Booking.checkAgain }).click();
+    await expect(card).toHaveAttribute("data-phase", "verifying");
+    await expect(page.getByRole("button", { name: en.Booking.checkAgain })).toHaveCount(0);
+  });
+});

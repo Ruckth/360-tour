@@ -251,7 +251,13 @@
     "legendBooked": "Belegt",
     "legendNotSelectable": "Vergangen oder außerhalb der Aufenthaltsregeln",
     "editGuestDetails": "Gästedaten bearbeiten",
-    "phoneHint": "Wählen Sie Ihr Land oder beginnen Sie mit + und der Ländervorwahl."
+    "phoneHint": "Wählen Sie Ihr Land oder beginnen Sie mit + und der Ländervorwahl.",
+    "staySummary": "Ihr Aufenthalt",
+    "villaFallback": "Ihre Villa",
+    "verifyingCopy": "Warten auf die Zahlungsbestätigung …",
+    "paymentPendingTitle": "Zahlung wird noch verarbeitet",
+    "paymentPendingCopy": "Die Zahlungsbestätigung ist noch nicht eingegangen. Durch erneutes Prüfen wird nichts erneut abgebucht.",
+    "checkAgain": "Erneut prüfen"
   },
   "Coupon": {
     "haveCode": "Haben Sie einen Code?",

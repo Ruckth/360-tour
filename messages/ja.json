@@ -251,7 +251,13 @@
     "legendBooked": "予約済み",
     "legendNotSelectable": "過去の日付または宿泊条件外",
     "editGuestDetails": "ゲスト情報を編集",
-    "phoneHint": "国を選ぶか、+と国番号から入力してください。"
+    "phoneHint": "国を選ぶか、+と国番号から入力してください。",
+    "staySummary": "ご滞在内容",
+    "villaFallback": "ご予約のヴィラ",
+    "verifyingCopy": "お支払いの確認を待っています…",
+    "paymentPendingTitle": "お支払いを処理中です",
+    "paymentPendingCopy": "お支払いの確認がまだ届いていません。再確認しても再度請求されることはありません。",
+    "checkAgain": "もう一度確認"
   },
   "Coupon": {
     "haveCode": "コードをお持ちですか？",

@@ -251,7 +251,13 @@
     "legendBooked": "Booked",
     "legendNotSelectable": "Past or outside stay rules",
     "editGuestDetails": "Edit guest details",
-    "phoneHint": "Pick your country, or start with + and the country code."
+    "phoneHint": "Pick your country, or start with + and the country code.",
+    "staySummary": "Your stay",
+    "villaFallback": "Your villa",
+    "verifyingCopy": "Waiting for payment confirmation…",
+    "paymentPendingTitle": "Payment still processing",
+    "paymentPendingCopy": "We have not received the payment confirmation yet. You will not be charged again by checking.",
+    "checkAgain": "Check again"
   },
   "Coupon": {
     "haveCode": "Have a code?",

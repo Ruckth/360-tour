@@ -251,7 +251,13 @@
     "legendBooked": "Occupato",
     "legendNotSelectable": "Passato o fuori dalle regole di soggiorno",
     "editGuestDetails": "Modifica dati ospite",
-    "phoneHint": "Scegli il paese oppure inizia con + e il prefisso internazionale."
+    "phoneHint": "Scegli il paese oppure inizia con + e il prefisso internazionale.",
+    "staySummary": "Il tuo soggiorno",
+    "villaFallback": "La tua villa",
+    "verifyingCopy": "In attesa della conferma del pagamento…",
+    "paymentPendingTitle": "Pagamento ancora in elaborazione",
+    "paymentPendingCopy": "Non abbiamo ancora ricevuto la conferma del pagamento. Ricontrollare non comporta nuovi addebiti.",
+    "checkAgain": "Controlla di nuovo"
   },
   "Coupon": {
     "haveCode": "Hai un codice?",
