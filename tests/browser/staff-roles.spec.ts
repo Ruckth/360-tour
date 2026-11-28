@@ -227,7 +227,7 @@ test.describe("Settings › Team", () => {
     await expect(page.getByRole("menuitem")).toHaveText(["Copy sign-in link", "Renew invite"]);
     await page.keyboard.press("Escape");
 
-    await people.getByRole("button", { name: "Invite" }).click();
+    await people.getByRole("button", { name: "Invite", exact: true }).click();
     await people.getByRole("textbox", { name: "Email" }).fill("Fon@AuralisCove.co");
     await people.getByRole("combobox", { name: "Desk", exact: true }).click();
     await page.getByRole("option", { name: "Manager", exact: true }).click();

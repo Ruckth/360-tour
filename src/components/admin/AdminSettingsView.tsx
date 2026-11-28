@@ -241,7 +241,7 @@ const SECTIONS: Record<
   },
   email: {
     title: "Email",
-    description: "Booking confirmations, lifecycle emails and staff alerts.",
+    description: "Booking confirmations, lifecycle emails and staff alerts",
     fields: () => [
       {
         name: "fromName",
@@ -576,12 +576,11 @@ function SettingsForm({ section, settings, readOnly = false, onDirtyChange }: { 
   const bookingRuleGroups = [
     {
       title: "Reservation and chat timers",
-      description: `Awaiting payment: ${formatTimerMinutes(values.unpaidHoldMinutes)} · Chat quote confirmation: ${formatTimerMinutes(values.chatQuoteValidityMinutes)}. Opening the payment page still extends the payment hold until that page expires.`,
+      description: `Awaiting payment: ${formatTimerMinutes(values.unpaidHoldMinutes)} · Chat quote confirmation: ${formatTimerMinutes(values.chatQuoteValidityMinutes)}`,
       names: ["unpaidHoldMinutes", "chatQuoteValidityMinutes"],
     },
     {
       title: "Stay limits & guest emails",
-      description: "Minimum stay, booking window, same-day cutoff and lifecycle email timing.",
       names: ["preArrivalDaysBefore", "reviewDaysAfter", "minNights", "maxAdvanceDays", "sameDayCutoff"],
     },
   ];
@@ -635,7 +634,7 @@ function SettingsForm({ section, settings, readOnly = false, onDirtyChange }: { 
             <Card key={group.title} className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-5 p-5 lg:grid-cols-[1fr_2fr] lg:gap-8 lg:p-6">
               <header className="min-w-0">
                 <h3 className="text-balance text-[15px] font-semibold">{group.title}</h3>
-                <p className="mt-1 text-pretty text-[13px] leading-5 text-muted-foreground">{group.description}</p>
+                {group.description ? <p className="mt-1 text-pretty text-[13px] leading-5 text-muted-foreground">{group.description}</p> : null}
               </header>
               <div className="grid min-w-0 content-start grid-cols-[minmax(0,1fr)] gap-x-5 gap-y-5 sm:grid-cols-2">{fields.filter((field) => group.names.includes(field.name)).map(renderField)}</div>
             </Card>

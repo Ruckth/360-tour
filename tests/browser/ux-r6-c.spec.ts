@@ -31,8 +31,8 @@ for (const width of [390, 1180, 1440]) {
     test("booking units fit beside the number and are announced once", async ({ page }) => {
       await page.goto("/tests/browser/staff-roles.html?view=settings&tab=bookingRules");
       for (const [label, suffix, spoken] of [
-        ["Hold unpaid bookings for", "min", "minutes"],
-        ["Chat booking quote expires after", "min", "minutes"],
+        ["Reservation held while awaiting payment", "min", "minutes"],
+        ["Guest confirmation window for chat quotes", "min", "minutes"],
         ["Pre-arrival email", "days before", "days before"],
         ["Review request email", "days after", "days after"],
         ["Minimum stay", "nights", "nights"],

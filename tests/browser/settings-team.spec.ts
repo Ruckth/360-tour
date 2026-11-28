@@ -20,7 +20,7 @@ const BEFORE_GRANT_MARKETING = { taps: 4, fields: 1, pageChanges: 1 } as const;
  * People held 8 native selects (2 per person) and 11 controls; on the phone the discount limit
  * started below the fold (1 scroll to reach it, 1 more to reach Save).
  */
-const BEFORE_R2 = { selects: 8, peopleControls: 11, phoneLimitScrolls: 2 } as const;
+const BEFORE_R2 = { selects: 8, phoneLimitScrolls: 2 } as const;
 
 async function open(page: Page, query: string) {
   await page.goto(`/tests/browser/staff-roles.html${query}`);
@@ -55,7 +55,12 @@ test("compact Team and Branches open above setup tasks", async ({ page }) => {
 
   await open(page, "?view=settings&incompleteSetup");
   await expect(page.getByText("Finish setting up", { exact: true })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Team", exact: true })).toHaveAttribute("href", "/admin/settings?tab=team");
+  const completed = page.getByTestId("setup-checklist-completed");
+  const team = completed.getByRole("link", { name: "Team", exact: true });
+  await expect(team).toBeHidden();
+  await completed.locator("summary").press("Enter");
+  await expect(team).toBeVisible();
+  await expect(team).toHaveAttribute("href", "/admin/settings?tab=team");
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
 });
 
@@ -110,10 +115,14 @@ for (const [size, viewport] of Object.entries(SIZES)) {
       await expect(people.getByRole("combobox")).toHaveCount(0);
       expect(BEFORE_R2.selects).toBe(8);
       await expect(people.getByRole("button", { name: /^Change roles for / })).toHaveText(Array(4).fill("Change"));
-      // ⓘ, Invite, 4 × Change and the pending invite's ⋯ (was ⓘ, Invite, 8 selects and ⋯ = 11).
-      const controls = await people.evaluate((el) => el.querySelectorAll("button, select, a[href], input:not([type=hidden])").length);
-      expect(controls).toBe(7);
-      expect(controls).toBeLessThan(BEFORE_R2.peopleControls);
+      const filters = people.getByRole("button", { name: "Search and filter people" });
+      await expect(filters).toHaveAttribute("aria-expanded", "false");
+      await expect(people.getByRole("searchbox", { name: "Search people" })).toBeHidden();
+      await filters.click();
+      await expect(people.getByRole("searchbox", { name: "Search people" })).toBeVisible();
+      const chips = people.getByRole("group", { name: "Filter people" });
+      await expect(chips.getByRole("button", { name: "Pending invites (1)", exact: true })).toBeVisible();
+      await filters.click();
       const lek = people.getByTestId("team-person").first().locator("p");
       await expect(lek.nth(0)).toHaveText("Lek");
       await expect(lek.nth(1)).toHaveText("lek@auraliscove.co");

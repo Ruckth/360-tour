@@ -249,6 +249,8 @@ function PeoplePanel({
   }
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<{ text: string; error?: boolean; email: string } | null>(null);
+  const filtersId = useId();
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [peopleSearch, setPeopleSearch] = useState("");
   const [peopleFilter, setPeopleFilter] = useState<PeopleFilter>({ kind: "all" });
   const labelOf = (person: { email: string }) => personLabel(person.email);
@@ -263,7 +265,7 @@ function PeoplePanel({
     })),
   ];
   const filterKey = (filter: PeopleFilter) => filter.kind === "branch" ? `branch:${filter.id}` : filter.kind === "role" ? `role:${filter.role}` : filter.kind;
-  const shownPeople = people?.filter((person) => matchesPeopleFilter(person, peopleFilter, peopleSearch, labelOf(person)));
+  const visiblePeople = new Set(people?.filter((person) => matchesPeopleFilter(person, peopleFilter, peopleSearch, labelOf(person))).map((person) => person.email));
 
   const saveInProgress = useRef(false);
   async function save(email: string, task: () => Promise<unknown>, done: string) {
@@ -362,9 +364,24 @@ function PeoplePanel({
       label="People"
       tip={ROLES_TIP}
       action={
-        <Button ref={inviteButton} size="sm" disabled={busy !== null} aria-expanded={inviting} onClick={() => { void (async () => { if (!inviting || !inviteDirty || await confirmDiscard()) setInviting(!inviting); })(); }}>
-          <UserPlus aria-hidden className="size-4" /> Invite
-        </Button>
+        <>
+          {people ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              aria-expanded={filtersOpen}
+              aria-controls={filtersId}
+              aria-label="Search and filter people"
+              onClick={() => setFiltersOpen(!filtersOpen)}
+            >
+              Filters
+            </Button>
+          ) : null}
+          <Button ref={inviteButton} size="sm" disabled={busy !== null} aria-expanded={inviting} onClick={() => { void (async () => { if (!inviting || !inviteDirty || await confirmDiscard()) setInviting(!inviting); })(); }}>
+            <UserPlus aria-hidden className="size-4" /> Invite
+          </Button>
+        </>
       }
     >
       {inviting ? (
@@ -405,7 +422,7 @@ function PeoplePanel({
       ) : (
         <>
         {/* Filters narrow rows already loaded for this owner; they never change anyone's access. */}
-        <div className="mb-3 grid min-w-0 gap-2">
+        <div id={filtersId} hidden={!filtersOpen} className="mb-3 grid min-w-0 gap-2">
           <Input
             type="search"
             value={peopleSearch}
@@ -435,14 +452,15 @@ function PeoplePanel({
             })}
           </div>
         </div>
-        {shownPeople?.length === 0 ? (
+        {visiblePeople.size === 0 ? (
           <p role="status" className="py-4 text-sm text-muted-foreground">No people match. <button type="button" className="underline underline-offset-2" onClick={() => { setPeopleSearch(""); setPeopleFilter({ kind: "all" }); }}>Show everyone</button></p>
         ) : null}
         <ul ref={peopleList} className="min-w-0 divide-y divide-border" aria-label="People with access">
-          {(shownPeople ?? []).map((person) => (
+          {people.map((person) => (
             <PersonRow
               key={person.email}
               person={person}
+              hidden={!visiblePeople.has(person.email)}
               assignableBranches={assignableBranches}
               branchById={branchById}
               defaultBranchIds={defaultBranchIds}
@@ -607,6 +625,7 @@ function rolesText(person: Person) {
 
 function PersonRow({
   person,
+  hidden,
   assignableBranches,
   branchById,
   defaultBranchIds,
@@ -622,6 +641,7 @@ function PersonRow({
   onCopyLink,
 }: {
   person: Person;
+  hidden: boolean;
   assignableBranches: readonly SelectableBranch[];
   branchById: ReadonlyMap<Id<"branches">, SelectableBranch>;
   defaultBranchIds: readonly Id<"branches">[];
@@ -674,7 +694,7 @@ function PersonRow({
   }
 
   return (
-    <li className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2 py-0.5 first:pt-0 last:pb-0" data-testid="team-person" data-person-email={person.email}>
+    <li hidden={hidden} className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2 py-0.5 first:pt-0 last:pb-0" data-testid="team-person" data-person-email={person.email}>
       <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] items-center gap-x-3 gap-y-0 sm:grid-cols-[minmax(0,1fr)_auto]">
         <div className="min-w-0">
           {/* Who, then where: the branch pills sit on the name's line, so rows keep their height. */}

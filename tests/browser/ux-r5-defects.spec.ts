@@ -106,7 +106,7 @@ for (const width of [390, 1180]) {
 test("Booking rules have visible and spoken units and an explicit empty cutoff", async ({ page }) => {
   await settings(page, "bookingRules");
   const panel = page.getByRole("region", { name: "Booking rules", exact: true });
-  for (const [label, unit] of [["Hold unpaid bookings for", "minutes"], ["Chat booking quote expires after", "minutes"], ["Pre-arrival email", "days before"], ["Review request email", "days after"], ["Minimum stay", "nights"], ["Book up to", "days ahead"]]) {
+  for (const [label, unit] of [["Reservation held while awaiting payment", "minutes"], ["Guest confirmation window for chat quotes", "minutes"], ["Pre-arrival email", "days before"], ["Review request email", "days after"], ["Minimum stay", "nights"], ["Book up to", "days ahead"]]) {
     const input = panel.getByRole("textbox", { name: label, exact: true });
     await expect(input).toHaveAccessibleDescription(unit);
     await expect(input.locator("..").getByText(unit === "minutes" ? "min" : unit, { exact: true })).toBeVisible();

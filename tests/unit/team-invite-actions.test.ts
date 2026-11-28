@@ -430,19 +430,20 @@ it("names the person and branch before removing one, and Cancel changes nothing 
 
 it("filters people by pending invite, branch, role and search, with counts (D28)", async () => {
   await render();
+  await act(async () => host.querySelector<HTMLButtonElement>('button[aria-label="Search and filter people"]')!.click());
   const chipLabels = () => [...host.querySelectorAll<HTMLButtonElement>('[role="group"][aria-label="Filter people"] button')].map((button) => button.textContent);
   expect(chipLabels()).toEqual(["All (7)", "Pending invites (2)", "Koh Samui (3)", "Phuket (2)", "Owner (2)", "Manager (1)", "Cashier (3)", "Marketing (1)"]);
   const chip = (label: string) => [...host.querySelectorAll<HTMLButtonElement>('[role="group"][aria-label="Filter people"] button')].find((button) => button.textContent?.startsWith(label))!;
   await act(async () => chip("Pending invites").click());
-  expect([...host.querySelectorAll<HTMLElement>('[data-testid="team-person"]')].map((li) => li.dataset.personEmail)).toEqual([pending.email, expired.email]);
+  expect([...host.querySelectorAll<HTMLElement>('[data-testid="team-person"]:not([hidden])')].map((li) => li.dataset.personEmail)).toEqual([pending.email, expired.email]);
   expect(chip("Pending invites").getAttribute("aria-pressed")).toBe("true");
   await act(async () => chip("Phuket").click());
-  expect([...host.querySelectorAll<HTMLElement>('[data-testid="team-person"]')].map((li) => li.dataset.personEmail)).toEqual([pending.email, dual.email]);
+  expect([...host.querySelectorAll<HTMLElement>('[data-testid="team-person"]:not([hidden])')].map((li) => li.dataset.personEmail)).toEqual([pending.email, dual.email]);
   const search = host.querySelector<HTMLInputElement>('input[aria-label="Search people"]')!;
   await act(async () => {
     Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(search, "niran");
     search.dispatchEvent(new Event("input", { bubbles: true }));
   });
-  expect([...host.querySelectorAll<HTMLElement>('[data-testid="team-person"]')].map((li) => li.dataset.personEmail)).toEqual([dual.email]);
+  expect([...host.querySelectorAll<HTMLElement>('[data-testid="team-person"]:not([hidden])')].map((li) => li.dataset.personEmail)).toEqual([dual.email]);
   expect(chip("All").textContent).toBe("All (1)");
 });

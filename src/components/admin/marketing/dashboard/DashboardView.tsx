@@ -175,7 +175,7 @@ function ViewOptions({ touch, onTouch, open, onOpenChange, mobile = false }: { t
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>
         {mobile ? (
-          <button type="button" className="min-h-8 underline sm:hidden">{label}</button>
+          <button type="button" className="inline-flex min-h-11 min-w-11 items-center rounded px-1 font-medium underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:hidden">{label}</button>
         ) : (
           <Button type="button" variant="outline" size="sm" className="h-10 flex-1 max-sm:hidden sm:h-10 pointer-coarse:h-12 sm:flex-none" aria-label={`View options: ${label}`}>
             <SlidersHorizontal aria-hidden className="size-4" />
