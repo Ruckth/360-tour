@@ -112,3 +112,24 @@ test("G22 restart asks first; Keep chatting preserves the conversation", async (
   await expect(page.getByText(en.Chat.initialPrompt)).toBeVisible();
   await expect(page.getByPlaceholder(en.Chat.askPlaceholder)).toHaveValue("");
 });
+
+test("G24 switching contact apps keeps each app's draft", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto("/chat");
+  await page.getByText(en.Chat.shareContact).click();
+  const field = page.getByTestId("contact-app-field");
+  const handle = field.getByLabel(en.Chat.contactHandle);
+  const pick = async (app: "whatsapp" | "line") => {
+    await field.getByLabel(en.Chat.preferredApp).click();
+    await page.getByTestId(`contact-app-option-${app}`).click();
+  };
+  await handle.fill("+66 81 234 5678");
+  await pick("line");
+  await expect(handle).toHaveValue("");
+  await expect(handle).toHaveAttribute("placeholder", en.Chat.linePlaceholder);
+  await handle.fill("@auralis-guest");
+  await pick("whatsapp");
+  await expect(handle).toHaveValue("+66 81 234 5678");
+  await pick("line");
+  await expect(handle).toHaveValue("@auralis-guest");
+});

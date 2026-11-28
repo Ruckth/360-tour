@@ -19,11 +19,14 @@ import { Select, SelectContent, SelectItem } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
 type ContactApp = "whatsapp" | "line";
+/** Each app keeps its own draft handle; only the selected app's handle is ever submitted. */
 export type ContactForm = {
   email: string;
   preferredApp: ContactApp;
-  contactHandle: string;
+  handles: Record<ContactApp, string>;
 };
+export const emptyContactForm: ContactForm = { email: "", preferredApp: "whatsapp", handles: { whatsapp: "", line: "" } };
+export const selectedContactHandle = (form: ContactForm) => form.handles[form.preferredApp];
 const contactApps: ContactApp[] = ["whatsapp", "line"];
 
 function ContactAppIcon({ app }: { app: ContactApp }) {
@@ -143,7 +146,6 @@ export function ChatComposer({
                     setContactForm((current) => ({
                       ...current,
                       preferredApp: value as ContactApp,
-                      contactHandle: "",
                     }))
                   }
                 >
@@ -169,13 +171,14 @@ export function ChatComposer({
                 </Select>
                 <div className="h-5 w-px shrink-0 bg-border" />
                 <Input
-                  value={contactForm.contactHandle}
-                  onChange={(event) =>
+                  value={selectedContactHandle(contactForm)}
+                  onChange={(event) => {
+                    const handle = event.target.value;
                     setContactForm((current) => ({
                       ...current,
-                      contactHandle: event.target.value,
-                    }))
-                  }
+                      handles: { ...current.handles, [current.preferredApp]: handle },
+                    }));
+                  }}
                   className="h-9 min-w-0 flex-1 rounded-none border-0 bg-transparent px-3 text-base shadow-none focus-visible:ring-0 md:text-sm"
                   placeholder={
                     contactForm.preferredApp === "whatsapp"
