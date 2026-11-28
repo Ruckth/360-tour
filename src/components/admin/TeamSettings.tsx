@@ -249,8 +249,10 @@ function PeoplePanel({
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<{ text: string; error?: boolean; email: string } | null>(null);
 
+  const saveInProgress = useRef(false);
   async function save(email: string, task: () => Promise<unknown>, done: string) {
-    if (busy) return false;
+    if (saveInProgress.current) return false;
+    saveInProgress.current = true;
     setBusy(email);
     setMessage(null);
     try {
@@ -261,6 +263,7 @@ function PeoplePanel({
       setMessage({ text: errorText(err, "Couldn’t save. Try again."), error: true, email });
       return false;
     } finally {
+      saveInProgress.current = false;
       setBusy(null);
     }
   }
@@ -385,7 +388,7 @@ function PeoplePanel({
               onDesk={(role, branchIds) => setDesk(person, role, branchIds)}
               onBranches={(branchIds) => setBranches(person, branchIds)}
               onRoleSaved={() => restoreRoleFocus(person.email)}
-              retryMarketing={marketingRetries[person.email]}
+              retryMarketing={person.marketingGrant ? undefined : marketingRetries[person.email]}
               onMarketing={async (role) => {
                 const ok = await setMarketing(person, role);
                 if (ok) setMarketingRetries((current) => ({ ...current, [person.email]: undefined }));

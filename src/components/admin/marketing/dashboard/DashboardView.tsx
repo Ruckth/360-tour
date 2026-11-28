@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card";
 import type { Id } from "convex/_generated/dataModel";
 import type { ReportBasis, ReportData, SpendDraft } from "convex/shared/marketingReport";
 import { BarChart3, CalendarRange, Check, ChevronDown, Download, Link2, Megaphone, RotateCw, SlidersHorizontal } from "lucide-react";
-import { useMemo, useState, type FormEvent } from "react";
+import { useId, useMemo, useState, type FormEvent } from "react";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import { MoreMenu } from "@/components/ui/more-menu";
@@ -168,22 +168,28 @@ function RangePicker({ range, today, onChange }: { range: RangeChoice; today: st
 }
 
 /** Rarely changed choices about how sales are credited, with what each one means. */
-function ViewOptions({ touch, onTouch, open, onOpenChange }: { touch: Touch; onTouch: (touch: Touch) => void; open: boolean; onOpenChange: (open: boolean) => void }) {
+function ViewOptions({ touch, onTouch, open, onOpenChange, mobile = false }: { touch: Touch; onTouch: (touch: Touch) => void; open?: boolean; onOpenChange?: (open: boolean) => void; mobile?: boolean }) {
+  const id = useId();
+  const label = touch === "first" ? "First touch" : "Last touch";
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>
-        <Button type="button" variant="outline" size="sm" className="h-10 flex-1 max-sm:hidden sm:h-10 pointer-coarse:h-12 sm:flex-none" aria-label={`View options: ${touch === "first" ? "First touch" : "Last touch"}`}>
-          <SlidersHorizontal aria-hidden className="size-4" />
-          View options
-          {touch === "first" ? <span className="rounded-full bg-muted px-1.5 text-xs">First touch</span> : null}
-        </Button>
+        {mobile ? (
+          <button type="button" className="min-h-8 underline sm:hidden">{label}</button>
+        ) : (
+          <Button type="button" variant="outline" size="sm" className="h-10 flex-1 max-sm:hidden sm:h-10 pointer-coarse:h-12 sm:flex-none" aria-label={`View options: ${label}`}>
+            <SlidersHorizontal aria-hidden className="size-4" />
+            View options
+            {touch === "first" ? <span className="rounded-full bg-muted px-1.5 text-xs">{label}</span> : null}
+          </Button>
+        )}
       </PopoverTrigger>
       <PopoverContent align="end" className="grid w-[min(22rem,calc(100vw-2rem))] gap-3 p-3">
         <div className="grid gap-2">
-          <span id="touch-label" className="text-sm font-medium text-foreground">
+          <span id={id} className="text-sm font-medium text-foreground">
             Attribution
           </span>
-          <ToggleGroup variant="segmented" tone="subtle" value={touch} onValueChange={onTouch} aria-labelledby="touch-label" className="w-full">
+          <ToggleGroup variant="segmented" tone="subtle" value={touch} onValueChange={onTouch} aria-labelledby={id} className="w-full">
             <ToggleGroupItem value="last" className="flex-1 py-1.5">
               Last touch
             </ToggleGroupItem>
@@ -322,7 +328,7 @@ export function DashboardView({
         </ToggleGroup>
       </div>
       <div className="flex justify-end gap-2 max-sm:col-start-2 max-sm:row-start-2 sm:ml-auto">
-        <ViewOptions touch={touch} onTouch={setTouch} open={viewOptions} onOpenChange={setViewOptions} />
+        <ViewOptions touch={touch} onTouch={setTouch} />
         {/* On a phone, View options, Export CSV and Refresh wait in ⋯ so the figures come first. */}
         <Button type="button" variant="outline" size="sm" className="h-10 flex-1 max-sm:hidden sm:h-10 pointer-coarse:h-12 sm:flex-none" disabled={!p || firstRun} onClick={() => setExporting(true)}>
           <Download aria-hidden className="size-4" />
@@ -333,7 +339,7 @@ export function DashboardView({
           className="size-10 pointer-coarse:size-12 border border-border sm:hidden"
           items={[
             { label: busy ? "Updating…" : "Refresh", disabled: busy, onSelect: onRetry },
-            { label: `View options: ${touch === "first" ? "First touch" : "Last touch"}`, onSelect: () => setViewOptions(true) },
+            ...(report ? [{ label: `View options: ${touch === "first" ? "First touch" : "Last touch"}`, onSelect: () => setViewOptions(true) }] : []),
             { label: "Export CSV", disabled: !p || firstRun, onSelect: () => setExporting(true) },
           ]}
         />
@@ -348,9 +354,7 @@ export function DashboardView({
           <span aria-hidden className={cn("size-1.5 rounded-full", busy ? "motion-safe:animate-pulse bg-amber-500" : "bg-emerald-500")} />
           {busy ? "Updating… · showing previous figures" : `Updated ${formatStamp(report.asOf)}`}
         </span>
-        <button type="button" className="min-h-8 underline sm:hidden" onClick={() => setViewOptions(true)}>
-          {touch === "first" ? "First touch" : "Last touch"}
-        </button>
+        <ViewOptions mobile touch={touch} onTouch={setTouch} open={viewOptions} onOpenChange={setViewOptions} />
         {propertyFilter !== "all" ? (
           <>
             <span>{propertyName}</span>
