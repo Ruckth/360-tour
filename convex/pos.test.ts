@@ -586,6 +586,22 @@ describe('source changes', () => {
 		expect(await admin.mutation(api.bookings.commands.deleteBookings.deleteBookings, { bookingIds: [pending] })).toMatchObject({ deleted: 0, skipped: [{ reason: expect.stringContaining('has an order') }] });
 	});
 
+	it('D19: attaching a stay to a Spa appointment is checked in the write and charges nothing by itself', async () => {
+		const { admin, serviceId, order } = await setup();
+		const bookingId = await admin.mutation(api.bookings.commands.createBooking.createBooking, {
+			propertySlug: 'villa', guestName: 'Mia', guestPhone: '0811111111', checkIn: '2026-12-01', checkOut: '2026-12-03', guests: 2
+		});
+		const inStay = new Date('2026-12-02T03:00:00.000Z').getTime();
+		const outside = new Date('2026-12-05T03:00:00.000Z').getTime();
+		await expect(admin.mutation(api.services.commands.createAppointment.createAppointment, { serviceId, start: outside, guestName: 'Mia', guestPhone: '0811111111', bookingId })).rejects.toThrow('must fall within it');
+		const { appointmentId } = await admin.mutation(api.services.commands.createAppointment.createAppointment, { serviceId, start: inStay, guestName: 'Ann', guestPhone: '0899999999', bookingId });
+		const linked = await admin.query(api.pos.orders.ordersForBooking, { appointmentId });
+		// The stay's order stays empty: selecting a stay is not a charge.
+		expect((await order(linked!.activeOrder!._id)).order).toMatchObject({ bookingId, hasItems: false, due: 0 });
+		await admin.mutation(api.bookings.commands.cancelStay.cancelStay, { bookingId, expectedRevision: (await admin.query(api.bookings.admin.getForAdmin, { bookingId }))!.revision, effectiveAt: Date.now(), notifyGuest: false });
+		await expect(admin.mutation(api.services.commands.createAppointment.createAppointment, { serviceId, start: inStay + 7_200_000, guestName: 'Mia', guestPhone: '0811111111', bookingId })).rejects.toThrow('cancelled');
+	});
+
 	it('creates every new stay and appointment with its order, which a test booking can still be deleted with', async () => {
 		const { t, admin, serviceId, order } = await setup();
 		const bookingId = await admin.mutation(api.bookings.commands.createBooking.createBooking, {

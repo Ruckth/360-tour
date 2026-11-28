@@ -3,7 +3,7 @@
 import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
-import type { FunctionArgs } from "convex/server";
+import type { FunctionArgs, FunctionReturnType } from "convex/server";
 import { staffDate } from "@/lib/staff-time";
 import { useRef, useState, type FormEvent } from "react";
 import { appointmentEntrySlot, appointmentEntryStatus, isPastEntry } from "@/components/admin/appointment-entry";
@@ -147,6 +147,8 @@ export function NewAppointmentDialog({
   const qualified = staff.filter(person => historicalDate || (person.status === "active" && service?.staffIds.includes(person._id)));
   const staffId = qualified.some(person => person._id === staffChoice) ? staffChoice as Id<"staff"> : undefined;
   const [historicalReason, setHistoricalReason] = useState("");
+  // D19: an explicit stay attachment, separate from the guest contact fields and from any payment.
+  const [attachedStay, setAttachedStay] = useState<AttachableStay | null>(null);
   const pickable = services.filter(s => historicalDate || s.status === "active").map(s => s.status === "archived" ? { ...s, name: `${s.name} (archived)` } : s);
 
   const slots = useQuery(
@@ -195,7 +197,7 @@ export function NewAppointmentDialog({
         staffId: assignedId,
         ...(stay
           ? { guestName: stay.guestName, guestPhone: stay.guestPhone, guestEmail: stay.guestEmail, bookingId: stay.bookingId }
-          : { guestName: text("guestName"), guestPhone: text("guestPhone"), guestEmail: text("guestEmail") || undefined }),
+          : { guestName: text("guestName"), guestPhone: text("guestPhone"), guestEmail: text("guestEmail") || undefined, ...(attachedStay ? { bookingId: attachedStay._id } : {}) }),
         ...(rebook ? { rebookedFromId: rebook._id } : {}),
       });
       rememberService(serviceId, option?.durationMin ?? service?.durationMin ?? 0);
@@ -462,6 +464,7 @@ export function NewAppointmentDialog({
               {review?.needsReason ? <div className="grid gap-2"><Label htmlFor="na-reason">Reason for the historical overlap</Label><Input id="na-reason" required maxLength={500} value={historicalReason} onChange={event => setHistoricalReason(event.target.value)} /></div> : null}
               {stay ? null : (
                 <>
+                  <StayAttachPicker date={date} value={attachedStay} onChange={setAttachedStay} />
                   <div className="grid gap-2">
                     <Label htmlFor="na-name">Guest name (optional)</Label>
                     <Input id="na-name" name="guestName" defaultValue={rebook?.guestName} />
@@ -518,3 +521,53 @@ export function NextOpenTime({ args, onChoose }: {
     </Button>
   );
 }
+
+type AttachableStay = FunctionReturnType<typeof api.bookings.admin.searchBookings>[number];
+
+/** Stays a Spa appointment on `date` may join: not cancelled and covering that date (the server re-checks). */
+export function attachableStays(stays: readonly AttachableStay[], date: string) {
+  return stays.filter((stay) => stay.status !== "cancelled" && stay.checkIn <= date && date <= stay.checkOut);
+}
+
+/** D19: search hotel stays (admin search) and attach one explicitly; choosing a stay charges nothing. */
+export function StayAttachPicker({ date, value, onChange }: { date: string; value: AttachableStay | null; onChange: (stay: AttachableStay | null) => void }) {
+  const [query, setQuery] = useState("");
+  const found = useQuery(api.bookings.admin.searchBookings, query.trim().length >= 2 && !value ? { query: query.trim() } : "skip");
+  const eligible = found ? attachableStays(found, date) : [];
+  const label = (stay: AttachableStay) => `${stay.guestName} · ${staffDate(resortMidnight(stay.checkIn))} → ${staffDate(resortMidnight(stay.checkOut))} · ${stay.confirmationCode}`;
+  if (value) {
+    return (
+      <div className="grid gap-1 rounded-lg border border-border px-3 py-2 text-sm">
+        <span className="text-xs text-muted-foreground">Attached hotel stay</span>
+        <span className="flex flex-wrap items-center justify-between gap-2">
+          <span className="font-medium">{label(value)}</span>
+          <Button type="button" size="sm" variant="ghost" onClick={() => onChange(null)}>Remove</Button>
+        </span>
+        <span className="text-xs text-muted-foreground">The appointment goes on this stay&apos;s checkout order. Nothing is charged until staff take payment. Guest contact below stays as you enter it.</span>
+      </div>
+    );
+  }
+  return (
+    <details className="text-sm">
+      <summary className="cursor-pointer text-muted-foreground">Attach to a hotel stay (optional)</summary>
+      <div className="mt-2 grid gap-2">
+        <Label htmlFor="na-stay">Find the stay by guest name, phone, email or code</Label>
+        <Input id="na-stay" value={query} onChange={(event) => setQuery(event.target.value)} autoComplete="off" />
+        {found === undefined ? null : eligible.length === 0 ? (
+          <p className="text-xs text-muted-foreground">No stay that includes {staffDate(resortMidnight(date), { weekday: true })} matches.</p>
+        ) : (
+          <ul className="grid gap-1">
+            {eligible.map((stay) => (
+              <li key={stay._id}>
+                <Button type="button" variant="outline" size="sm" className="h-auto w-full justify-start whitespace-normal py-2 text-start" onClick={() => onChange(stay)}>
+                  {label(stay)}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </details>
+  );
+}
+

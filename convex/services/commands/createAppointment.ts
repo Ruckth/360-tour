@@ -3,6 +3,8 @@ import { adminMutation } from '../../auth/model';
 import { recordRebooked } from '../private/appointmentChanges';
 import { canBookAgain } from '../../shared/appointmentWindow';
 import { createAppointmentRecord } from '../private/serviceSlots';
+import { stayAttachProblem } from '../../bookings/model';
+import { resortLocalParts } from '../../shared/time';
 
 export const createAppointment = adminMutation({
 	args: {
@@ -15,6 +17,11 @@ export const createAppointment = adminMutation({
 		const admin = ctx.admin;
 		const original = args.rebookedFromId ? await ctx.db.get(args.rebookedFromId) : null;
 		if (args.rebookedFromId && (!original || !canBookAgain(original))) throw new Error('Only cancelled or no-show appointments can be booked again');
+		// D19: an attached stay is checked in this transaction (exists, not cancelled, covers the appointment date).
+		if (args.bookingId) {
+			const problem = stayAttachProblem(await ctx.db.get(args.bookingId), resortLocalParts(args.start).date);
+			if (problem) throw new Error(problem);
+		}
 		const created = await createAppointmentRecord(ctx, { ...args, source: 'admin', actor: admin.email }, { kind: 'admin_historical', reason: args.historicalReason });
 		if (original) await recordRebooked(ctx, original, created.confirmationCode, admin.email);
 		return created;

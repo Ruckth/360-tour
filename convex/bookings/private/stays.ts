@@ -447,3 +447,17 @@ export async function validateDateBlock(
 	else await assertStayFree(ctx, args.propertyId, args.start, args.end);
 	return reason;
 }
+
+/**
+ * Why an appointment on `appointmentDate` (resort date) can't be attached to this stay, or null. An attached
+ * appointment shares the stay's checkout order; attaching never charges anything by itself.
+ */
+export function stayAttachProblem(booking: Doc<'bookings'> | null, appointmentDate: string): string | null {
+	if (!booking) return 'That stay no longer exists. Choose another stay or book without one.';
+	if (booking.status === 'cancelled') return 'That stay is cancelled. Choose another stay or book without one.';
+	if (appointmentDate < booking.checkIn || appointmentDate > booking.checkOut) {
+		return `That stay runs ${booking.checkIn} to ${booking.checkOut}; the appointment must fall within it.`;
+	}
+	return null;
+}
+
