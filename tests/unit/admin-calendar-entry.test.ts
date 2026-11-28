@@ -32,9 +32,9 @@ vi.mock("@/components/admin/branch/branch-context", () => ({
   useAdminBranch: () => ({ branches: [{ id: "samui", key: "koh-samui" }, { id: "phuket", key: "phuket" }], current: observed.branch ? { id: observed.branch } : null }),
 }));
 vi.mock("@/components/admin/AppointmentSheet", () => ({ AppointmentSheet: (props: { appointment: { _id: string } | null }) => props.appointment ? createElement("span", null, `Sheet ${props.appointment._id}`) : null }));
-const nav = vi.hoisted(() => ({ search: "" }));
+const nav = vi.hoisted(() => ({ search: "", replace: vi.fn() }));
 vi.mock("@/platform/navigation", () => ({
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+  useRouter: () => ({ push: vi.fn(), replace: nav.replace }),
   useSearchParams: () => new URLSearchParams(nav.search),
   usePathname: () => "/admin/staff/calendar",
 }));
@@ -61,11 +61,6 @@ vi.mock("@/components/admin/BookingSheet", () => ({
 }));
 vi.mock("@/components/admin/IcalSourcesDialog", () => ({
   IcalSourcesDialog: ({ open, onClose }: { open: boolean; onClose: () => void }) => (open ? createElement("button", { "data-testid": "ota-calendars", onClick: onClose }, "OTA calendars open") : null),
-}));
-const nav = vi.hoisted(() => ({ search: "", replace: vi.fn() }));
-vi.mock("@/platform/navigation", () => ({
-  useSearchParams: () => new URLSearchParams(nav.search),
-  useRouter: () => ({ replace: nav.replace, push: vi.fn() }),
 }));
 vi.mock("@/components/admin/OtaRatesDialog", () => ({ OtaRatesDialog: () => null }));
 vi.mock("@/components/admin/NewBookingDialog", () => ({
