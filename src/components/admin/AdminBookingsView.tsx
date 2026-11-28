@@ -387,15 +387,15 @@ function HotelBookings() {
                 items={[
                   ...(phone
                     ? [
-                        { label: "All villas", checked: villa === "all", onSelect: () => setVilla("all") },
-                        ...(properties ?? []).map((p) => ({ label: p.name, checked: villa === p._id, onSelect: () => setVilla(p._id) })),
+                        { group: "View", label: "All villas", checked: villa === "all", onSelect: () => setVilla("all") },
+                        ...(properties ?? []).map((p) => ({ group: "View", label: p.name, checked: villa === p._id, onSelect: () => setVilla(p._id) })),
                       ]
                     : []),
-                  { label: "Show cancelled", checked: showCancelled, onSelect: () => setShowCancelled((value) => !value) },
-                  { label: "Block dates", onSelect: () => setBlockTarget({ kind: "new", propertyId: villa !== "all" ? villa : undefined }) },
-                  { label: "OTA calendars", onSelect: () => setManagingCalendars(true) },
-                  { label: "OTA rates", onSelect: () => setManagingRates(true) },
-                  { label: "Clean up old bookings", onSelect: () => setCleaningUp(true) },
+                  { group: "View", label: "Show cancelled", checked: showCancelled, onSelect: () => setShowCancelled((value) => !value) },
+                  { group: "Add", label: "Block dates", onSelect: () => setBlockTarget({ kind: "new", propertyId: villa !== "all" ? villa : undefined }) },
+                  { group: "Channels", label: "OTA calendars", onSelect: () => setManagingCalendars(true) },
+                  { group: "Channels", label: "OTA rates", onSelect: () => setManagingRates(true) },
+                  { group: "Maintenance", label: "Clean up old bookings…", description: "Review eligible bookings before deleting.", onSelect: () => setCleaningUp(true) },
                 ]}
               />
             </div>
@@ -416,19 +416,15 @@ function HotelBookings() {
           ) : null}
           <EventCalendarContent />
         </EventCalendar>
-        <div className={view === "agenda" ? "hidden" : "hidden shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-t border-border px-4 py-3 text-xs text-muted-foreground sm:flex"}>
-          {HOTEL_STATUSES.map((key) => {
-            const Icon = key === "paid" ? Check : key === "cancelled" ? Ban : key === "pending" ? CircleDashed : Clock;
-            return <span key={key} className="flex items-center gap-1.5">
-              {key === "hostBlock" || key === "otaBlock" ? <span aria-hidden className="size-3 rounded-sm bg-muted bg-[repeating-linear-gradient(135deg,transparent_0_3px,color-mix(in_oklab,var(--color-foreground)_20%,transparent)_3px_4px)]" /> : <Icon aria-hidden className="size-3.5" style={{ color: hotelStatusColor(key) }} />}
-              {key === "pending" ? "Pending · dashed border" : key === "confirmed" ? "Confirmed · balance due" : hotelStatus(key).label}
-            </span>;
-          })}
-          <span role="status" className={notice?.error ? "text-destructive sm:ms-auto" : "sm:ms-auto"}>
-            {/* The drag hint is for a mouse or pen; on touch the chips open on a tap. */}
-            {notice?.text ?? <span className="pointer-coarse:hidden">Drag across days to book or block · drag a booking to move it, or its edge to change dates</span>}
-          </span>
-        </div>
+        <details className="border-t px-4 py-2 text-xs sm:hidden">
+          <summary className="min-h-9 cursor-pointer content-center">Key</summary>
+          <HotelLegend />
+        </details>
+        {view !== "agenda" ? <div className="hidden border-t px-4 py-3 sm:block"><HotelLegend /></div> : null}
+        <span role="status" className={notice ? `block px-4 py-2 text-xs ${notice.error ? "text-destructive" : "text-muted-foreground"}` : "sr-only"}>
+          {notice?.text}
+        </span>
+        {!notice && view !== "agenda" ? <p className="hidden px-4 pb-2 text-xs text-muted-foreground pointer-fine:sm:block">Drag across days to book or block · drag a booking to move it, or its edge to change dates</p> : null}
       </Card>
 
       <BookingSheet
@@ -524,15 +520,23 @@ function HotelBookings() {
   );
 }
 
+function HotelLegend() {
+  return (
+    <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs text-muted-foreground">
+      {HOTEL_STATUSES.map((key) => {
+        const Icon = key === "paid" ? Check : key === "cancelled" ? Ban : key === "pending" ? CircleDashed : Clock;
+        return <span key={key} className="flex items-center gap-1.5">
+          {key === "hostBlock" || key === "otaBlock" ? <span aria-hidden className="size-3 rounded-sm bg-muted bg-[repeating-linear-gradient(135deg,transparent_0_3px,color-mix(in_oklab,var(--color-foreground)_20%,transparent)_3px_4px)]" /> : <Icon aria-hidden className="size-3.5" style={{ color: hotelStatusColor(key) }} />}
+          {key === "pending" ? "Pending · dashed border" : key === "confirmed" ? "Confirmed · balance due" : hotelStatus(key).label}
+        </span>;
+      })}
+    </div>
+  );
+}
+
 const CUSTOM_PRICE_REFUSAL = /custom price/i;
 
-/**
- * Confirms a dragged or resized booking. It sends the revision the calendar showed when the chip
- * was dropped, so a change made meanwhile is refused rather than overwritten, and always says
- * whether the guest is emailed (sent explicitly). A stay with a custom price is not re-priced at
- * the villa rate here: the dialog explains and offers to open the booking to set the new price.
- * While saving it can't be closed or sent twice; a failure keeps it open for a retry.
- */
+/** Reviews the dropped target against a specific live booking revision before moving it. */
 export function MoveBookingDialog({
   move,
   properties,
@@ -546,9 +550,11 @@ export function MoveBookingDialog({
   onMoved: (notice: string) => void;
   onOpenBooking: (bookingId: Id<"bookings">) => void;
 }) {
-  const { booking, propertyId, checkIn, checkOut } = move;
+  const { propertyId, checkIn, checkOut } = move;
   const editBooking = useMutation(api.bookings.commands.editBooking.editBooking);
-  const detail = useQuery(api.bookings.admin.getForAdmin, { bookingId: booking._id });
+  const detail = useQuery(api.bookings.admin.getForAdmin, { bookingId: move.booking._id });
+  const [reviewedRevision, setReviewedRevision] = useState(move.booking.revision);
+  const booking = detail ?? move.booking;
   const [notifyChoice, setNotifyChoice] = useState<boolean | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -556,10 +562,10 @@ export function MoveBookingDialog({
   const fromVilla = properties.find((p) => p._id === booking.propertyId)?.name ?? "Villa";
   const nights = nightsBetweenIso(checkIn, checkOut);
   const customPrice = detail?.priceOverride ?? null;
-  const changedMeanwhile = detail ? detail.revision !== booking.revision : false;
+  const changedMeanwhile = detail ? detail.revision !== reviewedRevision : false;
   const quote = useBookingEditQuote(
     detail && property && !customPrice && !changedMeanwhile
-      ? { bookingId: booking._id, propertySlug: property.slug, checkIn, checkOut, guests: booking.guests }
+      ? { bookingId: booking._id, propertySlug: property.slug, checkIn, checkOut, guests: booking.guests, revision: reviewedRevision }
       : null,
   );
   const price = bookingEditPrice({ current: booking, quote });
@@ -571,7 +577,8 @@ export function MoveBookingDialog({
   const balance = paid !== undefined && currency === booking.currency ? balanceText(newTotal, booking, booking.currency) : null;
   const notify = notifyChoice ?? notifyDefault({ checkIn, guestEmailsOff: detail?.guestEmailsOff });
   const customRefused = CUSTOM_PRICE_REFUSAL.test(error);
-  const ready = detail !== undefined && detail !== null && !customPrice && !changedMeanwhile && Boolean(property) && Boolean(expectedPrice);
+  const staleSave = /booking changed/i.test(error);
+  const ready = !staleSave && detail !== undefined && detail !== null && !customPrice && !changedMeanwhile && Boolean(property) && Boolean(expectedPrice);
 
   async function save() {
     if (!ready || !expectedPrice || saving) return;
@@ -624,8 +631,10 @@ export function MoveBookingDialog({
           </div>
         ) : changedMeanwhile ? (
           <p role="alert" className="text-sm text-destructive">
-            This booking changed since the calendar showed it. Close this and drag it again to see the latest details.
+            The booking changed. Current dates are {displayDate(booking.checkIn)} → {displayDate(booking.checkOut)}.
           </p>
+        ) : !property ? (
+          <p role="alert" className="text-sm text-destructive">The target villa is no longer available.</p>
         ) : price.kind === "loading" || price.kind === "idle" ? (
           <Spinner label="Checking the price" />
         ) : price.kind === "error" ? (
@@ -656,7 +665,15 @@ export function MoveBookingDialog({
           <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
             Keep dates
           </Button>
-          {customPrice || customRefused ? (
+          {changedMeanwhile && detail ? (
+            <Button type="button" disabled={saving} onClick={() => {
+              setReviewedRevision(detail.revision);
+              setNotifyChoice(null);
+              setError("");
+            }}>
+              Review latest booking
+            </Button>
+          ) : customPrice || customRefused ? (
             <Button type="button" onClick={() => onOpenBooking(booking._id)} disabled={saving}>
               Open booking
             </Button>
@@ -684,6 +701,12 @@ function GuestSearch({ properties, onPick }: { properties: AdminProperty[]; onPi
   }, [text]);
   const active = query.length >= 2 && text.trim().length >= 2;
   const results = useQuery(api.bookings.admin.searchBookings, active ? { query } : "skip");
+  const today = resortTodayIso();
+  const upcoming = results?.filter((row) => row.checkOut >= today).sort((a, b) => {
+    if (a.checkIn <= today && b.checkIn <= today) return b.checkIn.localeCompare(a.checkIn);
+    return a.checkIn.localeCompare(b.checkIn);
+  });
+  const past = results?.filter((row) => row.checkOut < today).sort((a, b) => b.checkOut.localeCompare(a.checkOut));
   const villaName = (id: string) => properties.find((p) => p._id === id)?.name ?? "Villa";
   return (
     <AdminCalendarSearch label="Search bookings" placeholder="Guest, phone or code" value={text} onChange={setText} open={searchOpen} onOpenChange={setSearchOpen}>
@@ -694,33 +717,38 @@ function GuestSearch({ properties, onPick }: { properties: AdminProperty[]; onPi
           ) : results.length === 0 ? (
             <p className="px-3 py-2 text-sm text-muted-foreground">No bookings found.</p>
           ) : (
-            <ul>
-              {results.map((booking) => (
-                <li key={booking._id}>
-                  <button
-                    type="button"
-                    className="grid w-full gap-0.5 rounded-md px-3 py-2 text-left text-sm hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
-                    onClick={() => {
-                      goTo(new Date(`${booking.checkIn}T12:00:00`));
-                      onPick(booking);
-                      setText("");
-                      setSearchOpen(false);
-                    }}
-                  >
-                    <span className="flex items-center justify-between gap-2 font-medium">
-                      <span className="min-w-0 truncate">{booking.guestName}</span>
-                      <StatusBadge {...hotelStatus(statusKey(booking))} />
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      {villaName(booking.propertyId)} · {displayDate(booking.checkIn)} → {displayDate(booking.checkOut)}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      {[booking.confirmationCode, booking.guestPhone].filter(Boolean).join(" · ")}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
+            ([["Current or upcoming", upcoming], ["Past", past]] as const).map(([label, rows]) => rows?.length ? (
+              <section key={label} aria-label={label}>
+                <h3 className="px-3 py-1 text-xs font-medium text-muted-foreground">{label}</h3>
+                <ul>
+                  {rows.map((booking) => (
+                    <li key={booking._id}>
+                      <button
+                        type="button"
+                        className="grid w-full gap-0.5 rounded-md px-3 py-2 text-left text-sm hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
+                        onClick={() => {
+                          goTo(new Date(`${booking.checkIn}T12:00:00`));
+                          onPick(booking);
+                          setText("");
+                          setSearchOpen(false);
+                        }}
+                      >
+                        <span className="flex items-center justify-between gap-2 font-medium">
+                          <span className="min-w-0 truncate">{booking.guestName}</span>
+                          <StatusBadge {...hotelStatus(statusKey(booking))} />
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {villaName(booking.propertyId)} · {displayDate(booking.checkIn)} → {displayDate(booking.checkOut)}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {[booking.confirmationCode, booking.guestPhone].filter(Boolean).join(" · ")}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ) : null)
           )}
         </div>
       ) : null}
