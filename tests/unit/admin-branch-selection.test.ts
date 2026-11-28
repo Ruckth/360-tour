@@ -70,8 +70,9 @@ describe("working branch selection", () => {
 
   it("drops the old branch's URL state on a switch, keeping only the tab", () => {
     expect(branchSwitchHref("/admin/chats", new URLSearchParams("session=s1&q=maya&state=open"))).toBeNull();
-    expect(branchSwitchHref("/admin/staff-bookings", new URLSearchParams("tab=list&booking=b1"))).toBe("/admin/staff-bookings?tab=list");
-    expect(branchSwitchHref("/admin/hotel", new URLSearchParams(""))).toBeNull();
+    expect(branchSwitchHref("/admin/staff/calendar", new URLSearchParams("appointment=appt1&date=2026-12-02&staff=staff1"))).toBe("/admin/staff/calendar");
+    expect(branchSwitchHref("/admin/hotel", new URLSearchParams("booking=stay1&q=maya"))).toBeNull();
+    expect(branchSwitchHref("/admin/questions", new URLSearchParams("tab=facts&q=pool"))).toBe("/admin/questions?tab=facts");
     expect(branchSwitchHref("/admin/properties/villa-1", new URLSearchParams())).toBe("/admin/properties");
     expect(branchSwitchHref("/admin/settings", new URLSearchParams("tab=team&draft=1"))).toBeNull();
     expect(branchSwitchHref("/admin/marketing/coupons/coupon-1", new URLSearchParams("draft=1"))).toBeNull();
@@ -82,11 +83,13 @@ describe("working branch selection", () => {
 
 describe("branchReturnHref (D04)", () => {
   it("keeps the path, tab and open record, and drops filters and search", () => {
-    expect(branchReturnHref("/admin/chats", new URLSearchParams("session=s1&q=maya&state=open"))).toBe("/admin/chats?session=s1");
+    expect(branchReturnHref("/admin/staff/calendar", new URLSearchParams("appointment=appt1&date=2026-12-02&staff=staff1"))).toBe("/admin/staff/calendar?appointment=appt1");
     expect(branchReturnHref("/admin/properties/p1", new URLSearchParams("tab=rooms"))).toBe("/admin/properties/p1?tab=rooms");
   });
-  it("offers nothing when the switch drops nothing, or on company and till pages", () => {
-    expect(branchReturnHref("/admin/hotel", new URLSearchParams())).toBeNull();
+  it("offers nothing when the switch drops nothing, or on resort, company and till pages", () => {
+    expect(branchReturnHref("/admin/staff/calendar", new URLSearchParams())).toBeNull();
+    expect(branchReturnHref("/admin/hotel", new URLSearchParams("booking=stay1"))).toBeNull();
+    expect(branchReturnHref("/admin/chats", new URLSearchParams("session=chat1"))).toBeNull();
     expect(branchReturnHref("/admin/settings", new URLSearchParams("tab=team&x=1"))).toBeNull();
     expect(branchReturnHref("/admin/checkout", new URLSearchParams("q=1"))).toBeNull();
   });

@@ -141,8 +141,19 @@ export function AdminBranchProvider({ children }: { children: ReactNode }) {
     return () => { latest.current = null; };
   }, [selectionContext]);
 
-  // The record a switch closed, kept only while the person stays on the page the switch opened.
-  const [previous, setPrevious] = useState<{ id: AdminBranchId; href: string; landedOn: string } | null>(null);
+  // Keep the closed record on the landing page. A switch from a record route may render
+  // once on the original pathname before the router reaches the list.
+  const [previous, setPrevious] = useState<{
+    id: AdminBranchId; href: string; landedOn: string; departingFrom?: string;
+  } | null>(null);
+  const previousBranch = previous ? branches.find((branch) => branch.id === previous.id) : undefined;
+  if (previous) {
+    if (!previousBranch || (pathname !== previous.landedOn && pathname !== previous.departingFrom)) {
+      setPrevious(null);
+    } else if (pathname === previous.landedOn && previous.departingFrom) {
+      setPrevious({ ...previous, departingFrom: undefined });
+    }
+  }
 
   const select = useCallback(
     async (id: AdminBranchId) => {
@@ -166,7 +177,12 @@ export function AdminBranchProvider({ children }: { children: ReactNode }) {
       }
       const href = branchSwitchHref(pathname, search);
       const back = currentId ? branchReturnHref(pathname, search) : null;
-      setPrevious(back && href && currentId ? { id: currentId, href: back, landedOn: href.split("?")[0] } : null);
+      if (back && href && currentId) {
+        const landedOn = href.split("?")[0];
+        setPrevious({ id: currentId, href: back, landedOn, departingFrom: landedOn === pathname ? undefined : pathname });
+      } else {
+        setPrevious(null);
+      }
       if (href) router.replace(href);
       setRevoked(null);
       setCurrentId(id);
@@ -179,11 +195,11 @@ export function AdminBranchProvider({ children }: { children: ReactNode }) {
   );
 
   const dismissRevoked = useCallback(() => setRevoked(null), []);
-  const returnBranch = previous && pathname === previous.landedOn ? branches.find((branch) => branch.id === previous.id) ?? null : null;
+  const returnBranch = previous && pathname === previous.landedOn ? previousBranch : undefined;
   const returnToPrevious = useCallback(async () => {
     const target = previous;
     // Access is re-read from myAccess: a branch removed since the switch can't be restored.
-    if (!target || !branches.some((branch) => branch.id === target.id)) {
+    if (!target || !returnBranch) {
       setPrevious(null);
       return false;
     }
@@ -191,7 +207,7 @@ export function AdminBranchProvider({ children }: { children: ReactNode }) {
     setPrevious(null);
     router.replace(target.href);
     return true;
-  }, [previous, branches, select, router]);
+  }, [previous, returnBranch, select, router]);
   const dismissReturn = useCallback(() => setPrevious(null), []);
   const value = useMemo<AdminBranch>(
     () => ({

@@ -61,10 +61,9 @@ if (gate) {
   registerFixtureFunctions({ queries: { "auth/staffAccess:myAccess": () => gateAccess } });
 }
 
-const backend = await createFixtureBackend({ staff: { role, email: EMAILS[role], rules: DEFAULT_CASHIER_RULES } });
 const service = (n: number) => ({ kind: "service" as const, serviceId: `fxsvc${String(n).padStart(6, "0")}` as Id<"services"> });
 
-async function seed(): Promise<OrderId | null> {
+async function seed(backend: Awaited<ReturnType<typeof createFixtureBackend>>): Promise<OrderId | null> {
   if (role === "cashier") return (await backend.useActions().addItem({ item: service(1) })).orderId;
   const actions = backend.useActions();
   // A cashier's requests, as on a shared till: a 15% discount on a ฿1,200 massage, then ฿100 off a foot spa.
@@ -140,7 +139,8 @@ async function main() {
     );
     return;
   }
-  const orderId = await seed();
+  const backend = await createFixtureBackend({ staff: { role, email: EMAILS[role], rules: DEFAULT_CASHIER_RULES } });
+  const orderId = await seed(backend);
   createRoot(document.getElementById("root")!).render(
     <IntlProvider locale="en" timeZone="Asia/Bangkok" messages={en}>
       <StaffAccessProvider access={access}>

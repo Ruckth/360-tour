@@ -15,7 +15,7 @@ import { AdminViewErrorCard } from '@/start-app/admin/AdminBoundaries';
 import { KOH_SAMUI, PHUKET, staffAccessFor } from './admin-shell-convex';
 
 const EMAIL = 'niran@example.com';
-const state = vi.hoisted(() => ({ pathname: '/admin/hotel', search: '', access: undefined as unknown, dirty: false, legacyDirty: false, replace: vi.fn() }));
+const state = vi.hoisted(() => ({ pathname: '/admin/stock/balances', search: '', access: undefined as unknown, dirty: false, legacyDirty: false, replace: vi.fn() }));
 vi.mock('@/platform/auth', () => ({
   useUser: () => ({ isLoaded: true, isSignedIn: true, user: {} }),
   UserButton: () => null,
@@ -65,7 +65,7 @@ const sheetRow = (name: string) => [...document.querySelectorAll('[role="dialog"
 
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
-  Object.assign(state, { pathname: '/admin/hotel', search: '', access: undefined, dirty: false, legacyDirty: false });
+  Object.assign(state, { pathname: '/admin/stock/balances', search: '', access: undefined, dirty: false, legacyDirty: false });
   state.replace.mockClear();
   mounts = 0;
   sessionStorage.clear();
@@ -115,26 +115,26 @@ describe('branch switcher', () => {
     expect(state.replace).not.toHaveBeenCalled();
   });
 
-  it('drops the old branch’s URL state (open chat, search, filters) on a switch, keeping the remount', async () => {
+  it('drops the old branch’s URL state (open appointment, date and staff) on a switch, keeping the remount', async () => {
     manager();
     sessionStorage.setItem(`admin:branch:${EMAIL}`, KOH_SAMUI.id);
-    state.pathname = '/admin/chats';
-    state.search = 'session=s1&q=maya&state=open';
+    state.pathname = '/admin/staff/calendar';
+    state.search = 'appointment=appt1&date=2026-12-02&staff=staff1';
     await render();
     await click(headerPill());
     expect(document.querySelector('[role="dialog"]')?.textContent).toContain('Switching closes the open record and clears filters, search and selection.');
     await click(sheetRow('Phuket'));
-    expect(state.replace).toHaveBeenCalledWith('/admin/chats');
+    expect(state.replace).toHaveBeenCalledWith('/admin/staff/calendar');
     expect(page()?.textContent).toBe('Phuket');
     expect(page()?.dataset.mount).toBe('2');
   });
 
   describe('return after a switch (D04)', () => {
-    async function switchFromOpenChat() {
+    async function switchFromOpenAppointment() {
       manager();
       sessionStorage.setItem(`admin:branch:${EMAIL}`, KOH_SAMUI.id);
-      state.pathname = '/admin/chats';
-      state.search = 'session=s1&q=maya&state=open';
+      state.pathname = '/admin/staff/calendar';
+      state.search = 'appointment=appt1&date=2026-12-02&staff=staff1';
       await render();
       await click(headerPill());
       await click(sheetRow('Phuket'));
@@ -144,29 +144,43 @@ describe('branch switcher', () => {
     }
 
     it('offers one action that restores the previous branch and the record it had open', async () => {
-      await switchFromOpenChat();
+      await switchFromOpenAppointment();
       expect(page()?.textContent).toBe('Phuket');
       await click(button('Back to Koh Samui'));
-      // Filters and search are not restored; the open chat is.
-      expect(state.replace).toHaveBeenLastCalledWith('/admin/chats?session=s1');
+      // The date and staff filters are discarded; the appointment route resolves the record again.
+      expect(state.replace).toHaveBeenLastCalledWith('/admin/staff/calendar?appointment=appt1');
       expect(page()?.textContent).toBe('Koh Samui');
       expect(button('Back to Koh Samui')).toBeUndefined();
     });
 
     it('keeps the normal unsaved-changes guard on the way back', async () => {
-      await switchFromOpenChat();
+      await switchFromOpenAppointment();
       state.dirty = true;
       await render();
       await click(button('Back to Koh Samui'));
       expect(document.querySelector('[role="alertdialog"]')?.textContent).toContain('Discard unsaved changes and switch to Koh Samui?');
       await click(button('Stay here'));
       expect(page()?.textContent).toBe('Phuket');
-      expect(state.replace).not.toHaveBeenCalledWith('/admin/chats?session=s1');
+      expect(state.replace).not.toHaveBeenCalledWith('/admin/staff/calendar?appointment=appt1');
     });
 
-    it('is withdrawn when access to the previous branch has ended', async () => {
-      await switchFromOpenChat();
+    it('discards the return when access ends, even if the branch is granted again', async () => {
+      await switchFromOpenAppointment();
       manager([PHUKET]);
+      await render();
+      expect(button('Back to Koh Samui')).toBeUndefined();
+      manager();
+      await render();
+      expect(button('Back to Koh Samui')).toBeUndefined();
+    });
+
+    it('discards the return after leaving the landing page and revisiting it', async () => {
+      await switchFromOpenAppointment();
+      expect(button('Back to Koh Samui')).toBeDefined();
+      state.pathname = '/admin/stock/balances';
+      await render();
+      expect(button('Back to Koh Samui')).toBeUndefined();
+      state.pathname = '/admin/staff/calendar';
       await render();
       expect(button('Back to Koh Samui')).toBeUndefined();
     });
@@ -174,7 +188,7 @@ describe('branch switcher', () => {
     it('is not offered when the switch closed nothing', async () => {
       manager();
       sessionStorage.setItem(`admin:branch:${EMAIL}`, KOH_SAMUI.id);
-      state.pathname = '/admin/hotel';
+      state.pathname = '/admin/stock/balances';
       await render();
       await click(headerPill());
       await click(sheetRow('Phuket'));
@@ -191,6 +205,13 @@ describe('branch switcher', () => {
     await click(sheetRow('Phuket'));
     expect(state.replace).toHaveBeenCalledExactlyOnceWith('/admin/properties');
     expect(page()?.textContent).toBe('Phuket');
+
+    // The notice survives the legitimate record-to-list route change.
+    state.pathname = '/admin/properties';
+    await render();
+    await click(button('Back to Koh Samui'));
+    expect(state.replace).toHaveBeenLastCalledWith('/admin/properties/villa-1');
+    expect(page()?.textContent).toBe('Koh Samui');
   });
 
   it('shows the header pill at xl once the sidebar is collapsed', async () => {
@@ -294,7 +315,8 @@ describe('unsaved changes', () => {
     manager();
     sessionStorage.setItem(`admin:branch:${EMAIL}`, KOH_SAMUI.id);
     state.dirty = true;
-    state.search = 'booking=b1';
+    state.pathname = '/admin/staff/calendar';
+    state.search = 'appointment=appt1';
     await render();
     await click(headerPill());
     await click(sheetRow('Phuket'));
@@ -354,9 +376,23 @@ describe('first landing', () => {
       expect(document.querySelector('[data-branch-switcher]'), path).toBeNull();
     }
     // A branch route still asks.
-    state.pathname = '/admin/hotel';
+    state.pathname = '/admin/stock/balances';
     await render();
     expect(document.querySelector('h1')?.textContent).toBe('Choose a branch to start');
+  });
+
+  it.each([
+    ['/admin/chats', 'session=chat1'],
+    ['/admin/hotel', 'booking=stay1'],
+  ])('opens the resort desk at %s without choosing a working branch', async (pathname, search) => {
+    manager();
+    Object.assign(state, { pathname, search });
+    await render();
+    expect(page()?.dataset.scope).toBe('resort');
+    expect(document.body.textContent).not.toContain('Choose a branch');
+    expect(document.querySelector('[data-branch-switcher]')).toBeNull();
+    expect(state.replace).not.toHaveBeenCalled();
+    expect(localStorage.getItem(`admin:last-branch:${EMAIL}`)).toBeNull();
   });
 
   it('asks again when the stored branch is no longer assigned', async () => {
@@ -391,13 +427,14 @@ describe('access changes', () => {
     manager();
     sessionStorage.setItem(`admin:branch:${EMAIL}`, PHUKET.id);
     state.dirty = true;
-    state.search = 'booking=b1';
+    state.pathname = '/admin/staff/calendar';
+    state.search = 'appointment=appt1';
     await render();
     manager([KOH_SAMUI]);
     await render();
     const banner = [...document.querySelectorAll('[role="status"]')].find((node) => node.textContent?.includes('Your access'));
     expect(banner?.textContent).toContain('Unsaved changes for Phuket were discarded.');
-    expect(state.replace).toHaveBeenCalledWith('/admin/hotel');
+    expect(state.replace).toHaveBeenCalledWith('/admin/staff/calendar');
   });
 
   it('drops the property record URL when its working branch is revoked', async () => {
@@ -417,6 +454,8 @@ describe('access changes', () => {
     ['/admin/marketing/coupons/coupon-1', 'draft=1'],
     ['/admin/checkout', 'order=order-1'],
     ['/admin/receipt/order-1', 'print=1'],
+    ['/admin/chats', 'session=chat1'],
+    ['/admin/hotel', 'booking=stay1'],
   ])('preserves a surviving draft and URL on %s', async (pathname, search) => {
     state.access = staffAccessFor('owner', EMAIL, [KOH_SAMUI, PHUKET]);
     sessionStorage.setItem(`admin:branch:${EMAIL}`, PHUKET.id);
