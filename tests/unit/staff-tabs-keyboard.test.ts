@@ -53,7 +53,9 @@ it('D44: restores the pressed tab on either confirmation outcome and leaves plai
     return createElement('input', { 'aria-label': 'Draft' });
   }
   const render = (layoutKey: string) =>
-    root.render(createElement(ConfirmProvider, null, createElement(AdminStaffTabs, { key: layoutKey }, createElement(DirtyPanel))));
+    root.render(createElement(ConfirmProvider, {
+      children: createElement(AdminStaffTabs, { key: layoutKey, children: createElement(DirtyPanel) }),
+    }));
   const draft = () => document.querySelector<HTMLInputElement>('input[aria-label="Draft"]')!;
   await act(async () => render('original'));
   draft().focus();
