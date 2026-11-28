@@ -146,7 +146,7 @@ it("shows No reply needed in the header, rare actions in ⋯, and retains the ex
   expect(mocks.mutation).toHaveBeenLastCalledWith("messaging/adminChat:setSessionStatus", { sessionId: "session-a", status: "resolved", expectedGuestMessageId: "message-a" });
   expect(statusChanged).toHaveBeenCalledWith("resolved");
   await menu("Resume AI");
-  expect(mocks.mutation).toHaveBeenLastCalledWith("messaging/adminChat:setAiPaused", { sessionId: "session-a", paused: false });
+  expect(mocks.mutation).toHaveBeenLastCalledWith("messaging/adminChat:setAiPaused", { sessionId: "session-a", paused: false, expectedPaused: true });
   await menu("Let AI handle the next issue");
   expect(mocks.mutation).toHaveBeenLastCalledWith("messaging/adminChat:setKeepWithStaff", { sessionId: "session-a", keep: false });
   await menu("Complete follow-up");
