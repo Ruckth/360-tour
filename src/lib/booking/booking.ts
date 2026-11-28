@@ -20,12 +20,9 @@ export function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 }
 
-export function isValidPhone(phone: string): boolean {
-  return phone.trim().replace(/^\+\d{1,3}\s*/, "").replace(/\D/g, "").length >= 6;
-}
-
+/** `phone` is the parsed E.164 value (see `guestPhoneE164`); empty when the draft is not a valid number. */
 export function isValidGuestInfo(name: string, email: string, phone: string): boolean {
-  return name.trim().length >= 2 && isValidEmail(email) && isValidPhone(phone);
+  return name.trim().length >= 2 && isValidEmail(email) && /^\+[1-9]\d{6,14}$/.test(phone);
 }
 
 export function getHighestAllowedStepIndex({

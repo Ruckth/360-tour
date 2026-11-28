@@ -6,6 +6,7 @@ import {
   Home,
   Mail,
   Minus,
+  Pencil,
   Phone,
   Plus,
   Shield,
@@ -21,35 +22,21 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { formatDisplayDate } from "@/lib/booking/dates";
-import { isValidEmail, isValidPhone } from "@/lib/booking/booking";
+import { isValidEmail } from "@/lib/booking/booking";
+import {
+  chooseGuestPhoneCountry,
+  formatGuestPhone,
+  guestPhoneE164,
+  phoneCountries,
+  phoneCountryLabel,
+  shownPhoneCountry,
+  type GuestPhoneDraft,
+} from "@/lib/booking/guest-phone";
+import type { CountryCode } from "libphonenumber-js/min";
 import type { BookingProperty } from "@/lib/booking/booking";
 
 function clampGuestCount(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
-}
-
-const phoneCountries = [
-  { code: "+66", country: "Thailand", label: "TH +66", example: "81 234 5678" },
-  { code: "+1", country: "United States", label: "US +1", example: "555 123 4567" },
-  { code: "+44", country: "United Kingdom", label: "UK +44", example: "7400 123456" },
-  { code: "+61", country: "Australia", label: "AU +61", example: "412 345 678" },
-  { code: "+65", country: "Singapore", label: "SG +65", example: "8123 4567" },
-  { code: "+81", country: "Japan", label: "JP +81", example: "90 1234 5678" },
-  { code: "+82", country: "South Korea", label: "KR +82", example: "10 1234 5678" },
-  { code: "+86", country: "China", label: "CN +86", example: "138 0013 8000" },
-  { code: "+49", country: "Germany", label: "DE +49", example: "151 23456789" },
-  { code: "+33", country: "France", label: "FR +33", example: "6 12 34 56 78" },
-] as const;
-
-function splitPhoneValue(value: string) {
-  const clean = value.trim();
-  const country = phoneCountries.find((item) => clean.startsWith(item.code)) ?? phoneCountries[0];
-  const number = clean.startsWith(country.code) ? clean.slice(country.code.length).trim() : clean;
-  return { country, number };
-}
-
-function formatPhoneValue(countryCode: string, number: string) {
-  return `${countryCode} ${number.replace(/^\+\d+\s*/, "").trim()}`.trim();
 }
 
 export function GuestCountsPanel({
@@ -163,15 +150,19 @@ export function GuestDetailsPanel({
 }: {
   guestName: string;
   guestEmail: string;
-  guestPhone: string;
+  guestPhone: GuestPhoneDraft;
   onGuestNameChange: (value: string) => void;
   onGuestEmailChange: (value: string) => void;
-  onGuestPhoneChange: (value: string) => void;
+  onGuestPhoneChange: (value: GuestPhoneDraft) => void;
 }) {
   const t = useTranslations("Booking");
   const a11y = useTranslations("A11y");
   const [touchedFields, setTouchedFields] = useState<Record<string, boolean>>({});
-  const { country: selectedPhoneCountry, number: phoneNumber } = splitPhoneValue(guestPhone);
+  const shownCountry = shownPhoneCountry(guestPhone);
+  const countryOptions = phoneCountries.some((item) => item.country === shownCountry)
+    ? phoneCountries
+    : [...phoneCountries, { country: shownCountry, label: phoneCountryLabel(shownCountry), example: "" }];
+  const phoneExample = phoneCountries.find((item) => item.country === guestPhone.country)?.example ?? "";
   const fields = [
     {
       id: "booking-guest-name",
@@ -208,7 +199,7 @@ export function GuestDetailsPanel({
       isValid: isValidEmail,
     },
   ];
-  const phoneValid = isValidPhone(guestPhone);
+  const phoneValid = Boolean(guestPhoneE164(guestPhone));
   const phoneTouched = Boolean(touchedFields["booking-guest-phone"]);
   const showPhoneError = phoneTouched && !phoneValid;
   const phoneErrorId = "booking-guest-phone-error";
@@ -296,21 +287,22 @@ export function GuestDetailsPanel({
         </div>
         <div className="grid grid-cols-[7.5rem_minmax(0,1fr)] gap-2">
           <Select
-            value={selectedPhoneCountry.code}
-            onValueChange={(code) => {
-              onGuestPhoneChange(formatPhoneValue(code, phoneNumber));
+            value={shownCountry}
+            onValueChange={(country) => {
+              onGuestPhoneChange(chooseGuestPhoneCountry(guestPhone, country as CountryCode));
               setTouchedFields((current) => ({ ...current, "booking-guest-phone": true }));
             }}
           >
             <SelectTrigger
               aria-label={a11y("countryCode")}
+              data-testid="booking-phone-country"
               className="h-12 rounded-xl px-3 text-base font-semibold md:h-11 md:text-sm"
             >
               <SelectValue />
             </SelectTrigger>
             <SelectContent className="min-w-[14rem]">
-              {phoneCountries.map((item) => (
-                <SelectItem key={item.code} value={item.code}>
+              {countryOptions.map((item) => (
+                <SelectItem key={item.country} value={item.country}>
                   {item.label}
                 </SelectItem>
               ))}
@@ -321,8 +313,8 @@ export function GuestDetailsPanel({
             <Input
               id="booking-guest-phone"
               type="tel"
-              value={phoneNumber}
-              autoComplete="tel-national"
+              value={guestPhone.text}
+              autoComplete="tel"
               inputMode="tel"
               autoCapitalize="none"
               autoCorrect="off"
@@ -330,11 +322,12 @@ export function GuestDetailsPanel({
               required
               aria-required="true"
               aria-invalid={showPhoneError}
-              aria-describedby={showPhoneError ? phoneErrorId : undefined}
-              placeholder={selectedPhoneCountry.example}
+              aria-describedby={showPhoneError ? `booking-guest-phone-hint ${phoneErrorId}` : "booking-guest-phone-hint"}
+              placeholder={phoneExample}
               onBlur={() => setTouchedFields((current) => ({ ...current, "booking-guest-phone": true }))}
               onChange={(event) => {
-                onGuestPhoneChange(formatPhoneValue(selectedPhoneCountry.code, event.target.value));
+                // The guest's text is kept exactly as typed so an invalid number stays editable.
+                onGuestPhoneChange({ country: guestPhone.country, text: event.target.value });
                 if (phoneTouched || event.target.value.trim()) {
                   setTouchedFields((current) => ({ ...current, "booking-guest-phone": true }));
                 }
@@ -344,7 +337,7 @@ export function GuestDetailsPanel({
                 showPhoneError && "border-destructive focus-visible:ring-destructive/30",
               )}
             />
-            {phoneNumber.trim() && phoneValid ? (
+            {phoneValid ? (
               <CheckCircle2
                 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gold"
                 aria-hidden="true"
@@ -352,6 +345,9 @@ export function GuestDetailsPanel({
             ) : null}
           </div>
         </div>
+        <p id="booking-guest-phone-hint" className="text-xs leading-5 text-muted-foreground">
+          {t("phoneHint")}
+        </p>
         {showPhoneError ? (
           <p id={phoneErrorId} className="text-xs font-medium leading-5 text-destructive">
             {t("phoneError")}
@@ -368,6 +364,8 @@ export function ReviewPanel({
   nights,
   checkIn,
   checkOut,
+  contact,
+  onEditContact,
   price,
   coupon,
 }: {
@@ -376,6 +374,9 @@ export function ReviewPanel({
   nights: number;
   checkIn: string;
   checkOut: string;
+  /** The guest's contact details as they will be booked; `phone` is E.164. */
+  contact: { name: string; email: string; phone: string };
+  onEditContact: () => void;
   /** The price lines, shown here on phones where the summary card sits below the step. */
   price?: ReactNode;
   /** "Have a code?" and the attached code. */
@@ -422,6 +423,23 @@ export function ReviewPanel({
           })}
         </ul>
       </div>
+      <section aria-labelledby="booking-review-contact-title" className="rounded-xl border border-border p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 id="booking-review-contact-title" className="text-sm font-semibold text-foreground">{t("guestDetails")}</h3>
+          <Button type="button" variant="outline" size="sm" className="min-h-11 sm:min-h-9" onClick={onEditContact}>
+            <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+            {t("editGuestDetails")}
+          </Button>
+        </div>
+        <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-[auto_minmax(0,1fr)] sm:gap-x-4">
+          <dt className="text-muted-foreground">{t("fullName")}</dt>
+          <dd data-testid="booking-review-name" className="min-w-0 break-words font-medium text-foreground">{contact.name}</dd>
+          <dt className="text-muted-foreground">{t("email")}</dt>
+          <dd data-testid="booking-review-email" className="min-w-0 break-all font-medium text-foreground">{contact.email}</dd>
+          <dt className="text-muted-foreground">{t("phone")}</dt>
+          <dd data-testid="booking-review-phone" className="min-w-0 font-medium text-foreground" dir="ltr">{contact.phone ? formatGuestPhone(contact.phone) : ""}</dd>
+        </dl>
+      </section>
       {price ? <div className="rounded-xl border border-border px-4 py-3 text-xs text-muted-foreground lg:hidden">{price}</div> : null}
       {coupon}
       <div className="flex items-center gap-2 text-sm text-muted-foreground">

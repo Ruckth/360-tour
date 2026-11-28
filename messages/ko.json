@@ -194,7 +194,7 @@
     "emailExample": "maya@example.com",
     "emailError": "유효한 이메일 주소를 입력하세요.",
     "phoneExample": "+66 81 234 5678",
-    "phoneError": "전화 또는 WhatsApp 번호를 6자리 이상 입력하세요.",
+    "phoneError": "선택한 국가의 올바른 전화 또는 WhatsApp 번호를 입력하거나 +와 국가 번호를 포함하세요.",
     "reviewPay": "확인 및 결제",
     "livePaymentNote": "결제 전에 예약을 한 번 더 확인합니다.",
     "demoPaymentNote": "데모 결제는 실제 예약을 생성하지 않습니다.",
@@ -249,7 +249,9 @@
     "calendarKey": "달력 범례",
     "legendAvailable": "예약 가능",
     "legendBooked": "예약됨",
-    "legendNotSelectable": "지난 날짜 또는 숙박 규칙 밖"
+    "legendNotSelectable": "지난 날짜 또는 숙박 규칙 밖",
+    "editGuestDetails": "투숙객 정보 수정",
+    "phoneHint": "국가를 선택하거나 +와 국가 번호로 시작하세요."
   },
   "Coupon": {
     "haveCode": "코드가 있으신가요?",

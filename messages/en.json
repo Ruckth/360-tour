@@ -194,7 +194,7 @@
     "emailExample": "maya@example.com",
     "emailError": "Enter a valid email address.",
     "phoneExample": "+66 81 234 5678",
-    "phoneError": "Enter a phone or WhatsApp number with at least 6 digits.",
+    "phoneError": "Enter a valid phone or WhatsApp number for the selected country, or include its + country code.",
     "reviewPay": "Review and pay",
     "livePaymentNote": "Your booking will be checked once more before payment.",
     "demoPaymentNote": "Demo payment will not create a live booking.",
@@ -249,7 +249,9 @@
     "calendarKey": "Calendar key",
     "legendAvailable": "Available",
     "legendBooked": "Booked",
-    "legendNotSelectable": "Past or outside stay rules"
+    "legendNotSelectable": "Past or outside stay rules",
+    "editGuestDetails": "Edit guest details",
+    "phoneHint": "Pick your country, or start with + and the country code."
   },
   "Coupon": {
     "haveCode": "Have a code?",

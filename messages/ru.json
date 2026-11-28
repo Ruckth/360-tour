@@ -194,7 +194,7 @@
     "emailExample": "maya@example.com",
     "emailError": "Введите действительный email.",
     "phoneExample": "+66 81 234 5678",
-    "phoneError": "Введите телефон или WhatsApp минимум из 6 цифр.",
+    "phoneError": "Введите действительный номер телефона или WhatsApp для выбранной страны или укажите код страны с +.",
     "reviewPay": "Проверить и оплатить",
     "livePaymentNote": "Перед оплатой бронирование будет проверено еще раз.",
     "demoPaymentNote": "Демо-оплата не создает реальное бронирование.",
@@ -249,7 +249,9 @@
     "calendarKey": "Обозначения календаря",
     "legendAvailable": "Свободно",
     "legendBooked": "Занято",
-    "legendNotSelectable": "Прошедшие или вне правил проживания"
+    "legendNotSelectable": "Прошедшие или вне правил проживания",
+    "editGuestDetails": "Изменить данные гостя",
+    "phoneHint": "Выберите страну или начните с + и кода страны."
   },
   "Coupon": {
     "haveCode": "Есть промокод?",

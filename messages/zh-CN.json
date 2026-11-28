@@ -194,7 +194,7 @@
     "emailExample": "maya@example.com",
     "emailError": "请输入有效的电子邮箱地址。",
     "phoneExample": "+66 81 234 5678",
-    "phoneError": "请输入至少 6 位数字的电话或 WhatsApp 号码。",
+    "phoneError": "请输入所选国家的有效电话或 WhatsApp 号码，或加上 + 和国家代码。",
     "reviewPay": "确认并付款",
     "livePaymentNote": "付款前将再次检查您的预订。",
     "demoPaymentNote": "演示付款不会创建真实预订。",
@@ -249,7 +249,9 @@
     "calendarKey": "日历图例",
     "legendAvailable": "可预订",
     "legendBooked": "已订满",
-    "legendNotSelectable": "已过日期或不符合入住规则"
+    "legendNotSelectable": "已过日期或不符合入住规则",
+    "editGuestDetails": "编辑住客信息",
+    "phoneHint": "请选择国家，或以 + 和国家代码开头。"
   },
   "Coupon": {
     "haveCode": "有优惠码吗？",
