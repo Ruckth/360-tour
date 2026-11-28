@@ -69,6 +69,25 @@ export function branchSwitchHref(pathname: string, search: URLSearchParams): str
   return query ? `${destination}?${query}` : destination;
 }
 
+/** URL state a branch return may restore: the view's tab and the record it had open. */
+const RESTORABLE_PARAMS = ["tab", "session", "booking", "appointment"] as const;
+
+/**
+ * Where "Back to <branch>" returns after a switch dropped this page's record state, or null when
+ * the switch drops nothing. Only the path, its tab and an open record survive; filters, search and
+ * selection are left out because they can't be restored reliably. Destination pages re-check access.
+ */
+export function branchReturnHref(pathname: string, search: URLSearchParams): string | null {
+  if (branchSwitchHref(pathname, search) === null) return null;
+  const kept = new URLSearchParams();
+  for (const key of RESTORABLE_PARAMS) {
+    const value = search.get(key);
+    if (value) kept.set(key, value);
+  }
+  const query = kept.toString();
+  return query ? `${pathname}?${query}` : pathname;
+}
+
 /** Per-person storage keys: this tab's working branch, and the last one used on this device. */
 export function branchStorageKeys(email: string | null) {
   const who = email ?? "anonymous";
