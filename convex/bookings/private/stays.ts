@@ -258,10 +258,17 @@ export async function confirmStay(ctx: MutationCtx, booking: Doc<'bookings'>, ac
  * An archived villa is accepted only to record a stay that started in the past, with a reason
  * that is logged. Returns the cleaned reason, or undefined for an active villa.
  */
+export function archivedVillaBlocker(property: Pick<Doc<'properties'>, 'status'> | null, checkIn: string) {
+	if (property?.status === 'active') return null;
+	if (property?.status !== 'archived') return 'unavailable';
+	return checkIn >= resortTodayIso() ? 'archived' : null;
+}
+
 export function archivedVillaPolicy(property: Doc<'properties'>, checkIn: string, archivedVillaReason: string | undefined, requireReason = true) {
 	if (property.status === 'active') return undefined;
-	if (property.status !== 'archived') throw new Error(PROPERTY_UNAVAILABLE);
-	if (checkIn >= resortTodayIso()) throw new Error('Archived villas can only be used to record stays that started in the past.');
+	const blocker = archivedVillaBlocker(property, checkIn);
+	if (blocker === 'unavailable') throw new Error(PROPERTY_UNAVAILABLE);
+	if (blocker === 'archived') throw new Error('Archived villas can only be used to record stays that started in the past.');
 	const reason = cleanReason(archivedVillaReason, 'Reason for using an archived villa', false);
 	if (!reason && requireReason) throw new Error('This villa is archived. Give a reason to record a past stay in it.');
 	assertBookableProperty(property, { allowArchivedProperty: true });

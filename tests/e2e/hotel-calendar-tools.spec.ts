@@ -33,6 +33,21 @@ test("hotel staff can read the phone calendar key and open maintenance with a ke
   await page.keyboard.press("Enter");
   const dialog = page.getByRole("dialog", { name: "Clean up test bookings" });
   await expect(dialog).toBeVisible();
+  const threshold = dialog.getByRole("spinbutton", { name: "Older than (days)" });
+  const hint = dialog.locator("#cleanup-days-hint");
+  const apply = dialog.getByRole("button", { name: "Apply" });
+  await threshold.fill("30");
+  await threshold.press("Tab");
+  await expect(hint).toContainText("more than 7 days");
+  await expect(apply).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(hint).toContainText("more than 30 days");
+  for (const invalid of ["", "-1", "1.5"]) {
+    await threshold.fill(invalid);
+    await threshold.press("Tab");
+    await expect(apply).toBeDisabled();
+    await expect(hint).toContainText("more than 30 days");
+  }
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
   await expect(tools).toBeFocused();

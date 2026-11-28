@@ -3,8 +3,7 @@
 import { staffDate } from "@/lib/staff-time";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
-import type { Id } from "convex/_generated/dataModel";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import {
@@ -31,41 +30,51 @@ export function BookingCleanupDialog({ properties, onClose }: { properties: Admi
   // The draft is what is typed; only a whole number of days is applied, so clearing the input never queries 0 days.
   const [days, setDays] = useState("7");
   const [olderThanDays, setOlderThanDays] = useState(7);
-  const draftDays = /^\d+$/.test(days.trim()) ? Number(days.trim()) : null;
+  const parsedDays = /^\d+$/.test(days.trim()) ? Number(days.trim()) : NaN;
+  const draftDays = Number.isSafeInteger(parsedDays) ? parsedDays : null;
+  const [refreshToken, setRefreshToken] = useState<string>();
+  const [needsRefresh, setNeedsRefresh] = useState(false);
+  const active = useRef(false);
+  const candidates = useQuery(api.bookings.admin.listCleanupCandidates, { olderThanDays, refreshToken });
   const applyDays = () => {
-    if (draftDays === null) setDays(String(olderThanDays));
-    else setOlderThanDays(draftDays);
+    if (active.current || needsRefresh || draftDays === null || draftDays === olderThanDays) return;
+    setSelected(new Map());
+    setOlderThanDays(draftDays);
   };
-  const candidates = useQuery(api.bookings.admin.listCleanupCandidates, { olderThanDays });
   const deleteBookings = useMutation(api.bookings.commands.deleteBookings.deleteBookings);
   const confirm = useConfirm();
-  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const [selected, setSelected] = useState<Map<string, number>>(() => new Map());
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ text: string; error?: boolean } | null>(null);
   const [skippedRows, setSkippedRows] = useState<Array<{ bookingId: string; reason: string; guestName?: string }>>([]);
   const villaName = (id: string) => properties.find((p) => p._id === id)?.name ?? "Villa";
 
   const rows = candidates ?? [];
-  const chosen = rows.filter((b) => selected.has(b._id));
+  const chosen = rows.filter((b) => selected.get(b._id) === b.revision);
   const allSelected = rows.length > 0 && chosen.length === rows.length;
 
-  function toggle(id: string, checked: boolean) {
+  function toggle(id: string, revision: number, checked: boolean) {
     setSelected((current) => {
-      const next = new Set(current);
-      if (checked) next.add(id);
+      const next = new Map(current);
+      if (checked) next.set(id, revision);
       else next.delete(id);
       return next;
     });
   }
 
   async function remove() {
+    if (active.current || needsRefresh || !chosen.length) return;
+    active.current = true;
     const ok = await confirm({
       title: `Delete ${chosen.length} ${chosen.length === 1 ? "booking" : "bookings"}?`,
       description: "They are removed permanently and any dates they held are released. Paid bookings are never deleted.",
       confirmLabel: "Delete",
       destructive: true,
     });
-    if (!ok) return;
+    if (!ok) {
+      active.current = false;
+      return;
+    }
     setBusy(true);
     setMessage(null);
     setSkippedRows([]);
@@ -73,35 +82,42 @@ export function BookingCleanupDialog({ properties, onClose }: { properties: Admi
     let confirmedBatches = 0;
     const skipped: Array<{ bookingId: string; reason: string; guestName?: string }> = [];
     const names = new Map(chosen.map((b) => [b._id as string, b.guestName]));
-    const ids = chosen.map((b) => b._id as Id<"bookings">);
+    const ids = chosen.map((b) => b._id);
     const batches = Math.ceil(ids.length / BATCH);
     const plural = (n: number) => `${n} ${n === 1 ? "booking" : "bookings"}`;
     try {
       for (let i = 0; i < ids.length; i += BATCH) {
-        const result = await deleteBookings({ bookingIds: ids.slice(i, i + BATCH) });
+        const result = await deleteBookings({
+          bookingIds: ids.slice(i, i + BATCH),
+          review: {
+            olderThanDays,
+            revisions: chosen.slice(i, i + BATCH).map((b) => ({ bookingId: b._id, revision: b.revision })),
+          },
+        });
         deleted += result.deleted;
         confirmedBatches += 1;
         skipped.push(...result.skipped.map((row) => ({ ...row, guestName: names.get(row.bookingId) })));
       }
-      setSelected(new Set());
+      setSelected(new Map());
       setMessage({ text: `Deleted ${plural(deleted)}.${skipped.length ? ` Skipped ${skipped.length}.` : ""}` });
     } catch (err) {
-      // Earlier batches committed; the failed one is unconfirmed. The candidate list is live, so rows that were
-      // deleted drop out of it and the selection below only retries bookings that are still listed.
+      setSelected(new Map());
+      setNeedsRefresh(true);
       setMessage({
         text: `Batch ${confirmedBatches + 1} of ${batches} did not confirm: ${errorText(err, "Could not delete the bookings.")} ` +
           `Confirmed so far: deleted ${plural(deleted)}${skipped.length ? `, skipped ${skipped.length}` : ""}. ` +
-          "The list now shows only bookings that are still there; review it before retrying.",
+          `Batches never attempted: ${batches - confirmedBatches - 1}. Reload candidates and review them before retrying.`,
         error: true,
       });
     } finally {
       setSkippedRows(skipped);
+      active.current = false;
       setBusy(false);
     }
   }
 
   return (
-    <Dialog open onOpenChange={(open) => (open ? undefined : onClose())}>
+    <Dialog open onOpenChange={(open) => (!open && !active.current ? onClose() : undefined)}>
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Clean up test bookings</DialogTitle>
@@ -128,12 +144,12 @@ export function BookingCleanupDialog({ properties, onClose }: { properties: Admi
                 inputMode="numeric"
                 value={days}
                 onChange={(event) => setDays(event.target.value)}
-                onBlur={applyDays}
+                disabled={busy || needsRefresh}
                 aria-describedby="cleanup-days-hint"
                 className="h-9 w-28"
               />
             </div>
-            <Button type="submit" variant="outline" size="sm" className="h-9" disabled={draftDays === null || draftDays === olderThanDays}>
+            <Button type="submit" variant="outline" size="sm" className="h-9" disabled={busy || needsRefresh || draftDays === null || draftDays === olderThanDays}>
               Apply
             </Button>
           </form>
@@ -142,8 +158,9 @@ export function BookingCleanupDialog({ properties, onClose }: { properties: Admi
               <input
                 type="checkbox"
                 className="size-4 accent-foreground"
+                disabled={busy || needsRefresh}
                 checked={allSelected}
-                onChange={(event) => setSelected(event.target.checked ? new Set(rows.map((b) => b._id)) : new Set())}
+                onChange={(event) => setSelected(event.target.checked ? new Map(rows.map((b) => [b._id, b.revision])) : new Map())}
               />
               Select all ({rows.length})
             </label>
@@ -174,8 +191,9 @@ export function BookingCleanupDialog({ properties, onClose }: { properties: Admi
                   <input
                     type="checkbox"
                     className="mt-0.5 size-4 accent-foreground"
-                    checked={selected.has(b._id)}
-                    onChange={(event) => toggle(b._id, event.target.checked)}
+                    disabled={busy || needsRefresh}
+                    checked={selected.get(b._id) === b.revision}
+                    onChange={(event) => toggle(b._id, b.revision, event.target.checked)}
                   />
                   <span className="min-w-0 flex-1">
                     <span className="flex flex-wrap items-center gap-x-2 gap-y-1 font-medium">
@@ -211,10 +229,14 @@ export function BookingCleanupDialog({ properties, onClose }: { properties: Admi
           </details>
         ) : null}
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
+          {needsRefresh ? <Button variant="outline" onClick={() => {
+            setRefreshToken(crypto.randomUUID());
+            setNeedsRefresh(false);
+          }}>Reload candidates</Button> : null}
+          <Button variant="outline" disabled={busy} onClick={() => { if (!active.current) onClose(); }}>
             Close
           </Button>
-          <Button variant="destructive" onClick={remove} disabled={busy || chosen.length === 0}>
+          <Button variant="destructive" onClick={remove} disabled={busy || needsRefresh || chosen.length === 0}>
             {busy ? <Spinner className="text-current" /> : null}
             Delete {chosen.length || ""} selected
           </Button>

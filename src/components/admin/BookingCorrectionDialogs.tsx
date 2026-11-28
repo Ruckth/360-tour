@@ -5,7 +5,6 @@ import { api } from "convex/_generated/api";
 import type { FunctionReturnType } from "convex/server";
 import { useState } from "react";
 import { satangToBaht } from "convex/shared/money";
-import { resortTodayIso } from "convex/shared/time";
 import Link from "@/platform/link";
 import { ChangeConfirmDialog } from "@/components/admin/ChangeConfirmDialog";
 import { Input } from "@/components/ui/input";
@@ -33,14 +32,6 @@ export function StaySummary({ booking, nightsLabel }: { booking: Pick<BookingDet
       <dd>{booking.nights} {booking.nights === 1 ? "night" : "nights"}</dd>
     </dl>
   );
-}
-
-/** Mirrors the server's archived-villa rule (archivedVillaPolicy) so an ineligible reopen is explained before any write. */
-export function reopenVillaBlocker(booking: Pick<BookingDetail, "propertyStatus" | "checkIn">, today = resortTodayIso()): string | null {
-  if (booking.propertyStatus === "active") return null;
-  if (booking.propertyStatus !== "archived") return "This villa is not live, so stays in it cannot be reopened. Publish the villa first.";
-  if (booking.checkIn >= today) return "This villa is archived. Archived villas can only record stays that started in the past, so this stay cannot be reopened until the villa is restored.";
-  return null;
 }
 
 /**
@@ -153,7 +144,9 @@ export function ReopenBookingDialog({ booking, onClose }: { booking: BookingDeta
   const [villaReason, setVillaReason] = useState("");
   const [notify, setNotify] = useState(booking.notifyByDefault);
   const archived = booking.propertyStatus !== "active";
-  const blocker = reopenVillaBlocker(booking);
+  const blocker = booking.reopenVillaBlocker === "archived"
+    ? "This villa is archived. Archived villas can only record stays that started in the past. Restore it to reopen this stay."
+    : booking.reopenVillaBlocker === "unavailable" ? "This villa is unavailable. Publish it before reopening the stay." : null;
 
   return (
     <ChangeConfirmDialog
@@ -178,7 +171,7 @@ export function ReopenBookingDialog({ booking, onClose }: { booking: BookingDeta
       {blocker ? (
         <div role="alert" className="grid gap-2 rounded-lg border border-destructive/40 px-3 py-2 text-sm">
           <p>{blocker}</p>
-          <Link href={`/admin/properties/${booking.propertyId}`} className="font-medium underline underline-offset-2">Open {booking.propertyName}</Link>
+          {booking.canOpenVilla ? <Link href={`/admin/properties/${booking.propertyId}`} className="font-medium underline underline-offset-2">Open {booking.propertyName}</Link> : null}
         </div>
       ) : (<>
       {pendingAllowed ? (

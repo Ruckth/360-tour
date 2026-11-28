@@ -498,6 +498,28 @@ describe("returning guests", () => {
 });
 
 describe("clean up test bookings", () => {
+  it("skips changed and newly ineligible bookings from a reviewed cleanup batch", async () => {
+    const { t, admin } = await setup();
+    const manual = await admin.mutation(api.bookings.commands.createBooking.createBooking, stay);
+    const { bookingId: online } = await t.mutation(api.bookings.bookings.create, {
+      ...stay, guestEmail: "cleanup@example.com", checkIn: isoInDays(60), checkOut: isoInDays(62),
+    });
+    await t.run((ctx) => ctx.db.patch(online, { createdAt: Date.now() - 40 * 86_400_000 }));
+    const candidates = await admin.query(api.bookings.admin.listCleanupCandidates, { olderThanDays: 30 });
+    expect(candidates.map((booking) => booking._id)).toEqual(expect.arrayContaining([manual, online]));
+    await t.run(async (ctx) => {
+      await ctx.db.patch(manual, { revision: (candidates.find((booking) => booking._id === manual)?.revision ?? 0) + 1 });
+      await ctx.db.patch(online, { createdAt: Date.now() });
+    });
+    const result = await admin.mutation(api.bookings.commands.deleteBookings.deleteBookings, {
+      bookingIds: [manual, online],
+      review: { olderThanDays: 30, revisions: candidates.map((booking) => ({ bookingId: booking._id, revision: booking.revision })) },
+    });
+    expect(result.deleted).toBe(0);
+    expect(result.skipped.map((item) => item.bookingId)).toEqual([manual, online]);
+    await expect(admin.query(api.bookings.admin.listCleanupCandidates, { olderThanDays: 1.5 })).rejects.toThrow();
+  });
+
   it("lists unpaid admin or old bookings and batch deletes them with the delete rules", async () => {
     const { t, admin } = await setup();
     const manual = await admin.mutation(api.bookings.commands.createBooking.createBooking, stay);

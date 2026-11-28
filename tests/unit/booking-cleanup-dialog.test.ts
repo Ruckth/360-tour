@@ -5,13 +5,13 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { BookingCleanupDialog } from '@/components/admin/BookingCleanupDialog';
 import { ConfirmProvider } from '@/components/admin/ConfirmDialog';
 
-const state = vi.hoisted(() => ({ del: vi.fn(), args: [] as Array<{ olderThanDays: number }>, rows: [] as unknown[] }));
+const state = vi.hoisted(() => ({ del: vi.fn(), args: [] as Array<{ olderThanDays: number }>, rows: [] as unknown[] | undefined }));
 vi.mock('convex/react', () => ({
   useMutation: () => state.del,
   useQuery: (_ref: unknown, args: { olderThanDays: number }) => { state.args.push(args); return state.rows; },
 }));
 
-const row = (i: number) => ({ _id: `booking_${String(i).padStart(6, '0')}`, propertyId: 'v1', guestName: `Guest ${i}`, checkIn: '2026-01-01', checkOut: '2026-01-02', createdAt: 0, status: 'pending', paymentStatus: 'pending', source: 'web' });
+const row = (i: number) => ({ _id: `booking_${String(i).padStart(6, '0')}`, propertyId: 'v1', guestName: `Guest ${i}`, checkIn: '2026-01-01', checkOut: '2026-01-02', createdAt: 0, revision: 1, status: 'pending', paymentStatus: 'pending', source: 'web' });
 let root: Root;
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
@@ -40,16 +40,19 @@ it('F08: editing the threshold never queries a transient zero-day list; only an 
   await type('30');
   expect(state.args.every(args => args.olderThanDays === 7)).toBe(true);
   expect(document.body.textContent).toContain('plus hand-entered ones');
-  await act(async () => input().closest('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
-  expect(state.args.at(-1)).toEqual({ olderThanDays: 30 });
+  await act(async () => input().dispatchEvent(new FocusEvent('focusout', { bubbles: true })));
+  expect(state.args.at(-1)?.olderThanDays).toBe(7);
+  await act(async () => button('Apply').click());
+  expect(state.args.at(-1)?.olderThanDays).toBe(30);
   await type('');
   await act(async () => { input().dispatchEvent(new FocusEvent('focusout', { bubbles: true })); });
-  expect(input().value).toBe('30');
+  expect(input().value).toBe('');
   expect(state.args.some(args => args.olderThanDays === 0)).toBe(false);
 });
 
 it('F07: an interrupted cleanup keeps confirmed counts and skipped references visible and marks the failed batch unconfirmed', async () => {
   state.rows = Array.from({ length: 150 }, (_, i) => row(i));
+  const persisted = [row(149)];
   state.del
     .mockResolvedValueOnce({ deleted: 99, skipped: [{ bookingId: 'booking_000004', reason: 'Paid bookings are never deleted.' }] })
     .mockRejectedValueOnce(new Error('Network lost'));
@@ -63,4 +66,15 @@ it('F07: an interrupted cleanup keeps confirmed counts and skipped references vi
   expect(text).toContain('deleted 99 bookings, skipped 1');
   expect(document.body.textContent).toContain('Skipped bookings (1)');
   expect(document.body.textContent).toContain('Guest 4');
+  expect(button('Delete').disabled).toBe(true);
+  state.rows = undefined;
+  await act(async () => button('Reload candidates').click());
+  expect(button('Delete').disabled).toBe(true);
+  expect(document.querySelector('[aria-label="Loading bookings"]')).toBeTruthy();
+  state.rows = persisted;
+  await render();
+  expect(button('Delete').disabled).toBe(true);
+  expect(document.body.textContent).toContain('Guest 149');
+  expect(document.body.textContent).not.toContain('Guest 148');
+  expect(state.del).toHaveBeenCalledTimes(2);
 }, 30_000);
