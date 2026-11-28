@@ -83,6 +83,7 @@ export function AdminStaffServicesManager({ section }: { section: "staff" | "ser
   const router = useRouter();
   const [error, setError] = useState("");
   const confirm = useConfirm();
+  const caps = useStaffAccess().capabilities;
   // Staff tabs ask via hasUnsavedChanges(); reloads and sidebar links are guarded here.
   useUnsavedChangesGuard(matrixDirty && section === "services" && view === "matrix");
 
@@ -123,7 +124,6 @@ export function AdminStaffServicesManager({ section }: { section: "staff" | "ser
   const rows = section === "staff" ? staff : services;
   const archivedCount = rows.filter((row) => row.status === "archived").length;
   // Team is owner-only (isOwnerOnlySettingsTab); others see where it lives without a link they can't open.
-  const caps = useStaffAccess().capabilities;
   const canManageTeam = caps.operations && caps.manageTeam;
   const visibleCount = showArchived ? rows.length : rows.length - archivedCount;
   const hasActiveStaff = staff.some((s) => s.status === "active");

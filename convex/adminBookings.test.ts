@@ -732,6 +732,7 @@ describe("Desk attendance", () => {
     await t.run(async (ctx) => {
       const booking = (await ctx.db.get(bookingId))!;
       const { _id, _creationTime, ...fields } = booking;
+      void _creationTime;
       await ctx.db.patch(_id, { stayStatus: "checked_in" });
       for (let i = 0; i < 21; i++) {
         await ctx.db.insert("bookings", { ...fields, checkIn: isoInDays(-5), checkOut: isoInDays(-3), guestName: `Overdue ${i}`, stayStatus: "checked_in" });
