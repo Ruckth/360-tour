@@ -33,7 +33,7 @@ async function type(value: string) {
 }
 const button = (label: string) => [...document.querySelectorAll('button')].find(b => b.textContent?.trim().startsWith(label))!;
 
-it('F7: editing the threshold never queries a transient zero-day list; only an applied whole number is used', async () => {
+it('F08: editing the threshold never queries a transient zero-day list; only an applied whole number is used', async () => {
   await render();
   await type('');
   await type('3');
@@ -48,7 +48,7 @@ it('F7: editing the threshold never queries a transient zero-day list; only an a
   expect(state.args.some(args => args.olderThanDays === 0)).toBe(false);
 });
 
-it('F6: an interrupted cleanup keeps confirmed counts and skipped references visible and marks the failed batch unconfirmed', async () => {
+it('F07: an interrupted cleanup keeps confirmed counts and skipped references visible and marks the failed batch unconfirmed', async () => {
   state.rows = Array.from({ length: 150 }, (_, i) => row(i));
   state.del
     .mockResolvedValueOnce({ deleted: 99, skipped: [{ bookingId: 'booking_000004', reason: 'Paid bookings are never deleted.' }] })

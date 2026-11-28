@@ -50,7 +50,7 @@ describe('OTA reference rates', () => {
 		expect(rates.find((rate) => rate.platform === 'agoda')).toMatchObject({ nightlyRate: 980040, url: 'https://www.agoda.com/villa' });
 	});
 
-	it('F0: price-only saves keep the latest stored link; only an explicit clear removes it', async () => {
+	it('F01: price-only saves keep the latest stored link; only an explicit clear removes it', async () => {
 		const { admin, propertyId } = await setup();
 		await admin.mutation(api.catalog.properties.upsertOtaRate, { propertyId, platform: 'booking_com', nightlyRate: 499000, url: 'https://www.booking.com/a' });
 		// A teammate replaces the link after this form opened; the price-only save must keep theirs.

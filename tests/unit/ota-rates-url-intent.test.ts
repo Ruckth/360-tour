@@ -41,7 +41,7 @@ const button = (label: string) => [...document.querySelectorAll('button')].find(
 const click = (el: Element) => act(async () => { (el as HTMLElement).click(); });
 const submit = () => act(async () => document.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
 
-it('F0: hydrates the selected platform from its saved row and a price-only save preserves the stored link', async () => {
+it('F01: hydrates the selected platform from its saved row and a price-only save preserves the stored link', async () => {
   await render();
   expect(input('ota-rate').value).toBe('4990');
   expect(input('ota-url').value).toBe('https://www.booking.com/hotel/tideglass');
@@ -50,7 +50,7 @@ it('F0: hydrates the selected platform from its saved row and a price-only save 
   expect(state.upsert).toHaveBeenCalledWith({ propertyId, platform: 'booking_com', nightlyRate: 529000 });
 });
 
-it('F0: clearing a link takes an explicit action, and a new link is sent as set', async () => {
+it('F01: clearing a link takes an explicit action, and a new link is sent as set', async () => {
   await render();
   await click(button('Clear link'));
   expect(document.body.textContent).toContain('will be removed when you save');
@@ -62,7 +62,7 @@ it('F0: clearing a link takes an explicit action, and a new link is sent as set'
   expect(state.upsert).toHaveBeenLastCalledWith({ propertyId, platform: 'booking_com', nightlyRate: 499000, url: 'https://www.booking.com/new' });
 });
 
-it('F0: a cancelled platform switch retains the draft', async () => {
+it('F01: a cancelled platform switch retains the draft', async () => {
   await render();
   await type('ota-rate', '5290');
   const agodaEdit = [...document.querySelectorAll('button')].filter(b => b.textContent === 'Edit')[1]!;
@@ -76,7 +76,7 @@ it('F0: a cancelled platform switch retains the draft', async () => {
   expect(input('ota-url').value).toBe('');
 });
 
-it('F1: a saved http(s) link opens the listing in a new tab without leaving the dialog', async () => {
+it('F02: a saved http(s) link opens the listing in a new tab without leaving the dialog', async () => {
   await render();
   const link = document.querySelector<HTMLAnchorElement>('a[target="_blank"]')!;
   expect(link.textContent).toContain('Open listing');

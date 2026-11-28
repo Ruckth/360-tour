@@ -338,7 +338,7 @@ describe("cancel and reopen", () => {
 
   });
 
-  it("F4: the cancellation confirmation names the villa, stay range and nights released", async () => {
+  it("F05: the cancellation confirmation names the villa, stay range and nights released", async () => {
     await render(createElement(CancelStayDialog, { booking, onClose: vi.fn() }));
     const summary = document.querySelector("dl")!.textContent!;
     expect(summary).toContain("Pool Villa");
@@ -347,7 +347,7 @@ describe("cancel and reopen", () => {
     expect(summary).toContain("2 nights");
   });
 
-  it("F5: a future stay on an archived villa shows the blocker and a villa link instead of reason fields", async () => {
+  it("F06: a future stay on an archived villa shows the blocker and a villa link instead of reason fields", async () => {
     const cancelled = { ...booking, status: "cancelled", propertyStatus: "archived", checkIn: "2099-01-10", checkOut: "2099-01-12", money: { ...money, net: 0, gross: 0, credit: 0, refundable: 0 } } as BookingDetail;
     await render(createElement(ReopenBookingDialog, { booking: cancelled, onClose: vi.fn() }));
     expect(document.querySelector('[role="alert"]')?.textContent).toContain("Archived villas can only record stays that started in the past");
