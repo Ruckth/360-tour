@@ -135,6 +135,16 @@ test("metric explanations and the Finance view", async ({ page }) => {
   expect(JSON.parse((await page.locator("body").getAttribute("data-requests")) ?? "[]").at(-1).basis).toBe("cash");
 });
 
+test("phone Finance leads with business net before tracking setup", async ({ page }) => {
+  await open(page, 360, "untracked", "light");
+  await page.getByRole("radio", { name: "Finance" }).click();
+  const net = page.getByText("Business net", { exact: true });
+  const setup = page.getByRole("status").filter({ hasText: "No campaigns or links yet" });
+  await expect(net).toBeVisible();
+  await expect(setup).toBeVisible();
+  expect((await net.boundingBox())!.y).toBeLessThan((await setup.boundingBox())!.y);
+});
+
 test("drill-down, chart table and range presets work from the keyboard", async ({ page }) => {
   await open(page, 1440, "normal", "light");
   // Everything up to the breakdown rows is reachable with Tab.

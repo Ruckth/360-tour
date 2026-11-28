@@ -470,6 +470,29 @@ export function DashboardView({
       </>
     );
 
+  const trackingSetup = noSetup && !emptyWithoutSetup ? (
+    <Callout
+      role="status"
+      title="No campaigns or links yet"
+      action={capabilities.draft ? (
+        <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+          <ButtonLink href={campaignsHref} size="sm" className="flex-1 sm:flex-none">
+            <Megaphone aria-hidden className="size-4" />
+            Create a campaign
+          </ButtonLink>
+          <ButtonLink href={linksHref} size="sm" variant="outline" className="flex-1 sm:flex-none">
+            <Link2 aria-hidden className="size-4" />
+            Make a link
+          </ButtonLink>
+        </div>
+      ) : undefined}
+    >
+      {capabilities.draft
+        ? "Until then, every sale counts as not tracked. Create a campaign, then a short link or QR code for each place you share it, to see which ones bring paid bookings."
+        : "Until then, every sale counts as not tracked. Ask a manager to set up campaigns and links to see which ones bring paid bookings."}
+    </Callout>
+  ) : null;
+
   return (
     <div className={cn("mx-auto grid w-full min-w-0 max-w-7xl gap-4 px-4 py-4 sm:px-6", CHART_COLOR_VARS)}>
       <h1 className="text-xl font-semibold">Marketing dashboard</h1>
@@ -510,33 +533,11 @@ export function DashboardView({
       {report && emptyRange && !noSetup && capabilities.spend && !report.campaigns.some((campaign) => campaign.status === "active") ? (
         <Callout action={<ButtonLink href={campaignsHref} size="sm" variant="outline">Review campaigns</ButtonLink>}>Add spend is available for active campaigns.</Callout>
       ) : null}
-      {noSetup && !emptyWithoutSetup ? (
-        <Callout
-          role="status"
-          title="No campaigns or links yet"
-          action={
-            capabilities.draft ? (
-              <div className="flex w-full flex-wrap gap-2 sm:w-auto">
-                <ButtonLink href={campaignsHref} size="sm" className="flex-1 sm:flex-none">
-                  <Megaphone aria-hidden className="size-4" />
-                  Create a campaign
-                </ButtonLink>
-                <ButtonLink href={linksHref} size="sm" variant="outline" className="flex-1 sm:flex-none">
-                  <Link2 aria-hidden className="size-4" />
-                  Make a link
-                </ButtonLink>
-              </div>
-            ) : undefined
-          }
-        >
-          {capabilities.draft
-            ? "Until then, every sale counts as not tracked. Create a campaign, then a short link or QR code for each place you share it, to see which ones bring paid bookings."
-            : "Until then, every sale counts as not tracked. Ask a manager to set up campaigns and links to see which ones bring paid bookings."}
-        </Callout>
-      ) : null}
+      {request.basis !== "cash" ? trackingSetup : null}
       <div role="region" aria-label="Report results" aria-busy={busy} className={cn("grid min-w-0 gap-4 transition-opacity", state.status === "ready" && state.refreshing && "opacity-60")}>
         {body}
       </div>
+      {request.basis === "cash" ? trackingSetup : null}
 
       {sheet ? <SalesSheet target={sheet} p={sheet.snapshot} onClose={() => setSheet(null)} onOpenStay={onOpenStay} orderHref={orderHref} /> : null}
       {p && breakdown ? <ExportDialog open={exporting} onOpenChange={setExporting} p={p} breakdown={breakdown} pathLabel={pathLabel} propertyName={propertyName} stale={state.status === "ready" && !!state.refreshError} /> : null}
