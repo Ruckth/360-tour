@@ -124,8 +124,8 @@ export function AdminLeadsView() {
               All branches and villas, including leads with no villa. Export CSV includes every match, up to 5,000.
             </p>
           </div>
-          <form role="search" aria-label="Find leads by email" onSubmit={findEmail} className="flex items-center gap-1">
-            <div className="relative">
+          <form role="search" aria-label="Find leads by email" onSubmit={findEmail} className="flex w-full min-w-0 items-center gap-1 sm:w-auto">
+            <div className="relative min-w-0 flex-1">
               <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 type="email"
@@ -133,7 +133,7 @@ export function AdminLeadsView() {
                 onChange={(event) => setEmailInput(event.target.value)}
                 placeholder="guest@example.com"
                 aria-label="Email address"
-                className="h-9 w-56 pl-9"
+                className="h-9 w-full pl-9 sm:w-56"
               />
             </div>
             <Button type="submit" size="sm" variant="outline" disabled={!emailInput.trim()}>
