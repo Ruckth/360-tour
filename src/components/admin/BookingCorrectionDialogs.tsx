@@ -5,6 +5,8 @@ import { api } from "convex/_generated/api";
 import type { FunctionReturnType } from "convex/server";
 import { useState } from "react";
 import { satangToBaht } from "convex/shared/money";
+import { resortTodayIso } from "convex/shared/time";
+import Link from "@/platform/link";
 import { ChangeConfirmDialog } from "@/components/admin/ChangeConfirmDialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,10 +16,32 @@ import { cn } from "@/lib/utils";
 import { MethodPicker, NotifyGuestField, ReceivedAtField, useEffectiveTime } from "./BookingMoneyFields";
 import { bookingRefundSources, BookingRefundSourcePicker } from "./BookingRefundSource";
 import { formatMoney, STATUS_LABELS } from "./labels";
-import { REFUND_METHODS, newAttemptKey, parseAmount, type RefundMethod } from "./admin-bookings-shared";
+import { REFUND_METHODS, displayDate, newAttemptKey, parseAmount, type RefundMethod } from "./admin-bookings-shared";
 
 type BookingDetail = NonNullable<FunctionReturnType<typeof api.bookings.admin.getForAdmin>>;
 const hotelLabels: Record<string, string> = STATUS_LABELS.hotelBooking;
+
+/** The stay a correction affects: villa, check-in → checkout, and how many nights. */
+export function StaySummary({ booking, nightsLabel }: { booking: Pick<BookingDetail, "propertyName" | "checkIn" | "checkOut" | "nights">; nightsLabel: string }) {
+  return (
+    <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 rounded-lg border border-border px-3 py-2 text-sm">
+      <dt className="text-muted-foreground">Villa</dt>
+      <dd className="font-medium">{booking.propertyName}</dd>
+      <dt className="text-muted-foreground">Stay</dt>
+      <dd>{displayDate(booking.checkIn)} → {displayDate(booking.checkOut)}</dd>
+      <dt className="text-muted-foreground">{nightsLabel}</dt>
+      <dd>{booking.nights} {booking.nights === 1 ? "night" : "nights"}</dd>
+    </dl>
+  );
+}
+
+/** Mirrors the server's archived-villa rule (archivedVillaPolicy) so an ineligible reopen is explained before any write. */
+export function reopenVillaBlocker(booking: Pick<BookingDetail, "propertyStatus" | "checkIn">, today = resortTodayIso()): string | null {
+  if (booking.propertyStatus === "active") return null;
+  if (booking.propertyStatus !== "archived") return "This villa is not live, so stays in it cannot be reopened. Publish the villa first.";
+  if (booking.checkIn >= today) return "This villa is archived. Archived villas can only record stays that started in the past, so this stay cannot be reopened until the villa is restored.";
+  return null;
+}
 
 /**
  * Cancels a stay. A paid stay keeps its payment unless staff record a refund of any part of it
@@ -74,6 +98,7 @@ export function CancelStayDialog({ booking, onClose }: { booking: BookingDetail;
       }}
       onClose={onClose}
     >
+      <StaySummary booking={booking} nightsLabel="Nights released" />
       {attempt ? <p className="text-sm text-muted-foreground">Retry sends the same cancellation and refund details. Reopen to review a different correction.</p> : null}
       <fieldset disabled={Boolean(attempt)} className="grid min-w-0 gap-4 disabled:opacity-70">
       {paid ? (
@@ -128,6 +153,7 @@ export function ReopenBookingDialog({ booking, onClose }: { booking: BookingDeta
   const [villaReason, setVillaReason] = useState("");
   const [notify, setNotify] = useState(booking.notifyByDefault);
   const archived = booking.propertyStatus !== "active";
+  const blocker = reopenVillaBlocker(booking);
 
   return (
     <ChangeConfirmDialog
@@ -139,7 +165,7 @@ export function ReopenBookingDialog({ booking, onClose }: { booking: BookingDeta
       ]}
       confirmLabel="Reopen booking"
       keepLabel="Keep cancelled"
-      confirmDisabled={!reason.trim() || (archived && !villaReason.trim())}
+      confirmDisabled={Boolean(blocker) || !reason.trim() || (archived && !villaReason.trim())}
       onConfirm={async () => {
         await reopen({
           bookingId: booking._id, expectedRevision: revision, confirmed: holds, reason, notifyGuest: holds && notify,
@@ -148,6 +174,13 @@ export function ReopenBookingDialog({ booking, onClose }: { booking: BookingDeta
       }}
       onClose={onClose}
     >
+      <StaySummary booking={booking} nightsLabel="Nights" />
+      {blocker ? (
+        <div role="alert" className="grid gap-2 rounded-lg border border-destructive/40 px-3 py-2 text-sm">
+          <p>{blocker}</p>
+          <Link href={`/admin/properties/${booking.propertyId}`} className="font-medium underline underline-offset-2">Open {booking.propertyName}</Link>
+        </div>
+      ) : (<>
       {pendingAllowed ? (
         <div className="grid gap-2">
           <span id="reopen-status" className="text-sm font-medium">Reopen as</span>
@@ -173,6 +206,7 @@ export function ReopenBookingDialog({ booking, onClose }: { booking: BookingDeta
         </div>
       ) : null}
       {holds ? <NotifyGuestField id="reopen-notify" guestEmail={booking.guestEmail} checked={notify} onChange={setNotify} action="the confirmed booking" /> : null}
+      </>)}
     </ChangeConfirmDialog>
   );
 }
