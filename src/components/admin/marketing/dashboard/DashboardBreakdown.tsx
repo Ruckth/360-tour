@@ -306,7 +306,7 @@ export function DashboardBreakdown({
           {metricCols.map((col) => (
             <div key={col.key} className={cn("min-w-0", col.key === "roas" && "col-span-3 @[22rem]:col-span-2")}>
               <dt className="text-muted-foreground">{col.label}</dt>
-              <dd className="font-medium font-sans tabular-nums text-foreground">
+              <dd className="wrap-anywhere font-medium font-sans tabular-nums text-foreground">
                 <Cell row={row} col={col.key} onAddSpend={onAddSpend} eligible={eligible} />
               </dd>
             </div>
