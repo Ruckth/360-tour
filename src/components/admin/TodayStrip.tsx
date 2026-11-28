@@ -27,7 +27,7 @@ export function todayGroups(bookings: readonly AdminBooking[], today: string): R
   const live = bookings.filter((b) => b.status !== "cancelled").sort((a, b) => a.guestName.localeCompare(b.guestName));
   const arriving = live.filter((b) => !b.stayStatus && b.checkIn === today);
   const leaving = live.filter((b) => b.checkOut === today || (b.stayStatus === "checked_in" && b.checkOut < today));
-  const inHouse = live.filter((b) => b.checkOut > today && (b.stayStatus === "checked_in" || (!b.stayStatus && b.checkIn < today)));
+  const inHouse = live.filter((b) => b.stayStatus === "checked_in" || (!b.stayStatus && b.checkIn < today && b.checkOut > today));
   const balanceDue = live.filter((b) => b.owed > 0 && (b.stayStatus === "checked_in" || (b.checkIn <= today && b.checkOut >= today)));
   return { arriving, leaving, inHouse, balanceDue };
 }
