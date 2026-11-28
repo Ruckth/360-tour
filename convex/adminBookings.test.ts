@@ -84,11 +84,12 @@ it("keeps resort calendar, booking search and destination records out of other b
   await t.run(async (ctx) => {
     const original = (await ctx.db.get(bookingId))!;
     const { _id, _creationTime, ...row } = original;
+    void _creationTime;
     for (let i = 0; i < 25; i++) {
       await ctx.db.insert("bookings", { ...row, checkIn: "2099-01-01", checkOut: "2099-01-02" });
     }
     await ctx.db.insert("bookings", { ...row, status: "cancelled" });
-    await ctx.db.patch(bookingId, { stayStatus: "checked_out" });
+    await ctx.db.patch(_id, { stayStatus: "checked_out" });
   });
   expect(await resort.query(lookup, onCheckout)).toMatchObject({
     stays: [{ _id: bookingId, villaName: "Pool Villa", status: "checked_out" }],
@@ -103,10 +104,11 @@ it("finds an eligible stay by exact code beyond the bounded date scan", async ()
   const bookingId = await admin.mutation(api.bookings.commands.createBooking.createBooking, { ...stay, confirmed: true });
   const code = await t.run(async (ctx) => {
     const { _id, _creationTime, ...row } = (await ctx.db.get(bookingId))!;
+    void _creationTime;
     for (let i = 0; i < 513; i++) {
       await ctx.db.insert("bookings", { ...row, guestName: "Other guest", confirmationCode: undefined });
     }
-    await ctx.db.patch(bookingId, { checkOut: "2099-02-01" });
+    await ctx.db.patch(_id, { checkOut: "2099-02-01" });
     return row.confirmationCode!;
   });
   const lookup = api.bookings.admin.searchAttachableStays;
