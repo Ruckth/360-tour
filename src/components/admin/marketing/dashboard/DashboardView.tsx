@@ -337,7 +337,7 @@ export function DashboardView({
           </ToggleGroupItem>
         </ToggleGroup>
       </div>
-      <div className="flex justify-end gap-2 max-sm:col-start-2 max-sm:row-start-2 sm:ml-auto">
+      <div className="flex justify-end gap-2 max-sm:col-start-2 max-sm:row-start-2 max-sm:justify-self-end sm:ml-auto">
         {/* The phone menu keeps secondary report actions out of the filter controls. */}
         <Button type="button" variant="outline" size="sm" className="h-10 flex-1 max-sm:hidden sm:h-10 pointer-coarse:h-12 sm:flex-none" disabled={!p || emptyWithoutSetup} onClick={() => setExporting(true)}>
           <Download aria-hidden className="size-4" />

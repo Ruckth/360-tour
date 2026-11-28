@@ -138,7 +138,7 @@ export function TestQuotePanel({
           </label>
         ) : null}
         {scope !== "accommodation" ? (
-          <p className="text-xs text-muted-foreground">This preview checks booking and lodging dates. Confirm treatment dates and desk eligibility separately.</p>
+          <p className="text-xs text-muted-foreground">Use this preview for booking and lodging dates, and verify treatment dates and desk eligibility separately.</p>
         ) : null}
 
         {withStay ? (
