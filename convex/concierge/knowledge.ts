@@ -175,6 +175,12 @@ async function remainingInGroups(ctx: QueryCtx, keys: string[], statuses: Unknow
   };
 }
 
+function newReportsByProperty(rows: readonly Doc<'chatUnknownQuestions'>[]) {
+  const counts = new Map<Id<'properties'> | undefined, number>();
+  for (const row of rows) if (row.status === 'new') counts.set(row.propertyId, (counts.get(row.propertyId) ?? 0) + 1);
+  return [...counts].map(([propertyId, count]) => (propertyId ? { propertyId, count } : { count }));
+}
+
 /**
  * Unknown questions grouped by identical (normalized) text, most-asked first. Scans the newest
  * rows for the filter; `truncated` says older rows were left out.
@@ -232,6 +238,9 @@ export const adminListUnknownGroups = adminQuery({
           counts: group.counts,
           latestAt: group.latestAt,
           channels: [...new Set(groupChannels.filter((channel): channel is string => Boolean(channel)))],
+          // Property scope of the group's new reports, so the picker can label a property-scoped fact
+          // that would resolve only part of a mixed-property group (the server resolves by scope).
+          newByProperty: newReportsByProperty(group.rows),
           latest: {
             ...latest,
             propertyName: property?.name,
