@@ -94,7 +94,7 @@ it("puts Print · New sale and ⋯ above the receipt, outside what prints", asyn
   const onNewSale = vi.fn();
   await receipt(backend, orderId, onNewSale);
   const toolbar = document.querySelector<HTMLElement>('[role="toolbar"][aria-label="Receipt actions"]')!;
-  expect([...toolbar.querySelectorAll("button")].map(b => b.textContent?.trim() || b.getAttribute("aria-label"))).toEqual(["Print", "New sale", "More receipt actions"]);
+  expect([...toolbar.querySelectorAll("button")].map(b => b.textContent?.trim() || b.getAttribute("aria-label"))).toEqual([expect.stringMatching(/^Print · (58|80) mm$/), "New sale", "More receipt actions"]);
   for (const control of toolbar.querySelectorAll("button")) {
     // Before the receipt in reading and tab order, so it is reached without scrolling past it.
     expect(paper().compareDocumentPosition(control) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();

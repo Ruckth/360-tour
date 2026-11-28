@@ -1,5 +1,6 @@
 "use client";
 
+import { useNow } from "@/lib/staff-bookings";
 import { ShieldCheck } from "lucide-react";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useStaffAccess } from "@/components/admin/staff-access";
@@ -63,7 +64,12 @@ function ApprovalsButton() {
   // Returns and edits need the commerce readers; without them only today's requests show.
   const commerce = backend.commerce !== undefined;
   const rows = useMemo(() => (commerce ? page.results : page.results.filter((row) => !isTarget(row))), [commerce, page.results]);
-  const actionable = useMemo(() => rows.filter(isActionable), [rows]);
+  const now = useNow(10_000);
+  const actionable = useMemo(() => rows.filter(row => row.expiresAt > now && isActionable(row)), [rows, now]);
+  const sortedRows = useMemo(() => {
+    const eligible = new Set(actionable.map(row => row._id));
+    return [...actionable, ...rows.filter(row => !eligible.has(row._id))];
+  }, [rows, actionable]);
   const [open, setOpen] = useState(false);
   const [notice, setNotice] = useState("");
   const [selectedId, setSelectedId] = useState<ApprovalId | null>(null);
@@ -157,7 +163,7 @@ function ApprovalsButton() {
           ) : (
             <Suspense fallback={<Spinner label="Loading approvals" />}>
               <ApprovalsList
-                rows={rows} selectedId={selected?._id ?? null} count={count} more={more} searching={searching}
+                rows={sortedRows} selectedId={selected?._id ?? null} count={count} more={more} searching={searching}
                 loadingMore={page.status === "LoadingMore"} onMore={() => page.loadMore(APPROVAL_PAGE)} onSelect={setSelectedId} onDecided={onDecided}
               />
             </Suspense>

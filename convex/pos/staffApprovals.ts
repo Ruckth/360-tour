@@ -7,13 +7,14 @@ import { readBudget, reserveWrites } from '../lib/readBudget';
 import { appendRecordHistory, cashierRules } from '../settings/model';
 import {
   adjustmentApprovalDetail, approvalPageWindow, canReviewApproval, checkoutApprovalDetail, effectiveRequestStatus, isCheckoutApproval, isOwnApproval,
-  orderFingerprint, ownApprovalStatus, readApprovalDocument, requesterFingerprint, returnApprovalDetail, rulesFingerprint,
+  orderFingerprint, ownApprovalStatus, pendingReturnSummary, readApprovalDocument, requesterFingerprint, returnApprovalDetail, rulesFingerprint,
   type ApprovalRequest, type CheckoutApprovalRequest,
 } from './private/staffApprovalState';
 import { APPROVAL_TTL_MS, approvalPayload } from '../shared/staffTypes';
 import { executeStaffApproval, previewStaffApproval } from './private/approvalModel';
 import { checkoutApprovalKind } from './validators';
 import { assertReceiptCorrectionSupported, openOrderReturn, readOrderProjection } from './private/orderLifecycle';
+import { orderTitle } from '../shared/orderMath';
 import { resortTodayIso } from '../shared/time';
 
 function cleanReason(reason: string) {
@@ -214,13 +215,18 @@ function queueRow(request: ApprovalRequest, actionable: boolean) {
   return { ...common, kind, orderId, lineId, label, summary: { amount, percent } };
 }
 
-async function queueRows(ctx: QueryCtx, requests: ApprovalRequest[]) {
+async function queueRows(ctx: QueryCtx, actor: StaffActor, requests: ApprovalRequest[]) {
   const rules = requests.some(isCheckoutApproval) ? await readApprovalDocument(ctx, () => cashierRules(ctx)) : null;
   const fingerprint = rules && rulesFingerprint(rules);
   const today = resortTodayIso();
-  return requests.map(request => queueRow(request, !isCheckoutApproval(request) || (
-    request.rulesRevision === rules?.revision && request.rulesFingerprint === fingerprint && resortTodayIso(request.createdAt) === today
-  )));
+  return Promise.all(requests.map(async request => {
+    const row = queueRow(request, request.expiresAt > Date.now() && (!isCheckoutApproval(request) || (
+      request.rulesRevision === rules?.revision && request.rulesFingerprint === fingerprint && resortTodayIso(request.createdAt) === today
+    )));
+    if (!isCheckoutApproval(request)) return row;
+    const order = await readApprovalDocument(ctx, () => ctx.db.get(request.orderId));
+    return { ...row, orderTitle: order && canAccessCheckoutOrderBranch(actor, order) ? orderTitle(order.orderNumber) : undefined };
+  }));
 }
 
 export const pendingPage = staffQuery({
@@ -242,7 +248,7 @@ export const pendingPage = staffQuery({
       canReviewApproval(ctx.staff, request) && canAccessApprovalBranch(ctx.staff, request));
     return {
       ...result,
-      page: await queueRows(ctx, screened),
+      page: await queueRows(ctx, ctx.staff, screened),
       continueCursor: window.wrap(result.continueCursor),
       ...(result.splitCursor ? { splitCursor: window.wrap(result.splitCursor) } : {}),
     };
@@ -284,8 +290,10 @@ export const myStatus = staffQuery({
     const request = await readApprovalDocument(ctx, () => ctx.db.get(requestId));
     if (!request || request.requesterTokenIdentifier !== ctx.staff.tokenIdentifier ||
         !canAccessApprovalBranch(ctx.staff, request)) return null;
+    const status = await ownApprovalStatus(ctx, ctx.staff, request);
     return {
-      requestId, kind: request.kind, status: await ownApprovalStatus(ctx, ctx.staff, request),
+      requestId, kind: request.kind, status,
+      ...(request.kind === "returnItems" && status === "pending" ? { summary: pendingReturnSummary(ctx, request) } : {}),
       expiresAt: request.expiresAt, resolvedAt: request.resolvedAt, resolutionReason: request.resolutionReason,
     };
   },

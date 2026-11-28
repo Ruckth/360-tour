@@ -213,6 +213,13 @@ async function prepare(ctx: ReadCtx, order: Order, args: ReturnInput, now: numbe
   if (!actor.companyScope && stock.some(group => group.lotAllocations && !actor.branchIds.includes(group.stock.branchId))) {
     returnError('RETURN_STOCK_MISSING', 'The original stock movement for this receipt is unavailable.');
   }
+  const payouts = [
+    ...(money.external ? [{ label: money.external.method, amount: money.external.amount }] : []),
+    ...money.credits.flatMap(credit => [
+      ...(credit.paid ? [{ label: credit.destination?.kind === 'newVoucher' ? 'Replacement voucher' : 'Voucher', amount: credit.paid }] : []),
+      ...(credit.goodwill ? [{ label: 'Goodwill voucher', amount: credit.goodwill }] : []),
+    ]),
+  ];
   const review = returnApprovalCheckpoint(order, approvalReturnReview(order, selected, parts, stock, money.funding),
     parts.products.flatMap(({ handover }) => handover ? [handover] : []));
   const amount = parts.rows.reduce((sum, item) => sum + item.amount, 0);
@@ -222,7 +229,7 @@ async function prepare(ctx: ReadCtx, order: Order, args: ReturnInput, now: numbe
     const lotAllocations = 'units' in part ? allocationsByPart.get(part) : undefined;
     return lotAllocations ? { ...part, lotAllocations } : part;
   });
-  return { parts, stock, money, review, amount, previouslyReturned, confirmedParts };
+  return { parts, stock, money, review, amount, previouslyReturned, confirmedParts, payouts };
 }
 
 export async function previewReturn(ctx: ReadCtx, actor: StaffActor, input: ReturnInput) {
@@ -410,7 +417,7 @@ export async function askReturnApproval(ctx: MutationCtx, actor: StaffActor, inp
   const expiresAt = now + APPROVAL_TTL_MS;
   reserveWrites(ctx, 2);
   const requestId = await ctx.db.insert('staffApprovalRequests', {
-    kind: 'returnItems', orderId: order._id, stockBranchId: order.stockBranchId, ...prepared.review,
+    kind: 'returnItems', orderId: order._id, stockBranchId: order.stockBranchId, ...prepared.review, payoutSummary: prepared.payouts,
     requesterEmail: actor.email, requesterTokenIdentifier: actor.tokenIdentifier, requesterAccessFingerprint: requester.fingerprint,
     rulesRevision: rules.revision, rulesFingerprint: rulesFingerprint(rules), reason: args.reason, status: 'pending', createdAt: now, expiresAt,
     amount: prepared.amount, totalBefore: order.total, totalAfter: order.total - prepared.amount,

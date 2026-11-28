@@ -89,7 +89,7 @@ export async function ensurePaymentTill(ctx: MutationCtx, deviceKey?: string) {
 }
 
 export function paymentTillLabel(till: Pick<Doc<'tills'>, '_id'> & Partial<Pick<Doc<'tills'>, 'key'>>) {
-  return till.key === 'default' ? 'Default till' : `Till ${till._id.slice(-6).toUpperCase()}`;
+  return `${till.key === 'default' ? 'Default till' : 'Till'} ${till._id.slice(-8).toUpperCase()}`;
 }
 
 export async function patchPaymentTill(

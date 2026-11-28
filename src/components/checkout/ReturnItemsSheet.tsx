@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Sheet, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { Spinner } from "@/components/ui/spinner";
-import { newAttemptKey, useReturnsDesk, type ApprovalId, type OrderView, type ReturnLotOptions, type ReturnPreview, type ReturnRequestArgs } from "./backend";
+import { newAttemptKey, useReturnsDesk, type ApprovalId, type OrderView, type ReturnLotOptions, type ReturnPreview, type ReturnRequestStatus, type ReturnRequestArgs } from "./backend";
 import { cn } from "@/lib/utils";
 import { CheckoutSheetContent } from "./CheckoutLayers";
 import { DESK_TARGETS, voucherMasks } from "./checkout-ui";
@@ -67,7 +67,7 @@ export default function ReturnItemsSheet({ view, lineId, onClose, onCompleted }:
   } else if (record === undefined || (requestId && request === undefined)) {
     body = <div className="grid flex-1 place-items-center p-6"><Spinner label="Loading" /></div>;
   } else if (waiting) {
-    body = <WaitingForManager requestId={requestId!} onWithdrawn={() => { rememberRequest(orderId, null); setRequestId(null); }} onBusyChange={setBusy} />;
+    body = <WaitingForManager requestId={requestId!} view={view} summary={request.summary} onWithdrawn={() => { rememberRequest(orderId, null); setRequestId(null); }} onBusyChange={setBusy} />;
   } else if (view.activeReturn) {
     body = <SheetBody><p role="status" className="text-sm">{t("returns.heldElsewhere")}</p></SheetBody>;
   } else {
@@ -96,7 +96,7 @@ export default function ReturnItemsSheet({ view, lineId, onClose, onCompleted }:
   );
 }
 
-function WaitingForManager({ requestId, onWithdrawn, onBusyChange }: { requestId: ApprovalId; onWithdrawn: () => void; onBusyChange: (busy: boolean) => void }) {
+function WaitingForManager({ requestId, view, summary, onWithdrawn, onBusyChange }: { requestId: ApprovalId; view: OrderView; summary: ReturnRequestStatus["summary"]; onWithdrawn: () => void; onBusyChange: (busy: boolean) => void }) {
   const actions = useReturnsDesk()!.useActions();
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
@@ -119,6 +119,16 @@ function WaitingForManager({ requestId, onWithdrawn, onBusyChange }: { requestId
     <>
       <SheetBody>
         <p role="status" data-return-waiting="" className="rounded-lg bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900 dark:bg-amber-400/10 dark:text-amber-200">{t("returns.waiting")}</p>
+        {summary ? <section aria-label="Requested return" className="grid gap-2 text-sm">
+          <ul className="grid gap-1">{summary.parts.map((part, index) => <li key={index}>
+            {part.label ?? view.lines.find(line => line._id === part.lineId)?.name ?? "Item"} · {part.kind === "restoreSession" ? t("returns.restoreSession") : part.kind === "cancelPackage" ? t("returns.wholePackageShort") : `× ${part.units}`}
+          </li>)}</ul>
+          <h3 className="font-medium">{t("returns.whereItGoes")}</h3>
+          {summary.payouts ? <ul className="grid gap-1">
+            {summary.payouts.map((payout, index) => <li key={index} className="capitalize">{payout.label} · {money(payout.amount)}</li>)}
+            {!summary.payouts.length ? <li>{t("returns.noPayout")}</li> : null}
+          </ul> : <p className="text-muted-foreground">Payout details are unavailable for this request.</p>}
+        </section> : null}
         {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
       </SheetBody>
       <SheetActions>
@@ -325,7 +335,11 @@ function PartChoice({ part, choice, disabled, lots, onChange }: {
   const units = choice && part.maxUnits > 1 ? (
     <div role="group" aria-label={t("returns.units", { name: part.label })} className="flex items-center gap-1">
       <Button type="button" size="icon" variant="outline" className="size-11" aria-label={t("returns.fewer")} disabled={disabled || choice.units <= 1} onClick={() => onChange({ ...choice, units: choice.units - 1 })}><Minus aria-hidden className="size-4" /></Button>
-      <output className="w-8 text-center font-sans tabular-nums">{choice.units}</output>
+      <Input type="number" inputMode="numeric" min={1} max={part.maxUnits} step={1}
+        aria-label={t("returns.units", { name: part.label })}
+        aria-invalid={!Number.isSafeInteger(choice.units) || choice.units < 1 || choice.units > part.maxUnits}
+        className="h-11 w-20 text-center font-sans tabular-nums" value={choice.units || ""} disabled={disabled}
+        onChange={(event) => onChange({ ...choice, units: Number(event.target.value) })} />
       <Button type="button" size="icon" variant="outline" className="size-11" aria-label={t("returns.more")} disabled={disabled || choice.units >= part.maxUnits} onClick={() => onChange({ ...choice, units: choice.units + 1 })}><Plus aria-hidden className="size-4" /></Button>
     </div>
   ) : null;

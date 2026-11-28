@@ -108,6 +108,7 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
   const [storedPaper, setStoredPaper] = useStoredState(RECEIPT_PAPER_KEY, "80");
   const paper: Paper = storedPaper === "58" ? "58" : "80";
   const [notice, setNotice] = useState("");
+  const [manualShare, setManualShare] = useState<{ orderId: OrderId; text: string } | null>(null);
   // A finished return's notice, for the receipt it finished on: a late answer for another one never shows here.
   const [completedReturn, setCompletedReturn] = useState<{ orderId: OrderId; message: string } | null>(null);
   const completedNotice = completedReturn?.orderId === orderId ? completedReturn.message : null;
@@ -197,7 +198,11 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
         </div>
       );
     }
-    return <p className="p-10 text-center text-sm text-muted-foreground">{cashier ? "Not available." : "Receipt not found."}</p>;
+    return <div className="grid justify-items-center gap-3 p-10 text-center">
+      <p className="text-sm text-muted-foreground">{cashier ? "Not available." : "Receipt not found."}</p>
+      <Button variant="outline" onClick={onNewSale}>Back to checkout</Button>
+      {access.capabilities.checkout ? <p className="text-sm text-muted-foreground">In checkout, open Orders to search by order or receipt number.</p> : null}
+    </div>;
   }
   if (view.order.state === "unpaid" || view.order.state === "discarded") {
     return (
@@ -281,6 +286,7 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
   // Share opens the system sheet where there is one; anywhere else (or if it fails) it copies.
   async function share() {
     setNotice("");
+    setManualShare(null);
     const text = receiptText(view!, business, shareCopy.current ?? undefined);
     if (canShare) {
       try {
@@ -295,7 +301,8 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
       await navigator.clipboard.writeText(text);
       setNotice("Receipt copied.");
     } catch {
-      setNotice(canShare ? "Couldn't share or copy on this device." : "Couldn't copy on this device.");
+      setManualShare({ orderId, text });
+      setNotice("Copy the receipt text below.");
     }
   }
 
@@ -326,6 +333,8 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
             Receipt {receiptNumber}
             {paid && view.fullyRefunded ? (
               <span data-testid="receipt-status" className={cn("rounded-full px-2 py-0.5 text-xs font-medium tracking-normal", TONES.muted.bg, TONES.muted.text)}>Refunded</span>
+            ) : paid && refunded > 0 ? (
+              <span data-testid="receipt-status" className="rounded-full bg-muted px-2 py-0.5 font-sans text-xs font-medium">Partly refunded · {satangMoney(refunded, order.currency)}</span>
             ) : paid ? <span data-testid="receipt-status" className="inline-flex h-6 items-center gap-1 rounded-full bg-emerald-50 px-2.5 font-sans text-[13px] font-medium tracking-normal text-emerald-800 dark:bg-emerald-400/10 dark:text-emerald-300"><Check aria-hidden className="size-3.5" />Paid</span> : null}
           </h2>
           <p className="mt-0.5 text-sm text-muted-foreground">
@@ -338,7 +347,7 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
           {/* While Correct payment or Void… is open, the toolbar is only its Close. */}
           {shownTask ? null : (
             <>
-              <Button variant="outline" className="max-sm:size-11 max-sm:p-0 sm:px-4" aria-label="Print" onClick={() => { beforePrint(); window.print(); }} aria-describedby="receipt-print-help"><Printer aria-hidden className="size-4" /><span className="max-sm:sr-only">Print</span></Button>
+              <Button variant="outline" className="px-2 sm:px-4" aria-label="Print" onClick={() => { beforePrint(); window.print(); }} aria-describedby="receipt-print-help"><Printer aria-hidden className="size-4" /><span><span className="max-sm:sr-only">Print · </span>{paper} mm</span></Button>
               <span id="receipt-print-help" className="sr-only">Prints {paper} mm wide, as long as the receipt.</span>
               <Button className="px-3 max-sm:h-12 max-sm:flex-1 sm:px-4" disabled={refundBusy} onClick={() => { void confirmDiscard().then((discard) => { if (discard) onNewSale(); }); }}><Plus aria-hidden className="size-4" /> New sale</Button>
             </>
@@ -361,6 +370,7 @@ export function ReceiptView({ orderId, onNewSale, onOpenOrder }: { orderId: Orde
           )}
         </div>
       </header>
+      {manualShare?.orderId === orderId ? <textarea aria-label="Receipt text" className="col-span-full min-h-40 w-full rounded-md border p-3 print:hidden" readOnly value={manualShare.text} onFocus={(event) => event.currentTarget.select()} /> : null}
 
       <div className={cn("grid w-full min-w-0 content-start justify-items-center gap-3 lg:sticky lg:top-6 lg:justify-items-start lg:self-start", shownTask && "max-sm:hidden")}>
         <Disclosure label="Receipt preview" open={!phone} className={cn("receipt-preview sm:[&>summary]:hidden print:[&>summary]:hidden", viewport === "pending" && "max-sm:[&>div:not(:has([data-print-measure]))]:hidden")} contentClassName="flex justify-center pb-0 lg:justify-start">
