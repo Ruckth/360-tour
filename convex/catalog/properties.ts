@@ -88,22 +88,26 @@ export const listOtaRates = adminQuery({
 });
 
 export const upsertOtaRate = adminMutation({
-	args: { propertyId: v.id('properties'), platform: otaPlatform, nightlyRate: v.number(), url: v.optional(v.string()) },
+	// Omitting `url` preserves the stored link (read in this transaction), so a price-only save never
+	// drops a link a teammate set after the form opened. Removing a link needs `clearUrl: true`.
+	args: { propertyId: v.id('properties'), platform: otaPlatform, nightlyRate: v.number(), url: v.optional(v.string()), clearUrl: v.optional(v.boolean()) },
 	handler: async (ctx, args) => {
 		const admin = ctx.admin;
 		if (!(await ctx.db.get(args.propertyId))) throw new Error('Property not found');
 		if (!Number.isSafeInteger(args.nightlyRate) || args.nightlyRate <= 0 || args.nightlyRate > MAX_NIGHTLY_RATE) {
 			throw new Error('Nightly rate must be a positive amount');
 		}
-		const fields = {
-			nightlyRate: args.nightlyRate,
-			url: args.url?.trim() ? publicHttpsUrl(args.url.trim()) : undefined,
-			updatedAt: Date.now()
-		};
+		const nextUrl = args.url?.trim();
+		if (args.clearUrl && nextUrl) throw new Error('Choose either a new listing URL or Clear link, not both');
 		const existing = await ctx.db
 			.query('otaRates')
 			.withIndex('by_property_platform', (q) => q.eq('propertyId', args.propertyId).eq('platform', args.platform))
 			.unique();
+		const fields = {
+			nightlyRate: args.nightlyRate,
+			url: nextUrl ? publicHttpsUrl(nextUrl) : args.clearUrl ? undefined : existing?.url,
+			updatedAt: Date.now()
+		};
 		await appendRecordHistory(ctx, { entityType: 'property', entityId: args.propertyId, actor: admin.email, kind: 'ota_rate_updated',
 		 before: existing ? { platform: existing.platform, nightlyRate: existing.nightlyRate, url: existing.url ?? null } : null,
 		 after: { platform: args.platform, nightlyRate: fields.nightlyRate, url: fields.url ?? null } });
