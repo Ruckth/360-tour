@@ -244,7 +244,12 @@
     "reference": "संदर्भ: {reference}",
     "returnHome": "होम पर लौटें",
     "exploreMoreVillas": "और विला देखें",
-    "stepCompleted": "पूर्ण:"
+    "stepCompleted": "पूर्ण:",
+    "minStayHint": "न्यूनतम ठहराव: {count} रातें",
+    "calendarKey": "कैलेंडर संकेत",
+    "legendAvailable": "उपलब्ध",
+    "legendBooked": "बुक है",
+    "legendNotSelectable": "बीती तारीख या ठहराव नियमों से बाहर"
   },
   "Coupon": {
     "haveCode": "क्या आपके पास कोड है?",

@@ -244,7 +244,12 @@
     "reference": "参照: {reference}",
     "returnHome": "ホームへ戻る",
     "exploreMoreVillas": "他のヴィラを見る",
-    "stepCompleted": "完了："
+    "stepCompleted": "完了：",
+    "minStayHint": "最低宿泊数：{count}泊",
+    "calendarKey": "カレンダーの凡例",
+    "legendAvailable": "空室あり",
+    "legendBooked": "予約済み",
+    "legendNotSelectable": "過去の日付または宿泊条件外"
   },
   "Coupon": {
     "haveCode": "コードをお持ちですか？",

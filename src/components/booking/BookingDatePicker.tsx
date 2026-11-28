@@ -307,6 +307,9 @@ export function BookingRangePicker({
       onClear={clearable && clearLabel ? clearActiveDate : undefined}
       onSelectDate={selectDate}
       onMonthChange={showMonth}
+      minNights={minNights}
+      legendId={`${calendarId}-key`}
+      aria-describedby={`${calendarId}-key`}
     />
   );
 
@@ -420,6 +423,8 @@ function RangePickerContent({
   onClear,
   onSelectDate,
   onMonthChange,
+  minNights,
+  legendId,
   ...popoverProps
 }: ComponentProps<typeof PopoverContent> & {
   checkInValue: string;
@@ -437,6 +442,8 @@ function RangePickerContent({
   onClear?: () => void;
   onSelectDate: (date: Date) => void;
   onMonthChange: (month: Date) => void;
+  minNights: number;
+  legendId: string;
 }) {
   return (
     <PopoverContent align="center" collisionPadding={16} {...popoverProps}>
@@ -460,7 +467,35 @@ function RangePickerContent({
         onSelectDate={onSelectDate}
         onMonthChange={onMonthChange}
       />
+      <RangeLegend id={legendId} compact={compact} minNights={minNights} unavailableDayClassName={unavailableDayClassName} />
     </PopoverContent>
+  );
+}
+
+/** Explains why days are disabled: the minimum stay plus a key for available, booked and unselectable days. */
+function RangeLegend({ id, compact, minNights, unavailableDayClassName }: { id: string; compact: boolean; minNights: number; unavailableDayClassName: string }) {
+  const t = useTranslations("Booking");
+  const swatch = "relative inline-block size-3.5 shrink-0 rounded-[4px]";
+  return (
+    <div id={id} data-testid="booking-calendar-key" className={cn("mt-2 space-y-1.5 border-t border-border pt-2 text-muted-foreground", compact ? "text-[11px]" : "text-xs")}>
+      {minNights > 1 ? (
+        <p data-testid="booking-min-stay" className="font-medium text-foreground">{t("minStayHint", { count: minNights })}</p>
+      ) : null}
+      <ul aria-label={t("calendarKey")} className="flex flex-wrap gap-x-3 gap-y-1">
+        <li className="inline-flex items-center gap-1.5">
+          <span aria-hidden className={cn(swatch, "border border-border bg-background")} />
+          {t("legendAvailable")}
+        </li>
+        <li className="inline-flex items-center gap-1.5">
+          <span aria-hidden className={cn(swatch, unavailableDayClassName, "after:w-3")} />
+          {t("legendBooked")}
+        </li>
+        <li className="inline-flex items-center gap-1.5">
+          <span aria-hidden className={cn(swatch, "border border-border bg-muted opacity-50")} />
+          {t("legendNotSelectable")}
+        </li>
+      </ul>
+    </div>
   );
 }
 

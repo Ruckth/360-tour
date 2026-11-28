@@ -244,7 +244,12 @@
     "reference": "อ้างอิง: {reference}",
     "returnHome": "กลับหน้าแรก",
     "exploreMoreVillas": "ดูวิลล่าเพิ่มเติม",
-    "stepCompleted": "เสร็จแล้ว:"
+    "stepCompleted": "เสร็จแล้ว:",
+    "minStayHint": "เข้าพักขั้นต่ำ {count} คืน",
+    "calendarKey": "คำอธิบายปฏิทิน",
+    "legendAvailable": "ว่าง",
+    "legendBooked": "ไม่ว่าง",
+    "legendNotSelectable": "วันที่ผ่านมาแล้วหรือไม่ตรงเงื่อนไขการเข้าพัก"
   },
   "Coupon": {
     "haveCode": "มีโค้ดส่วนลดไหม?",
