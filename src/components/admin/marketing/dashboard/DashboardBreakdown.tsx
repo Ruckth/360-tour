@@ -300,9 +300,11 @@ export function DashboardBreakdown({
           </div>
           <ChevronRight aria-hidden className="mt-1 size-4 shrink-0 text-muted-foreground" />
         </div>
-        <dl className="grid grid-cols-3 gap-x-3 gap-y-2 text-xs">
+        {/* Four metrics per row once a card is wide enough (390px phones and up), so a full row of
+            source metrics fits in two lines; ROAS keeps two columns for its spend caption. */}
+        <dl className="grid grid-cols-3 gap-x-3 gap-y-2 text-xs @[22rem]:grid-cols-4">
           {metricCols.map((col) => (
-            <div key={col.key} className={cn("min-w-0", col.key === "roas" && "col-span-3")}>
+            <div key={col.key} className={cn("min-w-0", col.key === "roas" && "col-span-3 @[22rem]:col-span-2")}>
               <dt className="text-muted-foreground">{col.label}</dt>
               <dd className="font-medium font-sans tabular-nums text-foreground">
                 <Cell row={row} col={col.key} onAddSpend={onAddSpend} eligible={eligible} />

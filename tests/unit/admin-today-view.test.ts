@@ -101,6 +101,28 @@ describe("Today home (D01)", () => {
     expect(linkCount(`/admin/staff/calendar?date=${today}&scope=open`)).toBe("Open appointments today1");
   });
 
+  it("keeps every desk count on a phone-height grid and widens a lone desk", async () => {
+    await act(async () => root.render(createElement(StaffAccessProvider, { access: staffAccessFor("manager") }, createElement(AdminTodayView))));
+    const tile = (name: string) => host.querySelector<HTMLElement>(`section[aria-label="${name}"]`)!;
+    // Hotel's four counts share one row (2×2 on phones); Spa and Chats sit side by side.
+    expect(tile("Hotel").className).toContain("col-span-2");
+    expect(tile("Hotel").querySelector(".grid-cols-2")?.querySelectorAll("a")).toHaveLength(4);
+    expect(tile("Spa").className).not.toContain("col-span-2");
+    expect(tile("Chats").className).not.toContain("col-span-2");
+    expect(host.querySelector('a[href="/admin/chats"] [role="status"]')?.className).toContain("text-2xl");
+
+    await act(async () => root.render(createElement(StaffAccessProvider, { access: staffAccessFor("manager", undefined, [PHUKET]) }, createElement(AdminTodayView))));
+    expect(tile("Spa").className).toContain("col-span-2");
+  });
+
+  it("keeps an unavailable count as readable text instead of a large figure", async () => {
+    mocks.failSpa = true;
+    await act(async () => root.render(createElement(AdminTodayView)));
+    const count = host.querySelector(`a[href="/admin/staff/calendar?date=${today}&scope=open"] [role="status"]`);
+    expect(count?.textContent).toBe("Count unavailable");
+    expect(count?.className).toContain("text-sm");
+  });
+
   it("asks for nothing and links nowhere a cashier can't open", async () => {
     await act(async () => root.render(createElement(StaffAccessProvider, { access: staffAccessFor("cashier") }, createElement(AdminTodayView))));
     expect(host.querySelectorAll("a")).toHaveLength(0);

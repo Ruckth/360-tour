@@ -6,7 +6,7 @@ import { emptyFilters, type ProfitFilters, type ProfitRule } from 'convex/shared
 import { thb } from '../marketing/marketing-format';
 
 export const inputStyle =
-  'min-h-10 min-w-0 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:ring-2 focus-visible:ring-ring';
+  'min-h-10 pointer-coarse:min-h-11 min-w-0 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:ring-2 focus-visible:ring-ring';
 const labels = {
   service: 'Service',
   source: 'Booking source',

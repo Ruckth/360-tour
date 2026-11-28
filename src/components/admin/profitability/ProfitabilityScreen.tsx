@@ -343,7 +343,7 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
           />
         </section>
       )}
-      <section className={box + ' grid gap-4 p-4 sm:p-5'} aria-label="Report filters">
+      <section className={box + ' grid gap-3 p-3 sm:gap-4 sm:p-5'} aria-label="Report filters">
         {!detailPage && (
           <p role="status" className="text-sm">
             Applied dates · {from} – {to}
@@ -363,13 +363,13 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
             </span>
           </div>
         ) : (
-          <div className="grid grid-cols-2 items-end gap-2 sm:flex sm:flex-wrap sm:gap-3">
+          <div className="grid grid-cols-6 items-end gap-2 sm:flex sm:flex-wrap sm:gap-3">
             <CalendarRange
               aria-hidden="true"
               className="mb-3 hidden text-muted-foreground sm:block"
               size={18}
             />
-            <label className="grid gap-1 text-xs">
+            <label className="col-span-3 grid min-w-0 gap-1 text-xs">
               From
               <input
                 type="date"
@@ -378,7 +378,7 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
                 onChange={(e) => setDateDraft({ ...dates, start: e.target.value })}
               />
             </label>
-            <label className="grid gap-1 text-xs">
+            <label className="col-span-3 grid min-w-0 gap-1 text-xs">
               Through
               <input
                 type="date"
@@ -389,6 +389,7 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
             </label>
             <Button
               size="sm"
+              className="col-span-2 max-sm:h-auto max-sm:min-h-10 max-sm:whitespace-normal max-sm:px-2 max-sm:leading-tight"
               disabled={draftInvalid || (dates.start === from && dates.end === to)}
               onClick={() => {
                 if (!draftInvalid) {
@@ -400,13 +401,14 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
               Apply dates
             </Button>
             {draftInvalid && (
-              <p role="status" className="text-xs text-destructive">
+              <p role="status" className="col-span-6 text-xs text-destructive sm:basis-full">
                 Choose a valid range of up to {MAX_REPORT_DAYS} days.
               </p>
             )}
             <Button
               size="sm"
               variant="outline"
+              className="col-span-2 max-sm:h-auto max-sm:min-h-10 max-sm:whitespace-normal max-sm:px-2 max-sm:leading-tight"
               onClick={() => {
                 setDateDraft({ from, to, start: from, end: to });
                 pendingRefresh.current = null;
@@ -419,6 +421,7 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
             <Button
               size="sm"
               variant="outline"
+              className="col-span-2 max-sm:h-auto max-sm:min-h-10 max-sm:whitespace-normal max-sm:px-2 max-sm:leading-tight"
               onClick={() => {
                 setDateDraft({ from, to, start: from, end: to });
                 pendingRefresh.current = null;
