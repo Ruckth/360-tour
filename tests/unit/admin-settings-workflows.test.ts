@@ -147,17 +147,28 @@ describe("AdminSettingsView workflows (M24, M25, M26, M31)", () => {
     expect(businessName().value).toBe("My Local Draft Name");
     expect(checkIn().value).toBe("14:00");
 
-    // Confirm replacement: current server settings load and revision advances to 5.
+    const decision = Promise.withResolvers<boolean>();
+    state.confirm.mockReturnValueOnce(decision.promise);
+    await act(async () => replaceBtn().click());
+    state.settings = { ...state.settings, checkInTime: "16:00", revision: 6 };
+    await render(
+      createElement(StaffAccessProvider, { access: staffAccessFor("owner", "owner@example.com") }, createElement(AdminSettingsView)),
+    );
+    await act(async () => decision.resolve(true));
+    expect(businessName().value).toBe("My Local Draft Name");
+    expect(alert.textContent).toContain("Current: 16:00");
+
+    // Confirm after reviewing the new revision.
     state.confirm.mockResolvedValueOnce(true);
     await act(async () => replaceBtn().click());
     expect(businessName().value).toBe(mergeSiteSettings(null).businessName);
-    expect(checkIn().value).toBe("15:00");
+    expect(checkIn().value).toBe("16:00");
     expect(host.querySelector('[data-testid="stale-settings-alert"]')).toBeNull();
 
-    // Subsequent edit & save still passes expectedRevision: 5.
+    // Subsequent edit & save still passes expectedRevision: 6.
     await setInput(businessName(), "Updated After Review");
     await act(async () => host.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
-    expect(state.update).toHaveBeenCalledWith(expect.objectContaining({ expectedRevision: 5 }));
+    expect(state.update).toHaveBeenCalledWith(expect.objectContaining({ expectedRevision: 6 }));
   });
 
   it("M25: shows effective default email recipient for owners when blank, and source guidance without PII when unavailable or read-only", async () => {
@@ -284,9 +295,9 @@ describe("PaymentsCutover open direct panel outcomes (M27)", () => {
     const actionButtons = [...row.querySelectorAll("button")].map((el) => el.textContent?.trim());
     expect(dts).toEqual(["Recorded", "Nothing taken", "Collected · no receipt"]);
     expect(actionButtons).toEqual(["Recorded", "Nothing taken", "Collected · no receipt"]);
-    expect(row.textContent).toContain("Payment is already accounted for");
-    expect(row.textContent).toContain("Guest did not pay");
-    expect(row.textContent).toContain("Money was received without a receipt");
+    expect(row.textContent).toContain("Close the payment panel using the existing receipt");
+    expect(row.textContent).toContain("no money was received");
+    expect(row.textContent).toContain("money received without a receipt");
 
     // All actions stay disabled until operator-stopped confirmation is checked.
     for (const btn of row.querySelectorAll("button")) expect(btn.disabled).toBe(true);

@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import { cn } from "@/lib/utils";
-import { refusal, refusalText, t, when } from "./checkout-rules-copy";
+import { reconciliationOutcomes, refusal, refusalText, t, when } from "./checkout-rules-copy";
 import { ReasonDialog } from "./ReasonDialog";
 import { useRulesCommands, type DirectPanelRow, type RulesView } from "./use-checkout-rules";
 
@@ -110,24 +110,24 @@ function OpenDirectPanels({ panels, onSaved }: { panels: DirectPanelRow[]; onSav
               </label>
               <details open className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs">
                 <summary className="cursor-pointer font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                  Resolve open direct payment
+                  {reconciliationOutcomes.title}
                 </summary>
                 <dl className="mt-2 grid gap-1.5 text-muted-foreground sm:grid-cols-3">
                   <div className="grid gap-0.5">
                     <dt className="font-semibold text-foreground">{t("payments.reconcileRecorded")}</dt>
                     <dd>
                       {panel.canRecord
-                        ? "Payment is already accounted for by this order’s receipt."
-                        : "Unavailable until an unused receipt on this order accounts for this payment."}
+                        ? reconciliationOutcomes.recorded
+                        : reconciliationOutcomes.recordedUnavailable}
                     </dd>
                   </div>
                   <div className="grid gap-0.5">
                     <dt className="font-semibold text-foreground">{t("payments.reconcileNothingTaken")}</dt>
-                    <dd>Guest did not pay; terminal, QR and drawer confirm no money was taken.</dd>
+                    <dd>{reconciliationOutcomes.nothingTaken}</dd>
                   </div>
                   <div className="grid gap-0.5">
                     <dt className="font-semibold text-foreground">{t("payments.reconcileUnrecorded")}</dt>
-                    <dd>Money was received without a receipt and requires a reason for reconciliation.</dd>
+                    <dd>{reconciliationOutcomes.unrecorded}</dd>
                   </div>
                 </dl>
               </details>

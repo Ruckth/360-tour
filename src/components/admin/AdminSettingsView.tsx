@@ -329,6 +329,8 @@ function formatTimerMinutes(value: string | undefined): string {
 function SettingsForm({ section, settings, readOnly = false, onDirtyChange }: { section: Section; settings: SettingsRecord; readOnly?: boolean; onDirtyChange: (dirty: boolean) => void }) {
   const config = SECTIONS[section];
   const pending = useRef(false);
+  const currentSettings = useRef(settings);
+  useEffect(() => { currentSettings.current = settings; }, [settings]);
   const update = useMutation(api.settings.settings.update);
   const restore = useMutation(api.settings.settings.restore);
   const confirm = useConfirm();
@@ -455,11 +457,16 @@ function SettingsForm({ section, settings, readOnly = false, onDirtyChange }: { 
         cancelLabel: "Keep editing",
       });
       if (!ok) return;
+      if (currentSettings.current.revision !== settings.revision) {
+        setState({ saving: false, saved: false, error: "Settings changed again. Review the latest values before replacing your draft." });
+        return;
+      }
     }
-    const latest = config.values(settings);
+    const current = currentSettings.current;
+    const latest = config.values(current);
     setValues(latest);
     setSavedValues(latest);
-    setRevision(settings.revision);
+    setRevision(current.revision);
     setTouched(new Set());
     setSubmitted(false);
     setState({ saving: false, saved: false, error: "" });

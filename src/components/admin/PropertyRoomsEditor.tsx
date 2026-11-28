@@ -187,19 +187,28 @@ function AddRoomForm({ propertyId }: { propertyId: Id<"properties"> }) {
   const [saving, setSaving] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
+  const selection = useRef(0);
+  const urlInput = useRef<HTMLInputElement>(null);
+
   async function pick(next: File | undefined) {
+    const request = ++selection.current;
     setFile(next ?? null);
+    setWarning(null);
     setModeNotice(next ? `Upload mode: selected ${next.name}. Panorama URL input is disabled.` : "URL mode: panorama URL input is enabled.");
-    setWarning(next ? await panoramaWarning(next) : null);
+    if (!next) return;
+    const nextWarning = await panoramaWarning(next);
+    if (selection.current === request) setWarning(nextWarning);
   }
 
   function clearSelectedFile() {
+    selection.current++;
     setFile(null);
     setUploaded(null);
     setWarning(null);
     setError("");
     if (fileInput.current) fileInput.current.value = "";
     setModeNotice("Selected file removed. Panorama URL input is enabled.");
+    requestAnimationFrame(() => urlInput.current?.focus());
   }
 
   async function submit(event: FormEvent) {
@@ -221,6 +230,7 @@ function AddRoomForm({ propertyId }: { propertyId: Id<"properties"> }) {
       setName("");
       setSlug("");
       setUrl("");
+      selection.current++;
       setFile(null);
       setModeNotice("");
       setWarning(null);
@@ -263,7 +273,7 @@ function AddRoomForm({ propertyId }: { propertyId: Id<"properties"> }) {
             ) : null}
           </Field>
           <Field label="…or panorama URL" htmlFor="new-room-url">
-            <Input id="new-room-url" value={url} onChange={(event) => setUrl(event.target.value)} disabled={Boolean(file)} placeholder="https://… or /public-path.webp" />
+            <Input ref={urlInput} id="new-room-url" value={url} onChange={(event) => setUrl(event.target.value)} disabled={Boolean(file)} placeholder="https://… or /public-path.webp" />
           </Field>
         </div>
         <p role="status" className="text-xs text-muted-foreground">

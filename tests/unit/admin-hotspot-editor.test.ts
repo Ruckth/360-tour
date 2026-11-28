@@ -40,14 +40,6 @@ vi.mock("@/components/tour/RoomSphere", () => ({
 vi.mock("@/components/tour/TourCanvas", () => ({
   TourCamera: () => null,
 }));
-vi.mock("@/components/tour/Hotspot", () => ({
-  Hotspot: ({ label, onClick, selected }: { label: string; onClick?: () => void; selected?: boolean }) =>
-    createElement(
-      "button",
-      { type: "button", "data-testid": "tour-hotspot", "data-selected": String(Boolean(selected)), onClick },
-      label,
-    ),
-}));
 vi.mock("three", () => {
   class MockTextureLoader {
     load(
@@ -137,10 +129,16 @@ describe("Tour hotspot angle geometry helpers (F17)", () => {
     expect(Math.hypot(...start)).toBeCloseTo(HOTSPOT_RADIUS, 0);
 
     const wrapped = nudgeHotspotPosition(start, 10, 10);
-    expect(hotspotPositionToAngles(wrapped)).toEqual({ heading: 5, elevation: 85 });
+    const angles = hotspotPositionToAngles(wrapped);
+    // Persisted Cartesian coordinates are quantized to 0.1 units; near a pole
+    // this corresponds to roughly 0.2° of heading.
+    expect(Math.abs(angles.heading - 5)).toBeLessThanOrEqual(0.2);
+    expect(angles.elevation).toBe(85);
 
     const wrappedBack = nudgeHotspotPosition(wrapped, -10, -200);
-    expect(hotspotPositionToAngles(wrappedBack)).toEqual({ heading: 355, elevation: -85 });
+    const back = hotspotPositionToAngles(wrappedBack);
+    expect(Math.abs(back.heading - 355)).toBeLessThanOrEqual(0.2);
+    expect(back.elevation).toBe(-85);
   });
 });
 
@@ -190,8 +188,20 @@ describe("HotspotEditorDialog keyboard selection/repositioning and loading/error
     expect(Number(elevationInput.value)).toBeCloseTo(10, 0);
 
     // Direct numeric entry wraps and clamps cleanly.
+    await act(async () => headingInput.focus());
     await setInput(headingInput, "370");
+    await act(async () => headingInput.blur());
+    await act(async () => elevationInput.focus());
+    await setInput(elevationInput, "");
+    expect(elevationInput.value).toBe("");
+    await setInput(elevationInput, "-");
+    expect(elevationInput.value).toBe("-");
+    await setInput(elevationInput, "-12");
+    await act(async () => elevationInput.blur());
+    expect(Number(elevationInput.value)).toBeCloseTo(-12, 0);
+    await act(async () => elevationInput.focus());
     await setInput(elevationInput, "95");
+    await act(async () => elevationInput.blur());
     expect(Number(headingInput.value)).toBeCloseTo(10, 0);
     expect(Number(elevationInput.value)).toBeCloseTo(85, 0);
 
@@ -200,6 +210,14 @@ describe("HotspotEditorDialog keyboard selection/repositioning and loading/error
     await act(async () => closePositionBtn.click());
     const editListBtn = [...listAside.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent?.includes("Edit To pool"))!;
     expect(document.activeElement).toBe(editListBtn);
+
+    // Keeping the dialog open after the discard confirmation retains the move.
+    state.confirm.mockResolvedValueOnce(false);
+    const cancel = [...document.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent?.trim() === "Cancel")!;
+    await act(async () => cancel.click());
+    expect(state.confirm).toHaveBeenCalledWith(expect.objectContaining({ title: "Discard hotspot changes?" }));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(state.setHotspots).not.toHaveBeenCalled();
 
     // Save hotspots sends the updated valid coordinates.
     const saveBtn = [...document.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent?.includes("Save hotspots"))!;
@@ -249,6 +267,7 @@ describe("HotspotEditorDialog keyboard selection/repositioning and loading/error
     const retryBtn = [...document.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent?.includes("Retry panorama"))!;
     await act(async () => retryBtn.click());
     expect(state.loads).toHaveLength(2);
+    expect(document.activeElement?.getAttribute("aria-label")).toBe("Panorama preview");
     expect(state.loads[1].url).toBe("/garden-suite.webp");
     expect(document.body.textContent).toContain("Loading Garden Suite panorama…");
 

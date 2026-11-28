@@ -9,9 +9,8 @@ import { validateAdminPropertySearch } from "@/start-app/admin/admin-route";
 const state = vi.hoisted(() => ({
   properties: [] as Doc<"properties">[],
   propertyDetail: null as { property: Doc<"properties">; rooms: Doc<"tourScenes">[]; deleteBlocker: string | null; slugLocked: boolean } | null,
-  tabParam: "",
+  tabParam: "" as unknown,
   push: vi.fn(),
-  replace: vi.fn(),
   mutations: [] as [string, unknown][],
   mutationError: null as unknown,
   failNextCreateRoom: false,
@@ -20,8 +19,7 @@ const state = vi.hoisted(() => ({
 }));
 
 vi.mock("@/platform/navigation", () => ({
-  useRouter: () => ({ push: state.push, replace: state.replace }),
-  useSearchParams: () => new URLSearchParams(state.tabParam ? `tab=${state.tabParam}` : ""),
+  useRouter: () => ({ push: state.push }),
 }));
 vi.mock("@/platform/link", () => ({
   default: ({ href, children, ...props }: { href: string; children?: ReactNode; [key: string]: unknown }) =>
@@ -110,7 +108,6 @@ beforeEach(() => {
   state.propertyDetail = { property: makeProperty(), rooms: [], deleteBlocker: null, slugLocked: false };
   state.tabParam = "";
   state.push.mockReset();
-  state.replace.mockReset();
   state.mutations = [];
   state.mutationError = null;
   state.failNextCreateRoom = false;
@@ -162,15 +159,21 @@ describe("Villas index search & status composition (M30)", () => {
   });
 });
 
+const renderEditor = () => render(createElement(AdminPropertyEditor, {
+  propertyId: "prop-1",
+  tab: validateAdminPropertySearch({ tab: state.tabParam }).tab,
+}));
+
 describe("Addressable villa editor sections & OTA-to-direct jump (M32, M33)", () => {
   it("M32: validates all 6 section tabs, falls back invalid values to Details, and drives tab state from URL", async () => {
     expect(validateAdminPropertySearch({ tab: "reviews", extra: "1" })).toEqual({ tab: "reviews", extra: "1" });
     expect(validateAdminPropertySearch({ tab: "calendar" })).toEqual({ tab: "calendar" });
     expect(validateAdminPropertySearch({ tab: "details" })).toEqual({});
     expect(validateAdminPropertySearch({ tab: "bogus" })).toEqual({});
+    expect(validateAdminPropertySearch({ tab: ["reviews", "calendar"] })).toEqual({});
 
     state.tabParam = "reviews";
-    await render(createElement(AdminPropertyEditor, { propertyId: "prop-1" }));
+    await renderEditor();
     expect(host.querySelector('[data-testid="reviews-panel"]')).not.toBeNull();
     expect(host.querySelector('#villa-tab-reviews')?.getAttribute("aria-selected")).toBe("true");
     expect(host.querySelector('#villa-tab-reviews')?.getAttribute("href")).toBe("/admin/properties/prop-1?tab=reviews");
@@ -178,29 +181,38 @@ describe("Addressable villa editor sections & OTA-to-direct jump (M32, M33)", ()
 
     // Invalid tab opens Details.
     state.tabParam = "invalid-section";
-    await render(createElement(AdminPropertyEditor, { propertyId: "prop-1" }));
+    await renderEditor();
     expect(host.querySelector('#villa-tab-details')?.getAttribute("aria-selected")).toBe("true");
     expect(host.querySelector<HTMLInputElement>("#pr-price")).not.toBeNull();
 
-    // Clicking Calendar sync updates URL via router.replace.
+    // Calendar sync writes a history entry, then the validated route selects the section.
     await act(async () => host.querySelector<HTMLAnchorElement>("#villa-tab-calendar")!.click());
-    expect(state.replace).toHaveBeenCalledWith("/admin/properties/prop-1?tab=calendar", { scroll: false });
+    expect(state.push).toHaveBeenCalledWith("/admin/properties/prop-1?tab=calendar", { scroll: false });
+    state.tabParam = "calendar";
+    await renderEditor();
     expect(host.querySelector('[data-testid="ical-panel"]')).not.toBeNull();
+    state.tabParam = ["reviews", "calendar"];
+    await renderEditor();
+    expect(host.querySelector('#villa-tab-details')?.getAttribute("aria-selected")).toBe("true");
   });
 
   it("M33: links from OTA rates to Details and focuses direct nightly price without resetting unsaved Details edits", async () => {
-    await render(createElement(AdminPropertyEditor, { propertyId: "prop-1" }));
+    await renderEditor();
     const nameInput = host.querySelector<HTMLInputElement>("#pr-name")!;
     await setInput(nameInput, "Unsaved Villa Title");
 
     // Go to Pricing & OTA.
     await act(async () => host.querySelector<HTMLAnchorElement>("#villa-tab-pricing")!.click());
+    state.tabParam = "pricing";
+    await renderEditor();
     const jumpLink = [...host.querySelectorAll<HTMLAnchorElement>("a")].find((a) =>
       a.textContent?.includes("Edit direct price and discount"),
     )!;
     expect(jumpLink).not.toBeUndefined();
 
     await act(async () => jumpLink.click());
+    state.tabParam = undefined;
+    await renderEditor();
     expect(host.querySelector('#villa-tab-details')?.getAttribute("aria-selected")).toBe("true");
     expect(document.activeElement).toBe(host.querySelector("#pr-price"));
     expect(nameInput.value).toBe("Unsaved Villa Title");
@@ -256,6 +268,17 @@ describe("Room panorama file-to-URL switch & upload retry (M36)", () => {
     expect(nameInput.value).toBe("Pool Deck");
     expect(host.textContent).toContain("Selected file removed. Panorama URL input is enabled.");
     expect(host.textContent).not.toContain("Selected file: pool-360.webp");
+
+    // A delayed image check for the removed file must not reintroduce its warning.
+    const bitmapReady = Promise.withResolvers<{ width: number; height: number; close: () => void }>();
+    vi.stubGlobal("createImageBitmap", vi.fn(() => bitmapReady.promise));
+    await act(async () => fileInput.dispatchEvent(new Event("change", { bubbles: true })));
+    const removeAgain = [...host.querySelectorAll<HTMLButtonElement>("button")].find((button) =>
+      button.textContent?.includes("Remove selected file"),
+    )!;
+    await act(async () => removeAgain.click());
+    await act(async () => bitmapReady.resolve({ width: 100, height: 100, close: vi.fn() }));
+    expect(host.textContent).not.toContain("not 2:1");
 
     // Re-pick file and fail createRoom once: retry reuses cached upload without re-uploading.
     Object.defineProperty(fileInput, "files", { value: [file], configurable: true });

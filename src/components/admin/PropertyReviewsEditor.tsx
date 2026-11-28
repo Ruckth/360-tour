@@ -293,7 +293,7 @@ function ReviewForm({
         </Button>
         {uploadBatch ? (
           <div className="grid gap-2 rounded-md border border-border bg-muted/40 p-3 text-xs">
-            <p className="text-foreground">
+            <p role="status" className="min-w-0 break-words text-foreground [overflow-wrap:anywhere]">
               {uploadBatch.uploadedNames.length} of {uploadBatch.total} uploaded
               {uploadBatch.uploadedNames.length ? ` (${uploadBatch.uploadedNames.join(", ")})` : ""}.{" "}
               <span className="font-medium text-destructive">{uploadBatch.failedName} failed.</span>
