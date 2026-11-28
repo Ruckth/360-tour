@@ -1,5 +1,5 @@
 import { v } from 'convex/values';
-import { adminMutation } from '../../auth/model';
+import { adminMutation, canAccessResortDesk } from '../../auth/model';
 import { recordRebooked } from '../private/appointmentChanges';
 import { canBookAgain } from '../../shared/appointmentWindow';
 import { createAppointmentRecord } from '../private/serviceSlots';
@@ -18,8 +18,11 @@ export const createAppointment = adminMutation({
 		const original = args.rebookedFromId ? await ctx.db.get(args.rebookedFromId) : null;
 		if (args.rebookedFromId && (!original || !canBookAgain(original))) throw new Error('Only cancelled or no-show appointments can be booked again');
 		// D19: an attached stay is checked in this transaction (exists, not cancelled, covers the appointment date).
+		// Stays belong to the resort branch: an actor without resort desk access cannot attach one by ID, and
+		// gets the same answer as for a missing stay.
 		if (args.bookingId) {
-			const problem = stayAttachProblem(await ctx.db.get(args.bookingId), resortLocalParts(args.start).date);
+			const booking = (await canAccessResortDesk(ctx, 'bookings')) ? await ctx.db.get(args.bookingId) : null;
+			const problem = stayAttachProblem(booking, resortLocalParts(args.start).date);
 			if (problem) throw new Error(problem);
 		}
 		const created = await createAppointmentRecord(ctx, { ...args, source: 'admin', actor: admin.email }, { kind: 'admin_historical', reason: args.historicalReason });
