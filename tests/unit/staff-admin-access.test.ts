@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { adminAccessRedirect, adminNavFor, adminNoAccess, adminPageAllowed, adminTabBarFor, adminTillOnly } from "@/components/admin/admin-access";
-import { ADMIN_NAV, activeAdminSubLink, adminNavItem, adminRedirectPath, adminSettingsTab, searchAdminNav } from "@/components/admin/admin-routes";
+import { ADMIN_NAV, activeAdminSubLink, adminSectionRecovery, adminNavItem, adminRedirectPath, adminSettingsTab, searchAdminNav } from "@/components/admin/admin-routes";
 import { staffAccessFor, type ShellRole } from "./admin-shell-convex";
 
 const nav = (role: ShellRole, patch: Partial<ReturnType<typeof staffAccessFor>["capabilities"]> = {}) => {
@@ -128,5 +128,24 @@ describe("Settings › Team address", () => {
     expect(adminSettingsTab("nope")).toBe("business");
     const settings = adminNavItem("/admin/settings")!;
     expect(activeAdminSubLink(settings, "/admin/settings", "admins")).toBe("/admin/settings?tab=team");
+  });
+});
+
+describe("stale admin bookmark recovery (N06)", () => {
+  it("offers the Staff bookings pages a manager may open for an unknown staff sub-page", () => {
+    const recovery = adminSectionRecovery("/admin/staff/old-tab", adminNavFor(staffAccessFor("manager")));
+    expect(recovery?.label).toBe("Staff bookings");
+    expect(recovery?.links.map((link) => link.label)).toEqual(["Calendar", "Roster", "Staff", "Services"]);
+  });
+
+  it("offers Marketing pages only with marketing access", () => {
+    const marketer = { ...staffAccessFor(null), capabilities: { ...staffAccessFor(null).capabilities, marketing: true } };
+    expect(adminSectionRecovery("/admin/marketing/retired", adminNavFor(marketer))?.links.map((link) => link.href)).toContain("/admin/marketing/dashboard");
+    expect(adminSectionRecovery("/admin/marketing/retired", adminNavFor(staffAccessFor("cashier")))).toBeNull();
+    expect(adminSectionRecovery("/admin/staff/old-tab", adminNavFor(staffAccessFor("cashier")))).toBeNull();
+  });
+
+  it("has nothing to offer for a section without sub-pages", () => {
+    expect(adminSectionRecovery("/admin/leads/whatever", adminNavFor(undefined))).toBeNull();
   });
 });

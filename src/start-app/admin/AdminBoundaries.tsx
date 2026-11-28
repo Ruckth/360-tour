@@ -1,7 +1,8 @@
 import { useRouter, type ErrorComponentProps } from "@tanstack/react-router";
 import { RotateCw, TriangleAlert } from "lucide-react";
 import { BranchForbiddenCard, isBranchForbidden } from "@/components/admin/branch/BranchScreens";
-import { adminNavItem } from "@/components/admin/admin-routes";
+import { adminNavItem, adminSectionRecovery } from "@/components/admin/admin-routes";
+import { useAdminNav } from "@/components/admin/staff-access";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { usePathname } from "@/platform/navigation";
 
@@ -77,17 +78,37 @@ export function StartAdminViewError({ error, reset }: ErrorComponentProps) {
   );
 }
 
+/**
+ * Not-found inside admin. A stale bookmark in a section with sub-pages (Staff bookings, Marketing)
+ * keeps its context: it names the section and links to that section's pages this person may open.
+ */
 export function StartAdminNotFound() {
+  const pathname = usePathname();
+  const nav = useAdminNav();
+  const recovery = adminSectionRecovery(pathname, nav);
+  const home = nav.find((item) => item.href === "/admin/chats") ?? nav[0];
   return (
     <div className="grid flex-1 place-items-center px-5 py-10">
-      <section className="w-full max-w-lg rounded-xl border border-border bg-card p-6 shadow-sm">
-        <h2 className="text-2xl font-semibold text-foreground">404</h2>
+      <section aria-labelledby="admin-not-found-title" className="w-full max-w-lg rounded-xl border border-border bg-card p-6 shadow-sm">
+        <h2 id="admin-not-found-title" className="text-2xl font-semibold text-foreground">
+          {recovery ? `This ${recovery.label} page doesn’t exist` : "404"}
+        </h2>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
-          This page could not be found.
+          {recovery ? "The link may be out of date. Choose where to go:" : "This page could not be found."}
         </p>
-        <ButtonLink href="/admin/chats" className="mt-5">
-          Back to Chats
-        </ButtonLink>
+        {recovery ? (
+          <ul className="mt-4 flex flex-wrap gap-2">
+            {recovery.links.map((link) => (
+              <li key={link.href}>
+                <ButtonLink href={link.href} variant="outline">{link.label}</ButtonLink>
+              </li>
+            ))}
+          </ul>
+        ) : home ? (
+          <ButtonLink href={home.href} className="mt-5">
+            Back to {home.shortLabel ?? home.label}
+          </ButtonLink>
+        ) : null}
       </section>
     </div>
   );
