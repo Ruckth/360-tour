@@ -55,7 +55,7 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
       await expectAtMostSentences(panel, 1);
     });
 
-    test("search finds an item on another tab with no extra taps", async ({ page }) => {
+    test("search retains its query when broadening from a category to All results", async ({ page }) => {
       await open(page, "?role=cashier");
       // A spa service, searched from the Rooms tab (and not in Frequent).
       const rooms = page.getByRole("tab", { name: "Rooms", exact: true });
@@ -65,8 +65,14 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
       await expect(clear).toHaveCount(0);
       const count = new TaskCounter();
       await count.type(search, "Thai massage 90", "search");
-      await count.tap(page.getByRole("button", { name: /^Thai massage 90.*Add to order/ }), "Thai massage 90 tile");
-      expect(count.taps, count.log.join("\n")).toBe(1);
+      const tile = page.getByRole("button", { name: /^Thai massage 90.*Add to order/ });
+      await expect(page.getByText("No item matches “Thai massage 90”.")).toBeVisible();
+      await expect(tile).toHaveCount(0);
+      await count.tap(page.getByRole("tab", { name: "All results", exact: true }), "All results");
+      await expect(search).toHaveValue("Thai massage 90");
+      await count.tap(tile, "Thai massage 90 tile");
+      expect(count.taps, count.log.join("\n")).toBe(2);
+      await rooms.click();
       await clear.click();
       await expect(search).toHaveValue("");
       await expect(search).toBeFocused();
@@ -191,14 +197,25 @@ test.describe("phone header", () => {
 test.describe("customer dialog", () => {
   test.use({ viewport: UX_VIEWPORTS.ipad });
 
-  test("lists customers to link, with no Details per result and no archived toggle", async ({ page }) => {
+  test("keeps active customer links and offers archive search only to a manager", async ({ page }) => {
     await open(page, "?role=manager");
     await page.getByRole("button", { name: "Customer" }).click();
     const dialog = page.getByRole("dialog");
     await dialog.getByRole("textbox", { name: "Search customers" }).fill("Anna");
     await expect(dialog.getByRole("list", { name: "Customers" }).getByRole("button")).toHaveCount(2);
     await expect(dialog.getByRole("button", { name: /^View or edit/ })).toHaveCount(0);
-    await expect(dialog.getByRole("button", { name: /archived/ })).toHaveCount(0);
+    const archive = dialog.getByRole("button", { name: "Search archived", exact: true });
+    await expect(archive).toHaveAttribute("aria-expanded", "false");
+    await archive.click();
+    await expect(archive).toHaveAttribute("aria-expanded", "true");
+    await expect(dialog.getByRole("textbox", { name: "Search customers" })).toHaveValue("Anna");
+    await expect(dialog.getByRole("list", { name: "Customers", exact: true }).getByRole("button")).toHaveCount(2);
     await expectAtMostSentences(dialog, 1);
+
+    await open(page, "?role=cashier");
+    await page.getByRole("button", { name: "Customer" }).click();
+    await dialog.getByRole("textbox", { name: "Search customers" }).fill("Anna");
+    await expect(dialog.getByRole("list", { name: "Customers", exact: true }).getByRole("button")).toHaveCount(2);
+    await expect(archive).toHaveCount(0);
   });
 });

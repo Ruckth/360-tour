@@ -37,7 +37,10 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
       await expect(list.getByRole("listitem").first()).toContainText("Order #1043");
       await expect(list.getByRole("listitem").first().getByText("Current", { exact: true })).toBeVisible();
       const earlier = list.getByRole("button", { name: /^Order #1042/ });
-      await expect(earlier).toContainText("Somchai Prasert · 3 items");
+      await expect(earlier.getByText("Somchai Prasert", { exact: true })).toBeVisible();
+      await expect(earlier.getByText("3 items", { exact: true })).toBeVisible();
+      await expect(earlier.getByText(/^Updated /)).toBeVisible();
+      await expect(earlier).toHaveAccessibleName(/^Order #1042, Somchai Prasert, updated .+, 3 items, ฿780 due$/);
       await expect(earlier).toContainText("฿780");
       await expectAtMostSentences(dialog, 2);
       await count.tap(earlier, "Order #1042 row");

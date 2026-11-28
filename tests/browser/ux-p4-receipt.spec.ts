@@ -9,7 +9,7 @@ import { TaskCounter, UX_VIEWPORTS, controlsOnScreen, type UxViewport } from "./
  * receipt (Thai massage 60 ฿1,200 + Foot spa 45 ฿600) paid by card.
  *   words outside the paper     ≤ 65 including the separate Items card
  *   side column blocks          9 → ≤ 3
- *   refund one line             3 taps (Refund, a reason chip, Record refund ฿600), 0 typed, 0 scrolls
+ *   refund one line             4 taps (Refund, All, a reason chip, Record refund ฿600), 0 typed, 0 scrolls
  *   correct the payment method  5 taps (⋯, Correct payment, method, reason chip, Save), 0 typed, 0 scrolls, ≤ 7 controls
  *   print on 58 mm              3 taps the first time (⋯, Use 58 mm paper, Print), then 1
  *   link the only appointment   the review opens at once: Link, a reason chip, Confirm link (3 taps:
@@ -35,15 +35,25 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
     test.use({ viewport: UX_VIEWPORTS[size] });
 
     for (const role of ["manager", "cashier"] as const) {
-      test(`${role}: Print · New sale, ≤ 65 words including Items outside the paper, ≤ 3 side blocks, one sentence`, async ({ page }) => {
+      test(`${role}: Print width · New sale, ≤ 65 words including Items outside the paper, ≤ 3 side blocks, one sentence`, async ({ page }) => {
         await open(page, `?role=${role}&scenario=refund`);
         const toolbar = page.getByRole("toolbar", { name: "Receipt actions" });
-        await expect(toolbar.getByRole("button")).toHaveText(["Print", "New sale", ""]);
+        await expect(toolbar.getByRole("button")).toHaveCount(3);
+        const print = toolbar.getByRole("button", { name: "Print", exact: true });
+        await expect(print).toHaveText("Print · 80 mm");
+        await expect(print).toHaveAccessibleDescription("Prints 80 mm wide, as long as the receipt.");
+        await expect(toolbar.getByRole("button", { name: "New sale", exact: true })).toBeVisible();
+        await expect(toolbar.getByRole("button", { name: "More receipt actions", exact: true })).toBeVisible();
+        await expect(view(page).getByTestId("receipt-status")).toHaveText("Paid");
+        await expect(view(page).locator("header").getByText(/^Order #\d+ · ฿1,800 · Paid by card$/)).toBeVisible();
         await expect(receipt(page).getByRole("button")).toHaveCount(0);
         await expect(items(page)).toBeVisible();
         // One row, ⋯ included, at both sizes.
-        const tops = await toolbar.getByRole("button").evaluateAll((els) => els.map((el) => Math.round(el.getBoundingClientRect().top)));
-        expect(Math.max(...tops) - Math.min(...tops), "toolbar on one row").toBeLessThanOrEqual(2);
+        const centers = await toolbar.getByRole("button").evaluateAll((els) => els.map((el) => {
+          const { top, height } = el.getBoundingClientRect();
+          return top + height / 2;
+        }));
+        expect(Math.max(...centers) - Math.min(...centers), "toolbar on one row").toBeLessThanOrEqual(2);
         for (const gone of ["Checkout", "Copy receipt", "58 mm", "80 mm", "Void…", "Correct payment recording", "No money was received…"]) {
           await expect(page.getByRole("button", { name: gone, exact: true })).toHaveCount(0);
         }
@@ -59,20 +69,25 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
       });
     }
 
-    test("refund one line: 3 taps, nothing typed, no scroll, and the result shows under its line", async ({ page }) => {
+    test("refund one line: 4 taps, nothing typed, no scroll, and the result shows under its line", async ({ page }) => {
       await open(page, "?role=manager&scenario=refund");
       const count = new TaskCounter();
       await count.tap(items(page).getByRole("button", { name: "Refund Foot spa 45" }), "Refund Foot spa 45");
       const form = items(page).getByRole("form", { name: "Refund", exact: true });
-      await expect(form.getByRole("radio", { name: "All", exact: true })).toHaveAttribute("aria-checked", "true");
+      const all = form.getByRole("radio", { name: "All", exact: true });
+      await expect(all).toHaveAttribute("aria-checked", "false");
+      await expect(form.getByRole("textbox", { name: "Amount (฿)" })).toHaveValue("");
       await expectAtMostSentences(view(page), 2);
       await count.tap(form.getByRole("radio", { name: "Cut short" }), "reason chip");
+      await expect(form.getByRole("button", { name: "Choose an amount", exact: true })).toBeDisabled();
+      await count.tap(all, "All remaining");
       await count.tap(form.getByRole("button", { name: "Record refund ฿600" }), "Record refund ฿600");
       const note = items(page).locator("[data-line-note]");
       await expect(note).toHaveText("Refunded ฿600 · Short treatment");
       await expect(note).toBeFocused();
       await expect(receipt(page).getByTestId("receipt-refunded")).toHaveText("Refunded-฿600");
-      expect(result(count), count.log.join("\n")).toEqual({ taps: 3, typed: 0, scrolls: 0 });
+      await expect(view(page).getByTestId("receipt-status")).toHaveText("Partly refunded · ฿600");
+      expect(result(count), count.log.join("\n")).toEqual({ taps: 4, typed: 0, scrolls: 0 });
     });
 
     test("Half sets half of what is left, and the button says the money", async ({ page }) => {
@@ -86,8 +101,15 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
       await expect(items(page).locator("[data-line-note]")).toHaveText("Refunded ฿600 · Guest complaint");
       // What is left is ฿600: All and Half follow it.
       await items(page).getByRole("button", { name: "Refund Thai massage 60" }).click();
-      await expect(form.getByRole("radio", { name: "All", exact: true })).toHaveAttribute("aria-checked", "true");
-      await expect(form.getByRole("radio", { name: "Half", exact: true })).toBeVisible();
+      const all = form.getByRole("radio", { name: "All", exact: true });
+      const half = form.getByRole("radio", { name: "Half", exact: true });
+      const amount = form.getByRole("textbox", { name: "Amount (฿)" });
+      await expect(all).toHaveAttribute("aria-checked", "false");
+      await expect(amount).toHaveValue("");
+      await half.click();
+      await expect(amount).toHaveValue("300");
+      await all.click();
+      await expect(amount).toHaveValue("600");
     });
 
     test("a cashier's refund request names the money and waits on the bar", async ({ page }) => {
@@ -95,6 +117,8 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
       await items(page).getByRole("button", { name: "Refund Foot spa 45" }).click();
       const form = items(page).getByRole("form", { name: "Ask a manager", exact: true });
       await form.getByRole("radio", { name: "Cut short" }).click();
+      await expect(form.getByRole("button", { name: "Choose an amount", exact: true })).toBeDisabled();
+      await form.getByRole("radio", { name: "All", exact: true }).click();
       await form.getByRole("button", { name: "Send refund ฿600 to manager" }).click();
       await expect(items(page).locator("[data-line-note]")).toHaveText("Sent to a manager · refund ฿600 · Short treatment");
       const bar = side(page).locator('[data-approval-status="pending"]');
@@ -192,6 +216,7 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
       await first.tap(more(page), "⋯");
       await first.tap(page.getByRole("menuitem", { name: "Use 58 mm paper" }), "Use 58 mm paper");
       await expect(page.getByRole("status").filter({ hasText: "Prints on 58 mm paper · remembered on this device" })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Print", exact: true })).toHaveText("Print · 58 mm");
       await first.tap(page.getByRole("button", { name: "Print", exact: true }), "Print");
       expect(await pageSize()).toBe("58mm");
       expect(await page.evaluate(() => (window as unknown as { printed: number }).printed)).toBe(1);
@@ -268,6 +293,7 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
       await open(page, "?role=manager&scenario=refund");
       await items(page).getByRole("button", { name: "Refund Foot spa 45" }).click();
       await items(page).getByRole("radio", { name: "Wrong charge" }).click();
+      await items(page).getByRole("radio", { name: "All", exact: true }).click();
       await items(page).getByRole("button", { name: "Record refund ฿600" }).click();
       await expect(items(page).locator("[data-line-note]")).toBeVisible();
       await more(page).click();

@@ -51,6 +51,7 @@ for (const width of [390, 1180]) {
       await open(page, "staff-roles", "?role=manager&scenario=refund");
       await page.getByRole("button", { name: "Refund Foot spa 45", exact: true }).click();
       const form = page.getByRole("form", { name: "Refund", exact: true });
+      await form.getByRole("radio", { name: "All", exact: true }).click();
       await form.getByRole("radio", { name: "Complaint", exact: true }).click();
       const palette = await page.evaluate(() => {
         const probe = document.createElement("span");
