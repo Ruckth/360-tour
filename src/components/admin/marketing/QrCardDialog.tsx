@@ -111,6 +111,7 @@ export function QrCardDialog({
   brand,
   today,
   onClose,
+  onCloseAutoFocus,
   onPublish,
 }: {
   link: LinkRow | null;
@@ -120,12 +121,13 @@ export function QrCardDialog({
   brand: string;
   today: string;
   onClose: () => void;
+  onCloseAutoFocus?: (event: Event) => void;
   /** Publishes a draft link from the card, so it can be downloaded. */
   onPublish?: (link: LinkRow) => void;
 }) {
   return (
     <Dialog open={link !== null} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="flex max-w-5xl flex-col gap-0 overflow-hidden p-0">
+      <DialogContent className="flex max-w-5xl flex-col gap-0 overflow-hidden p-0" onCloseAutoFocus={onCloseAutoFocus}>
         {link ? <QrCardBody link={link} coupons={coupons} properties={properties} origin={origin} brand={brand} today={today} onPublish={onPublish} /> : null}
       </DialogContent>
     </Dialog>

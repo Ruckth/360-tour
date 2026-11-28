@@ -31,6 +31,25 @@ test("authorized admin entry opens Today", async ({ page }) => {
   await expect(page.getByRole("tablist", { name: "Chat queue" })).toBeVisible();
 });
 
+test.describe("phone inbox", () => {
+  test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+
+  test("browser Back restores the queue search, assignment, and focused row", async ({ page }) => {
+    await setupClerkTestingToken({ page });
+    await page.goto("/admin/chats?assignment=unassigned&q=Scenario%20guest");
+    await clerk.signIn({ page, emailAddress: process.env.E2E_OWNER_EMAIL! });
+    const row = page.locator("#admin-chat-list").getByRole("button", { name: /^Website · Scenario guest/ });
+    await expect(row).toBeVisible();
+    await row.tap();
+    await expect(page.getByTestId("admin-chat-detail-dialog")).toBeVisible();
+    await page.goBack();
+    await expect(page.getByTestId("admin-chat-detail-dialog")).toHaveCount(0);
+    await expect(page.getByRole("textbox", { name: "Search chats" })).toHaveValue("Scenario guest");
+    await expect(page.getByRole("button", { name: "Clear assignment filter" })).toBeVisible();
+    await expect(row).toBeFocused();
+  });
+});
+
 test("invalid staff bookmark offers recovery within Staff bookings", async ({ page }) => {
   await setupClerkTestingToken({ page });
   await page.goto("/admin/staff/unknown");

@@ -26,6 +26,20 @@ async function setup() {
 	return { t, owner, viewer };
 }
 
+it('allows undo of a campaign pause only while that pause is still current', async () => {
+	const { t, owner } = await setup();
+	const campaignId = await t.run(ctx => ctx.db.insert('marketingCampaigns', campaign));
+	const endpoint = api.marketing.commands.setCampaignStatus.setCampaignStatus;
+	const firstPause = await owner.mutation(endpoint, { campaignId, status: 'paused', expectedUpdatedAt: campaign.updatedAt });
+	if (firstPause === null) throw new Error('Expected a pause version');
+	const resumed = await owner.mutation(endpoint, { campaignId, status: 'active', expectedUpdatedAt: firstPause });
+	if (resumed === null) throw new Error('Expected a resume version');
+	const secondPause = await owner.mutation(endpoint, { campaignId, status: 'paused', expectedUpdatedAt: resumed });
+	if (secondPause === null) throw new Error('Expected a second pause version');
+	await expect(owner.mutation(endpoint, { campaignId, status: 'active', expectedUpdatedAt: firstPause })).rejects.toThrow('This campaign changed');
+	expect(await t.run(ctx => ctx.db.get(campaignId))).toMatchObject({ status: 'paused', updatedAt: secondPause });
+});
+
 it('reads only the first 500 campaigns for pickers, with extra fields limited to the owning screen', async () => {
 	const { t, viewer } = await setup();
 	const { first, archived, beyond } = await t.run(async ctx => {

@@ -60,6 +60,8 @@ const channelFilterValidator = v.union(
 	v.literal('instagram')
 );
 
+const assignmentFilterValidator = v.union(v.literal('mine'), v.literal('unassigned'));
+
 type SessionStatus = 'all' | 'active' | 'inactive' | 'needs_reply' | 'in_progress';
 
 type AdminStatusFilter = 'all' | 'open' | 'done' | 'resolved' | 'archived';
@@ -244,11 +246,13 @@ async function sessionMatchesFilters(
 		adminStatus: AdminStatusFilter;
 		empty: EmptyFilter;
 		channel: ChannelFilter;
+		assignedTo?: string | null;
 		messageStartAt?: number;
 		messageEndAt?: number;
 		now: number;
 	}
 ) {
+	if (options.assignedTo !== undefined && (session.assignedAdminEmail ?? null) !== options.assignedTo) return false;
 	const active = isChatSessionActive(session, options.now);
 	if (options.status === 'active' && !active) return false;
 	if (options.status === 'inactive' && active) return false;
@@ -390,6 +394,7 @@ async function searchSessions(
 		adminStatus: AdminStatusFilter;
 		empty: EmptyFilter;
 		channel: ChannelFilter;
+		assignedTo?: string | null;
 		messageStartAt?: number;
 		messageEndAt?: number;
 		propertySlug?: string;
@@ -472,6 +477,7 @@ async function listFilteredSessions(
 		adminStatus: AdminStatusFilter;
 		empty: EmptyFilter;
 		channel: ChannelFilter;
+		assignedTo?: string | null;
 		messageStartAt?: number;
 		messageEndAt?: number;
 		propertySlug?: string;
@@ -634,6 +640,7 @@ export const listSessions = adminQuery({
 		adminStatus: v.optional(adminStatusFilterValidator),
 		empty: v.optional(emptyFilterValidator),
 		channel: v.optional(channelFilterValidator),
+		assignment: v.optional(assignmentFilterValidator),
 		messageStartAt: v.optional(v.number()),
 		messageEndAt: v.optional(v.number()),
 		searchQuery: v.optional(v.string()),
@@ -650,6 +657,7 @@ export const listSessions = adminQuery({
 		const adminStatus = args.adminStatus ?? 'all';
 		const empty = args.empty ?? 'non_empty';
 		const channel = args.channel ?? 'all';
+		const assignedTo = args.assignment === 'mine' ? ctx.admin.email.toLowerCase() : args.assignment === 'unassigned' ? null : undefined;
 		const messageStartAt = args.messageStartAt;
 		const messageEndAt = args.messageEndAt;
 		const searchQuery = args.searchQuery?.trim();
@@ -668,6 +676,7 @@ export const listSessions = adminQuery({
 				adminStatus,
 				empty,
 				channel,
+				assignedTo,
 				messageStartAt,
 				messageEndAt,
 				propertySlug: args.propertySlug,
@@ -681,6 +690,7 @@ export const listSessions = adminQuery({
 			adminStatus,
 			empty,
 			channel,
+			assignedTo,
 			messageStartAt,
 			messageEndAt,
 			propertySlug: args.propertySlug,

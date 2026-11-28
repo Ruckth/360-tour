@@ -381,10 +381,10 @@ export function AdminSessionDetail({
               </div>
             </div>
             <div data-testid="chat-header-meta" className="flex min-w-0 flex-wrap items-center gap-2 sm:hidden">
-              <div className="flex min-w-20 flex-1 items-center gap-2">
+              <div className="flex min-w-32 flex-1 flex-wrap items-center gap-x-1.5 gap-y-1">
                 <StatusBadge tone={status.tone} label={status.label} className="shrink-0 text-xs" />
                 <span className="shrink-0 whitespace-nowrap rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{automationLabel}</span>
-                <p className="min-w-0 truncate text-[13px] text-muted-foreground">{sourceLabel(session.channel)} · {propertyLabel}</p>
+                <span className="shrink-0 text-xs text-muted-foreground">{sourceLabel(session.channel)}</span>
               </div>
               {replyAction}
             </div>

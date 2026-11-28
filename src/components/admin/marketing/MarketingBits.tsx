@@ -171,12 +171,13 @@ export function useNotice() {
 export function useConfirmedChange<K>(show: ReturnType<typeof useNotice>["show"]) {
   const confirm = useConfirm();
   const [pending, setPending] = useState<K | null>(null);
-  async function run(id: K, options: ConfirmOptions, change: () => Promise<unknown>, done: string, failed: string) {
+  async function run<T>(id: K, options: ConfirmOptions, change: () => Promise<T>, done: string | null, failed: string) {
     if (!(await confirm(options))) return;
     setPending(id);
     try {
-      await change();
-      show(done);
+      const result = await change();
+      if (done) show(done);
+      return result;
     } catch (error) {
       show(marketingErrorText(error, failed), "danger");
     } finally {

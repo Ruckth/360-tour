@@ -5,12 +5,14 @@ import { useQueries } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { BedDouble, CalendarClock, MessageCircle, type LucideIcon } from "lucide-react";
 import { useMemo, type ReactNode } from "react";
-import { isOpenAppointmentStartingIn, resortMidnight, useResortBusinessDate } from "@/lib/staff-bookings";
+import { appointmentGuestLabel, isOpenAppointmentStartingIn, resortMidnight, useResortBusinessDate, useNow } from "@/lib/staff-bookings";
+import { staffTime } from "@/lib/staff-time";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import Link from "@/platform/link";
 import { staffCalendarHref } from "@/lib/staff-links";
 import { canOpenResortDesk } from "./admin-access";
+import { formatMoney } from "./labels";
 import { useStaffAccess } from "./staff-access";
 import { todayBookingArgs, todayGroups, type TodayGroup } from "./TodayStrip";
 import { useSafeQueueCounts, waitingBadge } from "./waiting-chats";
@@ -54,7 +56,9 @@ export function AdminTodayView() {
   const canOpenHotel = canOpenResortDesk(access, "bookings");
   const canOpenChats = canOpenResortDesk(access, "chats");
   const canOpenSpa = access.capabilities.services;
+  const canOpenCheckout = access.capabilities.checkout;
   const today = useResortBusinessDate();
+  const now = useNow();
   const start = resortMidnight(today);
   // Convex refreshes its subscription when the request object changes identity.
   const deskQueries = useMemo(() => ({
@@ -73,6 +77,8 @@ export function AdminTodayView() {
 
   const groups = stays ? todayGroups(stays.bookings, today) : null;
   const appointments = schedule?.appointments.filter((appointment) => isOpenAppointmentStartingIn(appointment, start, start + DAY_MS));
+  const nextAppointments = appointments?.filter(appointment => appointment.end > now).sort((a, b) => a.start - b.start).slice(0, 2) ?? [];
+  const nextArrivals = groups?.arriving.slice(0, 2) ?? [];
   const waitingText = queue === undefined ? undefined : waitingBadge(queue?.waiting)?.text ?? (queue === null ? "Count unavailable" : "0");
 
   // Spa or Chats alone fills the row instead of leaving an empty half.
@@ -81,7 +87,10 @@ export function AdminTodayView() {
 
   return (
     <div className="mx-auto grid w-full max-w-5xl gap-4 px-4 py-4 sm:px-6">
-      <p className="text-sm text-muted-foreground">Bangkok business date <time dateTime={today}>{today}</time></p>
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1">
+        <p className="text-sm text-muted-foreground">Bangkok business date <time dateTime={today}>{today}</time></p>
+        {canOpenCheckout ? <Link href="/admin/checkout" className="inline-flex min-h-11 items-center text-sm font-semibold underline underline-offset-4">Open Checkout</Link> : null}
+      </div>
       {!canOpenHotel && !canOpenSpa && !canOpenChats ? <p className="rounded-xl border p-4 text-sm">Your staff access has no Hotel, Spa or Chats queues on Today. Use the navigation to open your available workspaces.</p> : null}
       {/* Phones and tablets keep every count above the fold: Hotel is one row (or a 2×2 on
           phones) and Spa and Chats sit side by side; desktop fits all three tiles on one row. */}
@@ -108,6 +117,40 @@ export function AdminTodayView() {
           </Tile>
         ) : null}
       </div>
+      {nextArrivals.length + nextAppointments.length > 0 ? (
+        <section aria-label="Today's stays and appointments" className="grid gap-3 sm:grid-cols-2">
+          {nextArrivals.length > 0 ? (
+            <div>
+              <h2 className="text-sm font-semibold">Arrivals today</h2>
+              <ul className="mt-1 divide-y divide-border">
+                {nextArrivals.map(stay => (
+                  <li key={stay._id}>
+                    <Link href={`/admin/hotel?booking=${encodeURIComponent(stay._id)}`} className="flex min-h-11 items-center justify-between gap-2 py-1.5 text-sm hover:bg-muted/40">
+                      <span className="min-w-0 wrap-anywhere font-medium">{stay.guestName}</span>
+                      {stay.owed > 0 ? <span className="shrink-0 text-xs text-muted-foreground">{formatMoney(stay.owed, stay.currency)} due</span> : null}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          {nextAppointments.length > 0 ? (
+            <div>
+              <h2 className="text-sm font-semibold">Upcoming spa appointments</h2>
+              <ul className="mt-1 divide-y divide-border">
+                {nextAppointments.map(appointment => (
+                  <li key={appointment._id}>
+                    <Link href={staffCalendarHref({ date: today, appointmentId: appointment._id })} className="flex min-h-11 items-center justify-between gap-2 py-1.5 text-sm hover:bg-muted/40">
+                      <span className="min-w-0 wrap-anywhere"><span className="block font-medium">{appointmentGuestLabel(appointment)}</span><span className="block text-xs text-muted-foreground">{appointment.serviceNameSnapshot}</span></span>
+                      <span className="shrink-0 tabular-nums">{staffTime(appointment.start)}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
     </div>
   );
 }

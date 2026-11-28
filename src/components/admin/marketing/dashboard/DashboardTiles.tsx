@@ -76,6 +76,10 @@ function SecondaryMetric({
           <Info aria-hidden className="size-4" />
         </button>
       </div>
+      <p className="wrap-anywhere font-sans text-[26px] leading-tight font-semibold tabular-nums tracking-tight text-foreground">
+        {value}
+      </p>
+      {hint ? <p className="text-balance text-[13px] text-muted-foreground" title={hint}>{hint}</p> : null}
       <div
         id={defId}
         hidden={!open}
@@ -83,10 +87,6 @@ function SecondaryMetric({
       >
         {open ? info : null}
       </div>
-      <p className="wrap-anywhere font-sans text-[26px] leading-tight font-semibold tabular-nums tracking-tight text-foreground">
-        {value}
-      </p>
-      {hint ? <p className="text-balance text-[13px] text-muted-foreground" title={hint}>{hint}</p> : null}
       {children}
     </div>
   );

@@ -8,7 +8,7 @@ import { StaffAccessProvider } from "@/components/admin/staff-access";
 import { CheckoutBackendProvider, type CheckoutBackend, type OrderId, type OrderRow, type OrdersPage } from "@/components/checkout/backend";
 import { CheckoutView } from "@/components/checkout/CheckoutView";
 import { createFixtureBackend } from "../support/checkout-backend";
-import { OpenOrders } from "@/components/checkout/OrderStrip";
+import { OpenOrders, OrdersBrowser } from "@/components/checkout/OrderStrip";
 import { DEFAULT_CASHIER_RULES } from "convex/shared/staffTypes";
 
 /*
@@ -60,6 +60,17 @@ afterEach(async () => {
 });
 
 describe("open orders list", () => {
+  it("lets a manager page past orders without returns", async () => {
+    const loadMore = vi.fn();
+    const useOrders = vi.fn<CheckoutBackend["useOrders"]>().mockReturnValue({ results: [], status: "CanLoadMore", loadMore });
+    const backend = { ...await createFixtureBackend(), useOrders };
+    await act(async () => root.render(provide(backend, createElement(OrdersBrowser, { currentId: undefined, onOpen: vi.fn(), filter: "returned" }))));
+    expect(useOrders).toHaveBeenCalledWith("returned");
+    expect(document.body.textContent).toContain("No returns in these orders");
+    await act(async () => button("Load more")!.click());
+    expect(loadMore).toHaveBeenCalledWith(20);
+  });
+
   it("shows a spinner while the first page loads", async () => {
     await showList({ results: [], status: "LoadingFirstPage", loadMore: vi.fn() });
     expect(document.querySelector('[role="status"][aria-label="Loading orders"]')).toBeTruthy();

@@ -737,6 +737,7 @@ function useCurrentRowInView(loaded: boolean) {
 const FILTERS: Array<{ value: OrderFilter; label: string; empty: string }> = [
   { value: "unpaid", label: "Unpaid", empty: "No unpaid orders." },
   { value: "paid", label: "Paid", empty: "No paid orders yet." },
+  { value: "returned", label: "Returned", empty: "No returned orders yet." },
   { value: "discarded", label: "Discarded", empty: "No discarded orders." },
   { value: "void", label: "Voided", empty: "No voided orders." },
 ];
@@ -771,6 +772,7 @@ function OrdersList({ filter, currentId, onOpen, onRestore }: { filter: OrderFil
   if (!results.length && status === "Exhausted") return <p className="text-sm text-muted-foreground">{FILTERS.find((f) => f.value === filter)!.empty}</p>;
   return (
     <div className="grid gap-2">
+      {!results.length && filter === "returned" && status === "CanLoadMore" ? <p className="text-sm text-muted-foreground">No returns in these orders. Load older orders to keep looking.</p> : null}
       <ul ref={currentRow} className="max-h-[55dvh] divide-y divide-border overflow-y-auto" aria-label={`${FILTERS.find((f) => f.value === filter)!.label} orders`}>
         {results.map((row) => (
           // Open and Restore… are sibling buttons on one row, never one inside the other. Discard is in the open order's ⋯.

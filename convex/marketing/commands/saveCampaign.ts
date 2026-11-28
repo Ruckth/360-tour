@@ -31,7 +31,8 @@ export const saveCampaign = marketingMutation({
 			requireEditableDraft(admin, existing);
 			if (admin.role === 'marketer') fields.budget = existing.budget;
 			await recordChanges(ctx, 'marketingCampaign', campaignId, admin.email, existing, { ...fields, startsOn: fields.startsOn, endsOn: fields.endsOn, budget: fields.budget, notes: fields.notes });
-			await ctx.db.patch(campaignId, { ...fields, startsOn: fields.startsOn, endsOn: fields.endsOn, budget: fields.budget, notes: fields.notes, ...audit });
+			const updatedAt = Math.max(audit.updatedAt, existing.updatedAt + 1);
+			await ctx.db.patch(campaignId, { ...fields, startsOn: fields.startsOn, endsOn: fields.endsOn, budget: fields.budget, notes: fields.notes, ...audit, updatedAt });
 			return campaignId;
 		}
 		const id = await ctx.db.insert('marketingCampaigns', { ...fields, ...audit, createdAt: audit.updatedAt, status: 'draft' });

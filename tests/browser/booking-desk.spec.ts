@@ -55,6 +55,8 @@ for (const width of [360, 390, 430]) {
     try {
       const page = await context.newPage();
       await openDesk(page);
+      const toolbar = page.getByTestId("calendar-toolbar");
+      expect((await toolbar.boundingBox())?.height ?? Infinity).toBeLessThanOrEqual(110);
       const row = chip(page, "Anna Schmidt");
       await expect(row).toBeVisible();
       expect((await row.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);

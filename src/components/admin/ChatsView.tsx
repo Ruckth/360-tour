@@ -13,6 +13,9 @@ import {
   adminStatusTabs,
   emptyFilterOptions,
   channelFilterOptions,
+  assignmentOptions,
+  assignmentTabs,
+  type AssignmentFilter,
   FILTER_DEFAULTS,
   type FilterParam,
   readOption,
@@ -121,8 +124,13 @@ export function ChatsView() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const navigationQueryRef = useRef(searchParams.toString());
+  const queueHistory = useRef<string | null>(null);
+  const queueTrigger = useRef<HTMLButtonElement>(null);
+  const closingQueue = useRef(false);
   useEffect(() => {
     navigationQueryRef.current = searchParams.toString();
+    closingQueue.current = false;
+    if (!searchParams.has("session")) queueHistory.current = null;
   }, [searchParams]);
   const now = usePresenceClock();
   const presenceMinute = Math.floor(now / 60_000) * 60_000;
@@ -131,7 +139,7 @@ export function ChatsView() {
   // Filters and the open chat live in the URL so views can be shared and deep-linked (?session=<id>).
   const leaveReply = useRef<() => Promise<boolean>>(async () => true);
   const updateParams = useCallback(
-    (patch: Partial<Record<FilterParam | "session", string | null>>) => {
+    (patch: Partial<Record<FilterParam | "session", string | null>>, push = false) => {
       // Compose rapid filter changes against the latest requested URL, including an uncommitted navigation.
       const params = new URLSearchParams(navigationQueryRef.current);
       // A filter change must not leave a conversation from the previous queue open.
@@ -146,7 +154,8 @@ export function ChatsView() {
       const query = params.toString();
       const commit = () => {
         navigationQueryRef.current = query;
-        router.replace(`/admin/chats${query ? `?${query}` : ""}`, { scroll: false });
+        const navigate = push ? router.push : router.replace;
+        navigate(`/admin/chats${query ? `?${query}` : ""}`, { scroll: false });
       };
       if (params.get("session") !== new URLSearchParams(navigationQueryRef.current).get("session")) {
         void leaveReply.current().then(leave => { if (leave) commit(); });
@@ -163,6 +172,7 @@ export function ChatsView() {
   );
   const emptyFilter = readOption(searchParams.get("empty"), emptyFilterOptions, FILTER_DEFAULTS.empty);
   const channelFilter = readOption(searchParams.get("channel"), channelFilterOptions, FILTER_DEFAULTS.channel);
+  const assignment = readOption(searchParams.get("assignment"), assignmentOptions, FILTER_DEFAULTS.assignment);
   const messageStartAt = searchParams.get("from") ?? "";
   const messageEndAt = searchParams.get("to") ?? "";
   const setStatus = (value: SessionStatus) => updateParams({ view: value });
@@ -171,6 +181,7 @@ export function ChatsView() {
   const setQueue = (value: InboxQueue) => updateParams(queueParams(value));
   const setEmptyFilter = (value: EmptyChatFilter) => updateParams({ empty: value });
   const setChannelFilter = (value: SessionChannelFilter) => updateParams({ channel: value });
+  const setAssignment = (value: AssignmentFilter) => updateParams({ assignment: value });
   const setMessageStartAt = (value: string) => updateParams({ from: value });
   const setMessageEndAt = (value: string) => updateParams({ to: value });
   // Typing stays local; the URL follows after a short pause.
@@ -187,6 +198,32 @@ export function ChatsView() {
   function selectSession(sessionId: Id<"conversations"> | null) {
     if (sessionId === selectedSessionId) return;
     updateParams({ session: sessionId });
+  }
+  function openQueueSession(sessionId: Id<"conversations">, trigger: HTMLButtonElement) {
+    if (largeViewport !== false || selectedSessionId) {
+      selectSession(sessionId);
+      return;
+    }
+    if (new URLSearchParams(navigationQueryRef.current).has("session")) return;
+    queueHistory.current = navigationQueryRef.current;
+    queueTrigger.current = trigger;
+    updateParams({ session: sessionId }, true);
+  }
+  async function closeQueueSession() {
+    if (closingQueue.current) return;
+    const current = navigationQueryRef.current;
+    const query = new URLSearchParams(current);
+    query.delete("session");
+    if (queueHistory.current !== query.toString()) {
+      selectSession(null);
+      return;
+    }
+    closingQueue.current = true;
+    if (await leaveReply.current() && navigationQueryRef.current === current) {
+      window.history.back();
+    } else {
+      closingQueue.current = false;
+    }
   }
   // Saved answers are retired: a guest question can seed a draft business fact instead.
   const [factTarget, setFactTarget] = useState<FactFormTarget | null>(null);
@@ -218,6 +255,7 @@ export function ChatsView() {
     urlSearchQuery.trim(),
     emptyFilter,
     channelFilter,
+    assignment,
     messageStartAt,
     messageEndAt,
   ].join(":");
@@ -241,13 +279,14 @@ export function ChatsView() {
         adminStatus,
         empty: emptyFilter,
         channel: channelFilter,
+        ...(assignment === "all" ? {} : { assignment }),
         ...(queryText ? { searchQuery: queryText } : {}),
         ...(parsedMessageStartAt === undefined ? {} : { messageStartAt: parsedMessageStartAt }),
         ...(parsedMessageEndAt === undefined ? {} : { messageEndAt: parsedMessageEndAt }),
         ...(status === "active" || status === "inactive" ? { now: presenceMinute } : {}),
       },
     }]),
-  ), [invalidMessageDateRange, pageCursors, retryKeys, status, adminStatus, emptyFilter, channelFilter, queryText, parsedMessageStartAt, parsedMessageEndAt, presenceMinute]);
+  ), [invalidMessageDateRange, pageCursors, retryKeys, status, adminStatus, emptyFilter, channelFilter, assignment, queryText, parsedMessageStartAt, parsedMessageEndAt, presenceMinute]);
   const listResults = useQueries(listRequests) as Record<string, SessionListResult | Error | undefined>;
   const firstPage = listResults["0"];
   const { sessions, lastPage, failedPage, replacementCursors, loadingOlder } = useMemo(() => {
@@ -427,7 +466,7 @@ export function ChatsView() {
         {...detailProps}
         compact={compact}
         emptyList={!loadingSessions && failedPage === undefined && sessions.length === 0}
-        onBack={compact ? () => selectSession(null) : undefined}
+        onBack={compact ? () => void closeQueueSession() : undefined}
         actions={actions}
         replyAction={replyAction}
         actionError={actionError}
@@ -493,6 +532,7 @@ export function ChatsView() {
     adminStatus === "resolved" || adminStatus === "archived",
     emptyFilter !== "non_empty",
     channelFilter !== "all",
+    assignment !== "all",
     messageStartAt,
     messageEndAt,
   ].filter(Boolean).length;
@@ -519,6 +559,7 @@ export function ChatsView() {
                     q: null,
                     empty: null,
                     channel: null,
+                    assignment: null,
                     from: null,
                     to: null,
                     ...queueParams(queue),
@@ -682,7 +723,7 @@ export function ChatsView() {
                       ) : null}
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent align="end" className="w-[24rem] max-w-[calc(100vw-2rem)] space-y-4">
+                  <PopoverContent align="end" className="max-h-[var(--radix-popover-content-available-height)] w-[24rem] max-w-[calc(100vw-2rem)] space-y-4 overflow-y-auto">
                     <p className="text-sm font-semibold text-foreground">Filters</p>
                     <div className="space-y-2">
                       <p className="admin-eyebrow">Chat status</p>
@@ -742,6 +783,10 @@ export function ChatsView() {
                       </ToggleGroup>
                     </div>
                     <div className="grid gap-3">
+                      <div className="space-y-2">
+                        <p className="admin-eyebrow">Assignment</p>
+                        <SegmentedTabs tabs={assignmentTabs} value={assignment} onValueChange={setAssignment} label="Assignment" fill />
+                      </div>
                       <AdminDateTimeFilterField
                         id="admin-message-start"
                         label="Latest message start"
@@ -769,6 +814,7 @@ export function ChatsView() {
                           updateParams({
                             empty: null,
                             channel: null,
+                            assignment: null,
                             from: null,
                             to: null,
                             ...queueParams(queue),
@@ -807,6 +853,11 @@ export function ChatsView() {
                     <RemovableBadge removeLabel="Clear channel filter" onRemove={() => setChannelFilter("all")}>
                       <ChannelIcon channel={channelFilter} className="h-3.5 w-3.5" />
                       {channelFilterLabel(channelFilter)}
+                    </RemovableBadge>
+                  ) : null}
+                  {assignment !== "all" ? (
+                    <RemovableBadge removeLabel="Clear assignment filter" onRemove={() => setAssignment("all")}>
+                      {assignment === "mine" ? "Assigned to me" : "Unassigned"}
                     </RemovableBadge>
                   ) : null}
                   {messageStartAt ? (
@@ -862,7 +913,7 @@ export function ChatsView() {
                   >
                     <button
                       type="button"
-                      onClick={() => selectSession(session._id)}
+                      onClick={(event) => openQueueSession(session._id, event.currentTarget)}
                       aria-current={selected ? "true" : undefined}
                       className="min-w-0 flex-1 px-3 py-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                     >
@@ -948,13 +999,18 @@ export function ChatsView() {
       <Dialog
         open={largeViewport === false && Boolean(selectedSession)}
         onOpenChange={(isOpen) => {
-          if (!isOpen) selectSession(null);
+          if (!isOpen) void closeQueueSession();
         }}
       >
         <DialogContent
           data-testid="admin-chat-detail-dialog"
           className="flex h-dvh max-h-dvh w-full max-w-none flex-col gap-0 overflow-hidden rounded-none p-0 max-md:rounded-none max-md:border-0 max-md:max-h-dvh max-md:pb-0 sm:h-[calc(100dvh-2rem)] sm:max-h-[calc(100dvh-2rem)] sm:max-w-3xl sm:rounded-xl"
           showCloseButton={false}
+          onCloseAutoFocus={(event) => {
+            if (!queueTrigger.current?.isConnected) return;
+            event.preventDefault();
+            queueTrigger.current.focus({ preventScroll: true });
+          }}
         >
           <DialogTitle className="sr-only">
             {selectedSession ? `Chat details for ${visitorLabel(selectedSession)}` : "Chat details"}

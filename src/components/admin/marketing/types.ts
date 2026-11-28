@@ -1,4 +1,4 @@
-import type { FunctionArgs } from "convex/server";
+import type { FunctionArgs, FunctionReturnType } from "convex/server";
 import type { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
 import type { CampaignOption, CampaignRow, CouponDetail, CouponRow, LinkRow, RedemptionRow, SlugCheck } from 'convex/shared/marketingTypes';
@@ -32,7 +32,7 @@ type TestQuoteArgs = FunctionArgs<typeof api.marketing.queries.testQuote>;
 
 export type MarketingActions = {
   saveCampaign: (args: SaveCampaignArgs) => Promise<Id<"marketingCampaigns">>;
-  setCampaignStatus: (args: { campaignId: Id<"marketingCampaigns">; status: CampaignStatus }) => Promise<null>;
+  setCampaignStatus: (args: FunctionArgs<typeof api.marketing.commands.setCampaignStatus.setCampaignStatus>) => Promise<FunctionReturnType<typeof api.marketing.commands.setCampaignStatus.setCampaignStatus>>;
   saveLink: (args: SaveLinkArgs) => Promise<Id<"marketingLinks">>;
   setLinkStatus: (args: { linkId: Id<"marketingLinks">; status: LinkStatus }) => Promise<null>;
   saveCoupon: (args: SaveCouponArgs) => Promise<{ couponId: Id<"coupons">; version: number }>;

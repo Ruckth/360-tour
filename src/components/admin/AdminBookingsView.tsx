@@ -304,6 +304,7 @@ function HotelBookings() {
             const b = item.booking;
             const day = isoDate(segment.day);
             const phase = day === b.checkIn ? "Arrives" : day === b.checkOut ? "Leaves" : "In house";
+            const status = statusKey(b);
             return <span className="flex w-full min-w-0 items-center justify-between gap-2 sm:gap-3">
               <span className="grid min-w-0 gap-0.5 text-left sm:gap-1">
                 <span className="truncate text-[15px] font-medium">{b.guestName}</span>
@@ -311,8 +312,8 @@ function HotelBookings() {
                 <span className="text-xs text-muted-foreground">{displayDate(b.checkIn)} → {displayDate(b.checkOut)}</span>
               </span>
               <span className="grid max-w-[49%] justify-items-end gap-0.5 text-right sm:max-w-none sm:gap-1">
-                {b.owed > 0 || statusKey(b) !== "paid" ? <span className={`money font-sans text-[15px] font-medium tabular-nums wrap-anywhere ${b.owed <= 0 ? "text-emerald-700" : ""}`}>{b.owed > 0 ? `${formatMoney(b.owed, b.currency)} due` : "Paid"}</span> : null}
-                <StatusBadge {...hotelStatus(statusKey(b))} />
+                {b.owed > 0 && status !== "cancelled" ? <span className="money font-sans text-[15px] font-medium tabular-nums wrap-anywhere">{formatMoney(b.owed, b.currency)} due</span> : null}
+                <StatusBadge {...hotelStatus(status)} />
               </span>
             </span>;
           }}

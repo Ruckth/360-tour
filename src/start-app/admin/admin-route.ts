@@ -12,7 +12,7 @@ export type AdminRedirectTarget =
   | { to: "/admin/staff/$tab"; params: { tab: AdminStaffTab }; replace: true; statusCode: 307 }
   | { to: "/admin/stock/balances"; replace: true; statusCode: 307 }
   | { to: "/admin/marketing/dashboard"; replace: true; statusCode: 307 }
-  | { to: "/admin/settings"; search: { tab: "team" }; replace: true; statusCode: 307 };
+  | { to: "/admin/settings"; search: { tab: "team"; people?: "marketing" }; replace: true; statusCode: 307 };
 
 export function validateAdminLayoutInput(value: unknown): AdminLayoutInput {
   if (!value || typeof value !== "object") {
@@ -64,7 +64,7 @@ export function resolveAdminRedirect(pathname: string): AdminRedirectTarget | nu
 }
 
 export function resolveMarketingAccessRedirect(): AdminRedirectTarget {
-  return toAdminRedirectTarget(adminSettingsTabPath("team"));
+  return { to: "/admin/settings", search: { tab: "team", people: "marketing" }, replace: true, statusCode: 307 };
 }
 
 export function createAdminRedirect(target: AdminRedirectTarget) {

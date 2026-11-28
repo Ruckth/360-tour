@@ -125,6 +125,7 @@ function FactForm({
 
   const editing = target.fact ?? null;
   const fromUnknown = target.fromUnknown ?? null;
+  const guestQuestion = fromUnknown?.question ?? target.fromMessage?.question;
   const activeProperties = properties.filter((property) => property.status === "active");
   // Keep an archived/inactive scope visible when editing a fact that already uses it.
   const scopeOptions =
@@ -204,7 +205,7 @@ function FactForm({
           {/* A fact from a question is saved approved, which resolves the report; no status to pick. */}
           {fromUnknown ? null : (
             <div className="grid gap-2">
-              <Label htmlFor="fact-status">Status</Label>
+              <Label htmlFor="fact-status">Visibility</Label>
               <Select value={form.status} onValueChange={(value) => update("status", value as BusinessFactStatus)}>
                 <SelectTrigger id="fact-status" className="h-10 rounded-lg">
                   <SelectValue />
@@ -212,7 +213,7 @@ function FactForm({
                 <SelectContent>
                   {BUSINESS_FACT_STATUSES.map((status) => (
                     <SelectItem key={status} value={status}>
-                      {STATUS_LABEL[status]}
+                      {status === "draft" ? "Staff draft" : status === "approved" ? "Guest-facing" : STATUS_LABEL[status]}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -223,11 +224,11 @@ function FactForm({
 
         <div className="grid gap-2">
           {/* The guest's full question stays readable beside the answer; the title is an editable copy. */}
-          {fromUnknown ? (
+          {guestQuestion ? (
             <figure className="grid gap-1 rounded-lg border border-border bg-muted/40 px-3 py-2">
               <figcaption id="fact-guest-question-label" className="text-xs font-medium text-muted-foreground">Guest asked</figcaption>
               <blockquote aria-labelledby="fact-guest-question-label" className="whitespace-pre-wrap break-words text-sm text-foreground" data-sentence-budget="ignore">
-                {fromUnknown.question}
+                {guestQuestion}
               </blockquote>
             </figure>
           ) : null}
@@ -310,7 +311,7 @@ function FactForm({
           </Button>
           <Button type="submit" disabled={saving}>
             {saving ? <Spinner label="Saving" className="text-current" /> : null}
-            Save fact
+            {form.status === "draft" ? "Save staff draft" : form.status === "approved" ? "Save guest-facing fact" : "Save archived fact"}
           </Button>
         </DialogFooter>
       </form>

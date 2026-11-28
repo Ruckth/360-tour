@@ -8,6 +8,30 @@ import schema from './schema';
 import { api } from './_generated/api';
 const modules = import.meta.glob('./**/*.ts');
 const readers = api.pos.orderHistoryPages;
+
+it('finds returned orders across bounded paid pages, including voucher-only returns and older refunds', async () => {
+  const t = convexTest(schema, modules);
+  const admin = await asTestOwner(t, { emailVerified: true, email: 'admin@example.com' });
+  const add = (name: string) => admin.mutation(api.pos.commands.addItem.addItem, { item: { kind: 'extra', name, price: 1000 } });
+  const { orderId: refunded } = await add('Tea');
+  const { orderId: credited } = await add('Coffee');
+  const { orderId: unchanged } = await add('Water');
+  await t.run(async ctx => {
+    await ctx.db.patch(unchanged, { status: 'paid', updatedAt: 300 });
+    await ctx.db.patch(credited, { status: 'paid', updatedAt: 200, returnedTotal: 0, rowReturnedTotal: 250 });
+    await ctx.db.patch(refunded, { status: 'paid', updatedAt: 100 });
+    const line = await ctx.db.query('orderLines').withIndex('by_orderId', q => q.eq('orderId', refunded)).first();
+    if (!line) throw new Error('Missing receipt line');
+    await ctx.db.insert('orderRefunds', { orderId: refunded, lineId: line._id, amount: 100, currency: 'THB', method: 'cash', reason: 'Quality', idempotencyKey: 'old-return', createdBy: 'admin', createdByEmail: 'admin@example.com', createdAt: 100, businessDate: '2026-11-12' });
+  });
+  const endpoint = api.pos.orders.listOrders;
+  const first = await admin.query(endpoint, { filter: 'returned', paginationOpts: { numItems: 1, cursor: null } });
+  expect(first.page).toEqual([]);
+  expect(first.isDone).toBe(false);
+  const rest = await admin.query(endpoint, { filter: 'returned', paginationOpts: { numItems: 20, cursor: first.continueCursor } });
+  expect(rest.page.map(row => [row._id, row.refundedAmountSatang])).toEqual([[credited, 0], [refunded, 100]]);
+});
+
 it('authenticates every financial stream and rejects oversized or invalid pages', async () => {
   const t = convexTest(schema, modules), admin = await asTestOwner(t, { emailVerified: true, email: 'admin@example.com' });
   const { orderId } = await admin.mutation(api.pos.commands.addItem.addItem, { item: { kind: 'extra', name: 'Tea', price: 1000 } });
