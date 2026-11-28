@@ -5,13 +5,15 @@ import { useConvex, useMutation, usePaginatedQuery, useQuery } from "convex/reac
 import { api } from "convex/_generated/api";
 import type { Doc } from "convex/_generated/dataModel";
 import { format } from "date-fns";
-import { Download, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { Download, Search, X } from "lucide-react";
+import { useState, type FormEvent } from "react";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import { DisabledReason } from "@/components/admin/DisabledReason";
 import { EmptyState, SkeletonRows } from "@/components/admin/admin-bulk";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { MoreMenu } from "@/components/ui/more-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { toCsv } from "@/lib/admin/csv";
@@ -25,7 +27,9 @@ const SOURCES = {
 type Source = keyof typeof SOURCES;
 const PAGE_SIZE = 25;
 
-function downloadCsv(filename: string, rows: string[][]) {
+/** Downloads `rows` as `<name>-<today>.csv`. */
+function downloadCsv(name: string, rows: string[][]) {
+  const filename = `${name}-${format(Date.now(), "yyyy-MM-dd")}.csv`;
   const url = URL.createObjectURL(new Blob([toCsv(rows)], { type: "text/csv;charset=utf-8" }));
   const link = document.createElement("a");
   link.href = url;
@@ -44,22 +48,23 @@ export function AdminLeadsView() {
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const { results, status, loadMore } = usePaginatedQuery(
-    api.messaging.leads.list,
-    source === "all" ? {} : { source },
-    { initialNumItems: PAGE_SIZE },
-  );
+  // Exact email lookup across every page; list and CSV share the same server filters.
+  const [emailInput, setEmailInput] = useState("");
+  const [email, setEmail] = useState("");
+  const filters = { ...(source === "all" ? {} : { source }), ...(email ? { email } : {}) };
+  const { results, status, loadMore } = usePaginatedQuery(api.messaging.leads.list, filters, { initialNumItems: PAGE_SIZE });
   const removeLead = useMutation(api.messaging.leads.remove);
   const properties = useQuery(api.catalog.properties.adminList, {});
   const propertyNames = new Map(properties?.map((property) => [property._id as string, property.name]));
+  const villaName = (lead: Doc<"leads">) => (lead.propertyId ? propertyNames.get(lead.propertyId) : undefined);
 
   async function exportCsv() {
     setPending("export");
     setError(null);
     setNotice(null);
     try {
-      const { rows, truncated } = await convex.query(api.messaging.leads.exportRows, source === "all" ? {} : { source });
-      downloadCsv(`leads-${source}-${format(Date.now(), "yyyy-MM-dd")}.csv`, [
+      const { rows, truncated, limit } = await convex.query(api.messaging.leads.exportRows, filters);
+      downloadCsv(`leads-${source}`, [
         ["email", "source", "villa", "created"],
         ...rows.map((lead) => [
           lead.email,
@@ -68,7 +73,11 @@ export function AdminLeadsView() {
           new Date(lead.createdAt).toISOString(),
         ]),
       ]);
-      if (truncated) setNotice(`Exported the newest ${rows.length.toLocaleString()} leads only.`);
+      setNotice(
+        truncated
+          ? `Exported the newest ${rows.length.toLocaleString()} matching leads. The export stops at ${limit.toLocaleString()}; filter by source or email to export the rest.`
+          : `Exported ${rows.length.toLocaleString()} matching ${rows.length === 1 ? "lead" : "leads"}.`,
+      );
     } catch (exportError) {
       setError(exportError instanceof Error ? exportError.message : "Unable to export leads.");
     } finally {
@@ -76,11 +85,20 @@ export function AdminLeadsView() {
     }
   }
 
+  function findEmail(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setEmail(emailInput.trim().toLowerCase());
+  }
+  function clearEmail() {
+    setEmailInput("");
+    setEmail("");
+  }
+
   async function deleteLead(lead: Doc<"leads">) {
     const confirmed = await confirm({
-      title: "Delete this lead?",
-      description: `${lead.email} (${SOURCES[lead.source]}) is removed for good.`,
-      confirmLabel: "Delete lead",
+      title: "Delete this lead permanently?",
+      description: `${lead.email} (${SOURCES[lead.source]}) is removed for good. This can't be undone.`,
+      confirmLabel: "Delete permanently",
       destructive: true,
     });
     if (!confirmed) return;
@@ -99,9 +117,29 @@ export function AdminLeadsView() {
     <div className="mx-auto w-full max-w-7xl px-4 py-4 sm:px-6">
       <section className="border border-border bg-card">
         <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
-          <p className="min-w-60 flex-1 text-sm text-muted-foreground">
-            Guests who left an email after a tour, in chat, or on an unfinished booking. Newest first.
-          </p>
+          <div className="min-w-60 flex-1 text-sm text-muted-foreground">
+            <p>Guests who left an email after a tour, in chat, or on an unfinished booking. Newest first.</p>
+            {/* Leads are company data: villas carry no branch, so the branch switch doesn't narrow them. */}
+            <p data-testid="leads-scope" className="mt-0.5 text-xs">
+              All branches and villas, including leads with no villa. Export CSV includes every match, up to 5,000.
+            </p>
+          </div>
+          <form role="search" aria-label="Find leads by email" onSubmit={findEmail} className="flex items-center gap-1">
+            <div className="relative">
+              <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                type="email"
+                value={emailInput}
+                onChange={(event) => setEmailInput(event.target.value)}
+                placeholder="guest@example.com"
+                aria-label="Email address"
+                className="h-9 w-56 pl-9"
+              />
+            </div>
+            <Button type="submit" size="sm" variant="outline" disabled={!emailInput.trim()}>
+              Find
+            </Button>
+          </form>
           <Select value={source} onValueChange={(value) => setSource(value as Source | "all")}>
             <SelectTrigger className="h-9 w-48 rounded-lg" aria-label="Lead source">
               <SelectValue />
@@ -142,6 +180,15 @@ export function AdminLeadsView() {
             {error}
           </p>
         ) : null}
+        {email ? (
+          <p role="status" className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2 text-sm">
+            <span className="min-w-0 break-all">Leads for {email}</span>
+            <Button type="button" size="sm" variant="ghost" onClick={clearEmail}>
+              <X aria-hidden="true" className="size-4" />
+              Clear
+            </Button>
+          </p>
+        ) : null}
         {notice ? (
           <p role="status" className="border-b border-border px-4 py-3 text-sm text-muted-foreground">
             {notice}
@@ -151,7 +198,11 @@ export function AdminLeadsView() {
         {status === "LoadingFirstPage" ? (
           <SkeletonRows label="Loading leads" />
         ) : results.length === 0 ? (
-          source === "all" ? (
+          email ? (
+            <EmptyState action={<Button type="button" size="sm" onClick={clearEmail}>Clear email</Button>}>
+              No leads for {email}{source === "all" ? "" : ` from "${SOURCES[source]}"`}.
+            </EmptyState>
+          ) : source === "all" ? (
             <EmptyState>
               No leads yet. Guests appear here when they leave an email after a tour, in chat, or on an unfinished booking.
             </EmptyState>
@@ -167,8 +218,24 @@ export function AdminLeadsView() {
             </EmptyState>
           )
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[640px] text-left text-sm">
+          <>
+            {/* Phones: one two-line card per lead, so every field and the action fit without panning. */}
+            <ul className="divide-y divide-border sm:hidden" aria-label="Leads">
+              {results.map((lead) => (
+                <li key={lead._id} className="flex min-w-0 items-start gap-2 px-4 py-3">
+                  <div className="min-w-0 flex-1">
+                    <a href={`mailto:${lead.email}`} className="break-all text-sm font-medium text-foreground hover:underline">
+                      {lead.email}
+                    </a>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {[SOURCES[lead.source], villaName(lead), staffDateTime(lead.createdAt)].filter(Boolean).join(" · ")}
+                    </p>
+                  </div>
+                  <LeadActions lead={lead} pending={pending === lead._id} onDelete={() => void deleteLead(lead)} />
+                </li>
+              ))}
+            </ul>
+            <table className="hidden w-full text-left text-sm sm:table">
               <thead className="admin-eyebrow border-b border-border bg-muted/40">
                 <tr>
                   <th className="px-4 py-3">Email</th>
@@ -183,7 +250,7 @@ export function AdminLeadsView() {
               <tbody>
                 {results.map((lead) => (
                   <tr key={lead._id} className="border-b border-border last:border-b-0">
-                    <td className="px-4 py-3 font-medium text-foreground">
+                    <td className="break-all px-4 py-3 font-medium text-foreground">
                       <a
                         href={`mailto:${lead.email}`}
                         className="rounded hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -194,30 +261,16 @@ export function AdminLeadsView() {
                     <td className="px-4 py-3">
                       <Badge variant="outline">{SOURCES[lead.source]}</Badge>
                     </td>
-                    <td className="px-4 py-3 text-muted-foreground">
-                      {lead.propertyId ? (propertyNames.get(lead.propertyId) ?? "—") : "—"}
-                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">{villaName(lead) ?? "—"}</td>
                     <td className="px-4 py-3 text-muted-foreground">{staffDateTime(lead.createdAt)}</td>
                     <td className="px-2 py-2 text-right">
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        disabled={pending === lead._id}
-                        aria-label={`Delete lead ${lead.email}`}
-                        onClick={() => void deleteLead(lead)}
-                      >
-                        {pending === lead._id ? (
-                          <Spinner label="Deleting" />
-                        ) : (
-                          <Trash2 aria-hidden="true" className="size-4" />
-                        )}
-                      </Button>
+                      <LeadActions lead={lead} pending={pending === lead._id} onDelete={() => void deleteLead(lead)} />
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
+          </>
         )}
 
         {status === "CanLoadMore" || status === "LoadingMore" ? (
@@ -231,4 +284,10 @@ export function AdminLeadsView() {
       </section>
     </div>
   );
+}
+
+/** Permanent deletion sits in the row's ⋯ menu, labelled as such, and still asks to confirm. */
+function LeadActions({ lead, pending, onDelete }: { lead: Doc<"leads">; pending: boolean; onDelete: () => void }) {
+  if (pending) return <Spinner label="Deleting" />;
+  return <MoreMenu label={`Actions for lead ${lead.email}`} items={[{ label: "Delete permanently", destructive: true, onSelect: onDelete }]} />;
 }

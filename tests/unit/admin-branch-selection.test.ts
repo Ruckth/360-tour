@@ -63,7 +63,7 @@ describe("working branch selection", () => {
   });
 
   it("scopes Settings and Marketing to the company, and every other route to the branch", () => {
-    for (const path of ["/admin/settings", "/admin/marketing", "/admin/marketing/dashboard"]) expect(branchRouteScope(path), path).toBe("company");
+    for (const path of ["/admin/settings", "/admin/marketing", "/admin/marketing/dashboard", "/admin/leads"]) expect(branchRouteScope(path), path).toBe("company");
     for (const path of ["/admin/chats", "/admin/hotel", "/admin/checkout", "/admin/settingsx"]) expect(branchRouteScope(path), path).toBe("branch");
   });
 
