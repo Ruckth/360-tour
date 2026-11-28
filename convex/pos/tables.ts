@@ -66,7 +66,7 @@ export const posTables = {
     v.object({
       ...orderApprovalFields,
       kind: checkoutApprovalKind,
-      orderNumber: v.optional(v.number()),
+      orderNumberAtRequest: v.optional(v.number()),
       payload: storedApprovalPayload,
     }),
     v.object({ ...orderApprovalFields, kind: v.literal('returnItems'), payload: returnItemsApprovalPayload, status: storedApprovalStatus,

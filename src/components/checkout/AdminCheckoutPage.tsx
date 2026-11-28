@@ -1,5 +1,6 @@
 "use client";
 
+import { useAuth } from "@/platform/auth";
 import type { Id } from "convex/_generated/dataModel";
 import { useRouter, useSearchParams } from "@/platform/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -27,6 +28,8 @@ export default function AdminCheckoutPage() {
 function CheckoutPage() {
   const router = useRouter();
   const { current: workingBranch } = useAdminBranch();
+  const { sessionId, userId } = useAuth();
+  const ordersFilterScope = sessionId && userId ? JSON.stringify([sessionId, userId, workingBranch?.id ?? null]) : undefined;
   const params = useSearchParams();
   const source = parseCheckoutSource(params);
   const { openOrderFor } = convexCheckoutBackend.useActions();
@@ -76,6 +79,7 @@ function CheckoutPage() {
   return (
     <CheckoutView
       retail
+      ordersFilterScope={ordersFilterScope}
       preferredRetailBranchId={workingBranch?.id}
       orderId={orderId}
       onOrderChange={onOrderChange}

@@ -45,7 +45,7 @@ test("invalid order numbers never open a different order", async ({ page }) => {
   }
   await lookup.fill("R-001042");
   await dialog.getByRole("button", { name: "Go", exact: true }).click();
-  await expect(dialog.getByRole("status")).toContainText("Not available");
+  await expect(dialog.getByText("Not available. Check the number or pick an open order above.")).toBeVisible();
   await lookup.fill("Order #1042");
   await dialog.getByRole("button", { name: "Go", exact: true }).click();
   await expect(dialog).toHaveCount(0);

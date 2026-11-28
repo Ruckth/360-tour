@@ -499,3 +499,33 @@ it('replays an adjustment request beyond the former 32-request lookup window', a
   expect(await submit('older-key')).toEqual(first);
   expect(await submit('new-key')).toMatchObject({ status: 'approvalRequired' });
 });
+
+it('checks active queue state per request and retains bounded expired history', async () => {
+  const s = await setup();
+  const adjustmentId = await s.insertAdjustment();
+  const staleReturn = await s.insertReturn();
+  const currentReturn = await s.insertReturn({ orderFingerprint: encodeReturnApprovalReview({ revisions: [], rows: [{ lineId: s.lineId, label: "Gift voucher" }] }) });
+  const expiredPending = await s.insertReturn({ expiresAt: now - 1 });
+  const expiredStored = await s.insertReturn({ status: 'expired', expiresAt: now - 2 });
+  const serviceId = await s.t.run(ctx => ctx.db.insert('services', {
+    slug: 'queue-status-service', name: 'Massage', description: '', category: 'Spa', durationMin: 60, bufferMin: 0,
+    price: 30000, currency: 'THB', staffIds: [], status: 'active', createdAt: now, updatedAt: now,
+  }));
+  const { orderId, lineId } = await s.cashier.mutation(api.pos.commands.addItem.addItem, { item: { kind: 'service', serviceId } });
+  const { requestId } = await s.cashier.mutation(approvals.create, {
+    orderId, payload: { kind: 'discount', lineId, discount: { type: 'percent', value: 3000 } }, reason: 'Discount request',
+  });
+  expect(await s.manager.query(approvals.queueStatus, { requestId })).toBe('pending');
+  expect(await s.manager.query(approvals.queueStatus, { requestId: adjustmentId })).toBe('pending');
+  expect(await s.manager.query(approvals.queueStatus, { requestId: staleReturn })).toBe('stale');
+  expect(await s.manager.query(approvals.queueStatus, { requestId: currentReturn })).toBe('pending');
+  await s.t.run(ctx => ctx.db.patch(orderId, { revision: 999 }));
+  expect(await s.manager.query(approvals.queueStatus, { requestId })).toBe('stale');
+  await s.t.run(ctx => ctx.db.patch(s.grantId, { updatedAt: now + 1 }));
+  expect(await s.manager.query(approvals.queueStatus, { requestId })).toBe('revoked');
+  expect(await s.manager.query(approvals.queueStatus, { requestId: adjustmentId })).toBe('revoked');
+  expect(await s.manager.query(approvals.queueStatus, { requestId: expiredPending })).toBe('expired');
+  const history = await s.manager.query(approvals.recentExpired, {});
+  expect(history.map(row => [row._id, row.actionable, row.status])).toEqual([[expiredPending, false, 'expired'], [expiredStored, false, 'expired']]);
+  await expect(s.cashier.query(approvals.recentExpired, {})).rejects.toThrow('Not authorized');
+});

@@ -9,8 +9,9 @@ import { InfoTip } from "@/components/ui/info-tip";
 import { Spinner } from "@/components/ui/spinner";
 import { useNow } from "@/lib/staff-bookings";
 import { orderTitle } from "convex/shared/orderMath";
+import { orderTime } from "./checkout-ui";
 import { ApprovalDecisionButtons, useApprovalDecision } from "./ApprovalRequest";
-import { useCheckoutBackend, useCommerce, useReturnsDesk, type ApprovalDetail, type ApprovalId, type ApprovalQueueRow, type ApprovalRequest } from "./backend";
+import { useCheckoutBackend, useCommerce, useReturnsDesk, type ApprovalDetail, type ApprovalId, type ApprovalQueueRow, type ApprovalQueueStatus, type ApprovalRequest, type ExpiredApprovalQueueRow } from "./backend";
 import { approvalAsk, minutesLeft, personName, queueAsk } from "./staff-approvals";
 
 /*
@@ -46,8 +47,11 @@ function useReturnApprovalsLive(): boolean | "loading" {
   return mode === undefined ? "loading" : mode === "attempts";
 }
 
-export default function ApprovalsList({ rows, selectedId, count, more, searching, loadingMore, onMore, onSelect, onDecided }: {
+export default function ApprovalsList({ rows, states, history, verifying, selectedId, count, more, searching, loadingMore, onMore, onSelect, onDecided }: {
   rows: ApprovalQueueRow[];
+  states?: Record<string, ApprovalQueueStatus | Error | undefined>;
+  history?: ExpiredApprovalQueueRow[];
+  verifying?: boolean;
   selectedId: ApprovalId | null;
   count: number;
   more: boolean;
@@ -59,12 +63,19 @@ export default function ApprovalsList({ rows, selectedId, count, more, searching
 }) {
   // Once payments use attempts, a return request opens with Approve, which authorizes it (W2B returns desk).
   const returnsLive = useReturnApprovalsLive();
+  const now = useNow(10_000);
   return (
     <>
       {rows.length ? (
         <ul className="grid gap-3" aria-label="Requests">
           {rows.map((row) => {
             const chosen = row._id === selectedId;
+            if (!chosen && states && states[row._id] !== "pending") {
+              const status = states[row._id];
+              const label = status === "expired" || row.expiresAt <= now ? "Expired" : status === "revoked" ? "Access changed"
+                : status === "stale" || !row.actionable ? "Request changed" : status === undefined ? "Checking eligibility" : "Unavailable";
+              return <UnavailableQueueRow key={row._id} row={row} status={label} />;
+            }
             if (row.kind === "returnItems" && returnsLive === "loading") {
               return <li key={row._id} data-testid="approval-request" data-approval-loading="true"><Spinner label="Loading approvals" /></li>;
             }
@@ -91,6 +102,11 @@ export default function ApprovalsList({ rows, selectedId, count, more, searching
           })}
         </ul>
       ) : null}
+      {verifying ? <Spinner label="Checking request eligibility" /> : null}
+      {history?.some(row => !rows.some(active => active._id === row._id)) ? <section aria-label="Recent expired requests" className="grid gap-2">
+        <h3 className="text-sm font-semibold">Recently expired</h3>
+        <ul className="grid gap-2">{history.filter(row => !rows.some(active => active._id === row._id)).map(row => <UnavailableQueueRow key={row._id} row={row} status="Expired" />)}</ul>
+      </section> : null}
       {searching ? <Spinner label="Checking older requests" /> : null}
       {!count && more && !searching ? <p className="text-sm text-muted-foreground" data-testid="approvals-none-loaded">None you can approve in the newest requests.</p> : null}
       {more && !searching ? (
@@ -102,6 +118,15 @@ export default function ApprovalsList({ rows, selectedId, count, more, searching
       {!rows.length && !more ? <p className="text-sm text-muted-foreground">Nothing waiting.</p> : null}
     </>
   );
+}
+
+function UnavailableQueueRow({ row, status }: { row: ApprovalQueueRow | ExpiredApprovalQueueRow; status: string }) {
+  const title = row.kind === "returnItems" ? "Return items" : row.kind === "adjustment" ? "Adjustment" : queueAsk(row);
+  return <li className="grid gap-0.5 rounded-xl border border-border px-4 py-3 text-sm">
+    <span className="font-medium">{personName(row.requesterEmail)} · {title}</span>
+    <span className="text-xs text-muted-foreground">{status} · {status === "Expired" ? "Expired at" : "Expires"} {orderTime(row.expiresAt)}</span>
+    {"orderTitle" in row && row.orderTitle ? <span className="text-xs">{row.orderTitle}</span> : null}
+  </li>;
 }
 
 /** A request that isn't open: who asks for what, and when it expires. Tap to open it. */

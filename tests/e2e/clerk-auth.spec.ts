@@ -165,4 +165,17 @@ test("owner checkout interactions persist a local cash receipt across reload", a
   const reloaded = await owner.query(api.pos.orders.getOrder, { orderId });
   expect(reloaded?.payments).toEqual(paid?.payments);
   expect(reloaded?.lines[0].qty).toBe(2);
+  await page.getByRole("button", { name: "New sale", exact: true }).click();
+  const orders = page.getByRole("button", { name: "Orders", exact: true });
+  await orders.click();
+  const dialog = page.getByRole("dialog", { name: "Orders", exact: true });
+  await dialog.getByRole("radio", { name: "Paid", exact: true }).click();
+  await dialog.getByRole("list", { name: "Paid orders", exact: true }).getByRole("button")
+    .filter({ hasText: paid!.order.title }).click();
+  await expect(page).toHaveURL(/\/admin\/receipt\//);
+  await page.getByRole("button", { name: "New sale", exact: true }).click();
+  await orders.click();
+  await expect(dialog.getByRole("radio", { name: "Paid", exact: true })).toBeChecked();
+  await dialog.getByRole("radio", { name: "Unpaid", exact: true }).click();
+  await expect(dialog.getByRole("radio", { name: "Unpaid", exact: true })).toBeChecked();
 });

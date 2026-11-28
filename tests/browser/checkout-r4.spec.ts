@@ -52,6 +52,8 @@ for (const width of [390, 1180, 1440]) {
       const form = page.getByRole("form", { name: "Refund", exact: true });
       await expect(form.getByRole("radio", { name: "Half", exact: true })).toHaveCount(0);
       const all = form.getByRole("radio", { name: "All", exact: true });
+      await expect(all).not.toBeChecked();
+      await all.click();
       await expect(all).toBeChecked();
       const amount = form.getByLabel("Amount (฿)", { exact: true });
       await expect(amount).toHaveValue("0.01");
@@ -65,7 +67,7 @@ for (const width of [390, 1180, 1440]) {
       // A saved order may predate recorded changes; offer a compact lazy disclosure.
       await open(page, "?role=cashier");
       await page.getByRole("button", { name: "Orders", exact: true }).click();
-      const description = page.getByText("Open orders on every till. Look up today's receipts by order number.", { exact: true });
+      const description = page.getByText("Open orders on every till. Look up today's receipts by order or receipt number.", { exact: true });
       const lastLineWords = await description.evaluate((element) => {
         const node = element.firstChild!;
         const words = [...node.textContent!.matchAll(/\S+/g)].map((word) => {

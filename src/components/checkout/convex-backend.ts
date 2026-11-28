@@ -5,7 +5,7 @@ import { api } from "convex/_generated/api";
 import type { PaginationResult } from "convex/server";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useStaffAccess } from "@/components/admin/staff-access";
-import { returnArgs, type AdjustTarget, type CheckoutBackend, type CommerceBackend, type CustomerPage, type HistoryAudience, type HistoryEntry, type ReturnsDesk } from "./backend";
+import { returnArgs, type AdjustTarget, type ApprovalQueueStatus, type CheckoutBackend, type CommerceBackend, type CustomerPage, type HistoryAudience, type HistoryEntry, type ReturnsDesk } from "./backend";
 import { cutoverAccess, payDeskCommerce, type PayDeskTransport, withSwapOwner } from "./pay-desk-backend";
 
 const SKIP = "skip" as const;
@@ -295,6 +295,10 @@ export const convexCheckoutBackend: CheckoutBackend = {
   useOrderApprovals: (orderId) => useQuery(api.pos.staffApprovals.forOrder, orderId ? { orderId } : SKIP),
   // One cursor-paged compact list; only the selected request's detail is read (no per-row order or detail reads).
   usePendingApprovals: () => usePaginatedQuery(api.pos.staffApprovals.pendingPage, useStaffAccess().capabilities.approve ? {} : SKIP, { initialNumItems: 20 }),
+  useApprovalQueueStates: (rows) => useQueries(Object.fromEntries(rows.map(row => [row._id, {
+    query: api.pos.staffApprovals.queueStatus, args: { requestId: row._id },
+  }]))) as Record<string, ApprovalQueueStatus | Error | undefined>,
+  useExpiredApprovals: (open) => useQuery(api.pos.staffApprovals.recentExpired, open ? {} : SKIP),
   useApprovalDetail: (requestId) => useQuery(api.pos.staffApprovals.detail, requestId ? { requestId } : SKIP),
   useFindOrder: (orderNumber, receipt) => useQuery(api.pos.orders.findOrderByNumber, orderNumber === null ? SKIP : { orderNumber, receipt }),
   commerce: convexCommerce,

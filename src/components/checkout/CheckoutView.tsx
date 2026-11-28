@@ -46,6 +46,7 @@ type CheckoutViewProps = {
   /** The customer display button; only the admin page has one. */
   displayControl?: ReactNode;
   retail?: boolean;
+  ordersFilterScope?: string;
   preferredRetailBranchId?: Id<"branches">;
 };
 
@@ -63,6 +64,7 @@ function CheckoutContent({
   displayControl,
   retailLabels,
   preferredRetailBranchId,
+  ordersFilterScope,
 }: CheckoutViewProps & { retailLabels?: { products: string; loading: string } }) {
   const { confirmDiscard } = useCheckoutDraft();
   const { discountNotice, setDiscountNotice } = useCheckoutDiscountNotice();
@@ -237,7 +239,7 @@ function CheckoutContent({
     <div inert={sheetOpen && keepHeader} className={cn("relative isolate flex min-h-0 flex-1 flex-col overflow-y-auto bg-background", TOUCH_TARGETS)}>
       {discountNotice && discountNotice.orderId !== orderId ? <DiscountNoticeTarget orderId={discountNotice.orderId} /> : null}
       <Backdrop src={catalog?.rooms.find((room) => room.imageUrl)?.imageUrl} />
-      <OrderStrip view={missing ? null : view} title={title} run={run} onOrderChange={changeOrder} canStartNew={orderId !== null || Boolean(notice)} displayControl={displayControl} />
+      <OrderStrip key={ordersFilterScope} ordersFilterScope={ordersFilterScope} view={missing ? null : view} title={title} run={run} onOrderChange={changeOrder} canStartNew={orderId !== null || Boolean(notice)} displayControl={displayControl} />
       {message ? alert(message) : null}
       {narrow && !sheetOpen ? discountAlert : null}
       <div className="flex min-h-0 flex-1">

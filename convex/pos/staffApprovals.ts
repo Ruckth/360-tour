@@ -8,7 +8,7 @@ import { appendRecordHistory, cashierRules } from '../settings/model';
 import {
   adjustmentApprovalDetail, approvalPageWindow, canReviewApproval, checkoutApprovalDetail, effectiveRequestStatus, isCheckoutApproval, isOwnApproval,
   orderFingerprint, ownApprovalStatus, pendingReturnSummary, readApprovalDocument, requesterFingerprint, returnApprovalDetail, rulesFingerprint,
-  type ApprovalRequest, type CheckoutApprovalRequest,
+  type ApprovalRequest, type CheckoutApprovalRequest, verifiedQueueStatus,
 } from './private/staffApprovalState';
 import { APPROVAL_TTL_MS, approvalPayload } from '../shared/staffTypes';
 import { executeStaffApproval, previewStaffApproval } from './private/approvalModel';
@@ -66,7 +66,7 @@ export const create = staffMutation({
   const requester = await requesterFingerprint(ctx, actor.tokenIdentifier);
   const createdAt = Date.now();
   const requestId = await ctx.db.insert('staffApprovalRequests', {
-    orderId: order._id, orderNumber: order.orderNumber, stockBranchId: order.stockBranchId, ...('lineId' in args.payload ? { lineId: args.payload.lineId } : {}), kind: args.payload.kind, payload: args.payload, reason,
+    orderId: order._id, orderNumberAtRequest: order.orderNumber, stockBranchId: order.stockBranchId, ...('lineId' in args.payload ? { lineId: args.payload.lineId } : {}), kind: args.payload.kind, payload: args.payload, reason,
     requesterEmail: actor.email, requesterTokenIdentifier: actor.tokenIdentifier, requesterAccessFingerprint: requester.fingerprint,
     orderFingerprint: await orderFingerprint(ctx, order._id, args.payload), orderRevision: order.revision, rulesRevision: rules.revision, rulesFingerprint: rulesFingerprint(rules),
     status: 'pending', createdAt, expiresAt: createdAt + APPROVAL_TTL_MS, ...preview,
@@ -212,7 +212,7 @@ function queueRow(request: ApprovalRequest, actionable: boolean) {
   }
   const label = request.payload.kind === 'customPrice' && request.payload.action === 'addCustomItem'
     ? request.payload.name.slice(0, 160) : kind;
-  return { ...common, kind, orderId, lineId, label, orderTitle: request.orderNumber === undefined ? undefined : orderTitle(request.orderNumber), summary: { amount, percent } };
+  return { ...common, kind, orderId, lineId, label, orderTitle: request.orderNumberAtRequest === undefined ? undefined : orderTitle(request.orderNumberAtRequest), summary: { amount, percent } };
 }
 
 async function queueRows(ctx: QueryCtx, requests: ApprovalRequest[]) {
@@ -247,6 +247,36 @@ export const pendingPage = staffQuery({
       continueCursor: window.wrap(result.continueCursor),
       ...(result.splitCursor ? { splitCursor: window.wrap(result.splitCursor) } : {}),
     };
+  },
+});
+
+/** Independent subscriptions keep each revision check within the existing detail read budget. */
+export const queueStatus = staffQuery({
+  capability: 'approve', args: { requestId: v.id('staffApprovalRequests') }, handler: async (ctx, { requestId }) => {
+    const request = await readApprovalDocument(ctx, () => ctx.db.get(requestId));
+    if (!request || !canReviewApproval(ctx.staff, request) || !canAccessApprovalBranch(ctx.staff, request)) return null;
+    return await verifiedQueueStatus(ctx, ctx.staff, request);
+  },
+});
+
+/** Newest expired requests. Includes records whose scheduled expiry has not committed yet. */
+export const recentExpired = staffQuery({
+  capability: 'approve', args: {}, handler: async (ctx) => {
+    const now = Date.now();
+    const budget = readBudget(ctx);
+    const candidates = await Promise.all((['expired', 'pending'] as const).map(async status => {
+      budget.range();
+      const rows = await ctx.db.query('staffApprovalRequests')
+        .withIndex('by_status_and_expiresAt', q => q.eq('status', status).lte('expiresAt', now))
+        .order('desc').take(APPROVAL_PAGE_SIZE);
+      for (const row of rows) budget.document(row);
+      budget.assert();
+      return rows;
+    }));
+    return candidates.flat()
+      .filter(request => canReviewApproval(ctx.staff, request) && canAccessApprovalBranch(ctx.staff, request))
+      .sort((a, b) => b.expiresAt - a.expiresAt).slice(0, APPROVAL_PAGE_SIZE)
+      .map(request => ({ ...queueRow(request, false), status: 'expired' as const }));
   },
 });
 
