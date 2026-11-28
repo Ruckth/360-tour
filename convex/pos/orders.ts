@@ -515,6 +515,7 @@ export const appointmentFees = staffQuery({
 async function orderListRow(ctx: QueryCtx, order: Doc<"orders">) {
 		const sources = await orderSourceRefs(ctx, order, await sourceRows(ctx, order._id));
 			const refundAmounts: { refundedAmountSatang?: number } = { refundedAmountSatang: order.returnedTotal ?? await orderRefundTotal(ctx, order._id) };
+		const paymentTime: { paidAt?: number } = order.paidAt === undefined ? {} : { paidAt: order.paidAt };
 			return {
 				_id: order._id,
 				orderNumber: order.orderNumber,
@@ -526,7 +527,7 @@ async function orderListRow(ctx: QueryCtx, order: Doc<"orders">) {
 				due: await remaining(ctx, order),
 				currency: order.currency,
 				updatedAt: order.updatedAt,
-				paidAt: order.paidAt,
+				...paymentTime,
 				receiptNumber: order.receiptNumber,
 				customerName: await customerName(ctx, order),
 				/** The order's booking, as in its header (see orderSourceRefs). */
