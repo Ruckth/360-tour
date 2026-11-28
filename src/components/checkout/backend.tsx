@@ -113,7 +113,7 @@ export type CheckoutBackend = {
   /** The selected request's detail (staffApprovals.detail); the panel reads one at a time. */
   useApprovalDetail(requestId: ApprovalId | null): ApprovalDetail | null | undefined;
   /** An order by its number (pos.findOrderByNumber): null when there is none or this role can't open it. */
-  useFindOrder(orderNumber: number | null): OrderId | null | undefined;
+  useFindOrder(orderNumber: number | null, receipt?: boolean): OrderId | null | undefined;
   useActions(): CheckoutActions;
   /** Products, vouchers, packages, attempts, returns and edits. Absent: every sale switch is Off (useCommerce). */
   commerce?: CommerceBackend;

@@ -44,6 +44,17 @@ describe('checkout open orders', () => {
 		}
 	});
 
+	it('resolves the receipt namespace using the same visibility rules as order numbers', async () => {
+		const { cashier, owner, order } = await setup();
+		const open = await order();
+		const paid = await order({ status: 'paid', receiptNumber: 1, paidAt: Date.now(), due: 0 });
+		const old = await order({ status: 'paid', receiptNumber: 2, paidAt: now, due: 0 });
+		expect(await cashier.query(api.pos.orders.findOrderByNumber, { orderNumber: 1 })).toBe(open);
+		expect(await cashier.query(api.pos.orders.findOrderByNumber, { orderNumber: 1, receipt: true })).toBe(paid);
+		expect(await cashier.query(api.pos.orders.findOrderByNumber, { orderNumber: 2, receipt: true })).toBeNull();
+		expect(await owner.query(api.pos.orders.findOrderByNumber, { orderNumber: 2, receipt: true })).toBe(old);
+	});
+
 	it('excludes empty, paid, void and discarded orders even when the cashier can read today’s receipts', async () => {
 		const { cashier, order } = await setup();
 		const open = await order();

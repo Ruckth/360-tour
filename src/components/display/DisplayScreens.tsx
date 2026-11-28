@@ -162,13 +162,32 @@ function Order({ order }: { order: OrderState }) {
   const money = (amount: number) => formatMoney(amount, order.currency);
   const newest = useRef<HTMLLIElement>(null);
   const count = order.lines.length;
+  const viewport = useRef<HTMLDivElement>(null);
+  const list = useRef<HTMLOListElement>(null);
+  const [overflow, setOverflow] = useState({ above: false, below: false });
+  useEffect(() => {
+    const element = viewport.current;
+    if (!element || !list.current) return;
+    const measure = () => setOverflow({
+      above: element.scrollTop > 1,
+      below: element.scrollHeight - element.clientHeight - element.scrollTop > 1,
+    });
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    observer?.observe(element);
+    observer?.observe(list.current);
+    element.addEventListener("scroll", measure, { passive: true });
+    return () => {
+      observer?.disconnect();
+      element.removeEventListener("scroll", measure);
+    };
+  }, []);
   // The coupon has its own row; "Discounts" is what staff took off.
   const coupon = order.coupon && order.coupon.saving > 0 ? order.coupon : null;
   const staffDiscount = order.discount - (coupon?.saving ?? 0);
 
   // Also on switching orders: another order with the same line count can have taller rows.
   useEffect(() => {
-    newest.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    newest.current?.scrollIntoView({ block: "nearest", behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
   }, [count, order.orderNumber]);
 
   return (
@@ -182,8 +201,10 @@ function Order({ order }: { order: OrderState }) {
       </header>
 
       <div className="grid min-h-0 flex-1 gap-[3vw] px-[5vw] pb-[5vh] portrait:grid-rows-[minmax(0,1fr)_auto] landscape:grid-cols-[minmax(0,1fr)_minmax(22rem,36%)] landscape:grid-rows-[minmax(0,1fr)]">
-        <section className="min-h-0 overflow-y-auto overscroll-contain [scrollbar-width:none]">
-          <ol className="flex flex-col gap-1.5">
+        <section className="flex min-h-0 flex-col gap-2">
+          <p className="shrink-0 text-sm text-muted-foreground">{count} {count === 1 ? "item" : "items"}{overflow.above ? " · ↑ More above" : ""}{overflow.below ? " · ↓ More below" : ""}</p>
+          <div ref={viewport} className="min-h-0 overflow-y-auto overscroll-contain">
+          <ol ref={list} className="flex flex-col gap-1.5">
             {order.lines.map((line, index) => {
               const isNewest = index === count - 1;
               const notes = [
@@ -217,6 +238,7 @@ function Order({ order }: { order: OrderState }) {
               );
             })}
           </ol>
+          </div>
         </section>
 
         <aside className="flex flex-col justify-end landscape:self-end">

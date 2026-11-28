@@ -32,14 +32,15 @@ for (const width of [390, 1180, 1440]) {
           expect(box.textHeight).toBeLessThan(25);
         }
       }
-      const submit = form.getByRole("button", { name: "Pick a reason", exact: true });
+      const submit = form.getByRole("button", { name: "Choose an amount", exact: true });
       expect((await submit.boundingBox())!.height).toBeGreaterThanOrEqual(48);
       await form.getByRole("radio", { name: "Wrong charge", exact: true }).click();
-      await expect(form.getByRole("button", { name: "Record refund ฿600", exact: true })).toBeEnabled();
-      // Re-selecting All after typing the full amount restores its live remaining-amount default.
-      await form.getByLabel("Amount (฿)", { exact: true }).fill("600");
       await form.getByRole("radio", { name: "All", exact: true }).click();
+      await expect(form.getByRole("button", { name: "Record refund ฿600", exact: true })).toBeEnabled();
+      // The amount remains on screen when another till updates the cap.
       await page.evaluate(async () => { await window.fixture.refundFromAnotherTill("Foot spa 45", 10_000); await window.fixture.setRole("manager"); });
+      await expect(form.getByLabel("Amount (฿)", { exact: true })).toHaveValue("600");
+      await form.getByRole("button", { name: "Use remaining amount" }).click();
       await expect(form.getByLabel("Amount (฿)", { exact: true })).toHaveValue("500");
       await expect(form.getByRole("button", { name: "Record refund ฿500", exact: true })).toBeEnabled();
     });

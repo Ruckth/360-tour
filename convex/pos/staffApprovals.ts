@@ -7,13 +7,14 @@ import { readBudget, reserveWrites } from '../lib/readBudget';
 import { appendRecordHistory, cashierRules } from '../settings/model';
 import {
   adjustmentApprovalDetail, approvalPageWindow, canReviewApproval, checkoutApprovalDetail, effectiveRequestStatus, isCheckoutApproval, isOwnApproval,
-  orderFingerprint, ownApprovalStatus, readApprovalDocument, requesterFingerprint, returnApprovalDetail, rulesFingerprint,
+  orderFingerprint, ownApprovalStatus, pendingReturnSummary, readApprovalDocument, requesterFingerprint, returnApprovalDetail, rulesFingerprint,
   type ApprovalRequest, type CheckoutApprovalRequest,
 } from './private/staffApprovalState';
 import { APPROVAL_TTL_MS, approvalPayload } from '../shared/staffTypes';
 import { executeStaffApproval, previewStaffApproval } from './private/approvalModel';
 import { checkoutApprovalKind } from './validators';
 import { assertReceiptCorrectionSupported, openOrderReturn, readOrderProjection } from './private/orderLifecycle';
+import { orderTitle } from '../shared/orderMath';
 import { resortTodayIso } from '../shared/time';
 
 function cleanReason(reason: string) {
@@ -65,7 +66,7 @@ export const create = staffMutation({
   const requester = await requesterFingerprint(ctx, actor.tokenIdentifier);
   const createdAt = Date.now();
   const requestId = await ctx.db.insert('staffApprovalRequests', {
-    orderId: order._id, stockBranchId: order.stockBranchId, ...('lineId' in args.payload ? { lineId: args.payload.lineId } : {}), kind: args.payload.kind, payload: args.payload, reason,
+    orderId: order._id, orderNumber: order.orderNumber, stockBranchId: order.stockBranchId, ...('lineId' in args.payload ? { lineId: args.payload.lineId } : {}), kind: args.payload.kind, payload: args.payload, reason,
     requesterEmail: actor.email, requesterTokenIdentifier: actor.tokenIdentifier, requesterAccessFingerprint: requester.fingerprint,
     orderFingerprint: await orderFingerprint(ctx, order._id, args.payload), orderRevision: order.revision, rulesRevision: rules.revision, rulesFingerprint: rulesFingerprint(rules),
     status: 'pending', createdAt, expiresAt: createdAt + APPROVAL_TTL_MS, ...preview,
@@ -211,7 +212,7 @@ function queueRow(request: ApprovalRequest, actionable: boolean) {
   }
   const label = request.payload.kind === 'customPrice' && request.payload.action === 'addCustomItem'
     ? request.payload.name.slice(0, 160) : kind;
-  return { ...common, kind, orderId, lineId, label, summary: { amount, percent } };
+  return { ...common, kind, orderId, lineId, label, orderTitle: request.orderNumber === undefined ? undefined : orderTitle(request.orderNumber), summary: { amount, percent } };
 }
 
 async function queueRows(ctx: QueryCtx, requests: ApprovalRequest[]) {
@@ -284,8 +285,10 @@ export const myStatus = staffQuery({
     const request = await readApprovalDocument(ctx, () => ctx.db.get(requestId));
     if (!request || request.requesterTokenIdentifier !== ctx.staff.tokenIdentifier ||
         !canAccessApprovalBranch(ctx.staff, request)) return null;
+    const status = await ownApprovalStatus(ctx, ctx.staff, request);
     return {
-      requestId, kind: request.kind, status: await ownApprovalStatus(ctx, ctx.staff, request),
+      requestId, kind: request.kind, status,
+      ...(request.kind === "returnItems" && status === "pending" ? { summary: pendingReturnSummary(ctx, request) } : {}),
       expiresAt: request.expiresAt, resolvedAt: request.resolvedAt, resolutionReason: request.resolutionReason,
     };
   },

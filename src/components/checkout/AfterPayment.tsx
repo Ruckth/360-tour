@@ -172,7 +172,8 @@ function LinkDialog({ view, line, target, onClose }: { view: OrderView; line: Or
                 <li key={candidate.id} className="flex flex-wrap items-start justify-between gap-2 rounded-lg border border-border p-3 text-sm" data-testid="link-candidate">
                   <span className="min-w-0 flex-1">
                     <span className="block font-medium">{candidate.name}</span>
-                    <span className="block text-xs text-muted-foreground">{candidate.detail} · {candidate.guestName} · {candidate.kind === "booking" ? `owes ${formatMoney(candidate.owed)}` : formatMoney(candidate.price)}</span>
+                    {candidate.reference ? <span className="block text-xs font-medium">Confirmation code {candidate.reference}</span> : null}
+                    <span className="block text-xs text-muted-foreground">{candidate.reference && candidate.detail.endsWith(` · ${candidate.reference}`) ? candidate.detail.slice(0, -(candidate.reference.length + 3)) : candidate.detail} · {candidate.guestName} · {candidate.kind === "booking" ? `owes ${formatMoney(candidate.owed)}` : formatMoney(candidate.price)}</span>
                     {candidate.problem ? <span className="block text-xs text-amber-800 dark:text-amber-300">{candidate.problem}</span> : null}
                   </span>
                   <Button size="sm" variant="outline" disabled={Boolean(candidate.problem)} onClick={() => { setChosen(candidate); setSelectionEdited(true); }}>

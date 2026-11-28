@@ -18,9 +18,7 @@ import { returnRefusal } from "./returnable-parts";
 import { MovedToReturns } from "./ReturnItemsEntry";
 
 /**
- * The inline refund form under one paid receipt line. It opens ready to send: the amount is what is
- * left (All), the method is the original tender, and a reason chip finishes it, so a refund takes no
- * typing. Owners and managers record it (pos.refundLine); a cashier whose rules keep refunds for
+ * Staff choose the amount and reason. Owners and managers record it; a cashier whose rules keep refunds for
  * managers sends the same refund as a request (staffApprovals.create). One attempt key per opened
  * form, reused by every retry, so a lost response never records the refund twice.
  */
@@ -50,9 +48,9 @@ export function RefundForm({ view, line, waiting, onDone, onCancel, onDraftChang
   const cap = Math.min(uncertain ? Number.POSITIVE_INFINITY : left, serverCap ?? Number.POSITIVE_INFINITY);
   const all = Math.max(0, Number.isFinite(cap) ? cap : left);
   const half = Math.round(all / 2);
-  // Until staff pick Half or type, the amount follows what is left, so another till's refund lowers it.
+  // Preserve the chosen amount as remaining balance updates.
   const [typed, setTyped] = useState<string | null>(null);
-  const amount = typed ?? satangInput(all);
+  const amount = typed ?? "";
   const setAmount = setTyped;
   const [method, setMethod] = useState<RefundMethod>(() => defaultRefundMethod(view));
   const [reason, setReason] = useState("");
@@ -128,7 +126,6 @@ export function RefundForm({ view, line, waiting, onDone, onCancel, onDraftChang
       const remaining = remainingFromError(err);
       if (remaining !== null) {
         setServerCap(remaining);
-        if (remaining > 0) setAmount(satangInput(remaining));
       }
       setError(checkoutErrorText(err, ask ? "Couldn’t send the request. Try again." : "Couldn’t record the refund. Try again."));
     } finally {
@@ -167,8 +164,8 @@ export function RefundForm({ view, line, waiting, onDone, onCancel, onDraftChang
       </div>
       <div className="grid gap-2">
         <div role="group" aria-label="Refund amount" className="grid grid-cols-[minmax(0,1fr)_6rem] items-center gap-2">
-          <ToggleGroup variant="segmented" tone="subtle" value={chosen ?? ""} onValueChange={(value) => setAmount(value === "all" ? null : satangInput(half))} aria-label="Amount presets" disabled={saving || uncertain}>
-            <ToggleGroupItem value="all" disabled={all <= 0} onClick={() => setAmount(null)} className="disabled:opacity-45">All</ToggleGroupItem>
+          <ToggleGroup variant="segmented" tone="subtle" value={chosen ?? ""} onValueChange={(value) => { if (value) setAmount(satangInput(value === "all" ? all : half)); }} aria-label="Amount presets" disabled={saving || uncertain}>
+            <ToggleGroupItem value="all" disabled={all <= 0} className="disabled:opacity-45">All</ToggleGroupItem>
             {half > 0 && half < all ? <ToggleGroupItem value="half" className="disabled:opacity-45">Half</ToggleGroupItem> : null}
           </ToggleGroup>
           <Label htmlFor={`${id}-amount`} className="sr-only">Amount (฿)</Label>
@@ -189,6 +186,7 @@ export function RefundForm({ view, line, waiting, onDone, onCancel, onDraftChang
             />
           </div>
         </div>
+        {satang !== null && satang > cap && all > 0 && !uncertain ? <Button type="button" variant="outline" disabled={saving} onClick={() => setAmount(satangInput(all))}>Use remaining amount</Button> : null}
         <p id={`${id}-amount-hint`} className={cn("text-xs", amountProblem ? "text-destructive" : "sr-only")}>
           {amountProblem ?? (cap === Number.POSITIVE_INFINITY ? "" : cap > 0 ? `Up to ${satangMoney(cap, line.currency)}` : "Nothing left to refund.")}
         </p>
@@ -219,7 +217,7 @@ export function RefundForm({ view, line, waiting, onDone, onCancel, onDraftChang
         <Button type="button" variant="ghost" className="h-11" disabled={saving} onClick={onCancel}>Cancel</Button>
         <Button type="submit" variant="outline" className="h-auto min-h-12 w-full whitespace-normal text-[15px] border-destructive/50 text-destructive hover:bg-destructive/5 hover:text-destructive disabled:opacity-100 disabled:border-border disabled:text-muted-foreground" disabled={!ready || saving}>
           {saving ? <Spinner label={ask ? "Sending" : "Recording"} className="text-current" /> : null}
-          {uncertain ? "Retry same refund" : !reason.trim() ? "Pick a reason" : refundButtonLabel(ask, satang !== null && satang <= cap ? satangMoney(satang, line.currency) : null)}
+          {uncertain ? "Retry same refund" : !amount ? "Choose an amount" : !reason.trim() ? "Pick a reason" : refundButtonLabel(ask, satang !== null && satang <= cap ? satangMoney(satang, line.currency) : null)}
         </Button>
       </div>
     </form>

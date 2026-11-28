@@ -321,6 +321,20 @@ function parseReturnReview(ctx: ReadCtx, request: ReturnRequest) {
   return value;
 }
 
+export function pendingReturnSummary(ctx: ReadCtx, request: ReturnRequest) {
+  const review = parseReturnReview(ctx, request);
+  return {
+    parts: request.payload.parts.slice(0, MAX_RETURN_PARTS).map(part => ({
+      lineId: part.lineId,
+      label: review?.rows.find(row => row.lineId === part.lineId)?.label,
+      kind: part.kind,
+      contentKey: 'contentKey' in part ? part.contentKey : undefined,
+      units: 'units' in part ? part.units : 1,
+    })),
+    payouts: request.payoutSummary,
+  };
+}
+
 export async function returnApprovalDetail(ctx: ReadCtx, accessReads: number, request: ReturnRequest, includeTarget: boolean) {
   const baseStatus = pendingStatus(request);
   let authorityCurrent = true;

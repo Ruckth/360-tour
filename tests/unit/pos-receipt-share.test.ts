@@ -85,16 +85,32 @@ describe("receipt share and print", () => {
     expect(status()).toBe("Receipt copied.");
   });
 
+  it("offers the same receipt text for manual copying when both methods fail", async () => {
+    const share = vi.fn().mockRejectedValueOnce(new Error("NotAllowedError")).mockResolvedValueOnce(undefined);
+    Object.defineProperty(navigator, "share", { configurable: true, value: share });
+    writeText.mockRejectedValueOnce(new Error("Clipboard unavailable"));
+    await paidReceipt();
+    await pickReceiptAction("Share");
+    const text = document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Receipt text"]');
+    expect(text?.readOnly).toBe(true);
+    expect(text?.value).toBe(writeText.mock.calls[0][0]);
+    expect(text?.value).toBe(share.mock.calls[0][0].text);
+    await pickReceiptAction("Share");
+    expect(document.querySelector('textarea[aria-label="Receipt text"]')).toBeNull();
+  });
+
   it("keeps the paper width in ⋯, remembered on this device, and describes Print for it", async () => {
     window.localStorage.removeItem(RECEIPT_PAPER_KEY);
     await paidReceipt();
     const print = button("Print")!;
+    expect(print.textContent).toContain("80 mm");
     const hint = () => document.getElementById(print.getAttribute("aria-describedby")!)!;
     expect(hint().textContent).toBe("Prints 80 mm wide, as long as the receipt.");
     expect(hint().className).toContain("sr-only");
     expect(document.querySelector("details summary")?.textContent).not.toBe("Printing tips");
     await pickReceiptAction("Use 58 mm paper");
     expect(hint().textContent).toBe("Prints 58 mm wide, as long as the receipt.");
+    expect(print.textContent).toContain("58 mm");
     expect(window.localStorage.getItem(RECEIPT_PAPER_KEY)).toBe("58");
     expect(status()).toBe("Prints on 58 mm paper · remembered on this device");
     // The next receipt on this device starts at 58 mm.

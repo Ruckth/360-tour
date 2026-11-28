@@ -21,7 +21,7 @@ export const restoreOrder = staffMutation({
 		const admin = ctx.staff;
 		const key = attemptKey(args.idempotencyKey);
 		const order = await ctx.db.get(args.orderId);
-		if (!order || !canAccessCheckoutOrderBranch(admin, order)) throw new ConvexError('Order not found');
+		if (!admin.capabilities.orders || !order || !canAccessCheckoutOrderBranch(admin, order)) throw new ConvexError('Order not found');
 		if (order.status !== 'discarded') {
 			if (isOpenOrder(order) && order.lifecycleKey === key) return { replayed: true, removed: [], warnings: [] };
 			throw new ConvexError(isOpenOrder(order) ? 'This order is not discarded.' : order.status === 'paid' ? 'This order is already paid' : 'This order was voided');
