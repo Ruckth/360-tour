@@ -243,7 +243,8 @@
     "notConfirmedCopy": "Мы не смогли подтвердить оплаченное бронирование по этой ссылке.",
     "reference": "Референс: {reference}",
     "returnHome": "На главную",
-    "exploreMoreVillas": "Смотреть другие виллы"
+    "exploreMoreVillas": "Смотреть другие виллы",
+    "stepCompleted": "Готово:"
   },
   "Coupon": {
     "haveCode": "Есть промокод?",
@@ -379,7 +380,11 @@
     "suggestionCancellation": "Какие условия отмены?",
     "suggestionAirport": "Можно организовать встречу в аэропорту?",
     "suggestionAmenitiesIncluded": "Что включено в виллу?",
-    "suggestionLocation": "Насколько близко пляж и рестораны?"
+    "suggestionLocation": "Насколько близко пляж и рестораны?",
+    "restartConfirmTitle": "Начать разговор заново?",
+    "restartConfirmBody": "Ваши сообщения и неотправленный текст будут удалены.",
+    "restartKeep": "Продолжить чат",
+    "restartConfirm": "Начать новый чат"
   },
   "Footer": {
     "bookDirect": "Бронировать напрямую",
@@ -737,7 +742,8 @@
     "next": "Следующие услуги",
     "first": "На первую страницу",
     "moreCategories": "Другие категории",
-    "draft": "Меня интересует {name}. Помогите выбрать дату и время."
+    "draft": "Меня интересует {name}. Помогите выбрать дату и время.",
+    "showAll": "Показать все услуги"
   },
   "Consent": {
     "label": "Настройки статистики",

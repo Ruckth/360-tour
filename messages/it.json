@@ -243,7 +243,8 @@
     "notConfirmedCopy": "Non siamo riusciti a verificare una prenotazione pagata da questo link.",
     "reference": "Riferimento: {reference}",
     "returnHome": "Torna alla home",
-    "exploreMoreVillas": "Esplora altre ville"
+    "exploreMoreVillas": "Esplora altre ville",
+    "stepCompleted": "Completato:"
   },
   "Coupon": {
     "haveCode": "Hai un codice?",
@@ -379,7 +380,11 @@
     "suggestionCancellation": "Qual è la politica di cancellazione?",
     "suggestionAirport": "Potete aiutare con il transfer dall’aeroporto?",
     "suggestionAmenitiesIncluded": "Cosa è incluso nella villa?",
-    "suggestionLocation": "Quanto sono vicini spiaggia e ristoranti?"
+    "suggestionLocation": "Quanto sono vicini spiaggia e ristoranti?",
+    "restartConfirmTitle": "Ricominciare questa conversazione?",
+    "restartConfirmBody": "I tuoi messaggi e il testo non inviato verranno cancellati.",
+    "restartKeep": "Continua a chattare",
+    "restartConfirm": "Inizia una nuova chat"
   },
   "Footer": {
     "bookDirect": "Prenota diretto",
@@ -737,7 +742,8 @@
     "next": "Servizi successivi",
     "first": "Prima pagina",
     "moreCategories": "Altre categorie",
-    "draft": "Mi interessa {name}. Aiutatemi a scegliere una data e un orario."
+    "draft": "Mi interessa {name}. Aiutatemi a scegliere una data e un orario.",
+    "showAll": "Mostra tutti i servizi"
   },
   "Consent": {
     "label": "Scelta sulla misurazione",

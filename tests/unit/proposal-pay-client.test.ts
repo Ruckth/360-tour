@@ -103,6 +103,16 @@ it("shows a localized expired summary without a confirmation button", async () =
   expect(document.body.textContent).toContain(th.Booking.summaryExpired);
   expect(document.querySelector("button")).toBeNull();
   expect(client.mutation).not.toHaveBeenCalled();
+  // G34: one localized chat action, with no proposal token in its URL.
+  const chat = [...document.querySelectorAll("a")].filter((a) => a.textContent === th.Chat.open);
+  expect(chat).toHaveLength(1);
+  expect(chat[0].getAttribute("href")).toBe("/th/chat");
+});
+it("G34: an unverifiable proposal keeps the booking fallback without the expired chat action", async () => {
+  client.query.mockRejectedValue(new Error("network"));
+  await render();
+  expect(document.body.textContent).toContain(en.Booking.liveVerificationUnavailable);
+  expect([...document.querySelectorAll("a")].map((a) => a.textContent)).toEqual([en.Booking.backToBooking]);
 });
 it("handles a summary expiring between opening and pressing confirm", async () => {
   client.mutation.mockRejectedValue(
@@ -113,4 +123,5 @@ it("handles a summary expiring between opening and pressing confirm", async () =
   expect(document.body.textContent).toContain(en.Booking.summaryExpired);
   expect(document.querySelector("button")).toBeNull();
   expect(client.action).not.toHaveBeenCalled();
+  expect([...document.querySelectorAll("a")].find((a) => a.textContent === en.Chat.open)?.getAttribute("href")).toBe("/chat");
 });

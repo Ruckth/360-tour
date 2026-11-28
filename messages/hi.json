@@ -243,7 +243,8 @@
     "notConfirmedCopy": "हम इस लिंक से भुगतान की गई बुकिंग सत्यापित नहीं कर सके।",
     "reference": "संदर्भ: {reference}",
     "returnHome": "होम पर लौटें",
-    "exploreMoreVillas": "और विला देखें"
+    "exploreMoreVillas": "और विला देखें",
+    "stepCompleted": "पूर्ण:"
   },
   "Coupon": {
     "haveCode": "क्या आपके पास कोड है?",
@@ -379,7 +380,11 @@
     "suggestionCancellation": "कैंसलेशन पॉलिसी क्या है?",
     "suggestionAirport": "क्या एयरपोर्ट पिकअप में मदद मिलेगी?",
     "suggestionAmenitiesIncluded": "विला में क्या-क्या शामिल है?",
-    "suggestionLocation": "बीच और रेस्टोरेंट कितने पास हैं?"
+    "suggestionLocation": "बीच और रेस्टोरेंट कितने पास हैं?",
+    "restartConfirmTitle": "क्या यह बातचीत फिर से शुरू करें?",
+    "restartConfirmBody": "आपके संदेश और बिना भेजा गया टेक्स्ट हटा दिया जाएगा।",
+    "restartKeep": "चैट जारी रखें",
+    "restartConfirm": "नई चैट शुरू करें"
   },
   "Footer": {
     "bookDirect": "सीधे बुक करें",
@@ -737,7 +742,8 @@
     "next": "अगली सेवाएँ",
     "first": "पहले पृष्ठ पर जाएँ",
     "moreCategories": "और श्रेणियाँ",
-    "draft": "मुझे {name} में रुचि है। कृपया तारीख और समय चुनने में मदद करें।"
+    "draft": "मुझे {name} में रुचि है। कृपया तारीख और समय चुनने में मदद करें।",
+    "showAll": "सभी सेवाएँ दिखाएँ"
   },
   "Consent": {
     "label": "मापन का विकल्प",

@@ -243,7 +243,8 @@
     "notConfirmedCopy": "เราไม่สามารถตรวจสอบการจองที่ชำระเงินแล้วจากลิงก์นี้ได้",
     "reference": "อ้างอิง: {reference}",
     "returnHome": "กลับหน้าแรก",
-    "exploreMoreVillas": "ดูวิลล่าเพิ่มเติม"
+    "exploreMoreVillas": "ดูวิลล่าเพิ่มเติม",
+    "stepCompleted": "เสร็จแล้ว:"
   },
   "Coupon": {
     "haveCode": "มีโค้ดส่วนลดไหม?",
@@ -379,7 +380,11 @@
     "suggestionCancellation": "ยกเลิกการจองได้อย่างไร?",
     "suggestionAirport": "ช่วยจัดรถรับจากสนามบินได้ไหม?",
     "suggestionAmenitiesIncluded": "ในวิลล่ามีอะไรให้บ้าง?",
-    "suggestionLocation": "ใกล้ชายหาดและร้านอาหารแค่ไหน?"
+    "suggestionLocation": "ใกล้ชายหาดและร้านอาหารแค่ไหน?",
+    "restartConfirmTitle": "เริ่มบทสนทนาใหม่ไหม?",
+    "restartConfirmBody": "ข้อความและข้อความที่ยังไม่ได้ส่งจะถูกล้าง",
+    "restartKeep": "คุยต่อ",
+    "restartConfirm": "เริ่มแชตใหม่"
   },
   "Footer": {
     "bookDirect": "จองตรง",
@@ -737,7 +742,8 @@
     "next": "บริการถัดไป",
     "first": "กลับหน้าแรก",
     "moreCategories": "หมวดหมู่อื่น",
-    "draft": "สนใจบริการ {name} กรุณาช่วยเลือกวันและเวลา"
+    "draft": "สนใจบริการ {name} กรุณาช่วยเลือกวันและเวลา",
+    "showAll": "แสดงบริการทั้งหมด"
   },
   "Consent": {
     "label": "ตัวเลือกการวัดผล",

@@ -243,7 +243,8 @@
     "notConfirmedCopy": "我们无法通过此链接验证已付款预订。",
     "reference": "参考：{reference}",
     "returnHome": "返回首页",
-    "exploreMoreVillas": "探索更多别墅"
+    "exploreMoreVillas": "探索更多别墅",
+    "stepCompleted": "已完成："
   },
   "Coupon": {
     "haveCode": "有优惠码吗？",
@@ -379,7 +380,11 @@
     "suggestionCancellation": "取消政策是什么？",
     "suggestionAirport": "可以安排机场接送吗？",
     "suggestionAmenitiesIncluded": "别墅包含哪些设施？",
-    "suggestionLocation": "离海滩和餐厅有多近？"
+    "suggestionLocation": "离海滩和餐厅有多近？",
+    "restartConfirmTitle": "要重新开始这段对话吗？",
+    "restartConfirmBody": "您的消息和未发送的文字将被清除。",
+    "restartKeep": "继续聊天",
+    "restartConfirm": "开始新聊天"
   },
   "Footer": {
     "bookDirect": "直接预订",
@@ -737,7 +742,8 @@
     "next": "下一页服务",
     "first": "返回首页",
     "moreCategories": "更多类别",
-    "draft": "我对{name}感兴趣，请帮我选择日期和时间。"
+    "draft": "我对{name}感兴趣，请帮我选择日期和时间。",
+    "showAll": "显示全部服务"
   },
   "Consent": {
     "label": "统计选项",

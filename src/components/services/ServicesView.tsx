@@ -109,12 +109,20 @@ export function ServicesView({
           {t.unavailable}
         </p>
       ) : result.page.length === 0 ? (
-        <p
-          role="status"
-          className="mt-10 rounded-lg border border-border p-6 text-muted-foreground"
-        >
-          {t.empty}
-        </p>
+        <div className="mt-10 rounded-lg border border-border p-6">
+          <p role="status" className="text-muted-foreground">
+            {t.empty}
+          </p>
+          {(category || query) && (
+            <ButtonLink
+              href={localizeHref("/services", locale)}
+              variant="outline"
+              className="mt-4"
+            >
+              {t.showAll}
+            </ButtonLink>
+          )}
+        </div>
       ) : (
         <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {result.page.map((service) => (

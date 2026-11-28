@@ -57,6 +57,8 @@ test("restart chat starts a new persisted session", async ({ page }) => {
 
   await expect(page.getByText("Cached restart question")).toBeVisible();
   await page.getByRole("button", { name: /Restart chat/i }).click();
+  // G22: a non-empty conversation asks before it is discarded.
+  await page.getByRole("button", { name: "Start a new chat", exact: true }).click();
   const messages = page.getByTestId("chat-messages");
 
   await expect(page.getByText("Cached restart question")).toHaveCount(0);

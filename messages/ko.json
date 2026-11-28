@@ -243,7 +243,8 @@
     "notConfirmedCopy": "이 링크에서 결제 완료 예약을 확인할 수 없습니다.",
     "reference": "참조: {reference}",
     "returnHome": "홈으로 돌아가기",
-    "exploreMoreVillas": "더 많은 빌라 보기"
+    "exploreMoreVillas": "더 많은 빌라 보기",
+    "stepCompleted": "완료:"
   },
   "Coupon": {
     "haveCode": "코드가 있으신가요?",
@@ -379,7 +380,11 @@
     "suggestionCancellation": "취소 정책은 어떻게 되나요?",
     "suggestionAirport": "공항 픽업을 도와줄 수 있나요?",
     "suggestionAmenitiesIncluded": "빌라에는 무엇이 포함되나요?",
-    "suggestionLocation": "해변과 레스토랑에서 얼마나 가까운가요?"
+    "suggestionLocation": "해변과 레스토랑에서 얼마나 가까운가요?",
+    "restartConfirmTitle": "이 대화를 다시 시작할까요?",
+    "restartConfirmBody": "메시지와 보내지 않은 텍스트가 지워집니다.",
+    "restartKeep": "계속 대화하기",
+    "restartConfirm": "새 채팅 시작"
   },
   "Footer": {
     "bookDirect": "직접 예약",
@@ -737,7 +742,8 @@
     "next": "다음 서비스",
     "first": "첫 페이지로",
     "moreCategories": "카테고리 더 보기",
-    "draft": "{name} 서비스에 관심이 있어요. 날짜와 시간을 정하고 싶어요."
+    "draft": "{name} 서비스에 관심이 있어요. 날짜와 시간을 정하고 싶어요.",
+    "showAll": "모든 서비스 보기"
   },
   "Consent": {
     "label": "측정 선택",
