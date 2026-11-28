@@ -563,3 +563,19 @@ test.describe("phone agenda touch scrolling", () => {
     await expect(page.locator('[data-slot="event-calendar-event"]').first()).toHaveCSS("touch-action", "pan-y");
   });
 });
+
+
+test("a phone opens a linked resort stay with a secondary working branch, and denies it without resort access", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(() => {
+    sessionStorage.setItem("admin:branch:ploy@auraliscove.co", "phuket");
+    localStorage.setItem("admin.hotel.villa:resort", "fxvilla000002");
+  });
+  const link = "/tests/browser/booking-desk.html?path=/admin/hotel&directResortLink=1&booking=fxbkg000001";
+  await page.goto(link);
+  await expect(page.getByRole("dialog", { name: "Anna Schmidt", exact: true })).toBeVisible({ timeout: 15_000 });
+  await page.goto(link + "&denyResort=1");
+  await expect(page.getByRole("status")).toHaveText("You don’t have access to this resort desk.");
+  await expect(page.getByRole("dialog", { name: "Anna Schmidt" })).toHaveCount(0);
+  expect(await page.evaluate(() => window.desk.stayReads())).toBe(0);
+});

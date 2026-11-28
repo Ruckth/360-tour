@@ -130,7 +130,15 @@ export function useQuery(query: Parameters<typeof getFunctionName>[0], args: unk
   return handler ? handler(args) : fixtureQuery(query, args);
 }
 export function useQueries(requests: Record<string, { query: Parameters<typeof getFunctionName>[0]; args: unknown }>) {
-  return Object.fromEntries(Object.entries(requests).map(([key, { query, args }]) => [key, fixtureQuery(query, args)]));
+  useSyncExternalStore(subscribeStore, readStoreVersion, readStoreVersion);
+  return Object.fromEntries(Object.entries(requests).map(([key, { query, args }]) => {
+    const handler = queryHandlers.get(getFunctionName(query));
+    try {
+      return [key, handler ? handler(args) : fixtureQuery(query, args)];
+    } catch (error) {
+      return [key, error];
+    }
+  }));
 }
 export function useMutation(mutation?: Parameters<typeof getFunctionName>[0]) {
   const handler = mutation ? mutationHandlers.get(getFunctionName(mutation)) : undefined;

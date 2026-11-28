@@ -5,6 +5,9 @@ import { DEFAULT_CASHIER_RULES } from "convex/shared/staffTypes";
 import { IntlProvider } from "@/platform/intl";
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { StartAdminHotelRoute } from "@/start-app/routes/admin.hotel";
+import { AdminBranchProvider } from "@/components/admin/branch/branch-context";
+import { RESORT_BRANCH_KEY } from "convex/shared/resortBranch";
 import { AdminBookingsView } from "@/components/admin/AdminBookingsView";
 import { AdminStaffBookingsView } from "@/components/admin/AdminStaffBookingsView";
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
@@ -50,8 +53,12 @@ const day = (n: number) => addDaysIso(today, n);
 const at = (date: string, time: string) => resortDateTime(date, time);
 const fid = <T extends string>(prefix: string, n: number) => `fx${prefix}${String(n).padStart(6, "0")}` as Id<T & never>;
 
+const directResortLink = params.has("directResortLink");
 const access: StaffAccessView = {
-  email: EMAIL, role: "manager", pendingInvitation: null, companyScope: false, branches: [], marketingInvitation: null, marketingRole: null,
+  email: EMAIL, role: "manager", pendingInvitation: null, companyScope: false, branches: directResortLink ? [
+    { id: "phuket" as Id<"branches">, key: "phuket", slug: "phuket", name: "Phuket", state: "active" },
+    ...params.has("denyResort") ? [] : [{ id: "resort" as Id<"branches">, key: RESORT_BRANCH_KEY, slug: RESORT_BRANCH_KEY, name: "Koh Samui", state: "active" as const }],
+  ] : [], marketingInvitation: null, marketingRole: null,
   cashierRules: DEFAULT_CASHIER_RULES,
   capabilities: {
     checkout: true, approve: true, operations: true, manageTeam: false, settings: false, bookings: true, services: true, customers: true,
@@ -295,13 +302,13 @@ registerFixtureFunctions({
 
 // ---------- Checkout behind the desk ----------
 
-const checkout = await createFixtureBackend({ staff: { role: "manager", email: EMAIL } });
+type DeskCheckout = Awaited<ReturnType<typeof createFixtureBackend>>;
 window.print = () => {
   document.body.dataset.printed = String(Number(document.body.dataset.printed ?? 0) + 1);
 };
 
 type Route = { kind: "desk" } | { kind: "order"; orderId: OrderId | null } | { kind: "receipt"; orderId: OrderId };
-function routeFor(href: string): Route | Promise<Route> {
+function routeFor(href: string, checkout: DeskCheckout): Route | Promise<Route> {
   const url = new URL(href, location.origin);
   if (url.pathname.startsWith("/admin/receipt/")) return { kind: "receipt", orderId: url.pathname.split("/").pop() as OrderId };
   if (!url.pathname.startsWith("/admin/checkout")) return { kind: "desk" };
@@ -317,17 +324,17 @@ function routeFor(href: string): Route | Promise<Route> {
   return { kind: "order", orderId: (order as OrderId | null) ?? null };
 }
 
-function Desk() {
+function Desk({ checkout }: { checkout: DeskCheckout }) {
   const [route, setRoute] = useState<Route>({ kind: "desk" });
   useEffect(() => {
     const go = (event: Event) => {
-      const next = routeFor((event as CustomEvent<string>).detail);
+      const next = routeFor((event as CustomEvent<string>).detail, checkout);
       if (next instanceof Promise) void next.then(setRoute);
       else setRoute(next);
     };
     window.addEventListener("fixture-navigation", go);
     return () => window.removeEventListener("fixture-navigation", go);
-  }, []);
+  }, [checkout]);
   return (
     <div className="min-h-dvh bg-background text-foreground" data-fixture-ready="" data-route={route.kind}>
       <header className="flex min-h-16 items-center border-b border-border bg-card/95 px-4 sm:px-6">
@@ -367,11 +374,12 @@ declare global {
 }
 window.desk = { calls: () => desk.calls, appointments: () => desk.appointments, stayReads: () => desk.stayReads };
 
+const checkout = directResortLink ? null : await createFixtureBackend({ staff: { role: "manager", email: EMAIL } });
 createRoot(document.getElementById("root")!).render(
   <IntlProvider locale="en" timeZone="Asia/Bangkok" messages={en}>
     <StaffAccessProvider access={access}>
       <ConfirmProvider>
-        <Desk />
+        {checkout ? <Desk checkout={checkout} /> : <AdminBranchProvider><StartAdminHotelRoute /></AdminBranchProvider>}
       </ConfirmProvider>
     </StaffAccessProvider>
   </IntlProvider>,

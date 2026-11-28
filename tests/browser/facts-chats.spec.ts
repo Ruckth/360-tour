@@ -215,3 +215,18 @@ for (const [size, viewport] of Object.entries(SIZES)) {
     });
   });
 }
+
+
+test("older inbox pages can retry while the open transcript and draft stay in place", async ({ page }) => {
+  await page.setViewportSize(SIZES.desktop);
+  await open(page, "/tests/browser/chats.html?path=/admin/chats&session=chat-somchai&view=needs_reply&pageFailure=1");
+  const reply = page.getByRole("textbox", { name: "Type an admin reply" });
+  await reply.fill("Draft to keep during retry");
+  await page.getByRole("button", { name: "Load older chats", exact: true }).click();
+  await expect(page.getByText("Couldn’t load older chats.")).toBeVisible();
+  await expect(reply).toHaveValue("Draft to keep during retry");
+  await page.getByRole("button", { name: "Retry older chats", exact: true }).click();
+  await expect(page.locator("[data-session-id]")).toHaveCount(3);
+  await expect(reply).toHaveValue("Draft to keep during retry");
+  await expect(page.getByText("Couldn’t load older chats.")).toHaveCount(0);
+});

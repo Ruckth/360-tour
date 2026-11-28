@@ -25,6 +25,7 @@ const mocks = vi.hoisted(() => ({
   page: [] as unknown[],
   listResult: {} as unknown,
   olderPage: undefined as unknown,
+  reanchoredPage: undefined as unknown,
   nextCursor: null as string | null,
   listArgs: [] as Array<Record<string, unknown>>,
   detail: null as unknown,
@@ -56,7 +57,9 @@ vi.mock("convex/react", () => ({
   useQueries: (requests: Record<string, { args: { paginationOpts: { cursor: string | null } } }>) =>
     Object.fromEntries(Object.entries(requests).map(([key, { args }]) => {
       mocks.listArgs.push(args);
-      return [key, args.paginationOpts.cursor ? mocks.olderPage : mocks.listResult];
+      const { cursor } = args.paginationOpts;
+      const result = cursor === "after-live-movement" ? mocks.reanchoredPage : cursor ? mocks.olderPage : mocks.listResult;
+      return [key, result];
     })),
   usePaginatedQuery: () => mocks.transcript,
 }));
@@ -151,6 +154,7 @@ beforeEach(() => {
   mocks.search = new URLSearchParams("view=all&session=session-a");
   mocks.nextCursor = null;
   mocks.olderPage = undefined;
+  mocks.reanchoredPage = undefined;
   mocks.page = [session("session-a"), session("session-b")];
   mocks.detail = {
     session: session("session-a"),
@@ -677,6 +681,32 @@ it("appends older chats without navigating, losing the draft, or restarting the 
   mocks.search = new URLSearchParams("view=needs_reply&state=open&session=session-a");
   await render();
   expect(document.querySelectorAll("[data-session-id]")).toHaveLength(2);
+});
+
+it("retries a failed older page and follows a moved boundary without resetting the composer", async () => {
+  mocks.page = [session("session-a"), session("session-b")];
+  mocks.nextCursor = "older";
+  await render();
+  await act(async () => latestDetail().onReplyDraftChange("Keep this draft"));
+  mocks.olderPage = new Error("Older page unavailable");
+  await click("Load older chats");
+  expect(document.body.textContent).toContain("Couldn’t load older chats.");
+  expect(latestDetail().replyDraft).toBe("Keep this draft");
+
+  mocks.olderPage = { sessions: [session("session-c"), session("session-d")], isDone: true, continueCursor: null };
+  await click("Retry older chats");
+  expect(mocks.listArgs).toContainEqual(expect.objectContaining({ retryKey: expect.any(String) }));
+  expect(document.querySelectorAll("[data-session-id]")).toHaveLength(4);
+
+  mocks.page = [session("session-c"), session("session-a")];
+  mocks.nextCursor = "after-live-movement";
+  mocks.reanchoredPage = { sessions: [session("session-b"), session("session-d")], isDone: true, continueCursor: null };
+  await render();
+  expect(mocks.listArgs).toContainEqual(expect.objectContaining({ paginationOpts: { cursor: "after-live-movement", numItems: 10 } }));
+  expect(Array.from(document.querySelectorAll("[data-session-id]"), row => row.getAttribute("data-session-id"))).toEqual([
+    "session-c", "session-a", "session-b", "session-d",
+  ]);
+  expect(latestDetail().replyDraft).toBe("Keep this draft");
 });
 
 it("preserves the draft when a confirmed list settlement fails", async () => {

@@ -1,3 +1,4 @@
+import { RESORT_BRANCH_KEY } from "convex/shared/resortBranch";
 import type { api } from "convex/_generated/api";
 import type { FunctionReturnType } from "convex/server";
 import { ADMIN_NAV, ADMIN_TAB_BAR, adminNavItem, adminSettingsTab, isOwnerOnlySettingsTab, type AdminNavItem } from "./admin-routes";
@@ -7,6 +8,15 @@ export type StaffAccessView = FunctionReturnType<typeof api.auth.staffAccess.myA
 export type StaffCapabilities = StaffAccessView["capabilities"];
 type Access = Pick<StaffAccessView, "role" | "capabilities">;
 type AccessWithBranches = Access & Pick<StaffAccessView, "branches">;
+
+/** Match the server's legacy resort record access for Chats and Hotel. */
+export function canOpenResortDesk(
+  access: Pick<StaffAccessView, "capabilities" | "branches" | "companyScope">,
+  capability: "chats" | "bookings",
+) {
+  return access.capabilities[capability] && (access.companyScope ||
+    access.branches.some(branch => branch.key === RESORT_BRANCH_KEY && branch.state !== "archived"));
+}
 
 export const CASHIER_HOME = "/admin/checkout";
 
@@ -25,6 +35,8 @@ export function adminPageAllowed(pathname: string, tab: string | null, caps: Sta
   // Unknown paths are redirected by the proxy before they render.
   if (!section) return true;
   if (section === "/admin/checkout") return caps.checkout;
+  if (section === "/admin/chats") return caps.chats;
+  if (section === "/admin/hotel") return caps.bookings;
   if (section === "/admin/stock/balances") return caps.operations || caps.stock === true;
   if (section.startsWith("/admin/marketing")) return caps.marketing;
   if (section === "/admin/settings") return caps.operations && (!isOwnerOnlySettingsTab(adminSettingsTab(tab)) || caps.manageTeam);
@@ -37,10 +49,15 @@ function linkAllowed(href: string, caps: StaffCapabilities) {
 }
 
 /** The sidebar for this person, including any Stock or Marketing access granted to cashiers. */
-export function adminNavFor(access: Access | null | undefined, nav: readonly AdminNavItem[] = ADMIN_NAV): AdminNavItem[] {
+export function adminNavFor(access: (Access & Partial<Pick<StaffAccessView, "branches" | "companyScope">>) | null | undefined, nav: readonly AdminNavItem[] = ADMIN_NAV): AdminNavItem[] {
   if (!restricted(access)) return [...nav];
   return nav.flatMap((item) => {
     if (!linkAllowed(item.href, access.capabilities)) return [];
+    if (access.branches && access.companyScope !== undefined) {
+      const desk = { ...access, branches: access.branches, companyScope: access.companyScope };
+      if (item.href === "/admin/chats" && !canOpenResortDesk(desk, "chats")) return [];
+      if (item.href === "/admin/hotel" && !canOpenResortDesk(desk, "bookings")) return [];
+    }
     return [item.children ? { ...item, children: item.children.filter((child) => linkAllowed(child.href, access.capabilities)) } : item];
   });
 }

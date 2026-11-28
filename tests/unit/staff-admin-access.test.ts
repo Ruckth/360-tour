@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { adminAccessRedirect, adminNavFor, adminNoAccess, adminPageAllowed, adminTabBarFor, adminTillOnly } from "@/components/admin/admin-access";
 import { ADMIN_NAV, activeAdminSubLink, adminSectionRecovery, adminNavItem, adminRedirectPath, adminSettingsTab, searchAdminNav } from "@/components/admin/admin-routes";
-import { staffAccessFor, type ShellRole } from "./admin-shell-convex";
+import { PHUKET, KOH_SAMUI, staffAccessFor, type ShellRole } from "./admin-shell-convex";
 
 const nav = (role: ShellRole, patch: Partial<ReturnType<typeof staffAccessFor>["capabilities"]> = {}) => {
   const access = staffAccessFor(role);
@@ -14,6 +14,15 @@ describe("navigation by staff role", () => {
   it("gives owners, and fixtures without access data, the whole navigation", () => {
     expect(nav("owner")).toEqual([...ADMIN_NAV]);
     expect(adminNavFor(undefined)).toEqual([...ADMIN_NAV]);
+  });
+
+  it("only lists resort desks for staff with resort access, regardless of branch order", () => {
+    const limited = staffAccessFor("manager", "limited@example.com", [PHUKET]);
+    const eligible = { ...limited, branches: [PHUKET, KOH_SAMUI] };
+    for (const href of ["/admin/chats", "/admin/hotel"]) {
+      expect(hrefs(adminNavFor(limited))).not.toContain(href);
+      expect(hrefs(adminNavFor(eligible))).toContain(href);
+    }
   });
 
   it("never gives a person without a role the owner's navigation", () => {

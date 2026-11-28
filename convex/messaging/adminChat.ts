@@ -625,6 +625,8 @@ export const assignSession = adminMutation({
 
 export const listSessions = adminQuery({
 	args: {
+		// A fresh subscription identity lets the client retry an individual failed page.
+		retryKey: v.optional(v.string()),
 		paginationOpts: v.optional(paginationOptsValidator),
 		status: v.optional(sessionStatusValidator),
 		adminStatus: v.optional(adminStatusFilterValidator),

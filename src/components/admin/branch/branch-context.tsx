@@ -198,7 +198,7 @@ export function AdminBranchProvider({ children }: { children: ReactNode }) {
       branches,
       current: currentBranch,
       select,
-      scopeKey: switchable ? currentBranch?.id ?? "none" : scope === "company" ? "company" : "till",
+      scopeKey: switchable ? currentBranch?.id ?? "none" : readOnly ? "till" : scope,
       readOnly,
       scope,
       needsChoice: working.kind === "choose" && !readOnly && scope === "branch",

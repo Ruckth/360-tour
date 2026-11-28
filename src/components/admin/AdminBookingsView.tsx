@@ -1,5 +1,6 @@
 "use client";
 
+import { RESORT_BRANCH_KEY } from "convex/shared/resortBranch";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
@@ -119,7 +120,7 @@ export function AdminBookingsView() {
 }
 
 function HotelBookings() {
-  const branchId = useAdminBranch().current?.id;
+  const branchId = useAdminBranch().branches.find(branch => branch.key === RESORT_BRANCH_KEY)?.id;
   const [range, setRange] = useState(initialRange);
   const [storedView, setView] = useStoredState("admin.hotel.view", "auto");
   const [storedVilla, setVilla] = useStoredState(branchId ? `admin.hotel.villa:${branchId}` : "admin.hotel.villa", "all");

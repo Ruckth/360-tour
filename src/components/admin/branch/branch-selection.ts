@@ -48,11 +48,12 @@ export function branchReadOnlyRoute(pathname: string): boolean {
  * Whose data a route shows. Settings, Marketing and Leads are company-wide: they show "Company"
  * instead of the working branch and never ask a first-time person to choose. Leads link only to
  * villas, which carry no branch, so the server returns every lead to operations staff (D05).
- * Every other route is a branch's.
+ * Chats and Hotel use the legacy resort dataset. Other routes use the working branch.
  */
-export type AdminBranchScope = "company" | "branch";
+export type AdminBranchScope = "company" | "branch" | "resort";
 
 export function branchRouteScope(pathname: string): AdminBranchScope {
+  if (/^\/admin\/(chats|hotel)(\/|$)/.test(pathname)) return "resort";
   return /^\/admin\/(settings|marketing|leads)(\/|$)/.test(pathname) ? "company" : "branch";
 }
 
@@ -61,7 +62,7 @@ export function branchRouteScope(pathname: string): AdminBranchScope {
  * replaces the URL with it, so `?session=`, `?q=` or a `?booking=` from the old branch never loads.
  */
 export function branchSwitchHref(pathname: string, search: URLSearchParams): string | null {
-  if (branchReadOnlyRoute(pathname) || branchRouteScope(pathname) === "company") return null;
+  if (branchReadOnlyRoute(pathname) || branchRouteScope(pathname) !== "branch") return null;
   const destination = /^\/admin\/properties\/[^/]+\/?$/.test(pathname) ? "/admin/properties" : pathname;
   const tab = search.get("tab");
   const query = tab === null ? "" : new URLSearchParams({ tab }).toString();
