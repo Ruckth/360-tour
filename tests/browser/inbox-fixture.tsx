@@ -27,6 +27,7 @@ const initialSession: AdminSession = {
   aiPaused: !flags.has("automation"),
   keepWithStaff: true,
   staffTask: "Check the accessible room with housekeeping and update the guest before arrival.",
+  staffTaskDueAt: flags.has("overdue") ? now - 60_000 : undefined,
   latestGuestMessageId: "fixture-message" as Id<"messages">,
 };
 
@@ -51,7 +52,7 @@ function Fixture() {
   }, []);
   return <ConfirmProvider>
     <div data-fixture-ready style={{ height: "100dvh", minHeight: 0 }}>
-      <AdminSessionActions key={session._id} session={session} onDeleted={() => {}}>
+      <AdminSessionActions key={session._id} session={session} now={now} onDeleted={() => {}}>
         {({ actions, followUp, actionError, replyAction, handoff }) => <AdminSessionDetail
           selectedSession={session}
           compact

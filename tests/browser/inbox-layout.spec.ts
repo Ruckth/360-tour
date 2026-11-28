@@ -114,3 +114,10 @@ test("typing leaves automation on and explicit takeover updates the header", asy
   await takeover.click();
   await expect(meta.getByText("AI paused", { exact: true })).toBeVisible();
 });
+
+test("an overdue follow-up preserves its Bangkok time when reopened for editing", async ({ page }) => {
+  await page.goto("/tests/browser/inbox.html?overdue");
+  await expect(page.getByText("Overdue · 2026-11-11 14:59 Bangkok time")).toBeVisible();
+  await page.getByRole("button", { name: "Edit follow-up" }).click();
+  await expect(page.getByLabel("Due at (Bangkok time)")).toHaveValue("2026-11-11T14:59");
+});
