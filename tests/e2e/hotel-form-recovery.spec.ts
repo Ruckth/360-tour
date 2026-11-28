@@ -161,12 +161,15 @@ test("F12 repeated time-off conflict opens the same appointment and F13 focuses 
     await sheet.getByRole("button", { name: "Close", exact: true }).click();
     await expect(sheet).toBeHidden();
     await expect(page).not.toHaveURL(/[?&]appointment=/);
-    await page.getByRole("tab", { name: "Therapists", exact: true }).click();
+    if (visit === 0) await page.getByRole("tab", { name: "Therapists", exact: true }).click();
   }
   expect(conflictHrefs[1]).toBe(conflictHrefs[0]);
   expect(conflictHrefs[0]).toContain(`appointment=${appointment.appointmentId}`);
 
-  await page.goto(`/admin/staff/roster?date=${date}&staff=${person._id}`);
+  await page.getByRole("button", { name: new RegExp(`^Not working · ${person.name}`) }).first().press("Enter");
+  const rosterLink = page.getByRole("link", { name: "Open roster week" });
+  await expect(rosterLink).toHaveAttribute("href", `/admin/staff/roster?date=${date}&staff=${person._id}`);
+  await rosterLink.press("Enter");
   const target = page.getByRole("gridcell", { selected: true });
   await expect(target).toHaveAccessibleName(new RegExp(person.name));
   await expect(target).toBeFocused();
