@@ -37,7 +37,7 @@ test("D19/D20 Spa-origin stay picker attaches an eligible villa stay and recover
   await dialog.getByText("Attach to a hotel stay (optional)", { exact: true }).click();
   await dialog.getByLabel("Find the stay by guest name, phone, email or code").fill(guestName);
   await dialog.getByRole("button", { name: new RegExp(guestName) }).click();
-  await expect(dialog.getByText(/Pool Villa.*confirmed/i)).toBeVisible();
+  await expect(dialog.getByText(/Tideglass Pool Residence.*confirmed/i)).toBeVisible();
   await dialog.getByLabel("Guest name (optional)").fill(guestName);
   const staff = dialog.getByLabel("Staff", { exact: true });
   await staff.click();
