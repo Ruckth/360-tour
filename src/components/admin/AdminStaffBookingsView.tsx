@@ -1,11 +1,11 @@
 "use client";
 
-import { useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { useRouter, useSearchParams, useSelectedLayoutSegment } from "@/platform/navigation";
 import { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
 import type { FunctionReturnType } from "convex/server";
-import { canEditTurnaround, canCorrectAppointmentTime, turnaroundMinutes } from "convex/shared/appointmentWindow";
+import { appointmentRevision, canEditTurnaround, canCorrectAppointmentTime, turnaroundMinutes } from "convex/shared/appointmentWindow";
 import { Ban, CalendarDays, Check, CircleDollarSign, Clock, Coffee, Filter, Play, PlusIcon, Timer, UserCheck, UserX, Users } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { EventCalendar, useEventCalendar } from "@/components/reui/event-calendar/event-calendar";
@@ -46,6 +46,7 @@ import {
 } from "@/lib/schedule-changes";
 import {
   appointmentGuestLabel,
+  errorText,
   APPOINTMENT_STATUSES,
   DAY_MS,
   RESORT_ZONE,
@@ -427,7 +428,7 @@ function StaffCalendar() {
             {!appointment.guestName ? <span className="font-mono text-xs text-muted-foreground">Ref {appointment.confirmationCode.slice(-6)}</span> : null}
             <span className="text-xs text-muted-foreground">{staffTime(occurrence.event.start.getTime())}–{staffTime(occurrence.event.end.getTime())} · {appointmentServiceLabel(service, appointment)}{staffName ? ` · ${staffName}` : ""}</span>
           </span>
-          <span className="grid shrink-0 justify-items-end gap-1"><StatusBadge {...appointmentStatus(status)} /></span>
+          <span className="grid shrink-0 justify-items-end gap-1"><StatusBadge {...appointmentStatus(status)} /><InlineNextStatus appointment={appointment} /></span>
         </span>
       );
       return (
@@ -444,6 +445,7 @@ function StaffCalendar() {
             {staffTime(occurrence.event.start.getTime())} · {appointmentServiceLabel(service, appointment)}
             {staffName ? ` · ${staffName}` : ""}
           </span>
+          {occurrence.event.end.getTime() - occurrence.event.start.getTime() >= 60 * 60_000 ? <InlineNextStatus appointment={appointment} className="mt-auto self-start" /> : null}
         </span>
       );
     },
@@ -847,6 +849,50 @@ export function NextAppointmentJump({ from, onOpen }: { from: number; onOpen: (s
   if (!next.appointment) return <p className="text-xs text-muted-foreground">None in the 30 days after {staffDate(from, { weekday: true })} either. Use the date controls to look further.</p>;
   const { start } = next.appointment;
   return <Button variant="outline" onClick={() => onOpen(start)}>Next appointment: {staffDate(start, { weekday: true })} · {staffTime(start)}</Button>;
+}
+
+/** The first forward step the details sheet would offer, when it is an operational one; completion stays in the sheet with its payment cues. */
+export function inlineNextStatus(appointment: Pick<Appointment, "status">): "arrived" | "in_service" | null {
+  return appointment.status === "booked" ? "arrived" : appointment.status === "arrived" ? "in_service" : null;
+}
+const INLINE_LABELS = { arrived: "Mark arrived", in_service: "Start service" } as const;
+
+/** D16: one genuine next-status action on the calendar chip, through the same mutation and revision check as the sheet. */
+export function InlineNextStatus({ appointment, className }: { appointment: Appointment; className?: string }) {
+  const updateStatus = useMutation(api.services.commands.updateAppointmentStatus.updateAppointmentStatus);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState("");
+  const next = inlineNextStatus(appointment);
+  if (!next) return null;
+  // Chips open the sheet on click and start drags on pointer down; this control does neither.
+  const stop = (event: { stopPropagation: () => void }) => event.stopPropagation();
+  return (
+    <span className={cn("inline-flex items-center gap-1", className)} onPointerDown={stop} onClick={stop} onKeyDown={stop}>
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        className="h-7 px-2 text-xs"
+        disabled={pending}
+        aria-label={`${INLINE_LABELS[next]}: ${appointmentGuestLabel(appointment)}`}
+        onClick={async () => {
+          setPending(true);
+          setError("");
+          try {
+            await updateStatus({ appointmentId: appointment._id, status: next, expectedRevision: appointmentRevision(appointment) });
+          } catch (err) {
+            setError(errorText(err, "Could not update the appointment."));
+          } finally {
+            setPending(false);
+          }
+        }}
+      >
+        {pending ? <Spinner className="text-current" /> : null}
+        {INLINE_LABELS[next]}
+      </Button>
+      {error ? <span role="alert" className="text-xs text-destructive">{error}</span> : null}
+    </span>
+  );
 }
 
 /** A column's next off-screen booking remains reachable without guessing a scroll. */

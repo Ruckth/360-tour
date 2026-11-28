@@ -4,12 +4,12 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { getFunctionName, type FunctionReference } from 'convex/server';
 import type { Doc } from 'convex/_generated/dataModel';
-import { AllDatesResults, NextAppointmentJump } from '@/components/admin/AdminStaffBookingsView';
+import { AllDatesResults, InlineNextStatus, NextAppointmentJump, inlineNextStatus } from '@/components/admin/AdminStaffBookingsView';
 
-const state = vi.hoisted(() => ({ results: {} as Record<string, unknown>, args: [] as unknown[] }));
+const state = vi.hoisted(() => ({ results: {} as Record<string, unknown>, args: [] as unknown[], mutate: vi.fn() }));
 vi.mock('@/platform/navigation', () => ({ useRouter: () => ({ push: vi.fn() }), useSearchParams: () => new URLSearchParams(), useSelectedLayoutSegment: () => null }));
 vi.mock('convex/react', () => ({
-  useMutation: () => vi.fn(),
+  useMutation: () => state.mutate,
   useQuery: (ref: FunctionReference<'query'>, args: unknown) => { state.args.push(args); return state.results[getFunctionName(ref).split(':').pop()!]; },
 }));
 
@@ -52,4 +52,28 @@ it('D21: an empty range offers a jump to the next appointment, or names the sear
   state.results.nextAppointment = { appointment: null, until: from + 30 * 86_400_000 };
   await act(async () => root.render(createElement(NextAppointmentJump, { from: from + 1, onOpen })));
   expect(document.body.textContent).toContain('None in the 30 days after');
+}, 30_000);
+
+it('D16: a booked chip offers one inline next status through the guarded mutation, without opening the sheet', async () => {
+  state.mutate.mockReset().mockResolvedValue(null);
+  const appointment = { _id: 'a1', status: 'booked', revision: 4, guestName: 'Ann' } as unknown as Doc<'appointments'>;
+  const openSheet = vi.fn();
+  await act(async () => root.render(createElement('div', { onClick: openSheet, onPointerDown: openSheet, onKeyDown: openSheet }, createElement(InlineNextStatus, { appointment }))));
+  const button = document.querySelector('button')!;
+  expect(button.getAttribute('aria-label')).toBe('Mark arrived: Ann');
+  await act(async () => { button.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); button.click(); });
+  expect(state.mutate).toHaveBeenCalledWith({ appointmentId: 'a1', status: 'arrived', expectedRevision: 4 });
+  expect(openSheet).not.toHaveBeenCalled();
+  expect(inlineNextStatus({ status: 'arrived' })).toBe('in_service');
+  // Completion keeps its sheet path (payment cues); finished appointments get nothing inline.
+  expect(inlineNextStatus({ status: 'in_service' })).toBeNull();
+  expect(inlineNextStatus({ status: 'completed' })).toBeNull();
+}, 30_000);
+
+it('D16: a stale or refused status change is shown on the chip', async () => {
+  state.mutate.mockReset().mockRejectedValue(new Error('This appointment changed. Reopen it.'));
+  const appointment = { _id: 'a1', status: 'arrived', revision: 1, guestName: 'Ann' } as unknown as Doc<'appointments'>;
+  await act(async () => root.render(createElement(InlineNextStatus, { appointment })));
+  await act(async () => document.querySelector('button')!.click());
+  expect(document.querySelector('[role="alert"]')!.textContent).toContain('This appointment changed');
 }, 30_000);
