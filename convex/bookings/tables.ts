@@ -65,6 +65,7 @@ export const bookingsTables = {
 		affiliateSnapshot: v.optional(affiliateSnapshot),
 		/** Bumped on every staff/system write that goes through lib/bookingMoney; absent = 0. */
 		revision: v.optional(v.number()),
+		stayStatusTransition: v.optional(v.object({ revision: v.number(), actor: v.string(), reason: v.optional(v.string()) })),
 		stayStatus: v.optional(v.union(v.literal("checked_in"), v.literal("checked_out"))),
 
 		createdBy: v.optional(v.string()),
@@ -123,6 +124,7 @@ export const bookingsTables = {
 	})
 		.index('by_property', ['propertyId'])
 		.index('by_property_stayStatus_checkOut', ['propertyId', 'stayStatus', 'checkOut'])
+		.index('by_property_stayStatus_checkIn', ['propertyId', 'stayStatus', 'checkIn'])
 		.index('by_property_checkIn', ['propertyId', 'checkIn'])
 		.index('by_property_checkOut', ['propertyId', 'checkOut'])
 		.index('by_checkIn', ['checkIn'])

@@ -298,7 +298,7 @@ function BookingDetails({
       </header>
       <section className="grid gap-2 rounded-lg border p-3" aria-label="Guest stay status">
         <p className="text-sm font-medium">{booking.stayStatus === "checked_in" ? "Checked in" : booking.stayStatus === "checked_out" ? "Checked out" : "Scheduled · attendance unrecorded"}</p>
-        {booking.status === "confirmed" ? (
+        {booking.stayAttendanceEnabled && booking.status === "confirmed" ? (
           <>
             <label className="grid gap-1 text-xs">
               Reason for early, late or out-of-order changes
@@ -700,6 +700,7 @@ type EditQuoteArgs = {
   guests: number;
   clearPriceOverride?: boolean;
   revision?: number;
+  refreshKey?: string;
 };
 
 /** adminBookings.quoteBookingEdit, live. A refusal (e.g. dates the villa can't take) comes back as an error state, not a throw. */

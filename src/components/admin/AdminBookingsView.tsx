@@ -559,6 +559,7 @@ function HotelLegend() {
 }
 
 const CUSTOM_PRICE_REFUSAL = /custom price/i;
+const MOVE_QUOTE_REFUSAL = /price changed|dates are (?:no longer available|blocked)|too many (?:bookings|availability records)/i;
 
 /** Reviews the dropped target against a specific live booking revision before moving it. */
 export function MoveBookingDialog({
@@ -578,6 +579,7 @@ export function MoveBookingDialog({
   const editBooking = useMutation(api.bookings.commands.editBooking.editBooking);
   const detail = useQuery(api.bookings.admin.getForAdmin, { bookingId: move.booking._id });
   const [reviewedRevision, setReviewedRevision] = useState(move.booking.revision);
+  const [refreshKey, setRefreshKey] = useState<string>();
   const booking = detail ?? move.booking;
   const [notifyChoice, setNotifyChoice] = useState<boolean | null>(null);
   const [saving, setSaving] = useState(false);
@@ -589,7 +591,7 @@ export function MoveBookingDialog({
   const changedMeanwhile = detail ? detail.revision !== reviewedRevision : false;
   const quote = useBookingEditQuote(
     detail && property && !customPrice && !changedMeanwhile
-      ? { bookingId: booking._id, propertySlug: property.slug, checkIn, checkOut, guests: booking.guests, revision: reviewedRevision }
+      ? { bookingId: booking._id, propertySlug: property.slug, checkIn, checkOut, guests: booking.guests, revision: reviewedRevision, refreshKey }
       : null,
   );
   const price = bookingEditPrice({ current: booking, quote });
@@ -602,7 +604,8 @@ export function MoveBookingDialog({
   const notify = notifyChoice ?? notifyDefault({ checkIn, guestEmailsOff: detail?.guestEmailsOff });
   const customRefused = CUSTOM_PRICE_REFUSAL.test(error);
   const staleSave = /booking changed/i.test(error);
-  const ready = !staleSave && detail !== undefined && detail !== null && !customPrice && !changedMeanwhile && Boolean(property) && Boolean(expectedPrice);
+  const needsFreshQuote = MOVE_QUOTE_REFUSAL.test(error);
+  const ready = !needsFreshQuote && !staleSave && detail !== undefined && detail !== null && !customPrice && !changedMeanwhile && Boolean(property) && Boolean(expectedPrice);
 
   async function save() {
     if (!ready || !expectedPrice || saving) return;
@@ -659,7 +662,7 @@ export function MoveBookingDialog({
           </p>
         ) : !property ? (
           <p role="alert" className="text-sm text-destructive">The target villa is no longer available.</p>
-        ) : price.kind === "loading" || price.kind === "idle" ? (
+        ) : needsFreshQuote ? null : price.kind === "loading" || price.kind === "idle" ? (
           <Spinner label="Checking the price" />
         ) : price.kind === "error" ? (
           <p role="alert" className="text-sm text-destructive">{price.message}</p>
@@ -701,6 +704,13 @@ export function MoveBookingDialog({
             <Button type="button" onClick={() => onOpenBooking(booking._id)} disabled={saving}>
               Open booking
             </Button>
+          ) : needsFreshQuote ? (
+            <Button type="button" onClick={() => {
+              setRefreshKey(crypto.randomUUID());
+              setError("");
+            }}>
+              Refresh quote
+            </Button>
           ) : (
             <Button type="button" onClick={() => void save()} disabled={!ready || saving}>
               {saving ? <Spinner className="text-current" /> : null}
@@ -723,7 +733,7 @@ function GuestSearch({ properties, onPick }: { properties: AdminProperty[]; onPi
     const id = setTimeout(() => setQuery(text.trim()), 250);
     return () => clearTimeout(id);
   }, [text]);
-  const active = query.length >= 2 && text.trim().length >= 2;
+  const active = query.length >= 2 && text.trim() === query;
   const results = useQuery(api.bookings.admin.searchBookings, active ? { query } : "skip");
   const today = resortTodayIso();
   const upcoming = results?.filter((row) => row.checkOut >= today).sort((a, b) => {

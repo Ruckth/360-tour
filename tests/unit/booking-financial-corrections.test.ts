@@ -28,6 +28,7 @@ const mutations = vi.hoisted(() => ({
   reopenBooking: vi.fn(),
   editBooking: vi.fn(),
   openStayCheckout: vi.fn(),
+  recordStayStatus: vi.fn(),
 }));
 const queries = vi.hoisted(() => ({ bookingFinancials: vi.fn(), getForAdmin: vi.fn(), quoteBookingEdit: vi.fn() }));
 const pages = vi.hoisted(() => ({ read: vi.fn(), loadMore: vi.fn() }));
@@ -695,4 +696,17 @@ it.each([false, true])("closes an untouched stay price draft without treating sa
   expect(onClose).toHaveBeenCalledOnce();
   expect(document.querySelector('[role="alertdialog"]')).toBeNull();
   expect(mutations.editBooking).not.toHaveBeenCalled();
+});
+
+it("renders attendance controls only when the booking detail enables writes", async () => {
+  const sheet = createElement(BookingSheet, { bookingId: booking._id, properties: [], onClose: vi.fn() });
+  queries.getForAdmin.mockReturnValue({ ...booking, status: "confirmed", stayAttendanceEnabled: false });
+  await render(sheet);
+  expect(document.body.textContent).toContain("attendance unrecorded");
+  expect(button("Record check-in")).toBeUndefined();
+  expect(button("Record check-out")).toBeUndefined();
+  queries.getForAdmin.mockReturnValue({ ...booking, status: "confirmed", stayAttendanceEnabled: true });
+  await render(createElement(BookingSheet, { ...sheet.props }));
+  expect(button("Record check-in")).toBeDefined();
+  expect(button("Record check-out")).toBeDefined();
 });

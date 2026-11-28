@@ -74,7 +74,7 @@ The inventory test compares every source registration with this table and requir
 | `bookings/admin.searchBookings` | `adminQuery` | Authoritative operations access (owner or manager), including internal-query verification for actions. | Booking state, revision, payment/refund and date-overlap checks remain in handlers/helpers. |
 | `bookings/admin.findGuests` | `adminQuery` | Authoritative operations access (owner or manager), including internal-query verification for actions. | Booking state, revision, payment/refund and date-overlap checks remain in handlers/helpers. |
 | `bookings/commands/updateBooking.updateBooking` | `adminMutation` | Authoritative operations access (owner or manager), including internal-query verification for actions. | Booking state, revision, payment/refund and date-overlap checks remain in handlers/helpers. |
-| `bookings/commands/updateBooking.recordStayStatus` | `adminMutation` | Owner or manager | Confirmed stay, revision check and audited exceptions. |
+| `bookings/commands/updateBooking.recordStayStatus` | `adminMutation` | Owner or manager | Deployment gate, confirmed stay, revision check and audited exceptions. |
 | `bookings/commands/recordPayment.recordPayment` | `adminMutation` | Authoritative operations access (owner or manager), including internal-query verification for actions. | Booking state, revision, payment/refund and date-overlap checks remain in handlers/helpers. |
 | `bookings/commands/amendPayment.amendPayment` | `adminMutation` | Authoritative operations access (owner or manager), including internal-query verification for actions. | Booking state, revision, payment/refund and date-overlap checks remain in handlers/helpers. |
 | `bookings/commands/cancelPayment.cancelPayment` | `adminMutation` | Authoritative operations access (owner or manager), including internal-query verification for actions. | Booking state, revision, payment/refund and date-overlap checks remain in handlers/helpers. |
@@ -455,3 +455,7 @@ HTTP registrations (all pass through the maintenance-gated `httpAction` in `auth
 | `POST /line/webhook` | `httpAction` | LINE raw-body provider signature | Existing adapter normalization, deduplication and atomic durable admission. |
 | `GET /facebook/webhook`, `GET /instagram/webhook`, `GET /whatsapp/webhook` | `httpAction` | Provider challenge with configured verification token | Existing mode/token checks; no admission on GET. |
 | `POST /facebook/webhook`, `POST /instagram/webhook`, `POST /whatsapp/webhook` | `httpAction` | Channel-specific Meta raw-body provider signature | Existing adapter account/event normalization, deduplication and atomic durable admission. |
+
+### Hotel desk attendance approval
+
+Attendance writes default to disabled. After operations approves the authorized actors, correction reasons and audit trail, set `HOTEL_STAY_ATTENDANCE_ENABLED=true` in the specific Convex backend deployment approved for rollout. The setting applies to all villas on that deployment. The operations policy continues to restrict recording to owners and managers. The booking sheet reads the same server setting through booking detail. Remove the variable or set it to `false` to disable writes. Existing attendance remains visible.

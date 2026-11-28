@@ -449,3 +449,8 @@ export async function validateDateBlock(
 	else await assertStayFree(ctx, args.propertyId, args.start, args.end);
 	return reason;
 }
+
+/** Deployment-local operations approval gate for desk attendance writes. */
+export function stayAttendanceEnabled(): boolean {
+	return process.env.HOTEL_STAY_ATTENDANCE_ENABLED === 'true';
+}

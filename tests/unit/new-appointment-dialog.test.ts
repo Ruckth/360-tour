@@ -214,3 +214,19 @@ it("names the selected staff member when switching staff makes the retained time
   expect(timeButton('15:00')?.getAttribute('aria-pressed')).toBe('false');
   expect(timeButton('Book appointment')?.disabled).toBe(true);
 });
+
+it('shows the selected stay’s linked appointment before a service is picked', async () => {
+  const stay = { bookingId: 'booking1' as Id<'bookings'>, guestName: 'Mia', guestPhone: '+66812345678', villaName: 'Pool Villa' };
+  mocks.query.mockImplementation((name: string, args: unknown) => {
+    if (name.endsWith(':stayAppointments') && JSON.stringify(args) === JSON.stringify({ bookingId: stay.bookingId })) {
+      return { appointments: [{ _id: 'appointment1', serviceName: 'Herbal compress', start: now, status: 'booked' }], complete: true };
+    }
+    return undefined;
+  });
+  await act(async () => root.render(createElement(IntlProvider, intl, createElement(NewAppointmentDialog, {
+    draft: { date: '2026-11-01', stay }, services: [service], staff: [staff], onClose: vi.fn(), onCreated: vi.fn(),
+  }))));
+  const linked = document.querySelector('[aria-label="Linked spa appointments"]');
+  expect(linked?.textContent).toMatch(/Herbal compress.*booked/);
+  expect(mocks.create).not.toHaveBeenCalled();
+});
