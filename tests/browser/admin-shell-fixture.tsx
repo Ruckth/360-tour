@@ -97,7 +97,7 @@ function ChatsPage() {
   const [draft, setDraft] = useState("");
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <AdminSessionActions session={session} onDeleted={() => {}}>
+      <AdminSessionActions session={session} now={now} onDeleted={() => {}}>
         {({ actions, followUp, actionError }) => (
           <AdminSessionDetail
             selectedSession={session}

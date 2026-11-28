@@ -21,14 +21,14 @@ type ActionSlots = { handoff: ReactNode; actions: ReactNode; replyAction: ReactN
  */
 export function AdminSessionActions({
   session,
-  now = Date.now(),
+  now,
   onDeleted,
   onStatusChanged,
   beforeLeave,
   children,
 }: {
   session: AdminSession;
-  now?: number;
+  now: number;
   onDeleted: () => void;
   onStatusChanged?: (status: AdminSessionStatus) => void;
   beforeLeave?: () => Promise<boolean>;
