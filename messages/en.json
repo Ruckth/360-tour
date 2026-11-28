@@ -6,7 +6,8 @@
     "reviews": "Reviews",
     "contact": "Contact",
     "book": "Book",
-    "language": "Language"
+    "language": "Language",
+    "services": "Services"
   },
   "Home": {
     "welcome": "Welcome",
@@ -126,7 +127,14 @@
     "directBenefits": "Direct booking benefits",
     "verifiedVillas": "Verified villas",
     "secureCheckout": "Secure demo checkout",
-    "hostSupport": "Host direct support"
+    "hostSupport": "Host direct support",
+    "unavailableTitle": "Villa details are temporarily unavailable",
+    "unavailableDetail": "We could not reach the villa catalog right now. Please try again in a moment.",
+    "loadErrorTitle": "Something went wrong",
+    "loadErrorDetail": "We could not load this villa right now. Please try again.",
+    "tryAgain": "Try again",
+    "pageUnavailableTitle": "Page temporarily unavailable",
+    "pageUnavailableDetail": "Please try again."
   },
   "Booking": {
     "confirmAndPay": "Confirm and pay",
@@ -372,7 +380,9 @@
     "suggestionLocation": "How close is it to the beach and restaurants?"
   },
   "Footer": {
-    "bookDirect": "Book Direct"
+    "bookDirect": "Book Direct",
+    "enquirySubject": "Stay enquiry — {resortName}",
+    "enquiryBody": "Hello, I have a question about staying at {resortName}."
   },
   "DemoDisclaimer": {
     "title": "Demo website only",
@@ -405,7 +415,11 @@
     "close": "Close",
     "closeTour": "Close tour",
     "toggleTheme": "Toggle theme",
-    "toggleMenu": "Toggle menu"
+    "toggleMenu": "Toggle menu",
+    "appearance": "Appearance",
+    "themeSystem": "System",
+    "themeLight": "Light",
+    "themeDark": "Dark"
   },
   "Resort": {
     "tagline": "Where the ocean meets serenity",

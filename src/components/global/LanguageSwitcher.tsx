@@ -3,7 +3,7 @@
 import { Check, ChevronDown } from "lucide-react";
 import { useLocale, useTranslations } from "@/platform/intl";
 import { usePathname, useSearchParams } from "@/platform/navigation";
-import { useEffect, useSyncExternalStore } from "react";
+import { useSyncExternalStore, type MouseEvent } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   defaultLocale,
@@ -13,11 +13,16 @@ import {
   stripLocalePrefix,
   type Locale,
 } from "@/i18n/routing";
+import { bypassesI18n } from "@/lib/i18n-exempt";
 import { cn } from "@/lib/utils";
 
 function subscribeToHash(onChange: () => void) {
   window.addEventListener("hashchange", onChange);
   return () => window.removeEventListener("hashchange", onChange);
+}
+
+function writeLocaleCookie(nextLocale: Locale) {
+  document.cookie = `NEXT_LOCALE=${nextLocale}; path=/; max-age=31536000; SameSite=Lax`;
 }
 
 const compactLocaleLabels: Record<Locale, string> = {
@@ -51,32 +56,31 @@ export function LanguageSwitcher({
   // Read on every render (route changes re-render via the hooks above) and on hashchange; "" on the server.
   const hash = useSyncExternalStore(subscribeToHash, () => window.location.hash, () => "");
 
-  useEffect(() => {
-    function onLocaleInteraction(event: PointerEvent | MouseEvent) {
-      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-      const target = event.target instanceof Element ? event.target : null;
-      const link = target?.closest<HTMLAnchorElement>("[data-locale-href]");
-      if (!link) return;
-      event.preventDefault();
-      const nextLocale = link.dataset.locale;
-      if (nextLocale) {
-        document.cookie = `NEXT_LOCALE=${nextLocale}; path=/; max-age=31536000; SameSite=Lax`;
-      }
-      window.location.assign(link.href);
+  function handleLocaleClick(event: MouseEvent<HTMLAnchorElement>, nextLocale: Locale) {
+    if (
+      event.defaultPrevented ||
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey
+    ) {
+      return;
     }
-
-    document.addEventListener("pointerdown", onLocaleInteraction, true);
-    document.addEventListener("click", onLocaleInteraction, true);
-    return () => {
-      document.removeEventListener("pointerdown", onLocaleInteraction, true);
-      document.removeEventListener("click", onLocaleInteraction, true);
-    };
-  }, []);
+    event.preventDefault();
+    writeLocaleCookie(nextLocale);
+    const targetUrl = new URL(event.currentTarget.href, window.location.origin);
+    if (!targetUrl.hash && window.location.hash) {
+      targetUrl.hash = window.location.hash;
+    }
+    window.location.assign(targetUrl.toString());
+  }
 
   function getLocaleHref(nextLocale: Locale) {
     const basePath = stripLocalePrefix(pathname);
-    const nextPath =
-      nextLocale === defaultLocale
+    const nextPath = bypassesI18n(basePath)
+      ? basePath
+      : nextLocale === defaultLocale
         ? basePath
         : `/${nextLocale}${basePath === "/" ? "" : basePath}`;
     const query = searchParams.toString();
@@ -116,6 +120,7 @@ export function LanguageSwitcher({
               href={getLocaleHref(item)}
               data-locale-href=""
               data-locale={item}
+              onClick={(event) => handleLocaleClick(event, item)}
               className={cn(
                 "flex w-full items-center gap-2 rounded-lg text-left outline-none transition hover:bg-muted focus:bg-muted",
                 compact ? "px-2 py-1.5 text-xs" : "px-3 py-2 text-sm",

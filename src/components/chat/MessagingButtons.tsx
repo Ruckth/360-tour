@@ -33,8 +33,11 @@ export function MessagingButtons({
 }) {
   const locale = useLocale();
   const t = useTranslations("Chat");
-  const whatsappHref = buildWhatsAppHref(whatsappNumber);
-  const emailHref = buildEmailHref(contactEmail);
+  const footer = useTranslations("Footer");
+  const enquirySubject = footer("enquirySubject", { resortName: "Auralis Cove Retreat" });
+  const enquiryBody = footer("enquiryBody", { resortName: "Auralis Cove Retreat" });
+  const whatsappHref = buildWhatsAppHref(whatsappNumber, enquiryBody);
+  const emailHref = buildEmailHref(contactEmail, enquiryBody, enquirySubject);
   const fallbackLineHref = localizeHref("/#contact", locale);
   const lineHref = buildLineHref({ fallbackHref: fallbackLineHref, lineId, lineUrl });
   const hasLineContact = Boolean(lineUrl?.trim() || lineId?.trim());

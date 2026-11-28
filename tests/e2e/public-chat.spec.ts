@@ -34,7 +34,8 @@ const localizedSmoke = [
 ];
 
 const CONTACT_PREFILL_MESSAGE =
-  "Hi, I'm interested in having a website built with you. I'm available on [date] at [time]. Could we talk then?";
+  "Hello, I have a question about staying at Auralis Cove Retreat.";
+const CONTACT_EMAIL_SUBJECT = "Stay enquiry — Auralis Cove Retreat";
 const CONTACT_EMAIL = "rugbykritsakorn@gmail.com";
 const LINE_URL = "https://line.me/R/ti/p/@361jhvij";
 
@@ -53,15 +54,24 @@ async function getVisibleBoundingBox(locator: Locator) {
 
 async function chooseLanguage(page: Page, optionName: string) {
   const languageButtons = page.getByTestId("language-switcher");
+  const option = page.getByRole("link", { name: optionName });
   const buttonCount = await languageButtons.count();
+  let visibleButton: Locator | null = null;
   for (let index = 0; index < buttonCount; index += 1) {
     const button = languageButtons.nth(index);
     if (await button.isVisible()) {
-      await button.click();
+      visibleButton = button;
       break;
     }
   }
-  await page.getByRole("link", { name: optionName }).click();
+  expect(visibleButton).not.toBeNull();
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await visibleButton!.click();
+    const opened = await option.isVisible({ timeout: 1500 }).catch(() => false);
+    if (opened) break;
+  }
+  await expect(option).toBeVisible();
+  await option.click();
 }
 
 async function openCalendarPopover(page: Page, trigger: Locator) {
@@ -91,7 +101,7 @@ async function expectPrefilledEmail(link: Locator) {
   const url = new URL(href!);
   expect(url.protocol).toBe("mailto:");
   expect(url.pathname).toBe(CONTACT_EMAIL);
-  expect(url.searchParams.get("subject")).toBe("Website inquiry");
+  expect(url.searchParams.get("subject")).toBe(CONTACT_EMAIL_SUBJECT);
   expect(url.searchParams.get("body")).toBe(CONTACT_PREFILL_MESSAGE);
 }
 
@@ -318,6 +328,7 @@ test("desktop chat contact actions show LINE QR and use prefilled links", async 
   await expectPrefilledEmail(emailLink);
   await expect(floatingContactActions.getByRole("link", { name: /Open LINE chat/i })).toHaveCount(0);
   await expect(lineButton).toBeVisible();
+  await expect(page.getByText("Share contact details")).toBeVisible();
 
   await lineButton.click();
   const dialog = page.getByRole("dialog", { name: "Scan LINE QR code" });

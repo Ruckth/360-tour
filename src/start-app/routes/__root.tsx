@@ -1,11 +1,19 @@
 import { ClerkProvider } from "@clerk/tanstack-react-start";
-import { createRootRoute, HeadContent, Outlet, Scripts } from "@tanstack/react-router";
+import {
+  createRootRoute,
+  HeadContent,
+  Outlet,
+  Scripts,
+  useRouter,
+  useRouterState,
+  type ErrorComponentProps,
+} from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { IntlProvider } from "use-intl";
 import { Providers } from "@/components/global/Providers";
 import { PublicSiteShell, SiteShell } from "@/components/global/SiteShell";
-import { defaultLocale, isLocale, type Locale } from "@/i18n/routing";
+import { defaultLocale, isLocale, localizeHref, type Locale } from "@/i18n/routing";
 import { bypassesI18n } from "@/lib/i18n-exempt";
 import { themeInitScript } from "@/lib/theme";
 import { GLOBAL_NOT_FOUND_MESSAGE, withRootNotFoundHead } from "../not-found";
@@ -13,8 +21,15 @@ import { pathLocale } from "../request-locale";
 import cssUrl from "../start.css?url";
 
 const loadShell = createServerFn({ method: "GET" })
-  .validator((value: { locale: Locale; guest: boolean }) => {
-    if (!value || !isLocale(value.locale) || typeof value.guest !== "boolean") throw new Error("Invalid shell request");
+  .validator((value: { locale: Locale; guest: boolean; auth?: boolean }) => {
+    if (
+      !value ||
+      !isLocale(value.locale) ||
+      typeof value.guest !== "boolean" ||
+      (value.auth !== undefined && typeof value.auth !== "boolean")
+    ) {
+      throw new Error("Invalid shell request");
+    }
     return value;
   })
   .handler(async ({ data }) => {
@@ -22,6 +37,14 @@ const loadShell = createServerFn({ method: "GET" })
       import("@/lib/i18n/server-content"),
       import("@/lib/site-url"),
     ]);
+    let resolvedLocale: Locale = data.locale;
+    if (data.auth) {
+      const { getCookie } = await import("@tanstack/react-start/server");
+      const cookieLocale = getCookie("NEXT_LOCALE");
+      if (cookieLocale && isLocale(cookieLocale)) {
+        resolvedLocale = cookieLocale;
+      }
+    }
     let hasReviews = false;
     if (data.guest) {
       const [{ hasStartFeaturedReviews }, { getRequest }] = await Promise.all([
@@ -31,14 +54,16 @@ const loadShell = createServerFn({ method: "GET" })
       hasReviews = await hasStartFeaturedReviews(getRequest());
     }
     return {
-      locale: data.locale, guest: data.guest, messages: content.getPublicMessages(data.locale),
-      resort: content.getLocalizedResort(data.locale).name, site: siteUrl(), hasReviews,
+      locale: resolvedLocale, guest: data.guest, messages: content.getPublicMessages(resolvedLocale),
+      resort: content.getLocalizedResort(resolvedLocale).name, site: siteUrl(), hasReviews,
     };
   });
 
 export const Route = createRootRoute({
   loader: ({ location }) => loadShell({ data: {
-    locale: pathLocale(location.pathname), guest: !bypassesI18n(location.pathname),
+    locale: pathLocale(location.pathname),
+    guest: !bypassesI18n(location.pathname),
+    auth: location.pathname.startsWith("/sign-in") || location.pathname.startsWith("/sign-up"),
   } }),
   head: ({ loaderData, match }) => {
     const seo = loaderData?.messages.SEO;
@@ -63,16 +88,84 @@ export const Route = createRootRoute({
   component: Site,
   shellComponent: Document,
   notFoundComponent: GlobalNotFound,
-  errorComponent: () => <main role="alert"><h1>Page temporarily unavailable</h1><p>Please try again.</p></main>,
+  errorComponent: RootError,
 });
 
-/** Next's default not-found copy (`404` / "This page could not be found."). */
+/** Next's default not-found copy (`404` / "This page could not be found."), plus recovery links. */
 function GlobalNotFound() {
+  const data = Route.useLoaderData();
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const locale = data?.locale ?? pathLocale(pathname);
+  const backHomeLabel = data?.messages?.Villa?.backHome ?? "Back to Home";
+  const villasLabel = data?.messages?.Nav?.villas ?? "Villas";
+
   return (
-    <main className="flex min-h-[60vh] items-center justify-center px-5 py-24 text-center">
+    <main className="flex min-h-[60vh] flex-col items-center justify-center px-5 py-24 text-center">
       <div className="flex items-center">
         <h1 className="mr-5 border-r border-foreground/30 pr-6 text-2xl font-medium leading-[49px]">404</h1>
         <h2 className="text-sm font-normal leading-[49px]">{GLOBAL_NOT_FOUND_MESSAGE}</h2>
+      </div>
+      <div className="mt-6 flex flex-wrap items-center justify-center gap-4">
+        <a
+          href={localizeHref("/", locale)}
+          className="inline-flex items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90"
+        >
+          {backHomeLabel}
+        </a>
+        <a
+          href={localizeHref("/#villas", locale)}
+          className="text-sm font-medium text-primary hover:underline"
+        >
+          {villasLabel}
+        </a>
+      </div>
+    </main>
+  );
+}
+
+function RootError({ reset }: ErrorComponentProps) {
+  const router = useRouter();
+  const data = Route.useLoaderData();
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  const [retrying, setRetrying] = useState(false);
+  const locale = data?.locale ?? pathLocale(pathname);
+  const heading = data?.messages?.Villa?.pageUnavailableTitle ?? "Page temporarily unavailable";
+  const detail = data?.messages?.Villa?.pageUnavailableDetail ?? "Please try again.";
+  const retryLabel = data?.messages?.Villa?.tryAgain ?? "Try again";
+  const backHomeLabel = data?.messages?.Villa?.backHome ?? "Back to Home";
+
+  async function handleRetry() {
+    if (retrying) return;
+    setRetrying(true);
+    try {
+      reset();
+      await router.invalidate();
+    } finally {
+      setRetrying(false);
+    }
+  }
+
+  return (
+    <main role="alert" className="flex min-h-[60vh] flex-col items-center justify-center px-5 py-24 text-center">
+      <div className="max-w-md">
+        <h1 className="text-2xl font-bold text-foreground">{heading}</h1>
+        <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{detail}</p>
+        <div className="mt-6 flex flex-wrap items-center justify-center gap-4">
+          <button
+            type="button"
+            disabled={retrying}
+            onClick={() => void handleRetry()}
+            className="inline-flex items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:opacity-60"
+          >
+            {retryLabel}
+          </button>
+          <a
+            href={localizeHref("/", locale)}
+            className="text-sm font-medium text-primary hover:underline"
+          >
+            {backHomeLabel}
+          </a>
+        </div>
       </div>
     </main>
   );

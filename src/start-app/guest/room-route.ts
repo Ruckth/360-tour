@@ -60,8 +60,25 @@ export type StartRoomLoaderData = {
 export type StartRoomServerResult =
   | { status: "ok"; data: StartRoomLoaderData }
   | { status: "not_found"; notFound: StartRoomNotFoundData }
-  | { status: "unavailable"; retryAfterSeconds: number; homeHref: string; backHomeLabel: string }
-  | { status: "error"; homeHref: string; backHomeLabel: string };
+  | {
+      status: "unavailable";
+      retryAfterSeconds: number;
+      locale: Locale;
+      homeHref: string;
+      backHomeLabel: string;
+      heading: string;
+      detail: string;
+      retryLabel: string;
+    }
+  | {
+      status: "error";
+      locale: Locale;
+      homeHref: string;
+      backHomeLabel: string;
+      heading: string;
+      detail: string;
+      retryLabel: string;
+    };
 
 export type StartRoomLocaleResolution =
   | { kind: "ok"; locale: Locale }
@@ -82,29 +99,60 @@ export class StartRoomUnavailableError extends Error {
   readonly statusCode = 503 as const;
   readonly retriable = true as const;
   readonly retryAfterSeconds: number;
+  readonly locale?: Locale;
   readonly homeHref: string;
   readonly backHomeLabel: string;
+  readonly heading?: string;
+  readonly detail?: string;
+  readonly retryLabel?: string;
 
-  constructor(params: { retryAfterSeconds: number; homeHref: string; backHomeLabel: string }) {
+  constructor(params: {
+    retryAfterSeconds: number;
+    locale?: Locale;
+    homeHref: string;
+    backHomeLabel: string;
+    heading?: string;
+    detail?: string;
+    retryLabel?: string;
+  }) {
     super("Villa details are temporarily unavailable.");
     this.name = "StartRoomUnavailableError";
     this.retryAfterSeconds = params.retryAfterSeconds;
+    this.locale = params.locale;
     this.homeHref = params.homeHref;
     this.backHomeLabel = params.backHomeLabel;
+    this.heading = params.heading;
+    this.detail = params.detail;
+    this.retryLabel = params.retryLabel;
   }
 }
 
 export class StartRoomLoadError extends Error {
   readonly statusCode = 500 as const;
   readonly retriable = false as const;
+  readonly locale?: Locale;
   readonly homeHref: string;
   readonly backHomeLabel: string;
+  readonly heading?: string;
+  readonly detail?: string;
+  readonly retryLabel?: string;
 
-  constructor(params: { homeHref: string; backHomeLabel: string }) {
+  constructor(params: {
+    locale?: Locale;
+    homeHref: string;
+    backHomeLabel: string;
+    heading?: string;
+    detail?: string;
+    retryLabel?: string;
+  }) {
     super("Unable to load this villa right now.");
     this.name = "StartRoomLoadError";
+    this.locale = params.locale;
     this.homeHref = params.homeHref;
     this.backHomeLabel = params.backHomeLabel;
+    this.heading = params.heading;
+    this.detail = params.detail;
+    this.retryLabel = params.retryLabel;
   }
 }
 
@@ -327,16 +375,24 @@ export async function loadStartRoomData(
       return {
         status: "unavailable",
         retryAfterSeconds: error.retryAfterSeconds,
+        locale,
         homeHref,
         backHomeLabel: villaCopy.backHome,
+        heading: villaCopy.unavailableTitle,
+        detail: villaCopy.unavailableDetail,
+        retryLabel: villaCopy.tryAgain,
       };
     }
 
     deps.setResponseStatus(500, "Internal Server Error");
     return {
       status: "error",
+      locale,
       homeHref,
       backHomeLabel: villaCopy.backHome,
+      heading: villaCopy.loadErrorTitle,
+      detail: villaCopy.loadErrorDetail,
+      retryLabel: villaCopy.tryAgain,
     };
   }
 

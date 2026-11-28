@@ -6,7 +6,8 @@
     "reviews": "Отзывы",
     "contact": "Контакты",
     "book": "Забронировать",
-    "language": "Язык"
+    "language": "Язык",
+    "services": "Услуги"
   },
   "Home": {
     "welcome": "Добро пожаловать",
@@ -126,7 +127,14 @@
     "directBenefits": "Преимущества прямого бронирования",
     "verifiedVillas": "Проверенные виллы",
     "secureCheckout": "Безопасная демо-оплата",
-    "hostSupport": "Прямая поддержка хозяина"
+    "hostSupport": "Прямая поддержка хозяина",
+    "unavailableTitle": "Сведения о вилле временно недоступны",
+    "unavailableDetail": "Сейчас не удалось связаться с каталогом вилл. Пожалуйста, попробуйте чуть позже.",
+    "loadErrorTitle": "Что-то пошло не так",
+    "loadErrorDetail": "Сейчас не удалось загрузить эту виллу. Пожалуйста, попробуйте снова.",
+    "tryAgain": "Попробовать снова",
+    "pageUnavailableTitle": "Страница временно недоступна",
+    "pageUnavailableDetail": "Пожалуйста, попробуйте снова."
   },
   "Booking": {
     "confirmAndPay": "Подтвердить и оплатить",
@@ -372,7 +380,9 @@
     "suggestionLocation": "Насколько близко пляж и рестораны?"
   },
   "Footer": {
-    "bookDirect": "Бронировать напрямую"
+    "bookDirect": "Бронировать напрямую",
+    "enquirySubject": "Запрос о проживании — {resortName}",
+    "enquiryBody": "Здравствуйте! У меня есть вопрос о проживании в {resortName}."
   },
   "DemoDisclaimer": {
     "title": "Только демо-сайт",
@@ -405,7 +415,11 @@
     "close": "Закрыть",
     "closeTour": "Закрыть тур",
     "toggleTheme": "Переключить тему",
-    "toggleMenu": "Открыть или закрыть меню"
+    "toggleMenu": "Открыть или закрыть меню",
+    "appearance": "Оформление",
+    "themeSystem": "Системная",
+    "themeLight": "Светлая",
+    "themeDark": "Тёмная"
   },
   "Resort": {
     "tagline": "Где океан встречает спокойствие",

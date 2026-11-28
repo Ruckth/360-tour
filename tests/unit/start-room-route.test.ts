@@ -447,8 +447,12 @@ describe("start room server orchestration (loadStartRoomData)", () => {
     expect(unavailableResult).toEqual({
       status: "unavailable",
       retryAfterSeconds: 30,
+      locale: "en",
       homeHref: "/",
       backHomeLabel: "Back to Home",
+      heading: "Villa details are temporarily unavailable",
+      detail: "We could not reach the villa catalog right now. Please try again in a moment.",
+      retryLabel: "Try again",
     });
 
     const errStatus = vi.fn();
@@ -474,8 +478,12 @@ describe("start room server orchestration (loadStartRoomData)", () => {
     expect(errHeader).toHaveBeenCalledWith("Cache-Control", "no-store");
     expect(configErrorResult).toEqual({
       status: "error",
+      locale: "en",
       homeHref: "/",
       backHomeLabel: "Back to Home",
+      heading: "Something went wrong",
+      detail: "We could not load this villa right now. Please try again.",
+      retryLabel: "Try again",
     });
     expect(JSON.stringify(configErrorResult)).not.toContain("NEXT_PUBLIC_CONVEX_URL");
   });
