@@ -47,7 +47,7 @@ for (const [size, viewport] of Object.entries(SIZES)) {
       await expect(page.getByRole("tab", { name: "Missing information" })).toHaveAttribute("aria-selected", "true");
       await expect(page.getByText("Do you have a baby cot?")).toBeVisible();
       expect(navTaps + taps.taps).toBe(1);
-      await expect(page.getByRole("tab")).toHaveText(["Missing information", "Business facts"]);
+      await expect(page.getByRole("tablist", { name: "Knowledge sections" }).getByRole("tab")).toHaveText(["Missing information", "Business facts"]);
       await expect(page.getByRole("tab", { name: /Legacy/ })).toHaveCount(0);
       await expectAtMostSentences(page.getByRole("tabpanel"), 1);
       await shot(page, `after-${size}-missing`);
@@ -138,12 +138,12 @@ for (const [size, viewport] of Object.entries(SIZES)) {
     test("No reply needed clears the chat and opens the next one", async ({ page }) => {
       await open(page, "/tests/browser/chats.html?path=/admin/chats");
       const taps = recorder();
-      if (size === "phone") await taps.tap(page.getByRole("button", { name: /Anna Müller/ }).first());
+      await taps.tap(page.getByRole("complementary", { name: "Chat list" }).getByRole("button", { name: /^Website · Anna Müller/ }));
       await expect(page.getByRole("heading", { name: "Anna Müller", exact: true })).toBeVisible();
       await taps.tap(page.getByRole("button", { name: "No reply needed", exact: true }));
       await expect(page.getByRole("heading", { name: "Somchai P.", exact: true })).toBeVisible();
-      // Desktop 2 → 1 (the chat opens itself); phone 3 → 2 (open the chat, then No reply needed).
-      expect(taps.taps).toBe(size === "phone" ? 2 : 1);
+      // Open the chat, then mark it No reply needed.
+      expect(taps.taps).toBe(2);
       expect(await fixtureCalls(page)).toEqual([
         ["setSessionStatus", { sessionId: "chat-anna", status: "resolved", expectedGuestMessageId: "msg-3" }],
       ]);
@@ -169,7 +169,7 @@ for (const [size, viewport] of Object.entries(SIZES)) {
 
     test("contact details are behind the header info button; IDs stay under closed More · technical", async ({ page }) => {
       await open(page, "/tests/browser/chats.html?path=/admin/chats");
-      if (size === "phone") await page.getByRole("button", { name: /Anna Müller/ }).first().click();
+      await page.getByRole("complementary", { name: "Chat list" }).getByRole("button", { name: /^Website · Anna Müller/ }).click();
       const pane = size === "phone" ? page.getByTestId("admin-chat-detail-dialog") : page.getByRole("region", { name: "Selected chat" });
       await expect(pane.locator('address[aria-label="Contact"]')).toHaveCount(0);
       await expectAtMostSentences(pane, 1);
@@ -201,7 +201,7 @@ for (const [size, viewport] of Object.entries(SIZES)) {
 
     test("chat actions say chat, never conversation", async ({ page }) => {
       await open(page, "/tests/browser/chats.html?path=/admin/chats");
-      if (size === "phone") await page.getByRole("button", { name: /Anna Müller/ }).first().click();
+      await page.getByRole("complementary", { name: "Chat list" }).getByRole("button", { name: /^Website · Anna Müller/ }).click();
       await page.getByRole("button", { name: "More chat actions" }).click();
       await expect(page.getByRole("menuitem", { name: "Archive chat" })).toBeVisible();
       await expect(page.getByText(/conversation/i)).toHaveCount(0);

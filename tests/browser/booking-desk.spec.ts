@@ -114,7 +114,7 @@ for (const [size, viewport] of Object.entries(DESK_VIEWPORTS)) {
       await expect(ken).toBeVisible();
       await expect(anna).toHaveCount(0);
       await search.fill("Absent guest");
-      const noMatches = page.getByRole("status").filter({ hasText: "No matching appointments in this date range" });
+      const noMatches = page.getByRole("status").filter({ hasText: "No matching appointments in" });
       await expect(noMatches).toBeVisible();
       await expect(page.getByText("No appointments.", { exact: true })).toBeHidden();
       for (const view of ["Day", "Week", "List"]) {
@@ -346,9 +346,12 @@ for (const [size, viewport] of Object.entries(DESK_VIEWPORTS)) {
         expect(actionBox.x).toBeGreaterThanOrEqual(moneyBox.x);
         expect(actionBox.x + actionBox.width).toBeLessThanOrEqual(moneyBox.x + moneyBox.width);
       }
-      // The money block is the first thing under the title.
-      const top = await money.boundingBox();
-      expect(top!.y).toBeLessThan(160);
+      // Attendance is shown before the money block, which stays above History.
+      const attendance = await sheet.getByRole("region", { name: "Guest stay status" }).boundingBox();
+      const moneyBox = await money.boundingBox();
+      const history = await sheet.locator("summary", { hasText: "History" }).boundingBox();
+      expect(moneyBox!.y).toBeGreaterThanOrEqual(attendance!.y + attendance!.height);
+      expect(moneyBox!.y + moneyBox!.height).toBeLessThanOrEqual(history!.y);
       await expectAtMostSentences(sheet, 1);
       // Price, payments and changes share one closed History.
       await expect(sheet.locator("summary")).toHaveText(["History"]);

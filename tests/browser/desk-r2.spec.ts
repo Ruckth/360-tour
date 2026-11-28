@@ -50,7 +50,7 @@ test('stay edits keep the reviewed revision while guarding an abandoned draft', 
   await expect(page.getByRole('dialog', { name: 'Edit booking', exact: true })).toHaveCount(0);
 });
 test('chat navigation guards an unsent reply and retains it when kept', async ({ page }) => {
-  await page.goto('/tests/browser/chats.html?path=/admin/chats');
+  await page.goto('/tests/browser/chats.html?path=/admin/chats&session=chat-anna&view=needs_reply');
   await page.locator('[data-fixture-ready]').waitFor();
   await page.getByRole('textbox', { name: 'Type an admin reply' }).fill('Unsent answer');
   await page.getByRole('complementary', { name: 'Chat list' }).getByRole('button', { name: /Somchai P/ }).first().click();
@@ -64,7 +64,7 @@ test('chat navigation guards an unsent reply and retains it when kept', async ({
 
 
 test('Done keeps an unsent reply editable when discard is cancelled', async ({ page }) => {
-  await page.goto('/tests/browser/chats.html?path=/admin/chats');
+  await page.goto('/tests/browser/chats.html?path=/admin/chats&session=chat-anna&view=needs_reply');
   await page.locator('[data-fixture-ready]').waitFor();
   await page.getByRole('textbox', { name: 'Type an admin reply' }).fill('Unsent answer');
   await page.getByRole('button', { name: 'No reply needed', exact: true }).click();
