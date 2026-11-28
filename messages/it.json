@@ -257,7 +257,15 @@
     "verifyingCopy": "In attesa della conferma del pagamento…",
     "paymentPendingTitle": "Pagamento ancora in elaborazione",
     "paymentPendingCopy": "Non abbiamo ancora ricevuto la conferma del pagamento. Ricontrollare non comporta nuovi addebiti.",
-    "checkAgain": "Controlla di nuovo"
+    "checkAgain": "Controlla di nuovo",
+    "paySettled": "Questa prenotazione è già pagata. Non serve nessun altro pagamento.",
+    "payHoldExpired": "Il blocco di queste date è terminato. Crea una nuova prenotazione.",
+    "payClosed": "Questa prenotazione non può più essere pagata online. Contattaci se hai bisogno di aiuto.",
+    "viewConfirmation": "Vedi conferma",
+    "amountDueNow": "Importo dovuto ora: {amount}",
+    "proposalHoldExpired": "Il blocco di queste date è terminato. Chiedi un nuovo riepilogo in chat.",
+    "proposalSettled": "Questa prenotazione è già pagata. Non serve nessun altro pagamento.",
+    "proposalUnavailable": "Questo link di pagamento non è disponibile. Apri l’ultimo link ricevuto o inizia una nuova prenotazione."
   },
   "Coupon": {
     "haveCode": "Hai un codice?",

@@ -1,6 +1,6 @@
 "use client";
-import type { Id } from 'convex/_generated/dataModel';
 import { api } from 'convex/_generated/api';
+import { ConvexError } from 'convex/values';
 
 import Link from "@/platform/link";
 import { CheckCircle2, CircleAlert, Clock, Loader2, RotateCw } from "lucide-react";
@@ -24,6 +24,12 @@ export const SUCCESS_POLL_INTERVAL_MS = 2000;
  * invalid: the link cannot be verified at all (missing/wrong token, unknown booking).
  */
 type Phase = "verifying" | "confirmed" | "cancelled" | "pending" | "invalid";
+
+/** `getById` refuses a wrong token with this ConvexError; older backends sent a plain Error. */
+function accessDenied(err: unknown) {
+  if (err instanceof ConvexError) return err.data === "Booking access denied";
+  return err instanceof Error && /access denied/i.test(err.message);
+}
 
 export function BookingSuccessClient({
   bookingId,
@@ -59,7 +65,7 @@ export function BookingSuccessClient({
       try {
         // Stripe can redirect before its webhook reaches Convex. Read only: never starts a payment.
         for (let attempt = 0; attempt < SUCCESS_POLL_ATTEMPTS; attempt++) {
-          const result = await convex.query(api.bookings.bookings.getById, { id: bookingId as Id<"bookings">, accessToken });
+          const result = await convex.query(api.bookings.bookings.getById, { id: bookingId, accessToken });
           if (!active) return;
           if (!result) {
             setError(t("bookingNotFound"));
@@ -76,7 +82,7 @@ export function BookingSuccessClient({
         setPhase("pending");
       } catch (err) {
         if (!active) return;
-        const denied = err instanceof Error && /access denied/i.test(err.message);
+        const denied = accessDenied(err);
         setError(t("unableToVerify"));
         // A refused token is final; a network or server failure can be retried.
         setPhase(denied ? "invalid" : "pending");
@@ -92,6 +98,8 @@ export function BookingSuccessClient({
 
   function checkAgain() {
     if (phase !== "pending") return;
+    // The previous run's transient failure does not stay on screen while verifying again.
+    setError("");
     setPhase("verifying");
     setRun((current) => current + 1);
   }

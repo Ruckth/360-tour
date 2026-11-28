@@ -257,7 +257,15 @@
     "verifyingCopy": "En attente de la confirmation du paiement…",
     "paymentPendingTitle": "Paiement toujours en cours de traitement",
     "paymentPendingCopy": "Nous n’avons pas encore reçu la confirmation du paiement. Vérifier à nouveau n’entraîne aucun nouveau débit.",
-    "checkAgain": "Vérifier à nouveau"
+    "checkAgain": "Vérifier à nouveau",
+    "paySettled": "Cette réservation est déjà payée. Aucun autre paiement n’est nécessaire.",
+    "payHoldExpired": "Le blocage de ces dates a pris fin. Veuillez créer une nouvelle réservation.",
+    "payClosed": "Cette réservation ne peut plus être payée en ligne. Contactez-nous si vous avez besoin d’aide.",
+    "viewConfirmation": "Voir la confirmation",
+    "amountDueNow": "Montant dû maintenant : {amount}",
+    "proposalHoldExpired": "Le blocage de ces dates a pris fin. Demandez un nouveau récapitulatif dans le chat.",
+    "proposalSettled": "Cette réservation est déjà payée. Aucun autre paiement n’est nécessaire.",
+    "proposalUnavailable": "Ce lien de paiement n’est pas disponible. Ouvrez le dernier lien reçu ou commencez une nouvelle réservation."
   },
   "Coupon": {
     "haveCode": "Vous avez un code ?",

@@ -39,3 +39,28 @@ it('G30: an invalid or missing token reveals nothing about the stay', async () =
 	await expect(t.query(api.bookings.bookings.getById, { id: booking.bookingId, accessToken: 'wrong' })).rejects.toThrow();
 	await expect(t.query(api.bookings.bookings.getById, { id: booking.bookingId })).rejects.toThrow();
 });
+
+it('G30: a malformed link id is a plain "not found", not a validator failure', async () => {
+	const { t } = await booked();
+	expect(await t.query(api.bookings.bookings.getById, { id: 'not-a-booking-id', accessToken: 'secret' })).toBeNull();
+	expect(await t.query(api.bookings.bookings.getById, { id: '', accessToken: 'secret' })).toBeNull();
+});
+
+it('G30: the pay state follows the checkout rules, keeping a positive balance on a paid stay payable', async () => {
+	const { t, booking } = await booked();
+	const read = () => t.query(api.bookings.bookings.getById, { id: booking.bookingId, accessToken: booking.accessToken });
+	const patch = (fields: Record<string, unknown>) => t.run((ctx) => ctx.db.patch(booking.bookingId, fields));
+	const total = (await read())!.total;
+	expect(await read()).toMatchObject({ payState: 'payable', amountDue: total });
+	await patch({ status: 'confirmed', paymentStatus: 'paid', amountPaid: total - 5000 });
+	expect(await read()).toMatchObject({ payState: 'payable', amountDue: 5000 });
+	await patch({ amountPaid: total });
+	expect(await read()).toMatchObject({ payState: 'settled', amountDue: 0 });
+	await patch({ status: 'cancelled', paymentStatus: 'refunded', amountPaid: 0 });
+	expect((await read())!.payState).toBe('closed');
+	await patch({ status: 'cancelled', paymentStatus: 'pending', cancelledBy: 'system:expiry' });
+	expect((await read())!.payState).toBe('expired');
+	await patch({ status: 'pending', cancelledBy: undefined });
+	vi.setSystemTime(now + 2 * 86_400_000);
+	expect((await read())!.payState).toBe('expired');
+});

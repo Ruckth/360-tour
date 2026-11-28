@@ -257,7 +257,15 @@
     "verifyingCopy": "正在等待付款确认…",
     "paymentPendingTitle": "付款仍在处理中",
     "paymentPendingCopy": "我们尚未收到付款确认。再次检查不会重复扣款。",
-    "checkAgain": "再次检查"
+    "checkAgain": "再次检查",
+    "paySettled": "此预订已付款，无需再次付款。",
+    "payHoldExpired": "这些日期的保留已结束。请重新预订。",
+    "payClosed": "此预订已无法在线付款。如需帮助，请联系我们。",
+    "viewConfirmation": "查看确认信息",
+    "amountDueNow": "当前应付金额：{amount}",
+    "proposalHoldExpired": "这些日期的保留已结束。请在聊天中索取新的摘要。",
+    "proposalSettled": "此预订已付款，无需再次付款。",
+    "proposalUnavailable": "此付款链接不可用。请打开您收到的最新链接，或重新预订。"
   },
   "Coupon": {
     "haveCode": "有优惠码吗？",

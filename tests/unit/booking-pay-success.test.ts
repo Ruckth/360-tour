@@ -3,6 +3,7 @@ import { act, createElement, type ReactElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getFunctionName } from "convex/server";
+import { ConvexError } from "convex/values";
 import { IntlProvider } from "@/platform/intl";
 import { PayClient } from "@/components/booking/PayClient";
 import { BookingSuccessClient, SUCCESS_POLL_ATTEMPTS, SUCCESS_POLL_INTERVAL_MS } from "@/components/booking/BookingSuccessClient";
@@ -16,7 +17,9 @@ vi.mock("@/platform/navigation", () => ({ useRouter: () => ({ prefetch: () => {}
 const booking = {
   _id: "b1", checkIn: "2030-01-10", checkOut: "2030-01-12", guests: 3, nights: 2, subtotal: 2000000, discountAmount: 0,
   customPrice: false, total: 2000000, currency: "THB", paymentStatus: "pending", status: "pending", propertyName: "Pool Villa",
+  payState: "payable", amountDue: 2000000,
 };
+const never = () => new Promise<never>(() => {});
 let root: Root;
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
@@ -54,6 +57,54 @@ describe("G30 pay screen stay summary", () => {
     await show(createElement(PayClient, { bookingId: "b2", accessToken: "" }));
     expect(document.querySelector('[data-testid="pay-stay-summary"]')).toBeNull();
     expect(document.body.textContent).toContain(en.Booking.missingToken);
+  });
+});
+
+describe("G30 pay screen follows the link and the backend payment rules", () => {
+  const payButton = () => [...document.querySelectorAll("button")].find((button) => button.textContent === en.Booking.pay);
+  const summary = () => document.querySelector('[data-testid="pay-stay-summary"]');
+
+  it("never keeps the previous stay on screen after a link change or a refusal", async () => {
+    client.query.mockResolvedValue(booking);
+    await show(createElement(PayClient, { bookingId: "b1", accessToken: "secret" }));
+    expect(summary()).not.toBeNull();
+    client.query.mockImplementation(never);
+    await show(createElement(PayClient, { bookingId: "b2", accessToken: "other" }));
+    expect(summary()).toBeNull();
+    expect(document.body.textContent).not.toContain("Pool Villa");
+    client.query.mockResolvedValue(booking);
+    await show(createElement(PayClient, { bookingId: "b1", accessToken: "secret" }));
+    expect(summary()).not.toBeNull();
+    client.query.mockRejectedValue(new ConvexError("Booking access denied"));
+    await show(createElement(PayClient, { bookingId: "b1", accessToken: "wrong" }));
+    expect(summary()).toBeNull();
+    expect(document.body.textContent).toContain(en.Booking.unableToVerify);
+    expect(payButton()?.disabled).toBe(true);
+  });
+
+  it.each([
+    ["settled", en.Booking.paySettled],
+    ["expired", en.Booking.payHoldExpired],
+    ["closed", en.Booking.payClosed],
+  ])("a %s stay explains itself and never starts checkout", async (payState, notice) => {
+    client.query.mockResolvedValue({ ...booking, payState, amountDue: 0, paymentStatus: payState === "settled" ? "paid" : "pending" });
+    await show(createElement(PayClient, { bookingId: "b1", accessToken: "secret" }));
+    expect(document.querySelector('[data-testid="pay-state"]')?.textContent).toBe(notice);
+    expect(payButton()).toBeUndefined();
+    for (const button of document.querySelectorAll("button")) await act(async () => button.click());
+    expect(client.action).not.toHaveBeenCalled();
+    const confirmation = [...document.querySelectorAll("a")].find((a) => a.textContent === en.Booking.viewConfirmation);
+    expect(Boolean(confirmation)).toBe(payState === "settled");
+  });
+
+  it("keeps a positive balance on a paid stay payable and shows what is due now", async () => {
+    vi.spyOn(window.location, "assign").mockImplementation(() => {});
+    client.query.mockResolvedValue({ ...booking, status: "confirmed", paymentStatus: "paid", amountDue: 500000 });
+    client.action.mockResolvedValue({ url: "https://checkout.stripe.com/test" });
+    await show(createElement(PayClient, { bookingId: "b1", accessToken: "secret" }));
+    expect(document.querySelector('[data-testid="pay-amount-due"]')?.textContent).toBe(en.Booking.amountDueNow.replace("{amount}", "฿5,000"));
+    await act(async () => payButton()!.click());
+    expect(client.action.mock.calls[0][1]).toEqual({ bookingId: "b1", accessToken: "secret" });
   });
 });
 
@@ -114,6 +165,26 @@ describe("G31 confirmation verification states", () => {
     await show(createElement(BookingSuccessClient, { bookingId: "b3", accessToken: "" }));
     expect(phase()).toBe("invalid");
     expect(document.body.textContent).toContain(en.Booking.missingConfirmationToken);
+  });
+
+  it("refuses a malformed link and a ConvexError denial terminally", async () => {
+    client.query.mockResolvedValue(null);
+    await show(createElement(BookingSuccessClient, { bookingId: "not-an-id", accessToken: "secret" }));
+    expect(phase()).toBe("invalid");
+    expect(checkAgain()).toBeUndefined();
+    client.query.mockRejectedValue(new ConvexError("Booking access denied"));
+    await show(createElement(BookingSuccessClient, { bookingId: "b2", accessToken: "wrong" }));
+    expect(phase()).toBe("invalid");
+    expect(checkAgain()).toBeUndefined();
+  });
+
+  it("clears a transient failure while verifying again", async () => {
+    client.query.mockRejectedValueOnce(new Error("Network down")).mockImplementation(never);
+    await show(createElement(BookingSuccessClient, { bookingId: "b1", accessToken: "secret" }));
+    expect(document.body.textContent).toContain(en.Booking.unableToVerify);
+    await act(async () => checkAgain()!.click());
+    expect(phase()).toBe("verifying");
+    expect(document.body.textContent).not.toContain(en.Booking.unableToVerify);
   });
 
   it("lets a network failure be retried", async () => {

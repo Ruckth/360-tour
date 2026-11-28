@@ -1,5 +1,4 @@
 "use client";
-import type { Id } from 'convex/_generated/dataModel';
 import { api } from 'convex/_generated/api';
 
 import { satangToBaht } from 'convex/shared/money';
@@ -41,34 +40,33 @@ export function PayClient({
     locale,
   );
   const [loading, setLoading] = useState(false);
-  const [checking, setChecking] = useState(true);
+  const [checking, setChecking] = useState(Boolean(accessToken));
   const [booking, setBooking] = useState<PublicBooking | null>(null);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(accessToken ? "" : t("missingToken"));
+  // A different payment link never shows the previous stay while its own access is checked.
+  const link = `${bookingId}:${accessToken}`;
+  const [shownLink, setShownLink] = useState(link);
+  if (shownLink !== link) {
+    setShownLink(link);
+    setBooking(null);
+    setChecking(Boolean(accessToken));
+    setError(accessToken ? "" : t("missingToken"));
+  }
 
   useEffect(() => {
+    if (!accessToken) return;
     let active = true;
     async function loadBooking() {
-      if (!accessToken) {
-        setError(t("missingToken"));
-        setChecking(false);
-        return;
-      }
-      setChecking(true);
       try {
-        const result = await convex.query(api.bookings.bookings.getById, {
-          id: bookingId as Id<"bookings">,
-          accessToken,
-        });
+        const result = await convex.query(api.bookings.bookings.getById, { id: bookingId, accessToken });
         if (!active) return;
-        if (!result) {
-          setError(t("bookingNotFound"));
-        } else {
-          setBooking(result);
-          setError("");
-        }
-      } catch (err) {
+        setBooking(result);
+        setError(result ? "" : t("bookingNotFound"));
+      } catch {
         if (!active) return;
-        setError(err instanceof Error ? err.message : t("unableToVerify"));
+        // A refused token or an outage: either way nothing about the stay is shown.
+        setBooking(null);
+        setError(t("unableToVerify"));
       } finally {
         if (active) setChecking(false);
       }
@@ -84,11 +82,18 @@ export function PayClient({
     router.prefetch(successHref);
   }, [router, successHref]);
 
+  const payable = booking?.payState === "payable";
+  const payStateNotice = booking && !payable
+    ? t(booking.payState === "settled" ? "paySettled" : booking.payState === "expired" ? "payHoldExpired" : "payClosed")
+    : "";
+
   async function confirmPayment() {
+    // Checkout starts only for a verified stay with a balance still due online.
+    if (!payable) return;
     setLoading(true);
     setError("");
     try {
-      const checkout = await convex.action(api.bookings.payments.stripe.createCheckout, { bookingId: bookingId as Id<'bookings'>, accessToken });
+      const checkout = await convex.action(api.bookings.payments.stripe.createCheckout, { bookingId: booking._id, accessToken });
       window.location.assign(checkout.url);
     } catch (err) {
       setError(err instanceof Error ? err.message : t("paymentCouldNotConfirm"));
@@ -143,7 +148,12 @@ export function PayClient({
             })}
           </div>
         ) : null}
-        {booking && quotedTotal !== null && booking.total !== quotedTotal ? (
+        {payable && booking.amountDue !== booking.total ? (
+          <p data-testid="pay-amount-due" className="mt-3 rounded-xl border border-gold/30 bg-gold/5 px-3 py-2 text-sm font-semibold text-foreground">
+            {t("amountDueNow", { amount: `${currencyPrefix(booking.currency)}${satangToBaht(booking.amountDue).toLocaleString()}` })}
+          </p>
+        ) : null}
+        {payable && quotedTotal !== null && booking.total !== quotedTotal ? (
           <Alert variant="warning" className="mt-3">
             <AlertDescription>
               {couponT("totalChanged", { total: `${currencyPrefix(booking.currency)}${satangToBaht(booking.total).toLocaleString()}` })}
@@ -155,17 +165,28 @@ export function PayClient({
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         ) : null}
+        {payStateNotice ? (
+          <Alert data-testid="pay-state" data-state={booking?.payState} className="mt-4">
+            <AlertDescription>{payStateNotice}</AlertDescription>
+          </Alert>
+        ) : null}
         <div className="mt-6 grid gap-3">
-          <Button
-            onClick={confirmPayment}
-            disabled={loading || checking || !booking}
-          >
-            {checking
-              ? t("verifying")
-              : loading
-                ? t("confirming")
-                : t("pay")}
-          </Button>
+          {booking?.payState === "settled" ? (
+            <Button asChild>
+              <Link href={successHref}>{t("viewConfirmation")}</Link>
+            </Button>
+          ) : booking && !payable ? null : (
+            <Button
+              onClick={confirmPayment}
+              disabled={loading || checking || !payable}
+            >
+              {checking
+                ? t("verifying")
+                : loading
+                  ? t("confirming")
+                  : t("pay")}
+            </Button>
+          )}
           <Link
             href={localizeHref("/booking", locale)}
             className="text-center text-sm font-medium text-muted-foreground transition hover:text-foreground"

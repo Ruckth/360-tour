@@ -441,6 +441,35 @@ describe('proposal confirm links', () => {
 		await prepare();
 		expect(await t.query(api.bookings.bookings.getConfirmProposal, { token: confirmToken })).toBeNull();
 	});
+	it('names an expiry only for a verified current proposal; everything else is neutral', async () => {
+		const { t, prepare } = await setup({ chatQuoteValidityMinutes: 2 });
+		const { confirmToken, expiresAt } = await prepare();
+		const status = (token: string) => t.query(api.bookings.bookings.getConfirmProposalStatus, { token });
+		const parts = confirmToken.split('.');
+		const forged = confirmToken.slice(0, -1) + (confirmToken.endsWith('a') ? 'b' : 'a');
+		vi.setSystemTime(expiresAt);
+		expect(await status(confirmToken)).toBe('summary_expired');
+		for (const token of ['', 'bad.token', [parts[0], parts[1], String(Number(parts[2]) - minute), parts[3]].join('.'), forged]) {
+			expect(await status(token)).toBe('unavailable');
+		}
+		await prepare();
+		expect(await status(confirmToken)).toBe('unavailable');
+	});
+	it('tells a verified confirmed link apart: settled, hold expired, or still payable', async () => {
+		const { t, prepare } = await setup();
+		const { confirmToken } = await prepare();
+		const status = () => t.query(api.bookings.bookings.getConfirmProposalStatus, { token: confirmToken });
+		const first = await t.mutation(api.bookings.bookings.confirmProposal, { token: confirmToken });
+		if (first.needsReview) throw new Error('Expected a confirmed booking');
+		expect(await status()).toBe('unavailable');
+		await t.run((ctx) => ctx.db.patch(first.bookingId, { status: 'confirmed', paymentStatus: 'paid', amountPaid: first.total }));
+		expect(await t.query(api.bookings.bookings.getConfirmProposal, { token: confirmToken })).toBeNull();
+		expect(await status()).toBe('settled');
+		await t.run((ctx) => ctx.db.patch(first.bookingId, { status: 'cancelled', paymentStatus: 'pending', amountPaid: 0, cancelledBy: 'system:expiry' }));
+		expect(await status()).toBe('hold_expired');
+		await t.run((ctx) => ctx.db.patch(first.bookingId, { cancelledBy: 'staff' }));
+		expect(await status()).toBe('unavailable');
+	});
 	it('keeps a confirmed link usable for payment after the summary window', async () => {
 		const { t, prepare } = await setup({ chatQuoteValidityMinutes: 2 });
 		const { confirmToken, expiresAt } = await prepare();

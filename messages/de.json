@@ -257,7 +257,15 @@
     "verifyingCopy": "Warten auf die Zahlungsbestätigung …",
     "paymentPendingTitle": "Zahlung wird noch verarbeitet",
     "paymentPendingCopy": "Die Zahlungsbestätigung ist noch nicht eingegangen. Durch erneutes Prüfen wird nichts erneut abgebucht.",
-    "checkAgain": "Erneut prüfen"
+    "checkAgain": "Erneut prüfen",
+    "paySettled": "Diese Buchung ist bereits bezahlt. Es ist keine weitere Zahlung nötig.",
+    "payHoldExpired": "Die Reservierung dieser Daten ist abgelaufen. Bitte erstellen Sie eine neue Buchung.",
+    "payClosed": "Diese Buchung kann nicht mehr online bezahlt werden. Kontaktieren Sie uns, wenn Sie Hilfe brauchen.",
+    "viewConfirmation": "Bestätigung ansehen",
+    "amountDueNow": "Jetzt fällig: {amount}",
+    "proposalHoldExpired": "Die Reservierung dieser Daten ist abgelaufen. Fragen Sie im Chat nach einer neuen Zusammenfassung.",
+    "proposalSettled": "Diese Buchung ist bereits bezahlt. Es ist keine weitere Zahlung nötig.",
+    "proposalUnavailable": "Dieser Zahlungslink ist nicht verfügbar. Öffnen Sie den neuesten Link, den Sie erhalten haben, oder starten Sie eine neue Buchung."
   },
   "Coupon": {
     "haveCode": "Haben Sie einen Code?",

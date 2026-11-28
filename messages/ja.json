@@ -257,7 +257,15 @@
     "verifyingCopy": "お支払いの確認を待っています…",
     "paymentPendingTitle": "お支払いを処理中です",
     "paymentPendingCopy": "お支払いの確認がまだ届いていません。再確認しても再度請求されることはありません。",
-    "checkAgain": "もう一度確認"
+    "checkAgain": "もう一度確認",
+    "paySettled": "このご予約はお支払い済みです。追加のお支払いは不要です。",
+    "payHoldExpired": "この日程の仮押さえは終了しました。新しくご予約ください。",
+    "payClosed": "このご予約はオンラインでお支払いいただけなくなりました。お困りの際はお問い合わせください。",
+    "viewConfirmation": "確認内容を見る",
+    "amountDueNow": "現在のお支払い額: {amount}",
+    "proposalHoldExpired": "この日程の仮押さえは終了しました。チャットで新しい見積もりをご依頼ください。",
+    "proposalSettled": "このご予約はお支払い済みです。追加のお支払いは不要です。",
+    "proposalUnavailable": "この支払いリンクはご利用いただけません。最新のリンクを開くか、新しくご予約ください。"
   },
   "Coupon": {
     "haveCode": "コードをお持ちですか？",

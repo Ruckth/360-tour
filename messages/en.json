@@ -257,7 +257,15 @@
     "verifyingCopy": "Waiting for payment confirmation…",
     "paymentPendingTitle": "Payment still processing",
     "paymentPendingCopy": "We have not received the payment confirmation yet. You will not be charged again by checking.",
-    "checkAgain": "Check again"
+    "checkAgain": "Check again",
+    "paySettled": "This booking is already paid. No further payment is needed.",
+    "payHoldExpired": "The hold on these dates has ended. Please create a new booking.",
+    "payClosed": "This booking can no longer be paid online. Contact us if you need help.",
+    "viewConfirmation": "View confirmation",
+    "amountDueNow": "Amount due now: {amount}",
+    "proposalHoldExpired": "The hold on these dates has ended. Ask in the chat for a new summary.",
+    "proposalSettled": "This booking is already paid. No further payment is needed.",
+    "proposalUnavailable": "This payment link is not available. Open the latest link you received, or start a new booking."
   },
   "Coupon": {
     "haveCode": "Have a code?",

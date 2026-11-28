@@ -257,7 +257,15 @@
     "verifyingCopy": "Esperando la confirmación del pago…",
     "paymentPendingTitle": "El pago aún se está procesando",
     "paymentPendingCopy": "Aún no hemos recibido la confirmación del pago. Comprobarlo de nuevo no genera otro cargo.",
-    "checkAgain": "Comprobar de nuevo"
+    "checkAgain": "Comprobar de nuevo",
+    "paySettled": "Esta reserva ya está pagada. No hace falta ningún otro pago.",
+    "payHoldExpired": "La retención de estas fechas ha terminado. Crea una nueva reserva.",
+    "payClosed": "Esta reserva ya no se puede pagar en línea. Contáctanos si necesitas ayuda.",
+    "viewConfirmation": "Ver confirmación",
+    "amountDueNow": "Importe pendiente ahora: {amount}",
+    "proposalHoldExpired": "La retención de estas fechas ha terminado. Pide un nuevo resumen en el chat.",
+    "proposalSettled": "Esta reserva ya está pagada. No hace falta ningún otro pago.",
+    "proposalUnavailable": "Este enlace de pago no está disponible. Abre el último enlace que recibiste o empieza una nueva reserva."
   },
   "Coupon": {
     "haveCode": "¿Tienes un código?",
