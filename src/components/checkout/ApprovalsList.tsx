@@ -11,7 +11,7 @@ import { useNow } from "@/lib/staff-bookings";
 import { orderTitle } from "convex/shared/orderMath";
 import { orderTime } from "./checkout-ui";
 import { ApprovalDecisionButtons, useApprovalDecision } from "./ApprovalRequest";
-import { useCheckoutBackend, useCommerce, useReturnsDesk, type ApprovalDetail, type ApprovalId, type ApprovalQueueRow, type ApprovalQueueStatus, type ApprovalRequest } from "./backend";
+import { useCheckoutBackend, useCommerce, useReturnsDesk, type ApprovalDetail, type ApprovalId, type ApprovalQueueRow, type ApprovalQueueStatus, type ApprovalRequest, type ExpiredApprovalQueueRow } from "./backend";
 import { approvalAsk, minutesLeft, personName, queueAsk } from "./staff-approvals";
 
 /*
@@ -50,7 +50,7 @@ function useReturnApprovalsLive(): boolean | "loading" {
 export default function ApprovalsList({ rows, states, history, verifying, selectedId, count, more, searching, loadingMore, onMore, onSelect, onDecided }: {
   rows: ApprovalQueueRow[];
   states?: Record<string, ApprovalQueueStatus | Error | undefined>;
-  history?: ApprovalQueueRow[];
+  history?: ExpiredApprovalQueueRow[];
   verifying?: boolean;
   selectedId: ApprovalId | null;
   count: number;
@@ -120,8 +120,8 @@ export default function ApprovalsList({ rows, states, history, verifying, select
   );
 }
 
-function UnavailableQueueRow({ row, status }: { row: ApprovalQueueRow; status: string }) {
-  const title = isTarget(row) ? row.kind === "returnItems" ? "Return items" : "Adjustment" : queueAsk(row);
+function UnavailableQueueRow({ row, status }: { row: ApprovalQueueRow | ExpiredApprovalQueueRow; status: string }) {
+  const title = row.kind === "returnItems" ? "Return items" : row.kind === "adjustment" ? "Adjustment" : queueAsk(row);
   return <li className="grid gap-0.5 rounded-xl border border-border px-4 py-3 text-sm">
     <span className="font-medium">{personName(row.requesterEmail)} · {title}</span>
     <span className="text-xs text-muted-foreground">{status} · {status === "Expired" ? "Expired at" : "Expires"} {orderTime(row.expiresAt)}</span>

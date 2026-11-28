@@ -276,7 +276,7 @@ export const recentExpired = staffQuery({
     return candidates.flat()
       .filter(request => canReviewApproval(ctx.staff, request) && canAccessApprovalBranch(ctx.staff, request))
       .sort((a, b) => b.expiresAt - a.expiresAt).slice(0, APPROVAL_PAGE_SIZE)
-      .map(request => queueRow(request, false));
+      .map(request => ({ ...queueRow(request, false), status: 'expired' as const }));
   },
 });
 
