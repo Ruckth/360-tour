@@ -378,8 +378,9 @@ export function ChatsView() {
     return reply.send();
   }
 
-  async function settleGuestMessage(session: AdminSession, messageId: Id<"messages">) {
+  async function settleGuestMessage(session: AdminSession, messageId: Id<"messages">, onSettled?: () => void) {
     const sessionId = session._id;
+    if (session.inboxReason === "sending" || (sessionId === selectedSessionId && reply.pending)) return;
     if (settlingRef.current.has(messageId)) return;
     settlingRef.current.add(messageId);
     setSettlingMessageIds(new Set(settlingRef.current));
@@ -389,6 +390,7 @@ export function ChatsView() {
       if (discard === null) return;
       await settleGuestMessageMutation({ sessionId, messageId, expectedAssignedEmail: session.assignedAdminEmail ?? null });
       discard?.();
+      onSettled?.();
     } catch (error) {
       setSettleError(error instanceof Error ? error.message : "Unable to mark the message as settled.");
     } finally {
@@ -585,10 +587,14 @@ export function ChatsView() {
       document.getElementById(isLargeViewport ? "admin-reply-desktop" : "admin-reply-mobile")?.focus();
     else if (key === "e") {
       const session = sessions[selectedIndex];
-      if (!session?.needsReply || !session.latestMessage || settlingRef.current.has(session.latestMessage._id)) return;
-      // Settled chats leave the "Needs reply" list, so move on to the next one.
-      if (status === "needs_reply") moveSelection(selectedIndex < sessions.length - 1 ? 1 : -1);
-      void settleGuestMessage(session, session.latestGuestMessageId ?? session.latestMessage._id);
+      if (!session?.needsReply) return;
+      const messageId = session.latestGuestMessageId ?? (session.latestMessage?.role === "user" ? session.latestMessage._id : undefined);
+      if (!messageId) return;
+      void settleGuestMessage(session, messageId, () => {
+        if (status === "needs_reply" && navigationQueryRef.current === searchParams.toString()) {
+          moveSelection(selectedIndex < sessions.length - 1 ? 1 : -1);
+        }
+      });
     }
   });
 
@@ -836,7 +842,7 @@ export function ChatsView() {
                 <EmptyState action={emptyList.action}>{emptyList.message}</EmptyState>
               ) : null}
               {sessions.map((session) => {
-                const unansweredMessageId = session.needsReply && session.inboxReason !== "sending" ? (session.latestGuestMessageId ?? session.latestMessage?._id) : undefined;
+                const unansweredMessageId = session.needsReply && session.inboxReason !== "sending" ? (session.latestGuestMessageId ?? (session.latestMessage?.role === "user" ? session.latestMessage._id : undefined)) : undefined;
                 const selected = selectedSessionId === session._id;
                 const preview = session.latestMessage ? plainText(session.latestMessage.content) : "No messages yet";
                 const overdue = session.staffTask && session.staffTaskDueAt !== undefined && session.staffTaskDueAt <= now;
