@@ -119,7 +119,7 @@ it("routes canonical partner links to Affiliates and retains copy and QR actions
   await render(createElement(LinksView, { links: [partnerLink], campaigns: [campaign], coupons: [], properties: [], origin: "https://example.com", brand: "Resort", today: "2026-11-09", campaignsHref: "/c", actions: { saveLink, setLinkStatus: vi.fn(), checkSlug: vi.fn() } }), "manager");
   expect(document.querySelector('a[href="/admin/marketing/affiliates"]')?.textContent).toBe("Manage partner");
   expect(document.querySelector('[aria-label="QR offer card for /r/anna"]')).not.toBeNull();
-  await click(button("Anna")); expect(mocked.routerPush).toHaveBeenCalledWith("/admin/marketing/affiliates"); expect(document.querySelector('[role="dialog"]')).toBeNull(); expect(saveLink).not.toHaveBeenCalled();
+  await click(button("Anna")); expect(mocked.routerPush).toHaveBeenCalledWith("/admin/marketing/affiliates?partner=anna"); expect(document.querySelector('[role="dialog"]')).toBeNull(); expect(saveLink).not.toHaveBeenCalled();
 });
 it("preserves an affiliate alias association when a manager saves details", async () => {
   const alias: LinkRow = { ...partnerLink, slug: "anna-extra", shortUrlPath: "/anna-extra", status: "draft" };

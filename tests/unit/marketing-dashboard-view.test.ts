@@ -245,7 +245,7 @@ describe("dashboard view", () => {
 
   it("asks for a new read when the basis changes", () => {
     render(ready());
-    const finance = [...document.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "Finance")!;
+    const finance = [...document.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "FinancePayment and refund dates")!;
     click(finance);
     expect(calls.request).toEqual([{ ...DEFAULT_REQUEST(FIXTURE_TODAY), basis: "cash" }]);
   });

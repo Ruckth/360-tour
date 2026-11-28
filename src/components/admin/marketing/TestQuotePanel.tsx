@@ -33,6 +33,7 @@ export function TestQuotePanel({
   properties,
   today,
   testQuote,
+  serviceNames = [],
 }: {
   /** The saved code, or undefined before the coupon exists. */
   code?: string;
@@ -40,6 +41,7 @@ export function TestQuotePanel({
   dirty: boolean;
   properties: MarketingProperty[];
   today: string;
+  serviceNames?: string[];
   testQuote: MarketingActions["testQuote"];
 }) {
   const id = useId();
@@ -147,11 +149,15 @@ export function TestQuotePanel({
           <legend className="mb-2 text-sm font-medium leading-none text-foreground">
             Services <span className="font-normal text-muted-foreground">(optional)</span>
           </legend>
+          <datalist id={`${id}-service-choices`}>
+            {[...new Set(serviceNames)].map((name) => <option key={name} value={name} />)}
+          </datalist>
           {services.map((line, index) => (
             <div key={line.key} className="grid gap-1">
               <div className="grid grid-cols-[minmax(0,1fr)_6.5rem_auto] items-center gap-2">
                 <Input
                   aria-label={`Service ${index + 1}`}
+                  list={`${id}-service-choices`}
                   placeholder="e.g. Thai massage 60"
                   value={line.label}
                   onChange={(event) => setServices((current) => current.map((item) => (item.key === line.key ? { ...item, label: event.target.value } : item)))}

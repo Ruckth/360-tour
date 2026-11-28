@@ -314,10 +314,10 @@ export function DashboardView({
       <div className="min-w-0 max-sm:col-span-2 max-sm:col-start-1 max-sm:row-start-2 max-sm:mr-14">
         <ToggleGroup variant="segmented" tone="subtle" value={request.basis} onValueChange={(basis) => onRequestChange({ ...request, basis })} aria-label="View" className="w-full">
           <ToggleGroupItem value="cohort" className="flex-1 py-1.5 sm:flex-none">
-            Marketing
+            <span>Marketing<small className="block font-normal">Attributed visits</small></span>
           </ToggleGroupItem>
           <ToggleGroupItem value="cash" className="flex-1 py-1.5 sm:flex-none">
-            Finance
+            <span>Finance<small className="block font-normal">Payment and refund dates</small></span>
           </ToggleGroupItem>
         </ToggleGroup>
       </div>
@@ -348,6 +348,9 @@ export function DashboardView({
           <span aria-hidden className={cn("size-1.5 rounded-full", busy ? "motion-safe:animate-pulse bg-amber-500" : "bg-emerald-500")} />
           {busy ? "Updating… · showing previous figures" : `Updated ${formatStamp(report.asOf)}`}
         </span>
+        <button type="button" className="min-h-8 underline sm:hidden" onClick={() => setViewOptions(true)}>
+          {touch === "first" ? "First touch" : "Last touch"}
+        </button>
         {propertyFilter !== "all" ? (
           <>
             <span>{propertyName}</span>

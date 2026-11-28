@@ -6,14 +6,13 @@ import { normalizeCouponCode } from "convex/shared/offers";
 import { Archive, ArrowLeft, Lock, Pause, Play, QrCode, Send, Wand2 } from "lucide-react";
 import { canEditMarketing, useMarketingAccess } from "./MarketingAccess";
 import { useUnsavedGuard } from "@/hooks/use-unsaved-guard";
-import { useEffect, useId, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { StickyActionBar } from "@/components/ui/sticky-action-bar";
 import { Card } from "@/components/ui/card";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
 import { FieldLabel as Label } from "@/components/ui/label";
-import { MoreMenu } from "@/components/ui/more-menu";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -70,6 +69,7 @@ type CouponEditorProps = {
   /** Where short links live, and the name printed on the QR card. */
   origin: string;
   brand: string;
+  serviceNames?: string[];
   actions: Pick<MarketingActions, "saveCoupon" | "setCouponStatus" | "testQuote"> & CouponQrActions;
   /** After the first save of a new coupon, e.g. to move to its page. */
   onCreated: (couponId: Id<"coupons">) => void;
@@ -83,9 +83,9 @@ type CouponEditorProps = {
  * What the first save said, kept for the coupon's own page: `onCreated` moves there, and the
  * builder is mounted again for the saved coupon.
  */
-const savedNotices = new Map<string, Notice>();
+const savedNotices = new Map<string, Notice & { retryPublish?: boolean }>();
 
-export function CouponEditor({ detail, isNew, coupons, campaigns, properties, today, listHref, origin, brand, actions, onCreated, history, refusals }: CouponEditorProps) {
+export function CouponEditor({ detail, isNew, coupons, campaigns, properties, today, listHref, origin, brand, actions, onCreated, history, refusals, serviceNames }: CouponEditorProps) {
   const { capabilities } = useMarketingAccess();
   if (isNew && !capabilities.draft) return <div className="mx-auto max-w-3xl p-6"><h2 className="text-xl font-semibold">Creating coupons requires draft access</h2><ButtonLink href={listHref} variant="outline" className="mt-3">Back to coupons</ButtonLink></div>;
   if (!isNew && detail === undefined) return <EditorSkeleton />;
@@ -107,6 +107,7 @@ export function CouponEditor({ detail, isNew, coupons, campaigns, properties, to
     <CouponBuilder
       key={detail?._id ?? "new"}
       detail={detail ?? undefined}
+      serviceNames={serviceNames}
       coupons={coupons}
       campaigns={campaigns}
       properties={properties}
@@ -180,6 +181,7 @@ function usesMoreRules(form: CouponForm) {
 }
 
 function CouponBuilder({
+  serviceNames,
   detail,
   coupons,
   campaigns,
@@ -194,6 +196,7 @@ function CouponBuilder({
   refusals,
 }: {
   detail?: CouponDetail;
+  serviceNames?: string[];
   coupons: CouponRow[];
   campaigns: CampaignOption[];
   properties: MarketingProperty[];
@@ -218,7 +221,9 @@ function CouponBuilder({
   const [discountText, setDiscountText] = useState(() => discountFieldText(baseline));
   const [moreOpen, setMoreOpen] = useState(() => usesMoreRules(baseline));
   const [submitted, setSubmitted] = useState(false);
+  const changeInProgress = useRef(false);
   const [saving, setSaving] = useState(false);
+  const [retryPublish, setRetryPublish] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
   const { pending: statusPending, run } = useConfirmedChange<Id<"coupons">>(show);
   const statusBusy = statusPending !== null;
@@ -229,6 +234,7 @@ function CouponBuilder({
     const saved = detail ? savedNotices.get(detail._id) : undefined;
     if (!saved || !detail) return;
     savedNotices.delete(detail._id);
+    setRetryPublish(Boolean(saved.retryPublish));
     show(saved.text, saved.tone);
   }, [detail, show]);
 
@@ -270,83 +276,93 @@ function CouponBuilder({
 
   /** Saves the form; with "publish" it confirms first, then publishes only after the save succeeded. */
   async function save(intent: "save" | "publish") {
-    if (!canEdit) return;
-    setSubmitted(true);
-    if (firstError) {
-      focusError(firstError);
-      return;
-    }
-    if (
-      intent === "publish" &&
-      !(await confirm({ title: `Publish ${code}?`, description: "Guests can use it from now on, within its dates and limits.", confirmLabel: "Save & publish" }))
-    )
-      return;
-    setSaving(true);
-    const campaignId = form.campaignId ? (form.campaignId as Id<"marketingCampaigns">) : undefined;
-    let result: Awaited<ReturnType<typeof actions.saveCoupon>>;
+    if (!canEdit || (intent === "publish" && !canPublish) || changeInProgress.current) return;
+    changeInProgress.current = true;
     try {
-      result = await actions.saveCoupon({ couponId: detail?._id, code, campaignId, ...rules });
-    } catch (error) {
-      show(marketingErrorText(error, "Couldn’t save the coupon."), "danger");
-      setSaving(false);
-      return;
-    }
-    setSubmitted(false);
-    // Show what was stored (normalised code, sorted villas, trimmed terms, formatted numbers).
-    const stored = couponFormFrom({ code, campaignId, rules });
-    setForm(stored);
-    setDiscountText(discountFieldText(stored));
-    let saved: Notice = { tone: "success", text: detail ? (changedRules ? `Saved version ${result.version}` : "Saved") : `Saved ${code} as a draft` };
-    if (intent === "publish") {
-      try {
-        await actions.setCouponStatus({ couponId: result.couponId, status: "active" });
-        saved = { tone: "success", text: `${code} is live` };
-      } catch (error) {
-        saved = { tone: "danger", text: `Saved ${code} as a draft, but it isn’t live. ${marketingErrorText(error, "Publishing failed.")}` };
+      setSubmitted(true);
+      if (firstError) {
+        focusError(firstError);
+        return;
       }
+      if (
+        intent === "publish" &&
+        !(await confirm({ title: `Publish ${code}?`, description: "Guests can use it from now on, within its dates and limits.", confirmLabel: "Save & publish" }))
+      )
+        return;
+      setSaving(true);
+      const campaignId = form.campaignId ? (form.campaignId as Id<"marketingCampaigns">) : undefined;
+      let result: Awaited<ReturnType<typeof actions.saveCoupon>>;
+      try {
+        result = await actions.saveCoupon({ couponId: detail?._id, code, campaignId, ...rules });
+      } catch (error) {
+        show(marketingErrorText(error, "Couldn’t save the coupon."), "danger");
+        setSaving(false);
+        return;
+      }
+      setSubmitted(false);
+      // Show what was stored (normalised code, sorted villas, trimmed terms, formatted numbers).
+      const stored = couponFormFrom({ code, campaignId, rules });
+      setForm(stored);
+      setDiscountText(discountFieldText(stored));
+      let saved: Notice & { retryPublish?: boolean } = { tone: "success", text: detail ? (changedRules ? `Saved version ${result.version}` : "Saved") : `Saved ${code} as a draft` };
+      if (intent === "publish") {
+        try {
+          await actions.setCouponStatus({ couponId: result.couponId, status: "active" });
+          saved = { tone: "success", text: `${code} is live` };
+        } catch (error) {
+          saved = { tone: "danger", retryPublish: true, text: `Saved ${code} as a draft, but it isn’t live. ${marketingErrorText(error, "Publishing failed.")}` };
+        }
+      }
+      setSaving(false);
+      if (!detail) {
+        savedNotices.set(result.couponId, saved);
+        onCreated(result.couponId);
+      } else show(saved.text, saved.tone);
+    } finally {
+      changeInProgress.current = false;
     }
-    setSaving(false);
-    if (!detail) {
-      savedNotices.set(result.couponId, saved);
-      onCreated(result.couponId);
-    } else show(saved.text, saved.tone);
   }
 
   async function changeStatus(status: CouponStatus) {
-    if (!detail || !canPublish) return;
-    const copy: Record<CouponStatus, { title: string; description: string; label: string; done: string }> = {
-      active: {
-        title: detail.status === "draft" ? `Publish ${detail.code}?` : `Resume ${detail.code}?`,
-        description:
-          detail.status === "draft"
-            ? "Guests can use it from now on, within its dates and limits. Links that suggest it start showing the offer."
-            : "Guests can use it again, within its dates and limits.",
-        label: detail.status === "draft" ? "Publish" : "Resume",
-        done: detail.status === "draft" ? `${detail.code} is live` : `${detail.code} resumed`,
-      },
-      paused: {
-        title: `Pause ${detail.code}?`,
-        description: "New quotes stop using it. Links that suggest it keep working, without the offer.",
-        label: "Pause coupon",
-        done: `${detail.code} paused`,
-      },
-      archived: {
-        title: `Archive ${detail.code}?`,
-        description: "It can’t be used or edited again. Its versions and history stay.",
-        label: "Archive coupon",
-        done: `${detail.code} archived`,
-      },
-      draft: { title: "", description: "", label: "", done: "" },
-    };
-    const text = copy[status];
-    if (dirty && status === "active" && !(await confirm({ title: "Save your changes first?", description: "Publishing uses the saved version. Your unsaved edits stay in the form.", confirmLabel: "Publish saved version" }))) return;
-    await run(
-      detail._id,
-      { title: text.title, description: text.description, confirmLabel: text.label, destructive: status === "archived" },
-      () => actions.setCouponStatus({ couponId: detail._id, status }),
-      text.done,
-      "Couldn’t change the coupon.",
-    );
+    if (!detail || !canPublish || changeInProgress.current) return;
+    changeInProgress.current = true;
+    try {
+      const copy: Record<CouponStatus, { title: string; description: string; label: string; done: string }> = {
+        active: {
+          title: detail.status === "draft" ? `Publish ${detail.code}?` : `Resume ${detail.code}?`,
+          description:
+            detail.status === "draft"
+              ? "Guests can use it from now on, within its dates and limits. Links that suggest it start showing the offer."
+              : "Guests can use it again, within its dates and limits.",
+          label: detail.status === "draft" ? "Publish" : "Resume",
+          done: detail.status === "draft" ? `${detail.code} is live` : `${detail.code} resumed`,
+        },
+        paused: {
+          title: `Pause ${detail.code}?`,
+          description: "New quotes stop using it. Links that suggest it keep working, without the offer.",
+          label: "Pause coupon",
+          done: `${detail.code} paused`,
+        },
+        archived: {
+          title: `Archive ${detail.code}?`,
+          description: "It can’t be used or edited again. Its versions and history stay.",
+          label: "Archive coupon",
+          done: `${detail.code} archived`,
+        },
+        draft: { title: "", description: "", label: "", done: "" },
+      };
+      const text = copy[status];
+      if (dirty && status === "active" && !(await confirm({ title: "Save your changes first?", description: "Publishing uses the saved version. Your unsaved edits stay in the form.", confirmLabel: "Publish saved version" }))) return;
+      await run(
+        detail._id,
+        { title: text.title, description: text.description, confirmLabel: text.label, destructive: status === "archived" },
+        () => actions.setCouponStatus({ couponId: detail._id, status }),
+        text.done,
+        "Couldn’t change the coupon.",
+      );
+    } finally {
+      changeInProgress.current = false;
+    }
   }
 
   useUnsavedGuard(dirty);
@@ -368,12 +384,11 @@ function CouponBuilder({
     !detail ? (
       !canEdit ? null : canPublish ? (
         <>
-          <Button type="button" size="sm" variant="outline" className="max-sm:hidden" disabled={saving} onClick={() => void save("save")}>Save as draft</Button>
+          <Button type="button" size="sm" variant="outline" disabled={saving} onClick={() => void save("save")}>Save as draft</Button>
           <Button type="button" size="sm" disabled={saving} onClick={() => void save("publish")}>
             {spinner}
             Save &amp; publish
           </Button>
-          <MoreMenu className="sm:hidden" label="More save options" disabled={saving} items={[{ label: "Save as draft", onSelect: () => void save("save") }]} />
         </>
       ) : (
         <Button type="submit" form={`${id}-form`} size="sm" disabled={saving}>
@@ -420,6 +435,11 @@ function CouponBuilder({
 
       <div className="mt-3">
         <NoticeBar notice={notice} onClose={clear} />
+        {retryPublish && detail?.status === "draft" && canPublish && (
+          <Button type="button" variant="outline" size="sm" disabled={saving || statusBusy} onClick={() => void changeStatus("active")}>
+            Retry publishing saved draft
+          </Button>
+        )}
       </div>
       {archived ? (
         <Callout className="mt-3" title="This coupon is archived">
@@ -755,7 +775,7 @@ function CouponBuilder({
 
           {/* A quote runs on saved rules, so the test appears once there are some. */}
           {detail ? (
-            <TestQuotePanel code={detail.code} savedVersion={detail.currentVersion} dirty={dirty} properties={properties} today={today} testQuote={actions.testQuote} />
+            <TestQuotePanel code={detail.code} savedVersion={detail.currentVersion} dirty={dirty} properties={properties} today={today} testQuote={actions.testQuote} serviceNames={serviceNames} />
           ) : null}
 
           {detail ? <CouponLedger code={detail.code} redemptions={detail.redemptions} /> : null}

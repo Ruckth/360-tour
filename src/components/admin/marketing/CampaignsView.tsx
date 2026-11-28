@@ -127,7 +127,7 @@ export function CampaignsView({ campaigns, listing, editor: Editor = CampaignEdi
     .filter((campaign) => !q || [campaign.name, campaign.source, campaign.medium, campaign.notes ?? ""].join(" ").toLowerCase().includes(q));
   const count = (status: CampaignStatus) => all.filter((campaign) => campaign.status === status).length;
   const tabs: { value: CampaignTab; label: string; n: number }[] = [
-    { value: "all", label: "All", n: visible.length },
+    { value: "all", label: "Current", n: visible.length },
     { value: "active", label: "Active", n: count("active") },
     { value: "draft", label: "Draft", n: count("draft") },
     { value: "paused", label: "Paused", n: count("paused") },
@@ -223,7 +223,9 @@ export function CampaignsView({ campaigns, listing, editor: Editor = CampaignEdi
               ) : shown.length === 0 ? (
                 <EmptyState
                   action={
-                    <Button
+                    <div className="flex flex-wrap justify-center gap-2">
+                    {q && <Button type="button" size="sm" variant="outline" onClick={() => setQuery("")}>Clear search</Button>}
+                    {(tab !== "all" || !q) && <Button
                       type="button"
                       size="sm"
                       variant="outline"
@@ -232,8 +234,9 @@ export function CampaignsView({ campaigns, listing, editor: Editor = CampaignEdi
                         setQuery("");
                       }}
                     >
-                      Show all campaigns
-                    </Button>
+                      Show current campaigns
+                    </Button>}
+                    </div>
                   }
                 >
                   {q ? `No campaigns match “${query.trim()}”.` : tab === "all" ? "Only archived campaigns left." : `No ${CAMPAIGN_STATUS[tab].label.toLowerCase()} campaigns.`}
@@ -581,7 +584,7 @@ export function CampaignEditor({
         </Label>
         <NumberField disabled={!access.capabilities.spend} {...field("budget")} prefix="฿" placeholder="Not set" value={form.budget} onChange={(event) => set("budget", event.target.value)} />
         <FieldError id={`${id}-budget-error`}>{shown("budget")}</FieldError>
-        <FieldHint id={`${id}-budget-hint`}>For ads and printing. Coupons have their own discount budget.</FieldHint>
+        <FieldHint id={`${id}-budget-hint`}>{access.capabilities.spend ? "For ads and printing. Coupons have their own discount budget." : "Finance spend access is required to edit the budget."}</FieldHint>
       </div>
 
       <div className="grid gap-2">
