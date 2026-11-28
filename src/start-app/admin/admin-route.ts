@@ -1,5 +1,5 @@
 import { redirect } from "@tanstack/react-router";
-import { adminRedirectPath, adminSettingsTabPath, isAdminStaffTab, type AdminStaffTab } from "@/components/admin/admin-routes";
+import { adminPropertyTab, adminRedirectPath, adminSettingsTabPath, isAdminStaffTab, type AdminPropertyTab, type AdminStaffTab } from "@/components/admin/admin-routes";
 import { isLocale, type Locale } from "@/i18n/routing";
 
 export type AdminLayoutInput = {
@@ -99,4 +99,14 @@ export function validateAdminSettingsSearch(search: Record<string, unknown>): Re
   return typeof search.tab === "string" && search.tab.length > 0
     ? { ...search, tab: search.tab }
     : { ...search };
+}
+
+/**
+ * Validates the villa editor `?tab=` query parameter, falling back to the default `details` section.
+ */
+export function validateAdminPropertySearch(search: Record<string, unknown>): Record<string, unknown> & { tab?: AdminPropertyTab } {
+  const next = { ...search };
+  delete next.tab;
+  const tab = typeof search.tab === "string" ? adminPropertyTab(search.tab) : "details";
+  return tab === "details" ? next : { ...next, tab };
 }

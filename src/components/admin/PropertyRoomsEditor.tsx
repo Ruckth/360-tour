@@ -181,6 +181,7 @@ function AddRoomForm({ propertyId }: { propertyId: Id<"properties"> }) {
   // The picked file once uploaded, so retrying a failed createRoom doesn't upload (and orphan) it again.
   const [uploaded, setUploaded] = useState<{ file: File; url: string } | null>(null);
   const [url, setUrl] = useState("");
+  const [modeNotice, setModeNotice] = useState("");
   const [warning, setWarning] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -188,7 +189,17 @@ function AddRoomForm({ propertyId }: { propertyId: Id<"properties"> }) {
 
   async function pick(next: File | undefined) {
     setFile(next ?? null);
+    setModeNotice(next ? `Upload mode: selected ${next.name}. Panorama URL input is disabled.` : "URL mode: panorama URL input is enabled.");
     setWarning(next ? await panoramaWarning(next) : null);
+  }
+
+  function clearSelectedFile() {
+    setFile(null);
+    setUploaded(null);
+    setWarning(null);
+    setError("");
+    if (fileInput.current) fileInput.current.value = "";
+    setModeNotice("Selected file removed. Panorama URL input is enabled.");
   }
 
   async function submit(event: FormEvent) {
@@ -211,6 +222,7 @@ function AddRoomForm({ propertyId }: { propertyId: Id<"properties"> }) {
       setSlug("");
       setUrl("");
       setFile(null);
+      setModeNotice("");
       setWarning(null);
       if (fileInput.current) fileInput.current.value = "";
     } catch (err) {
@@ -239,11 +251,24 @@ function AddRoomForm({ propertyId }: { propertyId: Id<"properties"> }) {
               onChange={(event) => void pick(event.target.files?.[0])}
               className="pt-2"
             />
+            {file ? (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-muted/40 px-2.5 py-1.5 text-xs">
+                <span className="min-w-0 truncate text-foreground">
+                  Selected file: <strong className="font-medium">{file.name}</strong>
+                </span>
+                <Button type="button" size="sm" variant="outline" className="h-8" disabled={saving} onClick={clearSelectedFile}>
+                  Remove selected file
+                </Button>
+              </div>
+            ) : null}
           </Field>
           <Field label="…or panorama URL" htmlFor="new-room-url">
             <Input id="new-room-url" value={url} onChange={(event) => setUrl(event.target.value)} disabled={Boolean(file)} placeholder="https://… or /public-path.webp" />
           </Field>
         </div>
+        <p role="status" className="text-xs text-muted-foreground">
+          {modeNotice || (file ? `Upload mode: ${file.name} will be uploaded.` : "URL mode: choose a panorama file or enter a panorama URL.")}
+        </p>
         {warning ? <p className={cn("text-xs", TONES.warning.text)}>{warning}</p> : null}
         <div className="flex items-center justify-end gap-3">
           {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}

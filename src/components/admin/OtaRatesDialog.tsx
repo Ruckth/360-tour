@@ -7,7 +7,7 @@ import { staffDateTime } from "@/lib/staff-time";
 import { useMutation, useQuery } from 'convex/react';
 import { api } from 'convex/_generated/api';
 import type { Doc, Id } from 'convex/_generated/dataModel';
-import { useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -71,6 +71,7 @@ export function OtaRatesPanel({ propertyId }: { propertyId: Id<'properties'> }) 
   const [hydratedFor, setHydratedFor] = useState<Platform | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const rateInputRef = useRef<HTMLInputElement>(null);
   const confirm = useConfirm();
   const [now] = useState(() => Date.now());
   const rates = useQuery(api.catalog.properties.listOtaRates, { propertyId });
@@ -91,9 +92,15 @@ export function OtaRatesPanel({ propertyId }: { propertyId: Id<'properties'> }) 
   if (rates !== undefined && hydratedFor === null) hydrate(platform, savedRate);
 
   async function choosePlatform(next: Platform, row = rates?.find(rate => rate.platform === next)) {
-    if (next === platform && !dirty) { hydrate(next, row); return; }
-    if (dirty && !(await confirm({ title: 'Discard unsaved rate changes?', description: `Your ${sourceLabel(platform)} edits have not been saved.`, confirmLabel: 'Discard changes', destructive: true }))) return;
+    if (dirty && !(await confirm({ title: 'Discard unsaved rate changes?', description: `Your ${sourceLabel(platform)} edits have not been saved.`, confirmLabel: 'Discard changes', destructive: true }))) return false;
     hydrate(next, row);
+    return true;
+  }
+
+  async function startRowEdit(rate: OtaRate) {
+    if (!(await choosePlatform(rate.platform, rate))) return;
+    rateInputRef.current?.focus();
+    rateInputRef.current?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
   }
 
   async function save(event: FormEvent) {
@@ -112,7 +119,10 @@ export function OtaRatesPanel({ propertyId }: { propertyId: Id<'properties'> }) 
   }
 
   return <div className="grid gap-4 text-sm">
-    <form className="grid gap-2" onSubmit={save}>
+    <form className="grid gap-2" onSubmit={save} aria-labelledby="ota-form-heading">
+      <h3 id="ota-form-heading" className="text-sm font-semibold">
+        {hasRate ? `Edit ${sourceLabel(platform)} rate` : `Add ${sourceLabel(platform)} rate`}
+      </h3>
       <Label htmlFor="ota-platform">Platform</Label>
       <Select value={platform} onValueChange={value => { void choosePlatform(value as Platform); }}>
         <SelectTrigger id="ota-platform"><SelectValue /></SelectTrigger>
@@ -121,7 +131,7 @@ export function OtaRatesPanel({ propertyId }: { propertyId: Id<'properties'> }) 
         </SelectContent>
       </Select>
       <Label htmlFor="ota-rate">Nightly price (same currency as the villa, incl. the platform&apos;s fees)</Label>
-      <Input id="ota-rate" type="number" min={0.01} step={0.01} required inputMode="decimal" placeholder="10000" value={nightlyRate} onChange={event => { setNightlyRate(event.target.value); setDirty(true); }} />
+      <Input ref={rateInputRef} id="ota-rate" type="number" min={0.01} step={0.01} required inputMode="decimal" placeholder="10000" value={nightlyRate} onChange={event => { setNightlyRate(event.target.value); setDirty(true); }} />
       <Label htmlFor="ota-url">Listing URL (optional)</Label>
       <Input id="ota-url" type="url" placeholder="https://www.booking.com/hotel/..." disabled={urlIntent === 'clear'} value={urlIntent === 'clear' ? '' : url}
         onChange={event => { setUrl(event.target.value); setUrlIntent(event.target.value.trim() ? 'set' : 'preserve'); setDirty(true); }} />
@@ -138,7 +148,7 @@ export function OtaRatesPanel({ propertyId }: { propertyId: Id<'properties'> }) 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <strong>{sourceLabel(rate.platform)} · {formatMoney(rate.nightlyRate, resort.currency)}</strong>
           <div className="flex gap-2">
-            <Button size="sm" variant="outline" disabled={busy} onClick={() => { void choosePlatform(rate.platform, rate); }}>Edit</Button>
+            <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => { void startRowEdit(rate); }}>Edit</Button>
             <Button size="sm" variant="outline" disabled={busy} onClick={async () => {
               if (!(await confirm({ title: `Remove the ${sourceLabel(rate.platform)} rate?`, confirmLabel: 'Remove', destructive: true }))) return;
               setBusy(true); setError('');
