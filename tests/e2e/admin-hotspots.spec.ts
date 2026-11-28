@@ -68,6 +68,25 @@ test("the visual editor opens from the keyboard, places and moves a hotspot, and
     await page.mouse.up();
     await expect.poll(async () => Math.abs((await marker.boundingBox())!.x - before!.x)).toBeGreaterThan(30);
 
+    await page.setViewportSize({ width: 390, height: 844 });
+    const list = editor.getByRole("complementary", { name: "Hotspot list" });
+    const editPosition = list.getByRole("button", { name: /Edit Walk to the pool/ });
+    if (await editPosition.getAttribute("aria-pressed") !== "true") {
+      await editPosition.focus();
+      await page.keyboard.press("Enter");
+    }
+    const elevation = list.getByRole("textbox", { name: "Elevation" });
+    await elevation.fill("");
+    await elevation.pressSequentially("-15");
+    await elevation.press("Tab");
+    await expect(elevation).toHaveValue("-15");
+    const nudge = list.getByRole("button", { name: "Up 5°" });
+    await nudge.focus();
+    await page.keyboard.press("Enter");
+    await expect(elevation).toHaveValue("-10");
+    await list.getByRole("button", { name: "Close", exact: true }).click();
+    await expect(editPosition).toBeFocused();
+
     await editor.getByRole("button", { name: "Save hotspots" }).click();
     await expect(editor).toHaveCount(0);
     await expect(trigger).toBeFocused();
