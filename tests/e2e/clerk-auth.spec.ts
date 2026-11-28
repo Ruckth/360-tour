@@ -101,7 +101,11 @@ test("@smoke cashier browser session authorizes checkout and preserves manager-o
   ).toHaveCount(0);
 
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
-  await page.getByRole("button", { name: "Connect display" }).click();
+  await page.setViewportSize({ width: 360, height: 844 });
+  await expect(page.getByTestId("order-title")).toBeInViewport({ ratio: 1 });
+  await expect(page.getByRole("button", { name: "Orders", exact: true })).toBeInViewport({ ratio: 1 });
+  await page.getByRole("button", { name: "More checkout actions" }).click();
+  await page.getByRole("menuitem", { name: "Customer display" }).click();
   const pairing = page.getByRole("dialog", { name: "Customer display" });
   await pairing.getByRole("button", { name: "Create link" }).click();
   await expect(pairing.locator('svg[aria-label="QR code for the display link"] path').first()).toBeVisible();

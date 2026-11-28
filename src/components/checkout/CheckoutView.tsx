@@ -18,6 +18,7 @@ import { useLoadablePhoto } from "./CheckoutPhoto";
 import { CheckoutDraftProvider, useCheckoutDraft, useCheckoutDiscountNotice, useCheckoutDraftOrder, useCheckoutPaymentSubmitting } from "./CheckoutDrafts";
 import { OrderPanel, usePayState } from "./OrderPanel";
 import { OrderStrip } from "./OrderStrip";
+import type { CustomerDisplayControls } from "@/components/admin/CustomerDisplayDialog";
 import { errorText } from "@/lib/staff-bookings";
 import { needsApproval, shownRequest } from "./staff-approvals";
 import { useOrderWrites } from "./useOrderWrites";
@@ -44,7 +45,7 @@ type CheckoutViewProps = {
   notice?: string;
   onNoticeRetry?: () => void;
   /** The customer display button; only the admin page has one. */
-  displayControl?: ReactNode;
+  displayControl?: (controls: CustomerDisplayControls) => ReactNode;
   retail?: boolean;
   ordersFilterScope?: string;
   preferredRetailBranchId?: Id<"branches">;

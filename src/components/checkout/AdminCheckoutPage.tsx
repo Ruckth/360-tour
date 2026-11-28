@@ -90,7 +90,7 @@ function CheckoutPage() {
         setRetry((value) => value + 1);
       } : display.error ? display.retry : undefined}
       notice={source.kind === "invalid" ? source.reason : linkFailed ? openError.message : (display.error ?? undefined)}
-      displayControl={<CustomerDisplayControl orderId={shownOrder} />}
+      displayControl={(controls) => <CustomerDisplayControl orderId={shownOrder} controls={controls} />}
     />
   );
 }

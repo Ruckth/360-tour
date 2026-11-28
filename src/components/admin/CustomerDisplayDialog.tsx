@@ -60,22 +60,27 @@ function ReplaceNote({ children }: { children: ReactNode }) {
   return <p className="text-sm font-medium text-amber-800 dark:text-amber-300">{children}</p>;
 }
 
-/**
- * Checkout top-strip button that opens the pairing dialog: "Display · Front iPad" (green when seen in
- * the last minute) when this checkout tab drives it, "Display · on another checkout" when another does.
- * `orderId` is this tab's order, shown at once if staff take the display over; undefined while a
- * booking link is still opening its order, when take-over waits.
- */
-export function CustomerDisplayControl({ orderId }: { orderId: string | null | undefined }) {
+export type CustomerDisplayControls = {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  showTrigger: boolean;
+  onCloseAutoFocus?: (event: Event) => void;
+};
+
+/** Live display status and pairing for the current checkout. */
+export function CustomerDisplayControl({ orderId, controls }: { orderId: string | null | undefined; controls?: CustomerDisplayControls }) {
   const { clientId, displays, driver = "none" } = useDisplayDriver();
   const now = useNow(5_000);
-  const [open, setOpen] = useState(false);
+  const [localOpen, setLocalOpen] = useState(false);
+  const open = controls?.open ?? localOpen;
+  const onOpenChange = controls?.onOpenChange ?? setLocalOpen;
+  const showTrigger = controls?.showTrigger ?? true;
   const display = displays?.[0];
   const online = display ? isOnline(display, now) : false;
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      {showTrigger ? <DialogTrigger asChild>
         <Button variant="ghost" className="max-w-64">
           {driver === "elsewhere" ? (
             <>
@@ -95,9 +100,9 @@ export function CustomerDisplayControl({ orderId }: { orderId: string | null | u
             </>
           )}
         </Button>
-      </DialogTrigger>
+      </DialogTrigger> : null}
       {/* The panel draws the dialog's one close control, so paired success can offer Done alone. */}
-      <CheckoutDialogContent showCloseButton={false} className="max-h-[calc(100dvh-2rem)] max-w-xl overflow-y-auto">
+      <CheckoutDialogContent showCloseButton={false} onCloseAutoFocus={controls?.onCloseAutoFocus} className="max-h-[calc(100dvh-2rem)] max-w-xl overflow-y-auto">
         {open && clientId && displays ? (
           <PairingPanel clientId={clientId} orderId={orderId} displays={displays} driver={driver} now={now} />
         ) : open ? (

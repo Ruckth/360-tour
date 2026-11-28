@@ -14,6 +14,7 @@ import { MoreMenu } from "@/components/ui/more-menu";
 import { Spinner } from "@/components/ui/spinner";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useIsMobile } from "@/hooks/use-mobile";
+import type { CustomerDisplayControls } from "@/components/admin/CustomerDisplayDialog";
 import { errorText } from "@/lib/staff-bookings";
 import { customerPhoneError } from "convex/shared/phone";
 import { cn } from "@/lib/utils";
@@ -26,7 +27,7 @@ import type { Run } from "./useOrderWrites";
 import { OrderLifecycle } from "./OrderLifecycle";
 import { CustomerDetails } from "./CustomerDetails";
 
-type Panel = "customer" | "booking" | "orders" | null;
+type Panel = "customer" | "booking" | "orders" | "display" | null;
 
 /**
  * The order on screen: its number (or "New order", on narrow screens only; wide ones show it in
@@ -49,8 +50,8 @@ export function OrderStrip({
   onOrderChange: (orderId: OrderId | null) => void;
   /** Invalid/missing source links can be cleared even when there is no loaded order. */
   canStartNew?: boolean;
-  /** Rendered beside Orders, e.g. the customer display button (not in the dev preview). */
-  displayControl?: ReactNode;
+  /** Display pairing opens from More on phones and from its own button on wider screens. */
+  displayControl?: (controls: CustomerDisplayControls) => ReactNode;
   ordersFilterScope?: string;
 }) {
   const actions = useCheckoutBackend().useActions();
@@ -83,7 +84,7 @@ export function OrderStrip({
     setPanel(next);
   };
   const close = () => changePanel(null);
-  // Phones get one header row: the customer, an Orders icon and ⋯ (Add booking, New order).
+  // Phones keep Orders beside the customer and place occasional actions in More.
   const phone = useIsMobile(640) === true;
   const strip = useRef<HTMLDivElement>(null);
   const focusMore = (event: Event) => {
@@ -190,7 +191,12 @@ export function OrderStrip({
       </Dialog>
 
       <div className={cn("flex justify-end gap-2", phone ? "shrink-0" : "ml-auto max-w-full flex-wrap")}>
-        {displayControl}
+        {displayControl?.({
+          open: panel === "display",
+          onOpenChange: (open) => changePanel(open ? "display" : null),
+          showTrigger: !phone,
+          onCloseAutoFocus: phone ? focusMore : undefined,
+        })}
         <Dialog open={panel === "orders"} onOpenChange={(open) => { if (!ordersPending) changePanel(open ? "orders" : null); }}>
           <DialogTrigger asChild>
             {phone ? (
@@ -218,6 +224,7 @@ export function OrderStrip({
             items={[
               { label: "Add booking", disabled: order?.state === "discarded", onSelect: () => changePanel("booking") },
               { label: "New order", hidden: !order && !canStartNew, onSelect: () => onOrderChange(null) },
+              { label: "Customer display", hidden: !displayControl, onSelect: () => changePanel("display") },
             ]}
           />
         ) : order || canStartNew ? (
