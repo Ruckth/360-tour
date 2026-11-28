@@ -230,3 +230,33 @@ it('shows the selected stay’s linked appointment before a service is picked', 
   expect(linked?.textContent).toMatch(/Herbal compress.*booked/);
   expect(mocks.create).not.toHaveBeenCalled();
 });
+
+it("D20 keeps the choices after a submit-time slot conflict and lets staff choose another time", async () => {
+  withSlots('15:00', '16:30');
+  mocks.create.mockImplementationOnce(async () => {
+    withSlots('16:30');
+    throw new Error('That time was just taken. Please choose another time.');
+  });
+  const onCreated = vi.fn();
+  await act(async () => root.render(createElement(IntlProvider, intl, createElement(NewAppointmentDialog, {
+    draft: { date: '2026-11-01', staffId: staff._id },
+    services: [service], staff: [staff], onClose: vi.fn(), onCreated,
+  }))));
+  const form = document.querySelector('form')!;
+  const guest = document.querySelector<HTMLInputElement>('#na-name')!;
+  guest.value = 'Mia';
+  await act(async () => form.requestSubmit());
+  expect(document.body.textContent).toContain('That time was just taken');
+  expect(document.body.textContent).toContain('15:00 is no longer open');
+  expect(document.getElementById('na-staff')?.textContent).toContain('Mali');
+  expect(guest.value).toBe('Mia');
+  expect(form.querySelector<HTMLButtonElement>('button[type=submit]')?.disabled).toBe(true);
+  expect(onCreated).not.toHaveBeenCalled();
+
+  await act(async () => timeButton('16:30')!.click());
+  await act(async () => form.requestSubmit());
+  expect(mocks.create).toHaveBeenLastCalledWith(expect.objectContaining({
+    start: slotAt('16:30').start, staffId: staff._id, serviceId: service._id, guestName: 'Mia',
+  }));
+  expect(onCreated).toHaveBeenCalledOnce();
+});
