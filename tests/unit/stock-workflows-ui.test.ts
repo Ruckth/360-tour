@@ -7,6 +7,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
 import { PurchaseOrderDetailView } from "@/components/stock/PurchaseOrderDetailView";
+import { BranchStockAccessSheet } from "@/components/stock/BranchStockAccessSheet";
 import { RequestEditorSheet } from "@/components/stock/PurchasingEditorSheets";
 import { purchasingDetailHref, validatePurchasingSearch } from "@/components/stock/purchasing-location";
 import { ReceiveDeliverySheet } from "@/components/stock/ReceiveDeliverySheet";
@@ -314,6 +315,17 @@ describe("Stock UI components and workflow regressions", () => {
     await act(async () => item?.click());
     expect(onSelect).toHaveBeenCalledExactlyOnceWith(items[0]);
     expect(onOpenChange).toHaveBeenCalledExactlyOnceWith(false);
+
+    const onSelectMany = vi.fn();
+    const existing = Array.from({ length: 11 }, (_, index) => `existing-${index}`);
+    await act(async () => root.render(createElement(StockVariantPickerDialog, {
+      open: true, branchId, onOpenChange, maxLines: 12, selectedIds: existing, onSelectMany,
+    })));
+    const options = document.querySelectorAll<HTMLButtonElement>('button[aria-pressed="false"]');
+    await act(async () => options[0].click());
+    expect(options[1].disabled).toBe(true);
+    expect(options[2].disabled).toBe(true);
+
   });
 
   it("StockLineEditor updates quantities/costs, preserves errors, calculates totals, and removes lines", async () => {
@@ -630,13 +642,51 @@ describe("Stock UI components and workflow regressions", () => {
     expect(document.activeElement).toBe(robe);
     expect(receive).not.toHaveBeenCalled();
     await click("Fill all remaining");
+    lines[0].received = lines[0].quantity;
+    await act(async () => root.render(wrap(createElement(StockExpansionView))));
+    await click("Post transfer receipt");
+    expect(document.activeElement).toBe(robe);
+    expect(document.getElementById(robe.getAttribute("aria-describedby")!)?.textContent).toContain("Already fully received");
+    expect(receive).not.toHaveBeenCalled();
+    await click("Fill all remaining");
+    expect(document.querySelector("#tr-recv-robe")).toBeNull();
     receive.mockRejectedValueOnce(new Error("Connection interrupted"));
     await click("Post transfer receipt");
     await click("Post transfer receipt");
     expect(receive.mock.calls[0][0].requestId).toBe(receive.mock.calls[1][0].requestId);
     expect(receive).toHaveBeenCalledWith(expect.objectContaining({ lines: [
-      { lineId: "robe", quantity: 4 }, { lineId: "soap", quantity: 2 },
+      { lineId: "soap", quantity: 2 },
     ] }));
+  });
+
+  it("limits the stock grant lookup field to a complete 254-character email and keeps the match after a role edit", async () => {
+    vi.useFakeTimers();
+    const email = `${"a".repeat(242)}@example.com`;
+    const setGrant = getMutationSpy(api.commerce.stock.setGrant).mockResolvedValue(1);
+    const onSaved = vi.fn();
+    mockConvex.paginated.mockImplementation((name, args) => ({
+      results: name === getFunctionName(api.commerce.stock.listGrants) && (args as { email?: string }).email === email
+        ? [{ staffGrantId: "staff_1", email, role: "cashier" }] : [],
+      status: "Exhausted", loadMore: vi.fn(),
+    }));
+    await act(async () => root.render(wrap(createElement(BranchStockAccessSheet, {
+      branchId: "branch_1" as Id<"branches">, branchName: "Koh Samui", onClose: vi.fn(), onSaved,
+    }))));
+    const search = document.querySelector<HTMLInputElement>('input[aria-label="Find staff by full email"]')!;
+    expect(search.maxLength).toBe(254);
+    await act(async () => setInputValue(search, email));
+    await act(async () => vi.advanceTimersByTimeAsync(200));
+    expect(mockConvex.paginated).toHaveBeenLastCalledWith(getFunctionName(api.commerce.stock.listGrants), {
+      branchId: "branch_1", email,
+    });
+    const receiver = () => document.querySelector<HTMLInputElement>(`input[aria-label="Receiver / Counter for ${email}"]`);
+    expect(receiver()).toBeTruthy();
+    await act(async () => receiver()!.click());
+    expect(setGrant).toHaveBeenCalledWith(expect.objectContaining({ branchId: "branch_1", staffGrantId: "staff_1",
+      roles: expect.objectContaining({ receiver: true }) }));
+    expect(onSaved).toHaveBeenCalledTimes(1);
+    expect(search.value).toBe(email);
+    expect(receiver()).toBeTruthy();
   });
 
   it("StockPurchasingHubView consumes new/variants flags via router.replace and prefills real resolved variants", async () => {

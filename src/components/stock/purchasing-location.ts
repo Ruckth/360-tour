@@ -1,4 +1,3 @@
-import type { Id } from "convex/_generated/dataModel";
 import { sanitizeStockReturnTo } from "./stock-format";
 
 export const PURCHASING_HUB_PATH = "/admin/stock/purchasing";
@@ -12,8 +11,8 @@ function choice<T extends string>(value: unknown, options: readonly T[]): T | un
   return options.find(option => option === value);
 }
 
-function stockId<T extends "productVariants" | "suppliers">(value: unknown): Id<T> | undefined {
-  return typeof value === "string" && /^[a-z0-9_]{1,64}$/i.test(value) ? value as Id<T> : undefined;
+function stockId(value: unknown): string | undefined {
+  return typeof value === "string" && /^[a-z0-9_]{1,64}$/i.test(value) ? value : undefined;
 }
 
 function reference(value: unknown): string | undefined {
@@ -27,9 +26,9 @@ export function validatePurchasingSearch(search: Record<string, unknown>) {
     requestFilter: choice(search.requestFilter, requestFilters),
     orderFilter: choice(search.orderFilter, orderFilters),
     holdStatus: choice(search.holdStatus, holdStatuses),
-    requestVariantId: stockId<"productVariants">(search.requestVariantId),
-    variantId: stockId<"productVariants">(search.variantId),
-    supplierId: stockId<"suppliers">(search.supplierId),
+    requestVariantId: stockId(search.requestVariantId),
+    variantId: stockId(search.variantId),
+    supplierId: stockId(search.supplierId),
     allItemOrders: search.allItemOrders === "1" || search.allItemOrders === 1 ? "1" : undefined,
     reference: reference(search.reference),
     receiptReference: reference(search.receiptReference),

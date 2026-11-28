@@ -8,7 +8,7 @@ import { v } from 'convex/values';
 import { staffMutation, staffQuery } from '../auth/model';
 import {
   findPurchaseReference, getOrder, getOrderRevision, getReceipt, getRequest, listHistory, listHolds, listOrderReceipts, listOrderRevisions,
-  listOrders, listReceiptAdjustments, listReceipts, listRequests, listSuppliers, previewCorrection, readIncomingFor,
+  listOrders, listReceiptAdjustments, listReceipts, listRequests, listSuppliers, previewCorrection, readIncomingFor, resolveQueueFilter,
 } from './private/purchasingReads';
 import { amendOrder, closeOrderRemainder, deleteOrderDraft, issueOrder, saveOrderDraft } from './private/purchasingOrders';
 import {
@@ -58,6 +58,16 @@ export const historyRowValidator = v.object({
   ...system('purchaseEvents'), entity: purchasingEntity, entityId: v.string(), branchId: v.optional(v.id('branches')),
   action: v.string(), reason: v.optional(v.string()), changes: v.optional(v.array(historyChange)),
   relatedId: v.optional(v.string()), actorLabel: v.string(), createdAt: v.number(),
+});
+
+export const queueFilter = staffQuery({
+  capability: 'checkout', scope: 'selectedBranch',
+  args: { branchId: v.id('branches'), variant: v.optional(v.string()), supplier: v.optional(v.string()) },
+  returns: v.object({
+    variantId: v.union(v.id('productVariants'), v.null()),
+    supplier: v.union(v.object({ id: v.id('suppliers'), name: v.string() }), v.null()),
+  }),
+  handler: (ctx, args) => resolveQueueFilter(ctx, ctx.staff, args),
 });
 
 export const purchaseReference = staffQuery({

@@ -100,7 +100,6 @@ export function StockPurchasingHubView() {
 
   const [reqItemPickerOpen, setReqItemPickerOpen] = useState(false);
   const [orderItemPickerOpen, setOrderItemPickerOpen] = useState(false);
-  const [pickedSupplier, setPickedSupplier] = useState<{ id: Id<"suppliers">; name: string } | null>(null);
   const [decliningHold, setDecliningHold] = useState<HoldRow | null>(null);
 
   // One-shot auto-open intent consumed from URL params (stripped with replace so Back doesn't reopen)
@@ -163,8 +162,17 @@ export function StockPurchasingHubView() {
     enabled: Boolean(branch && access?.read && pendingAutoOpen && prefillIds.length > 0),
   });
 
-  const filterVariantId = tab === "requests" && reqFilterMode === "item" ? queue.requestVariantId
+  const rawVariant = tab === "requests" && reqFilterMode === "item" ? queue.requestVariantId
     : tab === "orders" && orderFilterMode === "item" ? queue.variantId : undefined;
+  const rawSupplier = tab === "orders" && orderFilterMode === "supplier" ? queue.supplierId : undefined;
+  const filter = useQuery(
+    api.commerce.purchasing.queueFilter,
+    branch && access?.read && (rawVariant || rawSupplier)
+      ? { branchId: branch.id, variant: rawVariant, supplier: rawSupplier }
+      : "skip",
+  );
+  const filterPending = Boolean((rawVariant || rawSupplier) && filter === undefined);
+  const filterVariantId = filter?.variantId;
   const filterVariantIds = filterVariantId ? [filterVariantId] : [];
   const { items: resolvedFilterVariants } = useResolvedStockVariants(branch?.id ?? null, filterVariantIds, {
     enabled: Boolean(access?.read),
@@ -242,7 +250,7 @@ export function StockPurchasingHubView() {
   }
 
   const resolvedRequestView = (() => {
-    if (reqFilterMode === "item" && queue.requestVariantId) return { kind: "item" as const, variantId: queue.requestVariantId };
+    if (reqFilterMode === "item" && filterVariantId) return { kind: "item" as const, variantId: filterVariantId };
     if (reqFilterMode === "mine") return { kind: "mine" as const };
     if (reqFilterMode === "awaiting_approval") return { kind: "status" as const, status: "awaiting_approval" as const };
     if (reqFilterMode === "approved") return { kind: "status" as const, status: "approved" as const };
@@ -254,11 +262,11 @@ export function StockPurchasingHubView() {
   })();
 
   const resolvedOrderView = (() => {
-    if (orderFilterMode === "supplier" && queue.supplierId) {
-      return { kind: "supplier" as const, supplierId: queue.supplierId };
+    if (orderFilterMode === "supplier" && filter?.supplier) {
+      return { kind: "supplier" as const, supplierId: filter.supplier.id };
     }
-    if (orderFilterMode === "item" && queue.variantId) {
-      return { kind: "item" as const, variantId: queue.variantId, openOnly: orderItemOpenOnly };
+    if (orderFilterMode === "item" && filterVariantId) {
+      return { kind: "item" as const, variantId: filterVariantId, openOnly: orderItemOpenOnly };
     }
     if (orderFilterMode === "draft") return { kind: "phase" as const, phase: "draft" as const };
     if (orderFilterMode === "closed") return { kind: "phase" as const, phase: "closed" as const };
@@ -272,7 +280,7 @@ export function StockPurchasingHubView() {
     loadMore: loadMoreRequests,
   } = usePaginatedQuery(
     api.commerce.purchasing.requests,
-    branch && access?.read && tab === "requests" && !searchingPurchases ? { branchId: branch.id, view: resolvedRequestView } : "skip",
+    branch && access?.read && tab === "requests" && !searchingPurchases && !filterPending ? { branchId: branch.id, view: resolvedRequestView } : "skip",
     { initialNumItems: STOCK_PAGE_SIZE },
   );
 
@@ -282,7 +290,7 @@ export function StockPurchasingHubView() {
     loadMore: loadMoreOrders,
   } = usePaginatedQuery(
     api.commerce.purchasing.orders,
-    branch && access?.read && tab === "orders" && !searchingPurchases ? { branchId: branch.id, view: resolvedOrderView } : "skip",
+    branch && access?.read && tab === "orders" && !searchingPurchases && !filterPending ? { branchId: branch.id, view: resolvedOrderView } : "skip",
     { initialNumItems: STOCK_PAGE_SIZE },
   );
 
@@ -485,7 +493,7 @@ export function StockPurchasingHubView() {
           </div>
 
           <Card className="overflow-hidden">
-            {reqStatus === "LoadingFirstPage" ? (
+            {filterPending || reqStatus === "LoadingFirstPage" ? (
               <SkeletonRows label="Loading purchase requests" rows={5} />
             ) : requestRows.length === 0 ? (
               <EmptyState
@@ -578,12 +586,9 @@ export function StockPurchasingHubView() {
               <div className="w-64">
                 <SupplierPickerField
                   branchId={branch.id}
-                  value={queue.supplierId ?? null}
-                  selectedName={pickedSupplier?.id === queue.supplierId ? pickedSupplier?.name : orderRows[0]?.supplier.name}
-                  onChange={(supplier) => {
-                    setPickedSupplier(supplier);
-                    updateSearch({ supplierId: supplier?.id });
-                  }}
+                  value={filter?.supplier?.id ?? null}
+                  selectedName={filter?.supplier?.name}
+                  onChange={(supplier) => updateSearch({ supplierId: supplier?.id })}
                 />
               </div>
             ) : null}
@@ -608,7 +613,7 @@ export function StockPurchasingHubView() {
           </div>
 
           <Card className="overflow-hidden">
-            {orderStatus === "LoadingFirstPage" ? (
+            {filterPending || orderStatus === "LoadingFirstPage" ? (
               <SkeletonRows label="Loading purchase orders" rows={5} />
             ) : orderRows.length === 0 ? (
               <EmptyState>No purchase orders match this view.</EmptyState>

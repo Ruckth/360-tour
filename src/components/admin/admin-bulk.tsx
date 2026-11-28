@@ -146,7 +146,7 @@ export function EmptyState({ children, action }: { children: ReactNode; action?:
 }
 
 /** Search field for list toolbars; grows to fill the space left of the filters. */
-export function SearchBox({ value, onChange, label, placeholder = label, className = "" }: { value: string; onChange: (value: string) => void; label: string; placeholder?: string; className?: string }) {
+export function SearchBox({ value, onChange, label, placeholder = label, className = "", maxLength }: { value: string; onChange: (value: string) => void; label: string; placeholder?: string; className?: string; maxLength?: number }) {
   return (
     <div className={`relative min-w-[14rem] flex-1 ${className}`}>
       <Search
@@ -156,6 +156,7 @@ export function SearchBox({ value, onChange, label, placeholder = label, classNa
       <Input
         type="search"
         value={value}
+        maxLength={maxLength}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
         aria-label={label}

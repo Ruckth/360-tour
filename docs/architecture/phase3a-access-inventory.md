@@ -12,6 +12,7 @@ The inventory test compares every source registration with this table and requir
 
 | Public function | Builder | Trust/rationale | Additional record checks |
 | --- | --- | --- | --- |
+| `commerce/purchasing.queueFilter` | `staffQuery` | checkout | Branch purchasing grant and safe queue filter resolution. |
 | `commerce/purchasing.purchaseReference` | `staffQuery` | checkout | Branch purchasing grant and record visibility. |
 | `commerce/purchasing.requests` | `staffQuery` | checkout | Branch purchasing grant, record state and revision checks. Mutations check access before replay. |
 | `commerce/purchasing.request` | `staffQuery` | checkout | Branch purchasing grant, record state and revision checks. Mutations check access before replay. |

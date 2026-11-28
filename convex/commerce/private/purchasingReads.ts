@@ -61,6 +61,17 @@ export function supplierRow(supplier: Doc<'suppliers'>, buyer: boolean): Doc<'su
   return buyer ? { ...rest, contactName, phone, email, note } : rest;
 }
 
+/** URL values are untrusted strings. Normalize them before they reach typed queue arguments. */
+export async function resolveQueueFilter(ctx: QueryCtx, staff: StaffActor, args: {
+  branchId: Id<'branches'>; variant?: string; supplier?: string;
+}) {
+  await purchasingAccess(ctx, staff, args.branchId, 'read');
+  const variantId = args.variant ? ctx.db.normalizeId('productVariants', args.variant) : null;
+  const supplierId = args.supplier ? ctx.db.normalizeId('suppliers', args.supplier) : null;
+  const supplier = supplierId ? await stockRead(ctx, () => ctx.db.get(supplierId)) : null;
+  return { variantId, supplier: supplier ? { id: supplier._id, name: supplier.name } : null };
+}
+
 /** A known reference can identify a request or order independently of the active queue. */
 export async function findPurchaseReference(ctx: QueryCtx, staff: StaffActor, branchId: Id<'branches'>, search: string) {
   const access = await purchasingAccess(ctx, staff, branchId, 'read');
@@ -152,8 +163,8 @@ export async function listOrders(ctx: QueryCtx, staff: StaffActor, args: { branc
   const { view, branchId } = args;
   if (view.kind === 'openSearch') {
     const term = view.search.trim().slice(0, PURCHASING_TEXT_LIMITS.name);
-    const supplierTerms = term.match(/[\p{L}\p{N}]+/gu)?.slice(0, 16).join(' ');
-    const matchByReference = /^po(?:-|$)/i.test(term);
+    const supplierTerms = term.match(/[\p{L}\p{M}\p{N}]+/gu)?.slice(0, 16).join(' ');
+    const matchByReference = /^po(?:-\d{0,6}(?:-[a-z0-9]{0,5})?)?$/i.test(term);
     const headers = matchByReference
       ? ctx.db.query('purchaseOrders').withIndex('by_branchId_and_phase_and_reference', q => {
         const reference = term.toUpperCase();

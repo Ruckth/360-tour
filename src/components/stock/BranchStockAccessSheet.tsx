@@ -35,11 +35,11 @@ export function BranchStockAccessSheet({
   onSaved: (message: string) => void;
 }) {
   const [search, setSearch] = useState("");
-  const emailPrefix = useDebounced(search.trim(), 200);
+  const email = useDebounced(search.trim(), 200);
   const policy = useQuery(api.commerce.stock.branchPolicy, { branchId });
   const { results: grants, status, loadMore } = usePaginatedQuery(
     api.commerce.stock.listGrants,
-    { branchId, ...(emailPrefix ? { emailPrefix } : {}) },
+    { branchId, ...(email ? { email } : {}) },
     { initialNumItems: STOCK_PAGE_SIZE },
   );
   const setBranchPolicy = useMutation(api.commerce.stock.setBranchPolicy);
@@ -153,11 +153,11 @@ export function BranchStockAccessSheet({
 
           <section aria-label="Staff stock grants" className="grid gap-3">
             <h3 className="text-sm font-semibold text-foreground">Staff grants for {branchName}</h3>
-            <SearchBox label="Find staff by email prefix" placeholder="Email starts with…" value={search} onChange={setSearch} />
+            <SearchBox label="Find staff by full email" placeholder="Enter a full email address" value={search} onChange={setSearch} maxLength={254} />
             {status === "LoadingFirstPage" ? (
               <SkeletonRows label="Loading staff grants" rows={4} />
             ) : grants.length === 0 ? (
-              <EmptyState>{status === "CanLoadMore" ? "No eligible staff in these results. Load more staff to continue." : emailPrefix ? "No eligible staff match this email." : "No eligible staff members assigned to this branch."}</EmptyState>
+              <EmptyState>{status === "CanLoadMore" ? "No eligible staff in these results. Load more staff to continue." : email ? "No eligible staff match this full email address." : "No eligible staff members assigned to this branch."}</EmptyState>
             ) : (
               <ul className="grid gap-3">
                 {grants.map((row) => {
@@ -170,8 +170,8 @@ export function BranchStockAccessSheet({
                   };
                   return (
                     <li key={row.staffGrantId} className="grid gap-2.5 rounded-lg border border-border p-3.5">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-sm font-medium text-foreground">{row.email}</span>
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="min-w-0 break-all text-sm font-medium text-foreground">{row.email}</span>
                         <span className="text-xs capitalize text-muted-foreground">{row.role}</span>
                       </div>
                       <div role="group" aria-label={`Stock roles for ${row.email}`} className="flex flex-wrap gap-3">

@@ -971,6 +971,9 @@ it('finds an older request and order by reference with branch and requester visi
   expect((await searchOrders(order.reference)).page).toEqual([]);
   await t.run(ctx => ctx.db.patch(orderId, { phase: 'open', status: 'ordered', supplier: { name: 'Uncommon Supplier' } }));
   expect((await searchOrders('Uncommon')).page.map(row => row._id)).toEqual([orderId]);
+  await t.run(ctx => ctx.db.patch(orderId, { supplier: { name: 'PO-Supplies ภูเก็ต' } }));
+  expect((await searchOrders('PO-Supplies')).page.map(row => row._id)).toEqual([orderId]);
+  expect((await searchOrders('ภูเก็ต')).page.map(row => row._id)).toEqual([orderId]);
 });
 
 it('pages posted direct receipts and finds them by receipt or normalized delivery reference within the branch', async () => {
@@ -1001,4 +1004,13 @@ it('pages posted direct receipts and finds them by receipt or normalized deliver
   expect((await ann.query(p.receipts, { branchId, match, ...page })).page.map(row => row._id)).toEqual([receiptId]);
   expect((await ann.query(p.receipts, { branchId, match: { kind: 'receipt', reference: 'GR-HIDDEN' }, ...page })).page).toEqual([]);
   expect(await code(ann.query(p.receipts, { branchId: otherBranchId, match, ...page }))).toBe('STOCK_FORBIDDEN');
+});
+
+it('normalizes URL filter IDs and resolves the supplier name independently of orders', async () => {
+  const { ann, branchId, otherBranchId, variantId, supplierId } = await setup();
+  const resolve = (variant: string, supplier: string) => ann.query(p.queueFilter, { branchId, variant, supplier });
+  expect(await resolve('nope', 'wrong')).toEqual({ variantId: null, supplier: null });
+  expect(await resolve(supplierId, variantId)).toEqual({ variantId: null, supplier: null });
+  expect(await resolve(variantId, supplierId)).toEqual({ variantId, supplier: { id: supplierId, name: 'Coastal Supply' } });
+  expect(await code(ann.query(p.queueFilter, { branchId: otherBranchId, supplier: supplierId }))).toBe('STOCK_FORBIDDEN');
 });

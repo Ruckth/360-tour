@@ -3,7 +3,7 @@ import { v } from 'convex/values';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
-import { canReadCheckoutOrder, internalMutation, staffMutation, staffQuery, type StaffActor } from '../auth/model';
+import { canReadCheckoutOrder, findStaffGrantByEmail, internalMutation, staffMutation, staffQuery, type StaffActor } from '../auth/model';
 import { requireBranchAccess } from '../branches/model';
 import { readBudget } from '../lib/readBudget';
 import { catalogueFields, recordCatalogueEdit } from './private/adjustments';
@@ -644,16 +644,16 @@ export const branchPolicy = staffQuery({
 
 export const listGrants = staffQuery({
   capability: 'manageTeam', scope: selected,
-  args: { ...branchIdArg, ...paged, emailPrefix: v.optional(v.string()) },
-  handler: async (ctx, { branchId, paginationOpts, emailPrefix }) => {
+  args: { ...branchIdArg, ...paged, email: v.optional(v.string()) },
+  handler: async (ctx, { branchId, paginationOpts, email }) => {
     await requireBranchAccess(ctx, ctx.staff, branchId);
-    const prefix = emailPrefix?.trim().toLowerCase();
-    if (prefix && prefix.length > 254) stockError('INVALID_EMAIL', 'Email search is limited to 254 characters.');
-    const grants = ctx.db.query('staffGrants');
-    const candidates = prefix
-      ? grants.withIndex('by_email', q => q.gte('email', prefix).lt('email', prefix + '\u{10ffff}'))
-      : grants;
-    const result = countPage(ctx, await candidates.paginate(stockPage(paginationOpts)));
+    const search = email?.trim();
+    if (search && search.length > 254) stockError('INVALID_EMAIL', 'Email search is limited to 254 characters.');
+    const match = search ? await stockRead(ctx, () => findStaffGrantByEmail(ctx, search.toLowerCase())) : null;
+    // An ineligible or unknown email has the same terminal result and exposes no roster cursor.
+    const result = search
+      ? { isDone: true, continueCursor: '', page: match ? [match] : [] }
+      : countPage(ctx, await ctx.db.query('staffGrants').paginate(stockPage(paginationOpts)));
     const eligible = result.page.filter(grant => grant.role === 'owner' || grant.branchIds.includes(branchId));
     const page = await Promise.all(eligible.map(async staff => {
       const grant = await readStockGrant(ctx, branchId, staff._id);
