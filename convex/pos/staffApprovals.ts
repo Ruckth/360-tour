@@ -8,7 +8,7 @@ import { appendRecordHistory, cashierRules } from '../settings/model';
 import {
   adjustmentApprovalDetail, approvalPageWindow, canReviewApproval, checkoutApprovalDetail, effectiveRequestStatus, isCheckoutApproval, isOwnApproval,
   orderFingerprint, ownApprovalStatus, pendingReturnSummary, readApprovalDocument, requesterFingerprint, returnApprovalDetail, rulesFingerprint,
-  type ApprovalRequest, type CheckoutApprovalRequest,
+  type ApprovalRequest, type CheckoutApprovalRequest, verifiedQueueStatus,
 } from './private/staffApprovalState';
 import { APPROVAL_TTL_MS, approvalPayload } from '../shared/staffTypes';
 import { executeStaffApproval, previewStaffApproval } from './private/approvalModel';
@@ -247,6 +247,36 @@ export const pendingPage = staffQuery({
       continueCursor: window.wrap(result.continueCursor),
       ...(result.splitCursor ? { splitCursor: window.wrap(result.splitCursor) } : {}),
     };
+  },
+});
+
+/** Independent subscriptions keep each revision check within the existing detail read budget. */
+export const queueStatus = staffQuery({
+  capability: 'approve', args: { requestId: v.id('staffApprovalRequests') }, handler: async (ctx, { requestId }) => {
+    const request = await readApprovalDocument(ctx, () => ctx.db.get(requestId));
+    if (!request || !canReviewApproval(ctx.staff, request) || !canAccessApprovalBranch(ctx.staff, request)) return null;
+    return await verifiedQueueStatus(ctx, ctx.staff, request);
+  },
+});
+
+/** Newest expired requests. Includes records whose scheduled expiry has not committed yet. */
+export const recentExpired = staffQuery({
+  capability: 'approve', args: {}, handler: async (ctx) => {
+    const now = Date.now();
+    const budget = readBudget(ctx);
+    const candidates = await Promise.all((['expired', 'pending'] as const).map(async status => {
+      budget.range();
+      const rows = await ctx.db.query('staffApprovalRequests')
+        .withIndex('by_status_and_expiresAt', q => q.eq('status', status).lte('expiresAt', now))
+        .order('desc').take(APPROVAL_PAGE_SIZE);
+      for (const row of rows) budget.document(row);
+      budget.assert();
+      return rows;
+    }));
+    return candidates.flat()
+      .filter(request => canReviewApproval(ctx.staff, request) && canAccessApprovalBranch(ctx.staff, request))
+      .sort((a, b) => b.expiresAt - a.expiresAt).slice(0, APPROVAL_PAGE_SIZE)
+      .map(request => queueRow(request, false));
   },
 });
 

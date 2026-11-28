@@ -372,6 +372,8 @@ The inventory test compares every source registration with this table and requir
 | `pos/staffApprovals.forOrder` | `staffQuery` | Staff capability 'checkout'; existing role model is authoritative. | Requester token ownership, order visibility, request expiry/revision and manager approval checks remain in handlers/helpers. |
 | `pos/staffApprovals.pending` | `staffQuery` | Staff capability 'approve'; existing role model is authoritative. | Requester token ownership, order visibility, request expiry/revision and manager approval checks remain in handlers/helpers. |
 | `pos/staffApprovals.pendingPage` | `staffQuery` | Staff capability 'approve'. | Bounded pending queue filtered by expiry and approval review policy. |
+| `pos/staffApprovals.queueStatus` | `staffQuery` | Staff capability 'approve'. | Verifies effective request state under the existing approval review and branch policy. |
+| `pos/staffApprovals.recentExpired` | `staffQuery` | Staff capability 'approve'. | Bounded recent expiry history under the existing approval review and branch policy. |
 | `pos/staffApprovals.detail` | `staffQuery` | Staff capability 'approve'. | Per-request review policy, followed by kind-specific detail and freshness checks. |
 | `pos/staffApprovals.myStatus` | `staffQuery` | Staff capability 'checkout'. | Requester token ownership and kind-specific status checks. |
 | `commerce/stock.access` | `staffQuery` | Staff capability 'checkout'. | Reads the caller's selected-branch permission flags. |
