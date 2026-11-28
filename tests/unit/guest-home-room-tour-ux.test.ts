@@ -5,7 +5,7 @@ import { IntlProvider } from "@/platform/intl";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import en from "../../messages/en.json";
 import type { PublicVilla } from "@/lib/villas";
-import { calculateDirectQuote } from "convex/shared/pricing";
+import { PriceComparison } from "@/components/pricing/PriceComparison";
 import { HomeHero } from "@/components/home/HomeHero";
 import { HomeQuickBooking } from "@/components/home/HomeQuickBooking";
 import { LocationMapPreview, RESORT_DIRECTIONS_URL } from "@/components/home/LocationMapPreview";
@@ -170,29 +170,37 @@ describe("Slice 2: Home, rooms, reviews, and 360 tour UX", () => {
     expect(mocks.push).not.toHaveBeenCalled();
   });
 
-  it("G09 & G13: VillaCard and MobileStickyBar display the same direct nightly rate as PriceComparison", async () => {
-    const expectedDirect = calculateDirectQuote(sampleVilla, 1).directTotal / 100;
+  it.each([
+    { currency: "THB", price: 550000, discount: 1500, direct: "฿4,675", standard: "฿5,500" },
+    { currency: "EUR", price: 12345, discount: 1255, direct: "EUR 107.96", standard: "EUR 123.45" },
+    { currency: "USD", price: 12345, discount: 0, direct: "USD 123.45", standard: null },
+  ])("G09 & G13: villa prices agree for $currency with discount $discount", async ({ currency, price, discount, direct, standard }) => {
+    const property = { ...sampleVilla, currency, pricePerNight: price, directDiscountPercent: discount };
     const container = await renderIntl(
       React.createElement(
         React.Fragment,
         null,
-        React.createElement(VillaCard, { property: sampleVilla }),
+        React.createElement(VillaCard, { property }),
+        React.createElement(PriceComparison, { property }),
         React.createElement(MobileStickyBar, {
-          propertyId: sampleVilla.id,
-          pricePerNight: sampleVilla.pricePerNight,
-          directDiscountPercent: sampleVilla.directDiscountPercent,
-          currency: sampleVilla.currency,
+          propertyId: property.id,
+          pricePerNight: price,
+          directDiscountPercent: discount,
+          currency,
         }),
       ),
     );
     const cardRate = container.querySelector('[data-testid="villa-card-rate"]')!;
-    expect(cardRate.textContent).toContain(`฿${expectedDirect.toLocaleString()}`);
-    expect(cardRate.querySelector("s")?.textContent).toContain("฿5,500");
-    expect(cardRate.textContent).toContain(en.Pricing.standardRate);
-    expect(cardRate.textContent).toContain(en.Villa.directRate);
-
-    const stickyRate = container.querySelector('[data-testid="mobile-sticky-rate"]')!;
-    expect(stickyRate.textContent).toContain(`฿${expectedDirect.toLocaleString()}`);
+    expect(cardRate.textContent).toContain(direct);
+    if (standard) {
+      expect(cardRate.querySelector("s")?.textContent).toBe(standard);
+      expect(cardRate.textContent).toContain(en.Pricing.standardRate);
+      expect(cardRate.textContent).toContain(en.Villa.directRate);
+    } else {
+      expect(cardRate.querySelector("s")).toBeNull();
+    }
+    expect(container.querySelector('[data-testid="mobile-sticky-rate"]')?.textContent).toContain(direct);
+    expect(container.querySelector("aside")?.textContent).toContain(direct);
   });
 
   it("G10: LocationMapPreview renders a safe static preview by default and an explicit directions link", async () => {
