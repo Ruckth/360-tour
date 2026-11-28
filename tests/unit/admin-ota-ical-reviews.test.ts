@@ -83,6 +83,7 @@ beforeEach(() => {
         _creationTime: 1,
         propertyId: "prop-1" as Id<"properties">,
         authorName: "Suda",
+        authorAvatarUrl: "",
         authorCity: "Bangkok",
         authorCountry: "Thailand",
         rating: 5,
@@ -132,6 +133,7 @@ describe("OTA row edit focus & form target heading (M37)", () => {
           propertyId: "prop-1",
           platform: "agoda",
           nightlyRate: 499000,
+          urlChange: { kind: "preserve" },
         },
       ],
     ]);
