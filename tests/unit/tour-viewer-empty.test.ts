@@ -24,12 +24,15 @@ describe("a villa with no tour rooms", () => {
     rooms.loading = false;
     document.body.innerHTML = "";
     document.body.style.overflow = "";
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
 
   /** Mirrors VillaCard/RoomDetailClient: closing unmounts the viewer through onClose. */
   async function openTour() {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    const rects = document.createElement("button").getClientRects();
+    vi.spyOn(HTMLElement.prototype, "getClientRects").mockReturnValue({ ...rects, length: 1 });
     const convex = fakeTourClient();
     rooms.client = convex.client;
     const onClose = vi.fn();
@@ -49,9 +52,17 @@ describe("a villa with no tour rooms", () => {
     const onClose = await openTour();
     const dialog = document.querySelector('[data-testid="tour-viewer"]');
     expect(dialog?.getAttribute("role")).toBe("dialog");
+    expect(dialog?.getAttribute("aria-modal")).toBe("true");
+    expect(dialog?.getAttribute("aria-label")).toBe("viewerLabel");
     expect(dialog?.textContent).toContain("unavailable");
     expect(document.body.style.overflow).toBe("hidden");
     expect(document.activeElement).toBe(closeButton());
+    for (const shiftKey of [false, true]) {
+      const tab = new KeyboardEvent("keydown", { key: "Tab", shiftKey, cancelable: true });
+      document.dispatchEvent(tab);
+      expect(tab.defaultPrevented).toBe(true);
+      expect(document.activeElement).toBe(closeButton());
+    }
 
     await act(async () => closeButton()!.click());
     expect(onClose).toHaveBeenCalledOnce();

@@ -10,7 +10,8 @@ function getFocusableElements(container: HTMLElement) {
   return [...container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)].filter((element) => {
     if (element.tabIndex < 0 || element.matches(":disabled")) return false;
     if (element.closest("[hidden], [inert], [aria-hidden=true]")) return false;
-    return window.getComputedStyle(element).visibility === "visible" && element.getClientRects().length > 0;
+    const { visibility } = window.getComputedStyle(element);
+    return visibility !== "hidden" && visibility !== "collapse" && element.getClientRects().length > 0;
   });
 }
 
