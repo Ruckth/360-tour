@@ -1,6 +1,6 @@
 import { Html } from "@react-three/drei";
 import { MoveRight } from "lucide-react";
-import type { PointerEvent } from "react";
+import type { MouseEvent, PointerEvent } from "react";
 import { cn } from "@/lib/utils";
 
 export function Hotspot({
@@ -12,7 +12,7 @@ export function Hotspot({
 }: {
   position: [number, number, number];
   label: string;
-  onClick?: () => void;
+  onClick?: (event: MouseEvent<HTMLButtonElement>) => void;
   onPointerDown?: (event: PointerEvent<HTMLButtonElement>) => void;
   selected?: boolean;
 }) {
