@@ -547,4 +547,50 @@ describe("dashboard view", () => {
     click(buttons("Try again")[0]);
     expect(calls.retry).toBe(1);
   });
+
+  it("expands secondary metric definitions in place under each metric at phone width", () => {
+    const matchMedia = vi.spyOn(window, "matchMedia").mockImplementation((query) => ({
+      matches: query === "(width < 640px)",
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    }));
+    try {
+      render(ready());
+      const list = document.querySelector('[data-slot="secondary-metrics"]')!;
+      expect(list.querySelectorAll('[data-slot="stat"]')).toHaveLength(5);
+
+      const paidButton = buttons("About paid bookings")[0];
+      const roasButton = buttons("About return on ad spend")[0];
+      expect(paidButton.getAttribute("aria-expanded")).toBe("false");
+      const paidDefId = paidButton.getAttribute("aria-controls")!;
+      const paidDef = document.getElementById(paidDefId)!;
+      expect(paidDef.hidden).toBe(true);
+      expect(paidButton.closest('[data-slot="stat"]')?.contains(paidDef)).toBe(true);
+
+      click(paidButton);
+      expect(paidButton.getAttribute("aria-expanded")).toBe("true");
+      expect(paidDef.hidden).toBe(false);
+      expect(paidDef.textContent).toContain("Of 179 paid stays, 132 came from tracked links");
+      expect(document.querySelector('[role="tooltip"]')).toBeNull();
+
+      click(roasButton);
+      expect(roasButton.getAttribute("aria-expanded")).toBe("true");
+      const roasDef = document.getElementById(roasButton.getAttribute("aria-controls")!)!;
+      expect(roasDef.hidden).toBe(false);
+      expect(roasDef.textContent).toMatch(/2 campaigns with spend/);
+      // Opening a second metric definition keeps the first one open in place.
+      expect(paidDef.hidden).toBe(false);
+
+      click(paidButton);
+      expect(paidButton.getAttribute("aria-expanded")).toBe("false");
+      expect(paidDef.hidden).toBe(true);
+    } finally {
+      matchMedia.mockRestore();
+    }
+  });
 });

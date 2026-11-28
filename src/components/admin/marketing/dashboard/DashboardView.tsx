@@ -207,8 +207,12 @@ function LoadingBody() {
       <span className="sr-only">Loading marketing results</span>
       <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
         <Skeleton className="col-span-2 h-52 rounded-xl md:h-auto" />
-        <div className="col-span-2 grid grid-cols-2 gap-3 sm:gap-4 md:col-span-3 lg:grid-cols-3 [&>*:last-child]:col-span-2">
-          {Array.from({ length: 5 }, (_, i) => <Skeleton key={i} className="h-[132px] rounded-xl" />)}
+        <div className="col-span-2 grid grid-cols-1 max-sm:divide-y max-sm:divide-border max-sm:rounded-xl max-sm:border max-sm:border-border max-sm:bg-card max-sm:px-4 sm:grid-cols-2 sm:gap-4 md:col-span-3 lg:grid-cols-3 sm:[&>*:last-child]:col-span-2">
+          {Array.from({ length: 5 }, (_, i) => (
+            <div key={i} className="max-sm:py-3">
+              <Skeleton className="h-[72px] rounded-lg sm:h-[132px] sm:rounded-xl" />
+            </div>
+          ))}
         </div>
       </div>
       <Card>

@@ -264,3 +264,48 @@ test("the jump, drill back and date inspector move keyboard focus", async ({ pag
   await chart.getByRole("button", { name: "Close date inspector" }).press("Enter");
   await expect(chart.getByRole("group", { name: /^Net collected by source\./ })).toBeFocused();
 });
+
+for (const width of [360, 390]) {
+  test(`phone secondary metrics use one divided list with in-place definitions (${width}px)`, async ({ page }) => {
+    await open(page, width, "normal", "light");
+    const list = page.locator('[data-slot="secondary-metrics"]');
+    await expect(list).toBeVisible();
+    const items = list.locator('[data-slot="stat"]');
+    await expect(items).toHaveCount(5);
+
+    // Every secondary metric stacks in a single column inside one divided container.
+    const boxes = await items.evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect()));
+    for (let i = 1; i < boxes.length; i++) {
+      expect(Math.abs(boxes[i].left - boxes[0].left)).toBeLessThanOrEqual(1);
+      expect(boxes[i].top).toBeGreaterThanOrEqual(boxes[i - 1].bottom - 1);
+    }
+
+    const paidButton = list.getByRole("button", { name: "About paid bookings" });
+    await expect(paidButton).toHaveAttribute("aria-expanded", "false");
+    const paidDefId = (await paidButton.getAttribute("aria-controls"))!;
+    const paidDef = page.locator(`#${paidDefId}`);
+    await expect(paidDef).toBeHidden();
+
+    await paidButton.click();
+    await expect(paidButton).toHaveAttribute("aria-expanded", "true");
+    await expect(paidDef).toBeVisible();
+    await expect(paidDef).toContainText("Of 179 paid stays, 132 came from tracked links");
+    await expect(page.getByRole("tooltip")).toHaveCount(0);
+
+    // The definition opens under its own label and above its value, staying beside the number it qualifies.
+    const [btnBox, defBox, itemBox] = await Promise.all([
+      paidButton.boundingBox(),
+      paidDef.boundingBox(),
+      items.nth(1).boundingBox(),
+    ]);
+    expect(defBox!.y).toBeGreaterThanOrEqual(btnBox!.y + btnBox!.height - 2);
+    expect(defBox!.y + defBox!.height).toBeLessThanOrEqual(itemBox!.y + itemBox!.height + 1);
+
+    await expectNoSideScroll(page, width);
+    await expectAccessible(page, `phone-secondary-metrics-${width}`);
+
+    await paidButton.click();
+    await expect(paidButton).toHaveAttribute("aria-expanded", "false");
+    await expect(paidDef).toBeHidden();
+  });
+}
