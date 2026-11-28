@@ -1,4 +1,4 @@
-import { paginationOptsValidator } from 'convex/server';
+import { paginationOptsValidator, paginationResultValidator } from 'convex/server';
 import { marketingTables } from './tables';
 import { ConvexError, v } from 'convex/values';
 import type { Doc } from '../_generated/dataModel';
@@ -175,6 +175,7 @@ export const checkSlug = marketingQuery({
 export const listQuoteServices = marketingQuery({
 	permission: 'view',
 	args: { paginationOpts: paginationOptsValidator },
+	returns: paginationResultValidator(v.object({ id: v.id('services'), name: v.string(), category: v.string(), durationMin: v.number() })),
 	handler: async (ctx, { paginationOpts }) => {
 		const result = await serviceQuery(ctx, {}).paginate({
 			...paginationOpts,
