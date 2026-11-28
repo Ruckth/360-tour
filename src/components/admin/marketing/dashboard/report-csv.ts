@@ -5,12 +5,12 @@ import { slugPath, type Breakdown, type BreakdownRow, type Prepared, type Roas, 
 // The dashboard's CSV export, built in the browser from the same read. Amounts are plain numbers in
 // baht, to the satang, so rows add up to their totals. Refunds are positive; net can be negative.
 
-export type ExportKind = "summary" | "sales";
+export type ExportKind = "summary" | "sales" | "drill";
 
 const VIEW_LABEL = { source: "Source", campaign: "Campaign", link: "Link", coupon: "Coupon" } as const;
 
 /** The `#` lines at the top of every export, so a file explains itself when it's forwarded. */
-export function csvMeta(p: Prepared, propertyName: string): string[][] {
+export function csvMeta(p: Prepared, propertyName: string, stale = false): string[][] {
   const { report, filters } = p;
   return [
     [`# Marketing report`],
@@ -22,6 +22,7 @@ export function csvMeta(p: Prepared, propertyName: string): string[][] {
     [`# Dates: ${report.from} to ${report.to}`],
     [`# Property: ${propertyName}`],
     [`# As of: ${exportStamp(report.asOf)} ${report.timeZone}`],
+    ...(stale ? [[`# Stale: refresh failed; retained snapshot as of ${exportStamp(report.asOf)}`]] : []),
     ...(report.truncated ? [[`# Incomplete: the read limit was reached, so figures are partial`]] : []),
     ...(report.excluded.nonThb ? [[`# Left out: ${report.excluded.nonThb} sales in another currency`]] : []),
   ];
@@ -31,7 +32,7 @@ const amount = (value: number) => value / 100;
 const roasCells = (roas: Roas | undefined): [string, string | number] =>
   roas?.kind === "value" ? [roas.value.toFixed(2), amount(roas.spend)] : roas?.kind === "all_properties_only" ? ["all properties only", ""] : ["", ""];
 
-export function summaryCsv(p: Prepared, propertyName: string, table: Breakdown, path: string): string {
+export function summaryCsvModel(p: Prepared, propertyName: string, table: Breakdown, path: string, stale = false) {
   const header = [
     "Row",
     VIEW_LABEL[table.view],
@@ -64,28 +65,32 @@ export function summaryCsv(p: Prepared, propertyName: string, table: Breakdown, 
     amount(row.net),
     ...(table.showRoas ? roasCells(row.roas) : []),
   ];
-  return toCsv([
-    ...csvMeta(p, propertyName),
+  const metadata = [
+    ...csvMeta(p, propertyName, stale),
     [`# Table: ${VIEW_LABEL[table.view]}${path ? ` · ${path}` : ""}`],
     ...(table.view === "coupon" ? [[`# Coupons regroup the same sales: never add this table to the source table`]] : []),
-    header,
+  ];
+  const rows = [
     ...table.rows.map((row) => line("tracked", row, row.sub ?? "")),
     ...table.pinned.map((row) => line(row.kind === "none" ? "no coupon" : "not tracked", row, row.sub ?? "")),
     ...table.totals.map((row) => line("total", row, row.note ?? "")),
-  ]);
+  ];
+  return { metadata, header, rows };
 }
 
-export function salesCsv(p: Prepared, propertyName: string): string {
+export function summaryCsv(p: Prepared, propertyName: string, table: Breakdown, path: string) {
+  return serializeExport(summaryCsvModel(p, propertyName, table, path));
+}
+
+export function salesCsvModel(p: Prepared, propertyName: string, { lines = p.lines, path, stale = false, identifiable = true }: { lines?: Prepared["lines"]; path?: string; stale?: boolean; identifiable?: boolean } = {}) {
   const properties = new Map(p.report.properties.map((x) => [x.id as string, x.name]));
   const header = [
-    "Kind", "Id", "Reference", "Guest or customer", "Property", "Channel", "Tracking", "Evidence", "Source", "Medium", "Campaign",
+    "Kind", ...(identifiable ? ["Id", "Reference", "Guest or customer"] : []), "Property", "Channel", "Tracking", "Evidence", "Source", "Medium", "Campaign",
     "Link", "Coupon", "Custom price", "Current-link only", "Created day", "Paid day", p.cash ? "First payment in range" : "Paid", ...(p.cash ? ["Settlement day", "Coupon-only settlement"] : []), "Collected", "Refunds", "Discount", "Net",
   ];
-  const rows = p.lines.map(({ sale, touch, group, paid, paidOther, couponOnlySettlements, collected, refunded, discount }) => [
+  const rows = lines.map(({ sale, touch, group, paid, paidOther, couponOnlySettlements, collected, refunded, discount }) => [
     sale.kind,
-    sale.id,
-    sale.ref ?? "",
-    sale.label,
+    ...(identifiable ? [sale.id, sale.ref ?? "", sale.label] : []),
     sale.propertyId ? (properties.get(sale.propertyId) ?? "") : "",
     sale.channel,
     group,
@@ -106,7 +111,16 @@ export function salesCsv(p: Prepared, propertyName: string): string {
     amount(discount),
     amount(collected - refunded),
   ]);
-  return toCsv([...csvMeta(p, propertyName), header, ...rows]);
+  const metadata = [...csvMeta(p, propertyName, stale), [`# Sales scope: ${path || "All filtered sales"}`], [`# Record detail: ${identifiable ? "Identifiers and guest/customer names" : "Operational fields only"}`]];
+  return { metadata, header, rows };
+}
+
+export function salesCsv(p: Prepared, propertyName: string) {
+  return serializeExport(salesCsvModel(p, propertyName));
+}
+
+export function serializeExport({ metadata, header, rows }: ReturnType<typeof salesCsvModel>) {
+  return toCsv([...metadata, header, ...rows]);
 }
 
 export function csvFileName(p: Prepared, kind: ExportKind) {

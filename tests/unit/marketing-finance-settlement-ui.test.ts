@@ -35,7 +35,7 @@ async function render(sales: ReportSale[], events: ReportData["events"] = [], ac
   const p = prepareReport(report, { property: "all", touch: "last" });
   const sort = { key: "net", dir: "desc" } as const;
   const content = createElement(Fragment, null,
-    createElement(DashboardTiles, { p, totals: businessTotals(p), onAddSpend() {} }),
+    createElement(DashboardTiles, { p, totals: businessTotals(p), onAddSpend() {}, definitionsAction: null, campaignsHref: "/admin/marketing/campaigns" }),
     createElement(DashboardBreakdown, { p, b: buildBreakdown(p, "source", [], sort), sort, onSort() {}, onView() {}, onPath() {}, onOpen() {}, onAddSpend() {} }),
     createElement(SalesSheet, { p, target: { title: "Sales", lines: p.lines }, onClose() {}, onOpenStay() {}, orderHref: id => `/orders/${id}` }),
   );

@@ -6,7 +6,9 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { getFunctionName, type FunctionReference } from 'convex/server';
 import { AdminShell } from '@/components/admin/AdminShell';
-import { KOH_SAMUI, staffAccessFor, type ShellRole } from './admin-shell-convex';
+import { branchStorageKeys } from '@/components/admin/branch/branch-selection';
+import { StockSectionShell } from '@/components/stock/StockSectionNav';
+import { KOH_SAMUI, PHUKET, staffAccessFor, type ShellRole } from './admin-shell-convex';
 
 const state = vi.hoisted(() => ({
   pathname: '/admin/chats',
@@ -14,6 +16,7 @@ const state = vi.hoisted(() => ({
   access: undefined as unknown,
   pending: 0,
   stale: false,
+  approvalsUnavailable: false,
   replace: vi.fn(),
   claim: vi.fn(async () => null),
   claimMarketing: vi.fn(async () => null),
@@ -32,6 +35,7 @@ vi.mock('convex/react', () => ({
     if (name === 'auth/staffAccess:myAccess') return state.access;
     return { businessName: 'Audit resort' };
   }, useMutation: (ref: FunctionReference<'mutation'>) => (getFunctionName(ref) === 'auth/staffAccess:claimInvite' ? state.claim : getFunctionName(ref) === 'marketing/access:claimInvite' ? state.claimMarketing : async () => null), usePaginatedQuery: (ref: FunctionReference<'query'>, args: unknown) => {
+    if (state.approvalsUnavailable && args !== 'skip' && getFunctionName(ref) === 'pos/staffApprovals:pendingPage') throw new Error('Approval queue offline');
     const pending = args !== 'skip' && getFunctionName(ref) === 'pos/staffApprovals:pendingPage' ? state.pending : 0;
     const now = Date.now();
     const stale = pending > 0 && state.stale;
@@ -51,6 +55,7 @@ vi.mock('convex/react', () => ({
   ) }));
 vi.mock('@/platform/navigation', () => ({
   usePathname: () => state.pathname,
+  useSelectedLayoutSegment: () => state.pathname.split('/')[3],
   useSearchParams: () => new URLSearchParams(state.tab ? `tab=${state.tab}` : ''),
   useRouter: () => ({ push: vi.fn(), replace: state.replace }),
 }));
@@ -66,7 +71,7 @@ const button = (text: string) => [...document.querySelectorAll('button')].find((
 
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
-  Object.assign(state, { pathname: '/admin/chats', tab: null, access: undefined, pending: 0, stale: false });
+  Object.assign(state, { pathname: '/admin/chats', tab: null, access: undefined, pending: 0, stale: false, approvalsUnavailable: false });
   state.replace.mockClear();
   state.claim.mockClear();
   // Wide enough for the full sidebar rather than the drawer.
@@ -209,4 +214,44 @@ it('keeps a pending Marketing invite reachable after a desk invite is claimed', 
   await render();
   expect(document.getElementById('page')).not.toBeNull();
   expect(document.querySelector('a[href="/admin/marketing"]')?.textContent).toBe('Review invitation');
+});
+
+it('recovers a first Stock bookmark in place with an assigned branch', async () => {
+  state.pathname = '/admin/stock/balances';
+  state.access = staffAccessFor('manager', 'first-stock@example.com', [KOH_SAMUI, PHUKET]);
+  await act(async () => root.render(createElement(AdminShell, null,
+    createElement(StockSectionShell, null, 'Branch stock balances'))));
+  const prompt = document.querySelector('section[aria-labelledby="stock-choose-branch"]')!;
+  expect(prompt.textContent).toContain('Select a working branch');
+  expect(document.body.textContent).not.toContain('Branch stock balances');
+  const choice = [...prompt.querySelectorAll('button')].find(option => option.textContent?.includes('Koh Samui'))!;
+  await act(async () => choice.click());
+  expect(document.body.textContent).toContain('Branch stock balances');
+  expect(state.replace).not.toHaveBeenCalled();
+});
+
+it('keeps the phone branch switcher available during an approvals failure and restores the queue count on retry', async () => {
+  (window as unknown as HappyDOMWindow).happyDOM.setWindowSize({ width: 390, height: 844 });
+  state.pathname = '/admin/stock/balances';
+  const email = 'queue-retry@example.com';
+  state.access = staffAccessFor('manager', email, [KOH_SAMUI, PHUKET]);
+  window.sessionStorage.setItem(branchStorageKeys(email).session, KOH_SAMUI.id);
+  state.approvalsUnavailable = true;
+  // React logs errors caught by the boundary in the test renderer.
+  const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+  try {
+    await render();
+    const trigger = document.querySelector<HTMLButtonElement>('header [aria-label="Approvals unavailable"]')!;
+    expect(trigger).toBeTruthy();
+    expect(document.querySelector('header [data-branch-switcher]')?.textContent).toContain('Koh Samui');
+    expect(button('Try again')).toBeUndefined();
+    await act(async () => trigger.click());
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain('could not be loaded');
+    state.pending = 2;
+    state.approvalsUnavailable = false;
+    await act(async () => button('Try again')!.click());
+    expect(approvals()?.textContent).toBe('Approvals2 waiting');
+  } finally {
+    logged.mockRestore();
+  }
 });

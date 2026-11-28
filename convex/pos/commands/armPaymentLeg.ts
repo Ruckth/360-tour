@@ -1,6 +1,7 @@
 import { ConvexError, v } from 'convex/values';
 import { placeCheckoutHolds } from '../../commerce/model';
 import { staffMutation } from '../../auth/model';
+import { CHECKOUT_STOCK_HOLD_MS } from '../../shared/commerce/caps';
 import { assertTenders } from '../../shared/orderMath';
 import { reserveWrites } from '../../lib/readBudget';
 import {
@@ -49,20 +50,29 @@ export const armPaymentLeg = staffMutation({
         : externalTenders(attempt.legs.filter(part => part.state !== 'declined'));
       const tendered = args.tendered ?? undefined;
       assertTenders([{ ...leg, received: tendered }], leg.amount);
-      const { sale, frozen } = await preflightAttempt(ctx, order, attempt, settings, ctx.staff, tenders, now, kept.length > 0);
+      const stockHoldUntil = now + CHECKOUT_STOCK_HOLD_MS;
+      const { sale, frozen } = await preflightAttempt(ctx, order, attempt, settings, ctx.staff, tenders, now, kept.length > 0, stockHoldUntil);
       const confirmed = args.stockInHand && !order.stockBranchId || stockReviewMatches(sale.stockShortages, args.stockReview);
       if (!confirmed && !kept.length) {
         return { status: 'confirm_stock' as const, shortages: sale.stockShortages };
       }
+      const currentHoldTimes = sale.restock.flatMap(row => row.reservationExpiresAt === undefined ? [] : [row.reservationExpiresAt]);
       if (sale.branch) {
         const lines = sale.restock
           .filter(row => row.holdAtArm)
-          .map(row => ({ variantId: row.variant.id, quantity: row.quantity }));
-        await placeCheckoutHolds(ctx, {
-          orderId: order._id, branchId: sale.branch._id, attemptId: attempt._id, legKey: leg.key, lines, actor: ctx.staff.email,
-        });
+          .map(row => ({ variantId: row.variant.id, quantity: row.quantity, lotAllocations: row.lotAllocations }));
+        if (lines.length) {
+          await placeCheckoutHolds(ctx, {
+            orderId: order._id, branchId: sale.branch._id, attemptId: attempt._id, legKey: leg.key, lines, actor: ctx.staff.email,
+            expiresAt: stockHoldUntil,
+          });
+          currentHoldTimes.push(stockHoldUntil);
+        }
       }
-      const instructed = { ...leg, tendered, state: 'instructed' as const, instructedAt: now, ...instructionOrigin(attempt) };
+      const instructed = {
+        ...leg, tendered, state: 'instructed' as const, instructedAt: now, ...instructionOrigin(attempt),
+        stockHoldUntil: currentHoldTimes.length ? Math.min(...currentHoldTimes) : undefined,
+      };
       const legs = attempt.legs.map(candidate => candidate.key === leg.key ? instructed : candidate);
       if (!frozen) await freezeAttemptCatalogue(ctx, attempt, sale.frozenCatalogue);
       reserveWrites(ctx, 1);

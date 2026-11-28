@@ -10,11 +10,15 @@ import { marketingErrorText } from '../marketing/marketing-format';
 export function VisitCosts({
   entry,
   reference,
+  onDirty,
+  onSaving,
   saved,
   close,
 }: {
   entry: NonNullable<EvidenceRow['costEntry']>;
   reference: string;
+  onDirty: () => void;
+  onSaving: (saving: boolean) => void;
   saved: () => void;
   close: () => void;
 }) {
@@ -27,6 +31,7 @@ export function VisitCosts({
     [error, setError] = useState('');
   return (
     <form
+      onChange={onDirty}
       ref={form}
       className="grid gap-3 border-y border-border bg-muted/40 p-4"
       onSubmit={async (e) => {
@@ -34,6 +39,7 @@ export function VisitCosts({
         if (busy) return;
         const fields = new FormData(e.currentTarget);
         setBusy(true);
+        onSaving(true);
         setError('');
         try {
           await save({
@@ -49,11 +55,14 @@ export function VisitCosts({
           setError(marketingErrorText(err, 'Could not save visit costs.'));
         } finally {
           setBusy(false);
+          onSaving(false);
         }
       }}
     >
       <h3 className="font-semibold">Actual costs for {reference}</h3>
-      <p className="text-sm text-muted-foreground">Enter all three amounts. Use 0 for a component with no cost.</p>
+      <p className="text-sm text-muted-foreground">
+        Enter all three amounts. Use 0 for a component with no cost.
+      </p>
       <div className="grid gap-3 sm:grid-cols-3">
         {(['staff', 'materials', 'tools'] as const).map((k) => (
           <AmountField key={k} name={k} label={k[0].toUpperCase() + k.slice(1)} amount={entry.costs?.[k]} />
@@ -68,7 +77,7 @@ export function VisitCosts({
         <Button type="submit" disabled={busy}>
           {busy ? 'Saving…' : 'Save actual costs'}
         </Button>
-        <Button type="button" variant="ghost" onClick={close}>
+        <Button type="button" variant="ghost" disabled={busy} onClick={close}>
           Cancel
         </Button>
       </div>

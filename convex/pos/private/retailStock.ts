@@ -35,8 +35,8 @@ export async function assertRetailQuantity(ctx: QueryCtx, args: {
   const { branchId, orderId, variantId, demand } = args;
   const stock = await ctx.db.query('stockLevels').withIndex('by_variantId_and_branchId', q =>
     q.eq('variantId', variantId).eq('branchId', branchId)).unique();
-  const { tracking, held, sellable, reservationId } = await readStockAvailability(ctx, { branchId, variantId, orderId, onHand: stock?.onHand ?? 0 });
-  if ((tracking || held > 0 || reservationId) && demand > sellable) {
+  const { tracking, held, sellable, reservationId, unassigned } = await readStockAvailability(ctx, { branchId, variantId, orderId, onHand: stock?.onHand ?? 0 });
+  if ((tracking || held > 0 || reservationId || unassigned !== null) && demand > sellable) {
     retailError('stock_unavailable', 'There is not enough sellable stock at this branch. Reduce the quantity or choose another product.');
   }
 }

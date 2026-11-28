@@ -16,4 +16,4 @@ export { resortTodayIso as rosterDate } from '../shared/time';
 export { assertTimeOffRange } from '../shared/timeOff';
 
 export { MAX_STAY_APPOINTMENTS, readStayAppointments } from './private/stayAppointments';
-export { profitVisits } from './private/profitVisits';
+export { needsPagedProfitSource, profitVisitPage, profitVisits } from './private/profitVisits';

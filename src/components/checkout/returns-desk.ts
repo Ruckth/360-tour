@@ -57,6 +57,10 @@ export function selectedReturnLots(lots: ReturnLotOptions["lots"], choice: Choic
 }
 
 export function confirmedReturnLots(lots: ReturnLotOptions["lots"], choice: Choice) {
+  if (!automaticReturnLots(lots, choice.units) && lots.some(lot => {
+    const entered = choice.lotQuantities?.[lot.lotId] ?? 0;
+    return !Number.isSafeInteger(entered) || entered < 0 || entered > Math.min(lot.quantity, choice.units);
+  })) return null;
   const allocations = selectedReturnLots(lots, choice);
   const limits = new Map(lots.map(lot => [lot.lotId, lot.quantity]));
   return allocations.reduce((sum, lot) => sum + lot.quantity, 0) === choice.units &&
@@ -73,8 +77,9 @@ export function chosenParts(parts: DeskPart[], choices: Choices, lotOptions?: Ma
     const { units } = choice;
     if (!Number.isSafeInteger(units) || units < 1 || units > part.maxUnits) return null;
     const disposition = choice.condition === "sellable" || choice.condition === "damaged" ? choice.condition : undefined;
-    const options = disposition === "sellable" ? lotOptions?.get(part.partKey) : undefined;
-    if (disposition === "sellable" && (lotOptions === null || options?.unavailable)) return null;
+    const candidate = lotOptions?.get(part.partKey);
+    const options = disposition === "sellable" || (disposition === "damaged" && part.packed) ? candidate : undefined;
+    if ((disposition === "sellable" || (disposition === "damaged" && part.packed)) && (lotOptions === null || options?.unavailable)) return null;
     const lotAllocations = options?.tracked ? confirmedReturnLots(options.lots, { ...choice, units }) : undefined;
     if (lotAllocations === null) return null;
     const request = part.part;

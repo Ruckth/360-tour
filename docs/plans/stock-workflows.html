@@ -377,7 +377,7 @@
     </ol>
     <h3>Before enabling the pilot</h3>
     <ol>
-      <li>Backfill variant search through <code>commerce/stock:backfillVariantSearch</code> with <code>{"paginationOpts":{"cursor":null,"numItems":25},"continueBatches":true}</code>. Backfill older Activity filters through <code>commerce/stock:backfillMovementFilters</code> in 25-row batches using each returned cursor until <code>isDone</code>.</li>
+      <li>Backfill variant search through <code>commerce/stock:backfillVariantSearch</code> with <code>{"paginationOpts":{"cursor":null,"numItems":25},"continueBatches":true}</code>. Activity filters include historical movements immediately. The optional <code>commerce/stock:backfillMovementFilters</code> command refreshes staff search keys in 25-row batches using each returned cursor until <code>isDone</code>. It preserves recorded reason codes.</li>
       <li>Set stock roles and direct-order and direct-receipt policy for the pilot branch. Switch Checkout to payment attempts and reload all tills. Run <code>node scripts/heavy.mjs node scripts/bench/stock-load.mjs --preset pilot</code> against the disposable local environment. Enable Products after the branch flow and the mixed-load gates pass.</li>
       <li>Enable lot tracking before entering opening stock or receiving the first delivery for an item that requires lot and expiry records.</li>
     </ol>

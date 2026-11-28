@@ -2,9 +2,10 @@
 
 import { parseMoneyInput } from "@/lib/money-input";
 import type { Id } from "convex/_generated/dataModel";
-import { validateSpend, type ReportSpend, type SpendDraft } from "convex/shared/marketingReport";
+import { reportDayCount, spendInRange, validateSpend, type ReportSpend, type SpendDraft } from "convex/shared/marketingReport";
 import { Trash2 } from "lucide-react";
 import { useId, useState, type FormEvent } from "react";
+import Link from "@/platform/link";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -33,6 +34,7 @@ export type SpendDialogProps = {
   entry?: ReportSpend;
   /** Prefill when adding. Default: this month so far in Bangkok, the first campaign, no amount. */
   defaults?: Partial<SpendDraft>;
+  reportScope?: { from: string; to: string; campaignsHref: string; entries: ReportSpend[] };
   /** Resolves when saved; rejects with the server's message, which the dialog shows. */
   onSave: (draft: SpendDraft & { id?: Id<"marketingSpend"> }) => Promise<void>;
   /** Shown only when editing. */
@@ -55,7 +57,7 @@ export function SpendDialog(props: SpendDialogProps) {
 type Field = "campaign" | "amount" | "dates" | "note";
 const VALID = { amount: 1, from: "2000-01-01", to: "2000-01-01" };
 
-function SpendForm({ onOpenChange, campaigns, entry, defaults, onSave, onDelete, now }: SpendDialogProps) {
+function SpendForm({ onOpenChange, campaigns, entry, defaults, onSave, onDelete, now, reportScope }: SpendDialogProps) {
   const id = useId();
   const [opener] = useState(() => typeof document !== "undefined" && document.activeElement instanceof HTMLElement ? document.activeElement : null);
   const confirm = useConfirm();
@@ -89,6 +91,12 @@ function SpendForm({ onOpenChange, campaigns, entry, defaults, onSave, onDelete,
   const campaignName = campaigns.find((campaign) => campaign.id === form.campaignId)?.name;
   const showPicker = campaigns.length > 1;
   const days = form.from && form.to && form.from <= form.to ? formatRange(form.from, form.to) : "";
+
+  const overlapFrom = reportScope && form.from > reportScope.from ? form.from : reportScope?.from;
+  const overlapTo = reportScope && form.to < reportScope.to ? form.to : reportScope?.to;
+  const overlapDays = overlapFrom && overlapTo ? reportDayCount(overlapFrom, overlapTo) : null;
+  const existingEntries = reportScope?.entries.filter((entry) => entry.campaignId === form.campaignId) ?? [];
+  const allocation = reportScope && !firstError ? spendInRange({ amount, from: form.from, to: form.to }, reportScope.from, reportScope.to) : null;
 
   async function save(event: FormEvent) {
     event.preventDefault();
@@ -221,7 +229,14 @@ function SpendForm({ onOpenChange, campaigns, entry, defaults, onSave, onDelete,
           <FieldError id={`${id}-note-error`}>{shown("note")}</FieldError>
         </div>
 
-        <p className="text-xs text-muted-foreground">Entered by hand; nothing is imported from ad platforms.</p>
+        {reportScope ? <div className="grid gap-1 rounded-lg border p-3 text-xs">
+          <p role="status">{allocation === null ? "Enter an amount and dates to estimate report spend." : overlapDays && overlapFrom && overlapTo ? `${thb(allocation)} counts in this report, across ${overlapDays} overlapping days (${formatRange(overlapFrom, overlapTo)}).` : "No overlap with this report. ฿0 counts in this range."}</p>
+          <details>
+            <summary className="cursor-pointer">Existing spend in this report ({existingEntries.length})</summary>
+            {existingEntries.length ? <ul className="mt-1 max-h-24 overflow-auto">{existingEntries.map((entry) => <li key={entry.id}>{formatRange(entry.from, entry.to)} · {thb(entry.amount)}{entry.note ? ` · ${entry.note}` : ""}</li>)}</ul> : <p className="mt-1">No saved entries overlap the applied report dates for this campaign.</p>}
+          </details>
+          <Link href={reportScope.campaignsHref} target="_blank" rel="noreferrer" className="w-fit underline">Review existing campaign spend (opens in a new tab)</Link>
+        </div> : null}
 
         {serverError ? (
           <p role="alert" className="text-sm font-medium text-destructive">

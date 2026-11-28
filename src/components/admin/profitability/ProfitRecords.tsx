@@ -1,18 +1,28 @@
-import { useState } from 'react';
+import { type ComponentProps, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useConvex } from 'convex/react';
-import { ArrowDownUp, Download } from 'lucide-react';
+import { Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toCsv } from '@/lib/admin/csv';
 import { metricNames } from 'convex/shared/profitability';
 import { thb, marketingErrorText } from '../marketing/marketing-format';
+import { useConfirm } from '../ConfirmDialog';
 import { useMarketingAccess } from '../marketing/MarketingAccess';
 import { CustomerAssignment } from './CustomerAssignment';
 import { VisitCosts } from './VisitCosts';
+import { collectExportRows } from './export-rows';
 import { inputStyle } from './report-controls';
 import { endpoint, box, money, type Report, type Request } from './report-model';
-export function Details({
+export function Details(props: ComponentProps<typeof AuthorizedDetails>) {
+  const { role, email } = useMarketingAccess();
+  const canWrite = role === 'admin' || role === 'finance';
+  return <AuthorizedDetails key={JSON.stringify([email, canWrite])} {...props} />;
+}
+
+function AuthorizedDetails({
   report,
+  registerCorrectionGuard,
   request,
+  preparedViewId,
   setPage,
   category,
   setCategory,
@@ -24,7 +34,9 @@ export function Details({
   submitSearch,
 }: {
   report: Report;
+  registerCorrectionGuard: (guard: ((navigate: () => void) => void) | null) => void;
   request: Request;
+  preparedViewId: Request['preparedViewId'];
   setPage: (page: number) => void;
   category: string;
   setCategory: (v: string) => void;
@@ -36,29 +48,133 @@ export function Details({
   submitSearch: (value: string) => void;
 }) {
   const convex = useConvex();
-  const role = useMarketingAccess().role;
+  const confirm = useConfirm();
+  const confirming = useRef(false);
+  const [dirty, setDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const { role, email } = useMarketingAccess();
   const canWrite = role === 'admin' || role === 'finance';
   const [actual, setActual] = useState<NonNullable<Report['detail']>['rows'][number] | null>(null);
+  const exportScope = JSON.stringify([
+    request.viewId, preparedViewId, role, email, request.from, request.to, request.metric,
+    request.overview, request.additional, request.search, request.category, request.descending,
+  ]);
+  const [exportChoice, setExportChoice] = useState({ scope: exportScope, identifiable: false });
+  const includeCustomer = exportChoice.scope === exportScope && exportChoice.identifiable;
+  if (exportChoice.scope !== exportScope) setExportChoice({ scope: exportScope, identifiable: false });
+  const activeExport = useRef<AbortController | null>(null);
+  useLayoutEffect(() => () => activeExport.current?.abort(), [exportScope]);
+  const [editorScope, setEditorScope] = useState('');
+  const scope = JSON.stringify([
+    request.from,
+    request.to,
+    request.metric,
+    request.overview,
+    request.additional,
+    request.search,
+    request.category,
+    request.page,
+    request.descending,
+  ]);
   const [exporting, setExporting] = useState(false),
     [error, setError] = useState('');
   const [assignment, setAssignment] = useState<NonNullable<Report['detail']>['rows'][number] | null>(null);
+  function guardCorrection(navigate: () => void) {
+    if (saving || confirming.current) return;
+    const closeAndNavigate = () => {
+      setActual(null);
+      setAssignment(null);
+      setDirty(false);
+      navigate();
+    };
+    if (!dirty) {
+      closeAndNavigate();
+      return;
+    }
+    confirming.current = true;
+    void confirm({
+      title: 'Discard this correction?',
+      description: 'Changing the record view will close the unsaved correction.',
+      cancelLabel: 'Keep editing',
+      confirmLabel: 'Discard changes',
+      destructive: true,
+    }).then((accepted) => { if (accepted) closeAndNavigate(); })
+      .finally(() => { confirming.current = false; });
+  }
+  useEffect(() => {
+    if (!actual && !assignment) return;
+    registerCorrectionGuard(guardCorrection);
+    return () => registerCorrectionGuard(null);
+  });
   const detail = report.detail,
     metric = request.metric;
   if (!detail || !metric) return null;
   async function download() {
+    if (!canWrite || !metric || !request.viewId || !preparedViewId || busy || activeExport.current) return;
+    const attempt = new AbortController();
+    activeExport.current = attempt;
     setExporting(true);
     setError('');
     try {
-      const { detail: all } = await convex.query(endpoint, { ...request, exportRows: true });
-      if (!all) return;
+      const readPage = (page: number) => convex.query(endpoint, {
+        ...request,
+        preparedViewId,
+        page,
+        exportRows: true,
+        includeCustomer,
+      });
+      const evidence = await collectExportRows(readPage, attempt.signal);
+      if (!evidence || attempt.signal.aborted) return;
+      const { asOf, detail: all, rows } = evidence;
+      const date = new Date(asOf).toISOString();
       const csv = toCsv([
-        ['Date', 'Reference', 'Service', 'Customer', 'Category', 'Amount (THB)'],
-        ...all.rows.map((r) => [
+        [
+          'From (inclusive)',
+          'Through (inclusive)',
+          'Timezone',
+          'Metric',
+          'Category',
+          'Snapshot (UTC)',
+          'Revenue basis',
+          'Overview filters',
+          'Transaction filters',
+          'Search filter',
+          'Matching records',
+          'Evidence subtotal (THB)',
+          'Export scope',
+        ],
+        [
+          request.from,
+          request.to,
+          'Asia/Bangkok',
+          metricNames[metric],
+          category || 'All categories',
+          date,
+          'Delivered services and fees, excluding VAT',
+          JSON.stringify(request.overview),
+          JSON.stringify(request.additional),
+          request.search ? 'Applied (private)' : 'None',
+          all.count,
+          all.sum / 100,
+          includeCustomer ? 'Identifiable' : 'Operational',
+        ],
+        [],
+        [
+          'Date',
+          'Reference',
+          'Service',
+          ...(includeCustomer ? ['Customer'] : []),
+          'Category',
+          'Evidence basis',
+          'Amount (THB)',
+        ],
+        ...rows.map((r) => [
           r.day,
           r.ref,
           r.service,
-          r.customer,
+          ...(includeCustomer ? [r.customer] : []),
           r.category,
+          r.basis ?? r.category,
           r.amount === null ? '' : r.amount / 100,
         ]),
       ]);
@@ -69,8 +185,9 @@ export function Details({
       a.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (err) {
-      setError(marketingErrorText(err, 'Could not export these records.'));
+      if (!attempt.signal.aborted) setError(marketingErrorText(err, 'Could not export these records.'));
     } finally {
+      activeExport.current = null;
       setExporting(false);
     }
   }
@@ -80,34 +197,45 @@ export function Details({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-semibold">Supporting records</h2>
           {canWrite && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                void download();
-              }}
-              disabled={busy || exporting || !detail.count}
-            >
-              <Download size={15} />
-              {exporting ? 'Exporting…' : 'Export CSV'}
-            </Button>
+            <div className="flex flex-wrap items-end gap-2">
+              <label className="grid gap-1 text-xs">
+                CSV export scope
+                <select
+                  className={inputStyle}
+                  value={includeCustomer ? 'identifiable' : 'operational'}
+                  disabled={busy || exporting}
+                  onChange={(event) => setExportChoice({ scope: exportScope, identifiable: event.target.value === 'identifiable' })}
+                >
+                  <option value="operational">Operational (without customer names)</option>
+                  <option value="identifiable">Identifiable (includes customer names)</option>
+                </select>
+              </label>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => void download()}
+                disabled={busy || exporting || !detail.count || !preparedViewId}
+              >
+                <Download size={15} />
+                {exporting ? 'Exporting…' : 'Export CSV'}
+              </Button>
+            </div>
           )}
         </div>
         <p className="text-sm">
-          {category === 'Awaiting cost' && metric === 'gross' ? (
-            'These records are excluded from gross profit until their service costs are entered.'
-          ) : (
+          Overview {metricNames[metric].toLowerCase()} <b>{money(report.summary[metric])}</b>
+          {request.additional.rules.length > 0 && (
             <>
-              {metricNames[metric]} <b>{money(report.summary[metric])}</b>
-              {request.additional.rules.length > 0 && (
-                <>
-                  {' '}
-                  · With transaction filters <b>{money(detail.value)}</b>
-                </>
-              )}
+              {' '}
+              · With transaction rules <b>{money(detail.value)}</b>
             </>
           )}
         </p>
+        {category === 'Awaiting cost' && metric === 'gross' && (
+          <p className="text-sm">
+            These records are excluded from gross profit until their service costs are entered.
+          </p>
+        )}
         <div className="flex flex-wrap items-end gap-3">
           <form
             className="flex max-w-full flex-wrap items-end gap-1"
@@ -130,9 +258,10 @@ export function Details({
             <Button type="submit" size="sm" variant="outline">
               Search
             </Button>
-            {search.trim() !== (request.search ?? "") && (
+            {search.trim() !== (request.search ?? '') && (
               <p role="status" className="basis-full text-xs text-muted-foreground">
-                Apply search to update the records. {request.search ? `Showing results for “${request.search}”.` : "Showing all search results."}
+                Apply search to update the records.{' '}
+                {request.search ? `Showing results for “${request.search}”.` : 'Showing all search results.'}
               </p>
             )}
             {request.search && (
@@ -158,10 +287,17 @@ export function Details({
               ))}
             </select>
           </label>
-          <Button size="sm" variant="ghost" onClick={() => setDescending(!request.descending)}>
-            <ArrowDownUp size={15} />
-            {request.descending ? 'Newest first' : 'Oldest first'}
-          </Button>
+          <label className="grid gap-1 text-xs">
+            Transaction sort
+            <select
+              className={inputStyle}
+              value={request.descending ? 'desc' : 'asc'}
+              onChange={(event) => setDescending(event.target.value === 'desc')}
+            >
+              <option value="desc">Newest first</option>
+              <option value="asc">Oldest first</option>
+            </select>
+          </label>
         </div>
       </header>
       {error && (
@@ -169,24 +305,44 @@ export function Details({
           {error}
         </p>
       )}
-      {actual?.costEntry && !busy && (
+      {(actual || assignment) && editorScope !== scope && !busy && (
+        <p role="status" className="border-y border-border px-4 py-3 text-sm">
+          Your correction for {(actual ?? assignment)?.ref} is still open from the previous record view.
+        </p>
+      )}
+      {actual?.costEntry && (
         <VisitCosts
+          key={actual.id}
+          onDirty={() => setDirty(true)}
+          onSaving={setSaving}
           entry={actual.costEntry}
           reference={actual.ref}
-          close={() => setActual(null)}
+          close={() => {
+            setActual(null);
+            setDirty(false);
+          }}
           saved={() => {
             setActual(null);
+            setDirty(false);
             refresh();
           }}
         />
       )}
-      {assignment?.appointmentId && !busy && (
+      {assignment?.appointmentId && (
         <CustomerAssignment
+          key={assignment.id}
+          onDirty={() => setDirty(true)}
+          onSaving={setSaving}
           visit={assignment.appointmentId}
           expected={assignment.currentCustomer ?? null}
           reference={assignment.ref}
+          close={() => {
+            setAssignment(null);
+            setDirty(false);
+          }}
           done={() => {
             setAssignment(null);
+            setDirty(false);
             refresh();
           }}
         />
@@ -230,22 +386,38 @@ export function Details({
                   </td>
                   <td role="cell" className="break-words max-sm:col-span-2 sm:px-4 sm:py-3">
                     {r.service}
-                    {r.costEntry && (
+                    {canWrite && r.costEntry && (
                       <button
                         disabled={busy}
                         type="button"
                         className="block min-h-11 text-sm text-primary underline"
-                        onClick={() => setActual(r)}
+                        onClick={() => {
+                          const open = () => {
+                            setAssignment(null);
+                            setActual(r);
+                            setEditorScope(scope);
+                          };
+                          if (actual || assignment) guardCorrection(open);
+                          else open();
+                        }}
                       >
                         Record actual costs
                       </button>
                     )}
-                    {r.appointmentId && (
+                    {canWrite && r.appointmentId && (
                       <button
                         type="button"
                         className="block min-h-11 text-sm text-primary underline"
                         disabled={busy}
-                        onClick={() => setAssignment(r)}
+                        onClick={() => {
+                          const open = () => {
+                            setActual(null);
+                            setAssignment(r);
+                            setEditorScope(scope);
+                          };
+                          if (actual || assignment) guardCorrection(open);
+                          else open();
+                        }}
                       >
                         {r.currentCustomer ? 'Edit customer' : 'Identify customer'}
                       </button>
@@ -281,6 +453,10 @@ export function Details({
       )}
       <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-border p-4 text-sm">
         <span aria-live="polite">
+          <span className="block text-xs text-muted-foreground">
+            Matching evidence · {category || 'All categories'} ·{' '}
+            {request.search ? `Search “${request.search}”` : 'No search'}
+          </span>
           {detail.count} matching {detail.count === 1 ? 'record' : 'records'}
           {category !== 'Awaiting cost' && <> · {thb(detail.sum)} subtotal</>}
           {(metric === 'ltv' || metric === 'cac') &&
@@ -297,22 +473,30 @@ export function Details({
             </span>
           )}
         </span>
-        <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" disabled={!detail.page} onClick={() => setPage(detail.page - 1)}>
-            Previous
-          </Button>
-          <span>
-            {detail.page + 1} / {Math.max(1, Math.ceil(detail.count / detail.pageSize))}
-          </span>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={(detail.page + 1) * detail.pageSize >= detail.count}
-            onClick={() => setPage(detail.page + 1)}
-          >
-            Next
-          </Button>
-        </div>
+        {detail.count > 0 && (
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!detail.page}
+              onClick={() => setPage(detail.page - 1)}
+            >
+              Previous
+            </Button>
+            <span>
+              {detail.page * detail.pageSize + 1}–
+              {Math.min((detail.page + 1) * detail.pageSize, detail.count)} of {detail.count}
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={(detail.page + 1) * detail.pageSize >= detail.count}
+              onClick={() => setPage(detail.page + 1)}
+            >
+              Next
+            </Button>
+          </div>
+        )}
       </footer>
     </section>
   );

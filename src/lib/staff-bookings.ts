@@ -1,4 +1,4 @@
-import { resortMidnight } from 'convex/shared/time';
+import { DAY_MS, resortMidnight, resortTodayIso } from 'convex/shared/time';
 import { timeOffInput } from 'convex/shared/timeOff';
 export { DAY_MS, resortTodayIso as resortIsoDate, resortMidnight, resortTime24, resortDateTime } from 'convex/shared/time';
 export { timeOffRange, timeOffRangeProblem, pickSlot, timeOffInput, type TimeOffInput } from 'convex/shared/timeOff';
@@ -99,6 +99,28 @@ export function useNow(intervalMs = 60_000) {
     return () => clearInterval(id);
   }, [intervalMs]);
   return now;
+}
+
+/** Advances the desk day at Bangkok midnight, including when a suspended tab wakes. */
+export function useResortBusinessDate() {
+  const [day, setDay] = useState(() => resortTodayIso(Date.now()));
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    function update() {
+      clearTimeout(timer);
+      const now = Date.now();
+      const next = resortTodayIso(now);
+      setDay(next);
+      timer = setTimeout(update, resortMidnight(next) + DAY_MS - now);
+    }
+    update();
+    document.addEventListener("visibilitychange", update);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("visibilitychange", update);
+    };
+  }, []);
+  return day;
 }
 
 export function isOpenAppointmentStartingIn(

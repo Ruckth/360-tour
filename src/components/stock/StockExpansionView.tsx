@@ -4,11 +4,11 @@ import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
-import { MAX_TRANSFER_LINES } from "convex/shared/commerce/caps";
 import { flushSync } from "react-dom";
-import { ArrowRightLeft, Layers, Plus, Send, ShieldAlert } from "lucide-react";
-import { useMemo, useRef, useState, type FormEvent } from "react";
-import { EmptyState, SkeletonRows, STACKED_TABLE } from "@/components/admin/admin-bulk";
+import { ArrowRightLeft, Layers, Plus, Send } from "lucide-react";
+import { useMemo, useState, type FormEvent } from "react";
+import { EmptyState, SkeletonRows } from "@/components/admin/admin-bulk";
+import { STOCK_TABLE } from "./stock-table";
 import { useAdminBranch } from "@/components/admin/branch/branch-context";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import {
@@ -16,7 +16,6 @@ import {
   EditorSheet,
   NoticeBar,
   NumberField,
-  SheetForm,
   useNotice,
 } from "@/components/admin/marketing/MarketingBits";
 import { SegmentedTabs, tabPanelProps } from "@/components/admin/SegmentedTabs";
@@ -28,7 +27,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SheetDescription, SheetTitle } from "@/components/ui/sheet";
-import { staffDateTime } from "@/lib/staff-time";
+import { staffDate, staffDateTime } from "@/lib/staff-time";
 import { cn } from "@/lib/utils";
 import { useRouter, useSearchParams } from "@/platform/navigation";
 import {
@@ -37,13 +36,26 @@ import {
   parseWholeQuantity,
   STOCK_PAGE_SIZE,
 } from "./stock-format";
-import type { StockLineDraft } from "./stock-types";
 import { useResolvedStockVariants, useStockDirtyGuard } from "./StockFormGuard";
-import { StockLineEditor, type StockLineFieldErrors } from "./StockLineEditor";
 import { LotDetailPanel } from "./StockLotDetailPanel";
+import { MovementInspectSheet } from "./MovementInspectSheet";
+import { CreateTransferSheet } from "./CreateTransferSheet";
 import { StockVariantPickerDialog } from "./StockVariantPicker";
 
 type TransferState = FunctionReturnType<typeof api.commerce.stockExpansion.listTransfers>["page"][number]["state"];
+
+type TransferDetail = NonNullable<FunctionReturnType<typeof api.commerce.stockExpansion.transferDetail>>;
+type TransferLine = TransferDetail["lines"][number];
+
+function receiptFields(line: TransferLine): { id: string; lotId?: Id<"stockLots">; label: string; remaining: number }[] {
+  return line.lots.length
+    ? line.lots.map((lot) => ({ id: lot.lotId, lotId: lot.lotId, label: `${lot.code ?? lot.lotId}${lot.expiresAt ? ` · expires ${staffDate(lot.expiresAt)}` : ""}`, remaining: lot.quantity - lot.received }))
+    : [{ id: line._id, lotId: undefined, label: "Receive now", remaining: line.quantity - line.received }];
+}
+
+function transferItem(line: TransferLine | undefined) {
+  return line ? [line.productName, line.label, line.sku].filter(Boolean).join(" · ") || "Item" : "Item";
+}
 
 const TRANSFER_STATE_META: Record<TransferState, { label: string; tone: Tone }> = {
   draft: { label: "Draft", tone: "neutral" },
@@ -60,10 +72,15 @@ export function StockExpansionView() {
   const searchParams = useSearchParams();
   const variantIdParam = searchParams.get("variantId") as Id<"productVariants"> | null;
 
-  const [tab, setTab] = useState<"transfers" | "lots" | "holds">(() => (variantIdParam ? "lots" : "transfers"));
+  const activeTransferId = searchParams.get("transferId");
+  const [tab, setTab] = useState<"transfers" | "lots" | "holds">(() => (!activeTransferId && variantIdParam ? "lots" : "transfers"));
   const [direction, setDirection] = useState<"origin" | "destination">("origin");
-  const [createOpen, setCreateOpen] = useState(false);
-  const [activeTransferId, setActiveTransferId] = useState<Id<"stockTransfers"> | null>(null);
+  const [state, setState] = useState<TransferState | "all">("all");
+  const [createOriginId, setCreateOriginId] = useState<Id<"branches"> | null>(null);
+  function setActiveTransferId(id: Id<"stockTransfers"> | null) {
+    if (id) router.replace(`/admin/stock/expansion?transferId=${encodeURIComponent(id)}`);
+    else router.replace("/admin/stock/expansion");
+  }
   const [syncedVariantParam, setSyncedVariantParam] = useState<string | null>(variantIdParam);
   const [lotPickerOpen, setLotPickerOpen] = useState(false);
 
@@ -91,9 +108,11 @@ export function StockExpansionView() {
 
   const { results: transfers, status: transferStatus, loadMore } = usePaginatedQuery(
     api.commerce.stockExpansion.listTransfers,
-    branch && access?.read && tab === "transfers" ? { branchId: branch.id, direction } : "skip",
+    branch && access?.read && tab === "transfers" ? { branchId: branch.id, direction, state: state === "all" ? undefined : state } : "skip",
     { initialNumItems: STOCK_PAGE_SIZE },
   );
+
+  if (createOriginId && createOriginId !== branch?.id) setCreateOriginId(null);
 
   if (!branch) return null;
   if (access === undefined) return <SkeletonRows label="Loading transfers and lots" rows={4} />;
@@ -114,12 +133,9 @@ export function StockExpansionView() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="font-serif text-xl font-semibold text-foreground">Transfers, lots & holds</h2>
-          <p className="text-sm text-muted-foreground">
-            Move stock between branches with distinct send and receive handoffs, inspect lot expiry balances, and review active holds.
-          </p>
         </div>
         {tab === "transfers" && access.requester && otherBranches.length > 0 ? (
-          <Button type="button" onClick={() => setCreateOpen(true)}>
+          <Button type="button" onClick={() => setCreateOriginId(branch.id)}>
             <ArrowRightLeft aria-hidden className="size-4" />
             New transfer
           </Button>
@@ -144,12 +160,19 @@ export function StockExpansionView() {
             <SegmentedTabs
               label="Transfer direction"
               value={direction}
-              onValueChange={setDirection}
+              onValueChange={(value) => { setDirection(value); setState(value === "destination" ? "inTransit" : "all"); }}
               tabs={[
                 { value: "origin", label: `Sending from ${branch.name}` },
                 { value: "destination", label: `Receiving at ${branch.name}` },
               ]}
             />
+            <Select value={state} onValueChange={(value) => setState(value as TransferState | "all")}>
+              <SelectTrigger aria-label="Transfer status" className="w-44"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All statuses</SelectItem>
+                {Object.entries(TRANSFER_STATE_META).map(([value, meta]) => <SelectItem key={value} value={value}>{meta.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
           </div>
 
           <Card className="overflow-hidden">
@@ -159,7 +182,7 @@ export function StockExpansionView() {
               <EmptyState
                 action={
                   direction === "origin" && access.requester && otherBranches.length > 0 ? (
-                    <Button type="button" variant="outline" size="sm" onClick={() => setCreateOpen(true)}>
+                    <Button type="button" variant="outline" size="sm" onClick={() => setCreateOriginId(branch.id)}>
                       <Plus aria-hidden className="size-4" />
                       Create transfer draft
                     </Button>
@@ -171,37 +194,38 @@ export function StockExpansionView() {
                   : `No incoming transfers to ${branch.name} yet.`}
               </EmptyState>
             ) : (
-              <table className={STACKED_TABLE.table}>
-                <thead className={STACKED_TABLE.head}>
+              <table className={STOCK_TABLE.table}>
+                <thead className={STOCK_TABLE.head}>
                   <tr>
-                    <th scope="col" className={STACKED_TABLE.th}>
+                    <th scope="col" className={STOCK_TABLE.th}>
                       {direction === "origin" ? "Destination" : "Origin"}
                     </th>
-                    <th scope="col" className={STACKED_TABLE.th}>Status</th>
-                    <th scope="col" className={STACKED_TABLE.th}>Created</th>
-                    <th scope="col" className={STACKED_TABLE.th}>Sent</th>
-                    <th scope="col" className={cn(STACKED_TABLE.th, "text-right")}>Action</th>
+                    <th scope="col" className={STOCK_TABLE.th}>Status</th>
+                    <th scope="col" className={STOCK_TABLE.th}>Created</th>
+                    <th scope="col" className={STOCK_TABLE.th}>Sent</th>
+                    <th scope="col" className={cn(STOCK_TABLE.th, "text-right")}>Action</th>
                   </tr>
                 </thead>
-                <tbody className={STACKED_TABLE.body}>
+                <tbody className={STOCK_TABLE.body}>
                   {transfers.map((transfer) => (
-                    <tr key={transfer._id} className={STACKED_TABLE.row}>
+                    <tr key={transfer._id} className={STOCK_TABLE.row}>
                       <td
                         data-label={direction === "origin" ? "Destination" : "Origin"}
-                        className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled, "font-medium text-foreground")}
+                        className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled, "font-medium text-foreground")}
                       >
-                        {transfer.otherBranch || "Branch"}
+                        <p>{transfer.otherBranch || "Branch"}</p>
+                        <p className="font-mono text-xs text-muted-foreground">{transfer.reference}</p>
                       </td>
-                      <td data-label="Status" className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled)}>
+                      <td data-label="Status" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled)}>
                         <StatusBadge {...TRANSFER_STATE_META[transfer.state]} />
                       </td>
-                      <td data-label="Created" className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled, "text-xs tabular-nums text-muted-foreground")}>
+                      <td data-label="Created" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled, "text-xs tabular-nums text-muted-foreground")}>
                         {staffDateTime(transfer.createdAt)}
                       </td>
-                      <td data-label="Sent" className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled, "text-xs tabular-nums text-muted-foreground")}>
+                      <td data-label="Sent" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled, "text-xs tabular-nums text-muted-foreground")}>
                         {transfer.sentAt ? staffDateTime(transfer.sentAt) : "—"}
                       </td>
-                      <td className={cn(STACKED_TABLE.cell, "lg:text-right")}>
+                      <td className={cn(STOCK_TABLE.cell, "lg:text-right")}>
                         <Button
                           type="button"
                           variant="outline"
@@ -228,7 +252,7 @@ export function StockExpansionView() {
         </div>
       ) : tab === "lots" ? (
         <div {...tabPanelProps("stock-expansion", "lots")} className="grid gap-4">
-          <Card className="flex flex-wrap items-center justify-between gap-3 p-4">
+          <Card className="flex items-center justify-between gap-2 px-3 py-2">
             <div className="min-w-0">
               <p className="text-sm font-medium text-foreground">
                 {selectedLotVariant
@@ -237,12 +261,9 @@ export function StockExpansionView() {
                     ? `Loading selected item for ${branch.name}…`
                     : `Choose a stock item to inspect lot & expiry balances at ${branch.name}`}
               </p>
-              <p className="text-xs text-muted-foreground">
-                View FEFO expiry dates, sellable vs held quantities, enable lot tracking on new items, or post lot counts and adjustments.
-              </p>
             </div>
-            <Button type="button" variant="outline" onClick={() => setLotPickerOpen(true)}>
-              <Layers aria-hidden className="size-4" />
+            <Button type="button" variant="outline" size="sm" onClick={() => setLotPickerOpen(true)}>
+              <Layers aria-hidden className="hidden size-4 sm:block" />
               {selectedLotVariant ? "Change item" : "Select item"}
             </Button>
           </Card>
@@ -262,6 +283,12 @@ export function StockExpansionView() {
               onSuccess={(msg) => show(msg, "success")}
             />
           ) : null}
+          <BranchExpiry
+            key={`${branch.id}:${variantIdParam ?? ""}`}
+            branchId={branch.id}
+            initiallyOpen={!variantIdParam}
+            onSelect={(variantId) => router.replace(`/admin/stock/expansion?variantId=${encodeURIComponent(variantId)}`)}
+          />
         </div>
       ) : (
         <div {...tabPanelProps("stock-expansion", "holds")} className="grid gap-4">
@@ -274,30 +301,9 @@ export function StockExpansionView() {
               </ButtonLink>
             }
           >
-            Excess or substitute supplier deliveries held for buyer decision are managed in the Purchasing Held Goods queue. Active stock reservations per item are visible in the Lots & expiry tab above (Held vs Sellable).
+            Review excess or substitute supplier deliveries in the Purchasing Held Goods queue.
           </Callout>
-          <Card className="grid gap-3 p-4">
-            <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-              <ShieldAlert aria-hidden className="size-4 text-amber-600" />
-              <span>Inspect held & reserved units for a specific item</span>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Pick any variant to check its exact On hand, Held (reserved), and Sellable availability at {branch.name}.
-            </p>
-            <div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setTab("lots");
-                  setLotPickerOpen(true);
-                }}
-              >
-                Pick item to check holds
-              </Button>
-            </div>
-          </Card>
+          <BranchReservations branchId={branch.id} />
         </div>
       )}
 
@@ -311,14 +317,14 @@ export function StockExpansionView() {
         }}
       />
 
-      {createOpen ? (
+      {createOriginId === branch.id ? (
         <CreateTransferSheet
           originId={branch.id}
           originName={branch.name}
           destinations={otherBranches}
-          onClose={() => setCreateOpen(false)}
+          onClose={() => setCreateOriginId(null)}
           onCreated={(transferId) => {
-            setCreateOpen(false);
+            setCreateOriginId(null);
             setActiveTransferId(transferId);
             show("Transfer draft created.", "success");
           }}
@@ -327,8 +333,11 @@ export function StockExpansionView() {
 
       {activeTransferId ? (
         <TransferDetailSheet
+          key={`${branch.id}:${activeTransferId}`}
           branchId={branch.id}
           transferId={activeTransferId}
+          destinations={otherBranches}
+          access={access}
           onClose={() => setActiveTransferId(null)}
           onSuccess={(msg) => show(msg, "success")}
         />
@@ -337,173 +346,84 @@ export function StockExpansionView() {
   );
 }
 
-function CreateTransferSheet({
-  originId,
-  originName,
-  destinations,
-  onClose,
-  onCreated,
-}: {
-  originId: Id<"branches">;
-  originName: string;
-  destinations: readonly { id: Id<"branches">; name: string }[];
-  onClose: () => void;
-  onCreated: (transferId: Id<"stockTransfers">) => void;
+function BranchExpiry({ branchId, initiallyOpen, onSelect }: {
+  branchId: Id<"branches">;
+  initiallyOpen: boolean;
+  onSelect: (id: Id<"productVariants">) => void;
 }) {
-  const createTransfer = useMutation(api.commerce.stockExpansion.createTransfer);
-  const [destinationId, setDestinationId] = useState<string>(destinations[0]?.id ?? "");
-  const [note, setNote] = useState("");
-  const [lines, setLines] = useState<StockLineDraft[]>([]);
-  const [lineErrors, setLineErrors] = useState<StockLineFieldErrors>({});
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const [requestId, setRequestId] = useState(() => createOperationKey("transfer-create"));
-
-  const isDirty = lines.length > 0 || note.trim() !== "";
-  const { requestClose } = useStockDirtyGuard(isDirty, onClose, saving);
-
-  async function handleSubmit(event: FormEvent) {
-    event.preventDefault();
-    setError("");
-    const errs: StockLineFieldErrors = {};
-    let firstInvalidId: string | undefined;
-    if (!destinationId) {
-      setError("Choose a destination branch.");
-      return;
-    }
-    if (lines.length === 0) {
-      setError("Add at least one item to transfer.");
-      return;
-    }
-    const payloadLines: { variantId: Id<"productVariants">; quantity: number }[] = [];
-    for (const line of lines) {
-      const parsed = parseWholeQuantity(line.quantityText, { allowZero: false });
-      if (!parsed.ok || !parsed.value) {
-        errs[line.variantId] = { quantity: parsed.ok ? "Enter a quantity." : parsed.error };
-        firstInvalidId ??= `transfer-line-qty-${line.variantId}`;
-      } else {
-        payloadLines.push({ variantId: line.variantId, quantity: parsed.value });
-      }
-    }
-    setLineErrors(errs);
-    if (Object.keys(errs).length > 0) {
-      if (firstInvalidId) document.getElementById(firstInvalidId)?.focus();
-      return;
-    }
-
-    setSaving(true);
-    try {
-      const id = await createTransfer({
-        originId,
-        destinationId: destinationId as Id<"branches">,
-        requestId,
-        note: note.trim() || undefined,
-        lines: payloadLines,
-      });
-      onCreated(id);
-    } catch (cause) {
-      setError(parseStockError(cause, "Could not create transfer draft.").message);
-      setRequestId(createOperationKey("transfer-create"));
-      setSaving(false);
-    }
-  }
-
+  const [expiryWindow, setExpiryWindow] = useState<"due" | "expired" | "week" | "month">("due");
+  const [open, setOpen] = useState(initiallyOpen);
+  const { results, status, loadMore } = usePaginatedQuery(api.commerce.stockExpansion.branchExpiry,
+    open ? { branchId, window: expiryWindow } : "skip", { initialNumItems: STOCK_PAGE_SIZE });
   return (
-    <>
-      <EditorSheet
-        open
-        wide
-        onClose={requestClose}
-        header={
-          <>
-            <SheetTitle>New branch transfer</SheetTitle>
-            <SheetDescription>Sending from {originName}. Stock deducts when the transfer is sent.</SheetDescription>
-          </>
-        }
-      >
-        <SheetForm
-          onSubmit={handleSubmit}
-          onCancel={requestClose}
-          saving={saving}
-          error={error}
-          submitLabel="Create transfer draft"
-        >
-          <div className="grid gap-1.5">
-            <Label htmlFor="transfer-dest">Destination branch</Label>
-            <Select value={destinationId} onValueChange={setDestinationId}>
-              <SelectTrigger id="transfer-dest">
-                <SelectValue placeholder="Choose destination" />
-              </SelectTrigger>
-              <SelectContent>
-                {destinations.map((dest) => (
-                  <SelectItem key={dest.id} value={dest.id}>
-                    {dest.name}
-                  </SelectItem>
+    <Card className="px-3">
+      <details open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
+        <summary className="cursor-pointer py-2.5 text-sm font-semibold">Branch lot expiry queue</summary>
+        <div className="grid gap-3 border-t pb-3 pt-2">
+          <Select value={expiryWindow} onValueChange={(value) => setExpiryWindow(value as typeof expiryWindow)}>
+            <SelectTrigger aria-label="Expiry window" className="w-52"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="due">Expired + next 30 days</SelectItem>
+              <SelectItem value="expired">Expired only</SelectItem>
+              <SelectItem value="week">Next 7 days</SelectItem>
+              <SelectItem value="month">Next 30 days</SelectItem>
+            </SelectContent>
+          </Select>
+          {status === "LoadingFirstPage" ? <SkeletonRows label="Loading expiry queue" rows={2} /> :
+            !results.length ? <EmptyState>No lots with stock expire within this window.</EmptyState> :
+              <ul className="divide-y divide-border">
+                {results.map((lot) => (
+                  <li key={lot._id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
+                    <div>
+                      <p className="font-medium">{[lot.name, lot.label, lot.sku].filter(Boolean).join(" · ") || "Item"}</p>
+                      <p className="text-xs text-muted-foreground">{lot.code ?? "Lot"} · {lot.onHand} on hand · {lot.expired ? "Expired" : "Expires"} {staffDate(lot.expiresAt)}</p>
+                    </div>
+                    <Button type="button" variant="outline" size="sm" onClick={() => onSelect(lot.variantId)}>View item lots</Button>
+                  </li>
                 ))}
-              </SelectContent>
-            </Select>
-          </div>
+              </ul>}
+          {status === "CanLoadMore" ? <Button type="button" variant="outline" onClick={() => loadMore(STOCK_PAGE_SIZE)}>Load more lots</Button> : null}
+        </div>
+      </details>
+    </Card>
+  );
+}
 
-          <StockLineEditor
-            lines={lines}
-            onChange={(next) => {
-              setLines(next);
-              setLineErrors({});
-              setRequestId(createOperationKey("transfer-create"));
-            }}
-            lineErrors={lineErrors}
-            onAddClick={() => setPickerOpen(true)}
-            addLabel="Add item"
-            maxLines={MAX_TRANSFER_LINES}
-            idPrefix="transfer-line"
-          />
-
-          <div className="grid gap-1.5">
-            <Label htmlFor="transfer-note">Note (optional)</Label>
-            <Input
-              id="transfer-note"
-              value={note}
-              onChange={(event) => setNote(event.target.value)}
-              placeholder="Dispatch reference or driver note"
-            />
-          </div>
-        </SheetForm>
-      </EditorSheet>
-
-      <StockVariantPickerDialog
-        open={pickerOpen}
-        onOpenChange={setPickerOpen}
-        branchId={originId}
-        selectedIds={lines.map((line) => line.variantId)}
-        maxLines={MAX_TRANSFER_LINES}
-        title="Add items to transfer"
-        onSelectMany={(items) => {
-          setLines((current) => [
-            ...current,
-            ...items.map((item) => ({
-              variantId: item.variantId,
-              productName: item.productName,
-              variantLabel: item.label,
-              sku: item.sku,
-              onHand: item.onHand,
-              quantityText: "1",
-            })),
-          ]);
-        }}
-      />
-    </>
+function BranchReservations({ branchId }: { branchId: Id<"branches"> }) {
+  const { results, status, loadMore } = usePaginatedQuery(api.commerce.stockExpansion.branchReservations, { branchId }, { initialNumItems: STOCK_PAGE_SIZE });
+  return (
+    <Card className="grid gap-3 p-4">
+      <h3 className="text-sm font-semibold">Active stock reservations</h3>
+      {status === "LoadingFirstPage" ? <SkeletonRows label="Loading reservations" rows={2} /> :
+        !results.length ? <EmptyState>No active reservations at this branch.</EmptyState> :
+          <ul className="divide-y divide-border">
+            {results.map((row) => (
+              <li key={row._id} className="grid gap-1 py-2 text-sm sm:grid-cols-2">
+                <p className="font-medium">{[row.name, row.label, row.sku].filter(Boolean).join(" · ") || "Item"}</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-muted-foreground">{row.checkout ? "Checkout hold" : "Stock hold"} · {row.quantity} units · Expires {staffDateTime(row.expiresAt)}</p>
+                  {row.orderId ? <ButtonLink variant="outline" size="sm" href={`/admin/checkout?order=${encodeURIComponent(row.orderId)}`}>Open order</ButtonLink> : null}
+                </div>
+              </li>
+            ))}
+          </ul>}
+      {status === "CanLoadMore" ? <Button type="button" variant="outline" onClick={() => loadMore(STOCK_PAGE_SIZE)}>Load more reservations</Button> : null}
+    </Card>
   );
 }
 
 function TransferDetailSheet({
   branchId,
   transferId,
+  destinations,
+  access,
   onClose,
   onSuccess,
 }: {
   branchId: Id<"branches">;
-  transferId: Id<"stockTransfers">;
+  transferId: string;
+  destinations: readonly { id: Id<"branches">; name: string }[];
+  access: FunctionReturnType<typeof api.commerce.stock.access>;
   onClose: () => void;
   onSuccess: (msg: string) => void;
 }) {
@@ -512,7 +432,7 @@ function TransferDetailSheet({
     results: pagedEvents,
     status: eventsStatus,
     loadMore: loadMoreEvents,
-  } = usePaginatedQuery(api.commerce.stockExpansion.transferEvents, { branchId, transferId }, { initialNumItems: 10 });
+  } = usePaginatedQuery(api.commerce.stockExpansion.transferEvents, detail ? { branchId, transferId: detail.transfer._id } : "skip", { initialNumItems: 10 });
   const confirm = useConfirm();
   const sendTransfer = useMutation(api.commerce.stockExpansion.sendTransfer);
   const receiveTransfer = useMutation(api.commerce.stockExpansion.receiveTransfer);
@@ -520,23 +440,50 @@ function TransferDetailSheet({
   const cancelTransfer = useMutation(api.commerce.stockExpansion.cancelTransfer);
 
   const [receiveInputs, setReceiveInputs] = useState<Record<string, string>>({});
-  const pendingReceipt = useRef<{ payload: string; requestId: string } | null>(null);
+  const [pendingReceipt, setPendingReceipt] = useState<{ payload: string; requestId: string } | null>(null);
+  const canRetryCompletedReceipt = detail?.transfer.state === "received" && detail.permissions.receive && pendingReceipt !== null;
   const [showLineErrors, setShowLineErrors] = useState(false);
   const [shortReason, setShortReason] = useState("");
-  const [showShortForm, setShowShortForm] = useState(false);
+  const [pendingShort, setPendingShort] = useState<{ payload: string; requestId: string } | null>(null);
+  const retryClosedShort = detail?.transfer.state === "short" && detail.permissions.closeShort && pendingShort !== null;
+  const [shortReview, setShortReview] = useState<{ lineId: Id<"stockTransferLines">; quantity: number }[] | null>(null);
+  const [editing, setEditing] = useState<TransferDetail | null>(null);
+  const [movementId, setMovementId] = useState<Id<"stockMovements"> | null>(null);
+  const remainingLines = detail?.lines.filter((line) => line.received < line.quantity)
+    .map((line) => ({ lineId: line._id, quantity: line.quantity - line.received })) ?? [];
+  const reviewChanged = shortReview && JSON.stringify(shortReview) !== JSON.stringify(remainingLines);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   const isDirty =
     Object.values(receiveInputs).some((val) => val.trim() !== "") ||
-    (showShortForm && shortReason.trim() !== "");
+    (shortReview !== null && shortReason.trim() !== "");
   const { requestClose } = useStockDirtyGuard(isDirty, onClose, busy);
 
+  async function copyTransferLink() {
+    setError("");
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      onSuccess("Transfer link copied.");
+    } catch {
+      setError("Could not copy the transfer link. Copy it from the address bar.");
+    }
+  }
+
   async function handleSend() {
+    if (!detail) return;
+    const units = detail.lines.reduce((sum, line) => sum + line.quantity, 0);
+    const ok = await confirm({
+      title: "Send this transfer and deduct stock?",
+      description: `${detail.origin ?? "Origin"} → ${detail.destination ?? "Destination"} · ${detail.lines.length} ${detail.lines.length === 1 ? "line" : "lines"} · ${units} ${units === 1 ? "unit" : "units"}`,
+      confirmLabel: "Send transfer",
+      destructive: true,
+    });
+    if (!ok) return;
     setError("");
     setBusy(true);
     try {
-      await sendTransfer({ transferId });
+      await sendTransfer({ transferId: detail.transfer._id, revision: detail.transfer.revision });
       onSuccess("Transfer sent and marked in transit.");
     } catch (cause) {
       setError(parseStockError(cause, "Could not send transfer.").message);
@@ -546,6 +493,7 @@ function TransferDetailSheet({
   }
 
   async function handleCancel() {
+    if (!detail) return;
     const ok = await confirm({
       title: "Cancel this draft transfer?",
       description: "Draft transfers have not deducted stock.",
@@ -556,7 +504,7 @@ function TransferDetailSheet({
     setError("");
     setBusy(true);
     try {
-      await cancelTransfer({ transferId, requestId: createOperationKey("transfer-cancel") });
+      await cancelTransfer({ transferId: detail.transfer._id, requestId: createOperationKey("transfer-cancel") });
       onSuccess("Transfer cancelled.");
       onClose();
     } catch (cause) {
@@ -567,20 +515,38 @@ function TransferDetailSheet({
 
   async function handleReceive(event: FormEvent) {
     event.preventDefault();
-    if (!detail) return;
+    if (!detail || busy) return;
     setError("");
-    const lines: { lineId: Id<"stockTransferLines">; quantity: number }[] = [];
+    const lines: { lineId: Id<"stockTransferLines">; quantity: number; allocations?: { lotId: Id<"stockLots">; quantity: number }[] }[] = [];
     for (const line of detail.lines) {
-      const remaining = line.quantity - line.received;
-      const raw = (receiveInputs[line._id] ?? "").trim();
-      if (!raw) continue;
-      const parsed = parseWholeQuantity(raw, { allowZero: false, max: remaining });
-      if (!parsed.ok || !parsed.value) {
-        flushSync(() => setShowLineErrors(true));
-        document.getElementById(`tr-recv-${line._id}`)?.focus();
-        return;
+      let quantity = 0;
+      const allocations: { lotId: Id<"stockLots">; quantity: number }[] = [];
+      for (const field of receiptFields(line)) {
+        const raw = (receiveInputs[field.id] ?? "").trim();
+        if (!raw) continue;
+        const parsed = parseWholeQuantity(raw, { allowZero: false });
+        if (!parsed.ok || !parsed.value) {
+          flushSync(() => setShowLineErrors(true));
+          document.getElementById(`tr-recv-${field.id}`)?.focus();
+          return;
+        }
+        quantity += parsed.value;
+        if (field.lotId) allocations.push({ lotId: field.lotId, quantity: parsed.value });
       }
-      lines.push({ lineId: line._id, quantity: parsed.value });
+      if (quantity) lines.push({ lineId: line._id, quantity, allocations: allocations.length ? allocations : undefined });
+    }
+    const payload = JSON.stringify([transferId, lines]);
+    if (pendingReceipt?.payload !== payload) {
+      if (detail.transfer.state !== "inTransit") return;
+      for (const line of detail.lines) {
+        const invalid = receiptFields(line).find((field) => receiveInputs[field.id]?.trim() &&
+          !parseWholeQuantity(receiveInputs[field.id], { allowZero: false, max: field.remaining }).ok);
+        if (invalid) {
+          flushSync(() => setShowLineErrors(true));
+          document.getElementById(`tr-recv-${invalid.id}`)?.focus();
+          return;
+        }
+      }
     }
     if (lines.length === 0) {
       setError("Enter at least one received quantity.");
@@ -588,12 +554,11 @@ function TransferDetailSheet({
     }
     setBusy(true);
     try {
-      const payload = JSON.stringify([transferId, lines]);
-      if (pendingReceipt.current?.payload !== payload) {
-        pendingReceipt.current = { payload, requestId: createOperationKey("transfer-recv") };
-      }
-      await receiveTransfer({ transferId, requestId: pendingReceipt.current.requestId, lines });
-      pendingReceipt.current = null;
+      const operation = pendingReceipt?.payload === payload
+        ? pendingReceipt : { payload, requestId: createOperationKey("transfer-recv") };
+      setPendingReceipt(operation);
+      await receiveTransfer({ transferId: detail.transfer._id, requestId: operation.requestId, lines });
+      setPendingReceipt(null);
       setReceiveInputs({});
       setShowLineErrors(false);
       onSuccess("Transfer receipt posted.");
@@ -606,20 +571,23 @@ function TransferDetailSheet({
 
   async function handleCloseShort(event: FormEvent) {
     event.preventDefault();
-    if (!shortReason.trim()) {
+    if (!detail || !shortReview || busy) return;
+    const reason = shortReason.trim();
+    if (!reason) {
       setError("Enter a shortage reason before closing short.");
       return;
     }
+    const payload = JSON.stringify([reason, shortReview.map(line => [line.lineId, line.quantity]).sort()]);
+    const matchingRequest = pendingShort?.payload === payload ? pendingShort : null;
+    if ((detail.transfer.state !== "inTransit" || reviewChanged) && !(retryClosedShort && matchingRequest)) return;
+    const operation = matchingRequest ?? { payload, requestId: createOperationKey("transfer-short") };
+    setPendingShort(operation);
     setBusy(true);
     setError("");
     try {
-      await closeShort({
-        branchId,
-        transferId,
-        requestId: createOperationKey("transfer-short"),
-        reason: shortReason.trim(),
-      });
-      setShowShortForm(false);
+      await closeShort({ branchId, transferId: detail.transfer._id, requestId: operation.requestId, reviewed: shortReview, reason });
+      setPendingShort(null);
+      setShortReview(null);
       onSuccess("Transfer closed short with shortage recorded.");
     } catch (cause) {
       setError(parseStockError(cause, "Could not close transfer short.").message);
@@ -628,24 +596,38 @@ function TransferDetailSheet({
     }
   }
 
+  if (editing) {
+    return <CreateTransferSheet
+      originId={branchId}
+      originName={editing.origin ?? "Origin"}
+      destinations={destinations}
+      draft={editing}
+      onClose={() => setEditing(null)}
+      onCreated={() => { setEditing(null); onSuccess("Transfer draft updated."); }}
+    />;
+  }
+
   return (
+    <>
     <EditorSheet
       open
       wide
       onClose={requestClose}
       header={
         <>
-          <SheetTitle>Branch transfer</SheetTitle>
+          <SheetTitle>{detail?.transfer.reference ?? "Branch transfer"}</SheetTitle>
           <SheetDescription>
             {detail ? `${detail.origin ?? "Origin"} → ${detail.destination ?? "Destination"}` : "Loading transfer…"}
           </SheetDescription>
         </>
       }
     >
-      {!detail ? (
-        <div className="p-6">
-          <SkeletonRows label="Loading transfer details" rows={4} />
-        </div>
+      {detail === undefined ? (
+        <div className="p-6"><SkeletonRows label="Loading transfer details" rows={4} /></div>
+      ) : detail === null ? (
+        <div className="p-6"><Callout tone="warning" title="Transfer unavailable">
+          This transfer could not be found for the selected branch.
+        </Callout></div>
       ) : (
         <div className="flex min-h-0 flex-1 flex-col">
           <div className="grid min-h-0 flex-1 gap-5 overflow-y-auto px-5 py-5 sm:px-6">
@@ -658,6 +640,14 @@ function TransferDetailSheet({
             <div className="flex flex-wrap items-center justify-between gap-2">
               <StatusBadge {...TRANSFER_STATE_META[detail.transfer.state]} />
               <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="outline" size="sm" onClick={() => void copyTransferLink()}>
+                  Copy link
+                </Button>
+                {detail.transfer.state === "draft" && detail.permissions.send ? (
+                  <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => setEditing(detail)}>
+                    Edit draft
+                  </Button>
+                ) : null}
                 {detail.transfer.state === "draft" && detail.permissions.send ? (
                   <Button type="button" size="sm" disabled={busy} onClick={() => void handleSend()}>
                     <Send aria-hidden className="size-4" />
@@ -675,7 +665,7 @@ function TransferDetailSheet({
                     variant="outline"
                     size="sm"
                     disabled={busy}
-                    onClick={() => setShowShortForm((v) => !v)}
+                    onClick={() => setShortReview(shortReview ? null : remainingLines)}
                   >
                     Close short
                   </Button>
@@ -683,27 +673,39 @@ function TransferDetailSheet({
               </div>
             </div>
 
+            {detail.transfer.note ? (
+              <Callout tone="info" title="Dispatch note"><p className="whitespace-pre-wrap break-words">{detail.transfer.note}</p></Callout>
+            ) : null}
             {detail.transfer.shortageReason ? (
               <Callout tone="warning" title="Shortage recorded">
                 {detail.transfer.shortageReason}
               </Callout>
             ) : null}
 
-            {showShortForm ? (
+            {shortReview ? (
               <form onSubmit={handleCloseShort} className="grid gap-3 rounded-lg border border-border bg-muted/40 p-3.5">
+                <p className="text-sm font-semibold">Outstanding units to close short</p>
+                <ul className="grid gap-1 text-sm">
+                  {shortReview.map((line) => <li key={line.lineId}>{transferItem(detail.lines.find((item) => item._id === line.lineId))} · {line.quantity}</li>)}
+                </ul>
+                {reviewChanged && !retryClosedShort ? <Callout tone="warning" title="Outstanding quantities changed"
+                  action={<Button type="button" variant="outline" onClick={() => setShortReview(remainingLines)}>Review latest quantities</Button>}>
+                  Review the quantities after the latest receipt.
+                </Callout> : null}
                 <Label htmlFor="short-reason">Shortage reason</Label>
                 <Input
                   id="short-reason"
                   value={shortReason}
+                  readOnly={retryClosedShort || busy}
                   onChange={(event) => setShortReason(event.target.value)}
                   placeholder="Describe missing or damaged units in transit"
                 />
                 <div className="flex justify-end gap-2">
-                  <Button type="button" variant="outline" size="sm" onClick={() => setShowShortForm(false)}>
+                  <Button type="button" variant="outline" size="sm" onClick={() => { setShortReview(null); setPendingShort(null); }}>
                     Cancel
                   </Button>
-                  <Button type="submit" variant="destructive" size="sm" disabled={busy}>
-                    Confirm close short
+                  <Button type="submit" variant="destructive" size="sm" disabled={busy || (!retryClosedShort && (detail.transfer.state !== "inTransit" || Boolean(reviewChanged) || remainingLines.length === 0))}>
+                    {retryClosedShort ? "Verify recorded shortage" : "Confirm close short"}
                   </Button>
                 </div>
               </form>
@@ -714,8 +716,8 @@ function TransferDetailSheet({
                 <h3 className="text-sm font-semibold text-foreground">Transfer lines</h3>
                 {detail.transfer.state === "inTransit" && detail.permissions.receive && (
                   <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => {
-                    const remaining = detail.lines.filter(line => line.quantity > line.received);
-                    setReceiveInputs(Object.fromEntries(remaining.map(line => [line._id, String(line.quantity - line.received)])));
+                    const remaining = detail.lines.flatMap(receiptFields).filter((field) => field.remaining > 0);
+                    setReceiveInputs(Object.fromEntries(remaining.map((field) => [field.id, String(field.remaining)])));
                     setError("");
                     setShowLineErrors(false);
                   }}>Fill all remaining</Button>
@@ -724,8 +726,7 @@ function TransferDetailSheet({
               <ul className="grid gap-2.5">
                 {detail.lines.map((line) => {
                   const remaining = line.quantity - line.received;
-                  const raw = receiveInputs[line._id]?.trim();
-                  const invalid = showLineErrors && !!raw && !parseWholeQuantity(raw, { allowZero: false, max: remaining }).ok;
+
                   return (
                     <li key={line._id} className="grid gap-2 rounded-lg border border-border p-3">
                       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -740,32 +741,43 @@ function TransferDetailSheet({
                           <strong className="text-foreground">{remaining}</strong>
                         </span>
                       </div>
-                      {detail.transfer.state === "inTransit" && detail.permissions.receive && (remaining > 0 || raw) ? (
-                        <div className="grid gap-1.5 sm:max-w-xs">
-                          <Label htmlFor={`tr-recv-${line._id}`}>Receive now (max {remaining})</Label>
-                          <NumberField
-                            id={`tr-recv-${line._id}`}
-                            value={receiveInputs[line._id] ?? ""}
-                            placeholder={String(remaining)}
-                            aria-invalid={invalid || undefined}
-                            aria-describedby={invalid ? `tr-error-${line._id}` : undefined}
-                            onChange={(event) =>
-                              setReceiveInputs((current) => ({ ...current, [line._id]: event.target.value }))
-                            }
-                          />
-                          {invalid && <p role="alert" id={`tr-error-${line._id}`} className="text-xs text-destructive">
-                            {line.productName} {line.label} · {remaining > 0 ? `Enter a whole quantity between 1 and ${remaining}.` : "Already fully received. Clear this line or fill the latest remaining quantities."}
-                          </p>}
-                        </div>
-                      ) : null}
+                      {line.onHand !== undefined ? <p className="text-xs text-muted-foreground">
+                        On hand {line.onHand} · Dispatchable {line.sellable}
+                        {line.sellable !== undefined && line.quantity > line.sellable ? " · Requested quantity exceeds stock available after holds and expiry." : ""}
+                      </p> : null}
+                      {receiptFields(line).map((field) => {
+                        const raw = receiveInputs[field.id] ?? "";
+                        const invalid = showLineErrors && Boolean(raw.trim()) &&
+                          !parseWholeQuantity(raw, { allowZero: false, max: field.remaining }).ok;
+                        const canReceive = detail.permissions.receive && (
+                          (detail.transfer.state === "inTransit" && (field.remaining > 0 || raw)) || (canRetryCompletedReceipt && raw)
+                        );
+                        return canReceive ? (
+                          <div key={field.id} className="grid gap-1.5 sm:max-w-xs">
+                            <Label htmlFor={`tr-recv-${field.id}`}>{field.label} (max {field.remaining})</Label>
+                            <NumberField
+                              id={`tr-recv-${field.id}`}
+                              value={raw}
+                              placeholder={String(field.remaining)}
+                              readOnly={canRetryCompletedReceipt}
+                              aria-invalid={invalid || undefined}
+                              aria-describedby={invalid ? `tr-error-${field.id}` : undefined}
+                              onChange={(event) => setReceiveInputs((current) => ({ ...current, [field.id]: event.target.value }))}
+                            />
+                            {invalid ? <p role="alert" id={`tr-error-${field.id}`} className="text-xs text-destructive">
+                              {line.productName} {line.label} · {field.remaining > 0 ? `Enter a whole quantity between 1 and ${field.remaining}.` : "Already fully received. Clear this quantity."}
+                            </p> : null}
+                          </div>
+                        ) : field.lotId ? <p key={field.id} className="text-xs text-muted-foreground">{field.label} · {field.remaining} remaining</p> : null;
+                      })}
                     </li>
                   );
                 })}
               </ul>
-              {detail.transfer.state === "inTransit" && detail.permissions.receive ? (
+              {detail.permissions.receive && (detail.transfer.state === "inTransit" || canRetryCompletedReceipt) ? (
                 <div className="flex justify-end">
                   <Button type="submit" disabled={busy}>
-                    Post transfer receipt
+                    {canRetryCompletedReceipt ? "Verify posted receipt" : "Post transfer receipt"}
                   </Button>
                 </div>
               ) : null}
@@ -781,7 +793,22 @@ function TransferDetailSheet({
                         <span className="font-medium capitalize text-foreground">{ev.kind}</span>
                         <span className="tabular-nums text-muted-foreground">{staffDateTime(ev.createdAt)}</span>
                       </div>
+                      <p className="text-muted-foreground">
+                        {ev.actor}{ev.actingBranchId === detail.transfer.originId ? ` · ${detail.origin ?? "Origin"}` : ev.actingBranchId === detail.transfer.destinationId ? ` · ${detail.destination ?? "Destination"}` : ""}
+                      </p>
                       {ev.reason ? <p className="text-muted-foreground">{ev.reason}</p> : null}
+                      {(ev.kind === "short" ? ev.shortages ?? [] : ev.receipts).map((evidence) => {
+                        const item = detail.lines.find((line) => line._id === evidence.lineId);
+                        return <div key={evidence.lineId} className="mt-1 grid gap-1">
+                          <p>{transferItem(item)} · {evidence.quantity} {ev.kind === "short" ? "short" : "received"}</p>
+                          {evidence.allocations.map((lot) => <p key={lot.lotId} className="text-muted-foreground">
+                            {item?.lots.find((entry) => entry.lotId === lot.lotId)?.code ?? lot.lotId} · {lot.quantity}
+                          </p>)}
+                          {ev.actingBranchId === branchId ? <button type="button" className="w-fit underline" onClick={() => setMovementId(evidence.movementId)}>
+                            View stock movement
+                          </button> : null}
+                        </div>;
+                      })}
                     </li>
                   ))}
                 </ol>
@@ -801,5 +828,14 @@ function TransferDetailSheet({
         </div>
       )}
     </EditorSheet>
+      {movementId ? <MovementInspectSheet
+        branchId={branchId}
+        movementId={movementId}
+        access={access}
+        reportContext={null}
+        onClose={() => setMovementId(null)}
+        onSuccess={onSuccess}
+      /> : null}
+    </>
   );
 }

@@ -5,53 +5,47 @@ import type { FunctionReturnType } from "convex/server";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import { ArrowLeft, CheckCircle2, PackageCheck, Pencil, Printer, Send } from "lucide-react";
-import { useState, type FormEvent } from "react";
-import { EmptyState, SkeletonRows, STACKED_TABLE } from "@/components/admin/admin-bulk";
+import { useState } from "react";
+import { EmptyState, SkeletonRows } from "@/components/admin/admin-bulk";
+import { STOCK_TABLE } from "./stock-table";
 import { useAdminBranch } from "@/components/admin/branch/branch-context";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import {
   Callout,
-  EditorSheet,
-  FieldError,
   NoticeBar,
-  NumberField,
-  SheetForm,
   useNotice,
 } from "@/components/admin/marketing/MarketingBits";
 import { SegmentedTabs, tabPanelProps } from "@/components/admin/SegmentedTabs";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { DatePicker } from "@/components/ui/date-picker";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { MoreMenu } from "@/components/ui/more-menu";
-import { SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { staffDateTime } from "@/lib/staff-time";
 import { cn } from "@/lib/utils";
 import Link from "@/platform/link";
 import { useRouter, useSearchParams } from "@/platform/navigation";
 import { PurchaseEventHistory } from "./PurchaseEventHistory";
+import { latenessLabel, relativeDate, URGENCY_CLASS } from "./purchasing-display";
 import { PurchaseOrderPrintDialog, type PrintableOrderRevision } from "./PurchaseOrderPrintView";
 import { ReceiveDeliverySheet } from "./ReceiveDeliverySheet";
 import {
   createOperationKey,
   formatSatang,
+  holdAge,
+  invoiceVariance,
   ORDER_STATUS_META,
-  parseOptionalSatang,
   parseStockError,
-  parseWholeQuantity,
   RECEIPT_KIND_META,
   sanitizeStockReturnTo,
   STOCK_PAGE_SIZE,
   stockReturnLabel,
 } from "./stock-format";
-import { StockStaleBanner, useStockDirtyGuard } from "./StockFormGuard";
+import { AmendOrderSheet, CloseRemainderSheet, ReasonSheet } from "./PurchaseOrderSheets";
+
 import { OrderEditorSheet } from "./StockPurchasingHubView";
 
 type OrderDetailResult = FunctionReturnType<typeof api.commerce.purchasing.order>;
 type OrderRow = OrderDetailResult["order"];
-type OrderLineRow = OrderDetailResult["lines"][number];
 
 export function PurchaseOrderDetailView({ orderId }: { orderId: string }) {
   const { current: branch, branches, select: selectBranch } = useAdminBranch();
@@ -65,10 +59,6 @@ export function PurchaseOrderDetailView({ orderId }: { orderId: string }) {
   const detail = useQuery(api.commerce.purchasing.order, { orderId: id });
   const [tab, setTab] = useState<"overview" | "receipts" | "history">("overview");
   const [printRevNumber, setPrintRevNumber] = useState<number | null>(null);
-  const revisionPage = usePaginatedQuery(api.commerce.purchasing.orderRevisions,
-    detail && tab === "history" ? { orderId: id } : "skip", { initialNumItems: STOCK_PAGE_SIZE });
-  const revisions = revisionPage.results;
-
   const printRevision = useQuery(
     api.commerce.purchasing.orderRevision,
     detail && printRevNumber !== null ? { orderId: detail.order._id, revision: printRevNumber } : "skip",
@@ -97,6 +87,8 @@ export function PurchaseOrderDetailView({ orderId }: { orderId: string }) {
   );
 
   const issueOrder = useMutation(api.commerce.purchasing.issuePurchaseOrder);
+  const approveIssue = useMutation(api.commerce.purchasing.approvePurchaseOrderIssue);
+  const declineIssue = useMutation(api.commerce.purchasing.declinePurchaseOrderIssue);
   const deleteDraft = useMutation(api.commerce.purchasing.deletePurchaseOrderDraft);
   const amendOrder = useMutation(api.commerce.purchasing.amendPurchaseOrder);
   const closeRemainder = useMutation(api.commerce.purchasing.closePurchaseOrderRemainder);
@@ -105,6 +97,7 @@ export function PurchaseOrderDetailView({ orderId }: { orderId: string }) {
   const [receiveOpen, setReceiveOpen] = useState(false);
   const [amendOpen, setAmendOpen] = useState(false);
   const [closeOpen, setCloseOpen] = useState(false);
+  const [declineIssueOpen, setDeclineIssueOpen] = useState(false);
   const [allocationShortfalls, setAllocationShortfalls] = useState<
     { orderLineId: Id<"purchaseOrderLines">; available: number }[] | null
   >(null);
@@ -113,7 +106,7 @@ export function PurchaseOrderDetailView({ orderId }: { orderId: string }) {
   if (!branch) return null;
   if (detail === undefined) return <SkeletonRows label="Loading purchase order" rows={5} />;
 
-  const { order, lines, holds, permissions } = detail;
+  const { order, lines, holds, permissions, sourceRequest } = detail;
 
   if (order.branchId !== branch.id) {
     const targetBranch = branches.find((b) => b.id === order.branchId);
@@ -140,19 +133,28 @@ export function PurchaseOrderDetailView({ orderId }: { orderId: string }) {
   }
 
   const isDraft = order.status === "draft";
+  const awaitingApproval = order.status === "awaiting_approval";
+  const expected = relativeDate(order.expectedDate);
   const isOpenIssued = order.status === "ordered" || order.status === "partially_received";
   const openHolds = holds.filter((h) => h.status === "open");
+  const oldestHold = openHolds.length ? holdAge(Math.min(...openHolds.map((h) => h.createdAt))) : null;
+  const heldUnits = openHolds.reduce((sum, h) => sum + h.quantity - h.acceptedQuantity, 0);
 
   async function handleIssue() {
     setBusy(true);
     setAllocationShortfalls(null);
     try {
-      await issueOrder({
+      const result = await issueOrder({
         orderId: order._id,
         expectedRevision: order.revision,
         operationKey: createOperationKey("po-issue"),
       });
-      show("Purchase order issued. You can now print or share it with the supplier.", "success");
+      show(
+        result.awaitingApproval
+          ? "This order is above the branch's direct order limit. It was sent to a different approver before it can be issued."
+          : "Purchase order issued. You can now print or share it with the supplier.",
+        "success",
+      );
     } catch (cause) {
       const parsed = parseStockError(cause, "Could not issue order.");
       show(parsed.message, "danger");
@@ -162,6 +164,24 @@ export function PurchaseOrderDetailView({ orderId }: { orderId: string }) {
           setAllocationShortfalls(data.lines as { orderLineId: Id<"purchaseOrderLines">; available: number }[]);
         }
       }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleApproveIssue() {
+    const ok = await confirm({
+      title: `Approve and issue ${order.reference}?`,
+      description: `${order.supplier.name} · ${formatSatang(order.totalCost ?? 0)} (above the direct order limit${permissions.directOrderLimit ? ` of ${formatSatang(permissions.directOrderLimit)}` : ""}). Requested by ${order.approvalRequestedByLabel ?? order.createdByLabel}.`,
+      confirmLabel: "Approve and issue",
+    });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      await approveIssue({ orderId: order._id, expectedRevision: order.revision, operationKey: createOperationKey("po-approve") });
+      show("Order approved and issued.", "success");
+    } catch (cause) {
+      show(parseStockError(cause, "Could not approve this order.").message, "danger");
     } finally {
       setBusy(false);
     }
@@ -202,14 +222,15 @@ export function PurchaseOrderDetailView({ orderId }: { orderId: string }) {
         issuedAt: printRevision.issuedAt,
         actorLabel: printRevision.actorLabel,
         lines: printRevision.lines,
+        buyer: printRevision.buyer,
       }
     : null;
 
   return (
-    <div className="grid gap-5">
+    <div className="grid gap-3 sm:gap-5">
       <NoticeBar notice={notice} onClose={clear} />
 
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="flex flex-wrap items-start justify-between gap-2 sm:gap-4">
         <div className="grid gap-1">
           <div className="flex flex-wrap items-center gap-2">
             <ButtonLink href={returnTo ?? "/admin/stock/purchasing?tab=orders"} variant="ghost" size="sm" className="-ml-2">
@@ -229,13 +250,30 @@ export function PurchaseOrderDetailView({ orderId }: { orderId: string }) {
           </div>
           <p className="text-xs text-muted-foreground">
             {order.supplier.name}
-            {order.expectedDate ? ` · Expected ${order.expectedDate}` : ""}
+            {order.expectedDate ? (
+              <>
+                {" · Expected "}
+                <time dateTime={order.expectedDate}>{order.expectedDate}</time>
+                {isOpenIssued ? <span className={cn("ml-1", URGENCY_CLASS[expected.urgency])}>({expected.label})</span> : null}
+              </>
+            ) : ""}
             {order.supplierReference ? ` · Ref ${order.supplierReference}` : ""}
-            {order.totalCost > 0 ? ` · Total ${formatSatang(order.totalCost)}` : ""}
           </p>
+          <OrderValueSummary order={order} />
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {awaitingApproval && permissions.approver ? (
+            <>
+              <Button type="button" disabled={busy} onClick={() => void handleApproveIssue()}>
+                <CheckCircle2 aria-hidden className="size-4" />
+                Approve and issue
+              </Button>
+              <Button type="button" variant="outline" disabled={busy} onClick={() => setDeclineIssueOpen(true)}>
+                Send back to draft
+              </Button>
+            </>
+          ) : null}
           {isDraft && permissions.buyer ? (
             <>
               <Button type="button" disabled={busy} onClick={() => void handleIssue()}>
@@ -327,6 +365,14 @@ export function PurchaseOrderDetailView({ orderId }: { orderId: string }) {
         </Callout>
       ) : null}
 
+      {awaitingApproval ? (
+        <Callout tone="warning" title="Waiting for order approval">
+          {order.totalCost !== undefined ? formatSatang(order.totalCost) : "This order"} is above this branch&apos;s direct order limit
+          {permissions.directOrderLimit ? ` of ${formatSatang(permissions.directOrderLimit)}` : ""}. A different approver must approve it before
+          it is issued{order.approvalRequestedByLabel ? ` (sent by ${order.approvalRequestedByLabel})` : ""}.
+        </Callout>
+      ) : null}
+
       {order.forHoldId ? (
         <Callout
           tone="info"
@@ -343,15 +389,20 @@ export function PurchaseOrderDetailView({ orderId }: { orderId: string }) {
 
       {openHolds.length > 0 ? (
         <Callout
-          tone="warning"
-          title={`${openHolds.length} unresolved held-goods ${openHolds.length === 1 ? "entry" : "entries"} on this order`}
+          tone={oldestHold?.tone === "danger" ? "danger" : "warning"}
+          className="items-center"
+          title={`${heldUnits} held ${heldUnits === 1 ? "unit" : "units"}${oldestHold ? (oldestHold.days === 0 ? " · today" : ` · oldest ${oldestHold.days}d`) : ""}`}
           action={
-            <ButtonLink href="/admin/stock/purchasing?tab=holds" size="sm" variant="outline">
-              Open Held goods
+            <ButtonLink href="/admin/stock/purchasing?tab=holds" size="sm" variant="ghost" aria-label="Review held goods">
+              Review
             </ButtonLink>
           }
-        >
-          Held units stay outside On hand even after the order is received or closed.
+        />
+      ) : null}
+
+      {detail.returnsAwaitingCredit.count > 0 ? (
+        <Callout tone="info" title={`${detail.returnsAwaitingCredit.units} returned ${detail.returnsAwaitingCredit.units === 1 ? "unit" : "units"} awaiting a supplier credit`}>
+          {detail.returnsAwaitingCredit.count} supplier {detail.returnsAwaitingCredit.count === 1 ? "return expects" : "returns expect"} a credit note. Check it against the supplier statement.
         </Callout>
       ) : null}
 
@@ -376,27 +427,33 @@ export function PurchaseOrderDetailView({ orderId }: { orderId: string }) {
       {tab === "overview" ? (
         <div {...tabPanelProps("po-detail", "overview")} className="grid gap-4">
           <Card className="overflow-hidden">
-            <table className={STACKED_TABLE.table}>
-              <thead className={STACKED_TABLE.head}>
+            <table className={STOCK_TABLE.table}>
+              <thead className={STOCK_TABLE.head}>
                 <tr>
-                  <th scope="col" className={STACKED_TABLE.th}>Item</th>
-                  <th scope="col" className={cn(STACKED_TABLE.th, "text-right")}>Ordered</th>
-                  <th scope="col" className={cn(STACKED_TABLE.th, "text-right")}>Accepted</th>
-                  <th scope="col" className={cn(STACKED_TABLE.th, "text-right")}>Still due</th>
-                  <th scope="col" className={cn(STACKED_TABLE.th, "text-right")}>Unit cost</th>
+                  <th scope="col" className={STOCK_TABLE.th}>Item</th>
+                  <th scope="col" className={cn(STOCK_TABLE.th, "text-right")}>Ordered</th>
+                  <th scope="col" className={cn(STOCK_TABLE.th, "text-right")}>Accepted</th>
+                  <th scope="col" className={cn(STOCK_TABLE.th, "text-right")}>Rejected on delivery</th>
+                  <th scope="col" className={cn(STOCK_TABLE.th, "text-right")}>Still due</th>
+                  {permissions.seeCosts ? (
+                    <>
+                      <th scope="col" className={cn(STOCK_TABLE.th, "text-right")}>Unit cost</th>
+                      <th scope="col" className={cn(STOCK_TABLE.th, "text-right")}>Line value</th>
+                    </>
+                  ) : null}
                 </tr>
               </thead>
-              <tbody className={STACKED_TABLE.body}>
+              <tbody className={STOCK_TABLE.body}>
                 {lines.map((line) => (
-                  <tr key={line._id} className={STACKED_TABLE.row}>
-                    <td data-label="Item" className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled)}>
+                  <tr key={line._id} className={STOCK_TABLE.row}>
+                    <td data-label="Item" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled)}>
                       <span className="block font-medium text-foreground">{line.item.productName}</span>
                       <span className="text-xs text-muted-foreground">
                         {line.item.variantLabel}
                         {line.item.sku ? ` · ${line.item.sku}` : ""}
                       </span>
                     </td>
-                    <td data-label="Ordered" className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled, "font-mono tabular-nums lg:text-right")}>
+                    <td data-label="Ordered" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled, "font-mono tabular-nums lg:text-right")}>
                       {line.ordered - line.cancelled}
                       {line.cancelled > 0 ? (
                         <span className="block text-[11px] text-muted-foreground">
@@ -404,7 +461,7 @@ export function PurchaseOrderDetailView({ orderId }: { orderId: string }) {
                         </span>
                       ) : null}
                     </td>
-                    <td data-label="Accepted" className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled, "font-mono tabular-nums lg:text-right")}>
+                    <td data-label="Accepted" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled, "font-mono tabular-nums lg:text-right")}>
                       {line.accepted}
                       {line.corrected > 0 || line.returned > 0 ? (
                         <span className="block text-[11px] text-muted-foreground">
@@ -414,26 +471,49 @@ export function PurchaseOrderDetailView({ orderId }: { orderId: string }) {
                         </span>
                       ) : null}
                     </td>
-                    <td data-label="Still due" className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled, "font-mono font-semibold tabular-nums lg:text-right")}>
+                    <td data-label="Rejected on delivery" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled, "font-mono tabular-nums lg:text-right")}>
+                      {line.rejected ?? 0}
+                      {(line.rejected ?? 0) > 0 ? (
+                        <span className="block text-[11px] text-muted-foreground">Still due unless closed · see Receipts</span>
+                      ) : null}
+                    </td>
+                    <td data-label="Still due" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled, "font-mono font-semibold tabular-nums lg:text-right")}>
                       {line.due}
                     </td>
-                    <td data-label="Unit cost" className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled, "font-mono tabular-nums lg:text-right")}>
-                      {formatSatang(line.unitCost)}
-                    </td>
+                    {permissions.seeCosts ? (
+                      <>
+                        <td data-label="Unit cost" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled, "font-mono tabular-nums lg:text-right")}>
+                          {line.unitCost !== undefined ? formatSatang(line.unitCost) : line.priceTbc ? "TBC" : <span className="text-destructive">Price missing</span>}
+                        </td>
+                        <td data-label="Line value" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled, "font-mono text-xs tabular-nums lg:text-right")}>
+                          <span className="block">
+                            Received {line.acceptedValue !== undefined ? formatSatang(line.acceptedValue) : line.accepted > 0 ? "— (valuation pending)" : formatSatang(0)}
+                          </span>
+                          <span className="block text-muted-foreground">
+                            Outstanding {line.unitCost === undefined && line.due > 0 ? "unknown" : formatSatang(Math.max(0, line.due) * (line.unitCost ?? 0))}
+                          </span>
+                        </td>
+                      </>
+                    ) : null}
                   </tr>
                 ))}
               </tbody>
             </table>
           </Card>
 
+          <p className="text-xs text-muted-foreground">
+            Received value uses each receipt&apos;s recorded unit cost; outstanding units use the current price. Corrections remove
+            value at the cost recorded on their receipt; supplier returns leave accepted value unchanged.
+          </p>
+
           {order.requestId ? (
             <p className="text-xs text-muted-foreground">
               Source request:{" "}
               <Link
                 href={`/admin/stock/purchasing/requests/${order.requestId}`}
-                className="font-medium text-foreground underline underline-offset-4"
+                className="font-mono font-medium text-foreground underline underline-offset-4"
               >
-                Open purchase request
+                {sourceRequest?.reference ?? "Open purchase request"}
               </Link>
             </p>
           ) : null}
@@ -458,15 +538,23 @@ export function PurchaseOrderDetailView({ orderId }: { orderId: string }) {
                           {rec.reference}
                         </Link>
                         <StatusBadge {...RECEIPT_KIND_META[rec.kind]} />
-                        {rec.orderRevision ? (
-                          <span className="text-xs text-muted-foreground">Rev {rec.orderRevision}</span>
+                        {invoiceVariance(rec.invoiceTotal, rec.acceptedValue)?.flagged ? (
+                          <StatusBadge tone="warning" label="Invoice variance" />
                         ) : null}
+                        {rec.orderRevision ? (
+                          <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-muted-foreground">Rev {rec.orderRevision}</span>
+                        ) : null}
+                        <span className={cn("text-xs", rec.lateDays !== null && rec.lateDays > 0 ? "font-medium text-destructive" : "text-muted-foreground")}>
+                          {latenessLabel(rec.lateDays)}
+                          {rec.expectedDate ? ` (expected ${rec.expectedDate}, received ${rec.receivedOn})` : ""}
+                        </span>
                       </div>
                       <p className="mt-0.5 text-xs text-muted-foreground">
                         Accepted {rec.acceptedUnits}
                         {rec.rejectedUnits > 0 ? ` · Rejected ${rec.rejectedUnits}` : ""}
                         {rec.heldUnits > 0 ? ` · Held ${rec.heldUnits}` : ""}
                         {rec.deliveryReference ? ` · Ref ${rec.deliveryReference}` : ""}
+                        {rec.invoiceTotal !== undefined ? ` · Invoice ${formatSatang(rec.invoiceTotal)}` : ""}
                         {" · "}
                         {rec.actorLabel} · {staffDateTime(rec.createdAt)}
                       </p>
@@ -487,42 +575,6 @@ export function PurchaseOrderDetailView({ orderId }: { orderId: string }) {
         </div>
       ) : (
         <div {...tabPanelProps("po-detail", "history")} className="grid gap-4">
-          {revisionPage.status === "LoadingFirstPage" ? <SkeletonRows rows={2} label="Loading issued revisions" /> : null}
-          {revisions.length > 0 ? (
-            <Card className="p-4">
-              <h3 className="text-sm font-semibold text-foreground">Issued revisions</h3>
-              <ul className="mt-3 divide-y divide-border">
-                {revisions.map((rev) => (
-                  <li key={rev.revision} className="flex flex-wrap items-center justify-between gap-2 py-2.5 first:pt-0">
-                    <div className="text-xs">
-                      <span className="font-mono font-semibold text-foreground">Rev {rev.revision}</span>
-                      <span className="text-muted-foreground">
-                        {" · "}
-                        {staffDateTime(rev.issuedAt)} · {rev.actorLabel}
-                        {rev.reason ? ` · ${rev.reason}` : ""}
-                      </span>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setPrintRevNumber(rev.revision)}
-                    >
-                      <Printer aria-hidden className="size-3.5" />
-                      Print Rev {rev.revision}
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-              {revisionPage.status !== "Exhausted" ? (
-                <Button type="button" variant="outline" size="sm"
-                  disabled={revisionPage.status !== "CanLoadMore"} onClick={() => revisionPage.loadMore(STOCK_PAGE_SIZE)}>
-                  Load more revisions
-                </Button>
-              ) : null}
-            </Card>
-          ) : null}
-
           <Card className="p-5">
             <PurchaseEventHistory
               events={events}
@@ -530,6 +582,7 @@ export function PurchaseOrderDetailView({ orderId }: { orderId: string }) {
               hasMore={historyStatus === "CanLoadMore"}
               loadingMore={historyStatus === "LoadingMore"}
               onLoadMore={() => loadMoreHistory(20)}
+              onPrintRevision={setPrintRevNumber}
             />
           </Card>
         </div>
@@ -559,6 +612,7 @@ export function PurchaseOrderDetailView({ orderId }: { orderId: string }) {
               requestLineId: line.requestLineId,
               quantityText: String(line.ordered),
               unitCostText: line.unitCost !== undefined ? (line.unitCost / 100).toString() : "",
+              priceTbc: line.priceTbc,
             })),
           }}
           onClose={() => setEditTarget(null)}
@@ -589,6 +643,10 @@ export function PurchaseOrderDetailView({ orderId }: { orderId: string }) {
         <AmendOrderSheet
           order={order}
           lines={lines}
+          branchId={branch.id}
+          canAddDirect={permissions.directOrder}
+          requestLines={detail.addableRequestLines}
+          requestReference={sourceRequest?.reference}
           onClose={() => setAmendOpen(false)}
           onAmended={() => {
             setAmendOpen(false);
@@ -598,8 +656,26 @@ export function PurchaseOrderDetailView({ orderId }: { orderId: string }) {
         />
       ) : null}
 
+      {declineIssueOpen ? (
+        <ReasonSheet
+          title={`Send ${order.reference} back to draft`}
+          description="The buyer can edit the draft and send it again. History keeps your reason."
+          submitLabel="Send back"
+          placeholder="e.g. Split into two orders under the limit"
+          onClose={() => setDeclineIssueOpen(false)}
+          onSubmit={async (reason) => {
+            await declineIssue({ orderId: order._id, expectedRevision: order.revision, reason, operationKey: createOperationKey("po-decline") });
+            setDeclineIssueOpen(false);
+            show("Order sent back to draft.", "success");
+          }}
+        />
+      ) : null}
+
       {closeOpen ? (
         <CloseRemainderSheet
+          lines={lines}
+          sourceRequest={sourceRequest}
+          canCloseDemand={permissions.lead}
           order={order}
           onClose={() => setCloseOpen(false)}
           onClosed={() => {
@@ -621,330 +697,22 @@ export function PurchaseOrderDetailView({ orderId }: { orderId: string }) {
   );
 }
 
-function AmendOrderSheet({
-  order,
-  lines,
-  onClose,
-  onAmended,
-  amendMutation,
-}: {
-  order: OrderRow;
-  lines: OrderLineRow[];
-  onClose: () => void;
-  onAmended: () => void;
-  amendMutation: (args: {
-    orderId: Id<"purchaseOrders">;
-    expectedRevision: number;
-    reason: string;
-    expectedDate?: string;
-    supplierReference?: string;
-    lines: { orderLineId: Id<"purchaseOrderLines">; due?: number; unitCost?: number }[];
-    operationKey: string;
-  }) => Promise<{ id: string }>;
-}) {
-  const [reviewedRevision, setReviewedRevision] = useState(order.revision);
-  const [initialState] = useState(() => ({
-    expectedDate: order.expectedDate ?? "",
-    supplierReference: order.supplierReference ?? "",
-    dueByLine: Object.fromEntries(lines.map((line) => [line._id, String(line.due)])),
-    costByLine: Object.fromEntries(
-      lines.map((line) => [line._id, line.unitCost !== undefined ? (line.unitCost / 100).toString() : ""]),
-    ),
-  }));
-  const [expectedDate, setExpectedDate] = useState(initialState.expectedDate);
-  const [supplierReference, setSupplierReference] = useState(initialState.supplierReference);
-  const [reason, setReason] = useState("");
-  const [dueByLine, setDueByLine] = useState<Record<string, string>>(initialState.dueByLine);
-  const [costByLine, setCostByLine] = useState<Record<string, string>>(initialState.costByLine);
-  const [lineErrors, setLineErrors] = useState<Record<string, { due?: string; cost?: string }>>({});
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const [opKey, setOpKey] = useState(() => createOperationKey("po-amend"));
-
-  const isDirty =
-    expectedDate !== initialState.expectedDate ||
-    supplierReference !== initialState.supplierReference ||
-    reason.trim() !== "" ||
-    lines.some(
-      (line) =>
-        (dueByLine[line._id] ?? "") !== (initialState.dueByLine[line._id] ?? "") ||
-        (costByLine[line._id] ?? "") !== (initialState.costByLine[line._id] ?? ""),
-    );
-  const { requestClose } = useStockDirtyGuard(isDirty, onClose, saving);
-  const isStale = order.revision !== reviewedRevision;
-
-  async function handleSubmit(event: FormEvent) {
-    event.preventDefault();
-    setError("");
-    const nextLineErrors: Record<string, { due?: string; cost?: string }> = {};
-    let firstInvalidId: string | undefined;
-    const payloadLines: { orderLineId: Id<"purchaseOrderLines">; due?: number; unitCost?: number }[] = [];
-    for (const line of lines) {
-      const parsedDue = parseWholeQuantity(dueByLine[line._id] ?? "", { allowZero: true, label: "Due quantity" });
-      if (!parsedDue.ok || parsedDue.value === undefined) {
-        nextLineErrors[line._id] = {
-          ...(nextLineErrors[line._id] ?? {}),
-          due: parsedDue.ok ? "Invalid due quantity." : parsedDue.error,
-        };
-        firstInvalidId ??= `amend-due-${line._id}`;
-      }
-      const parsedCost = parseOptionalSatang(costByLine[line._id] ?? "");
-      if (!parsedCost.ok) {
-        nextLineErrors[line._id] = {
-          ...(nextLineErrors[line._id] ?? {}),
-          cost: parsedCost.error,
-        };
-        firstInvalidId ??= `amend-cost-${line._id}`;
-      }
-      if (parsedDue.ok && parsedDue.value !== undefined && parsedCost.ok) {
-        payloadLines.push({
-          orderLineId: line._id,
-          due: parsedDue.value,
-          ...(parsedCost.value !== undefined ? { unitCost: parsedCost.value } : {}),
-        });
-      }
-    }
-    setLineErrors(nextLineErrors);
-    if (firstInvalidId) {
-      setError("Fix the highlighted line values before issuing the amendment.");
-      document.getElementById(firstInvalidId)?.focus();
-      return;
-    }
-    if (!reason.trim()) {
-      setError("Enter a reason for amending this issued order.");
-      document.getElementById("amend-reason")?.focus();
-      return;
-    }
-    if (isStale) {
-      setError("This order changed while amending. Review the updated order above before issuing the amendment.");
-      return;
-    }
-
-    setSaving(true);
-    try {
-      await amendMutation({
-        orderId: order._id,
-        expectedRevision: reviewedRevision,
-        reason: reason.trim(),
-        expectedDate: expectedDate || undefined,
-        supplierReference: supplierReference.trim() || undefined,
-        lines: payloadLines,
-        operationKey: opKey,
-      });
-      onAmended();
-    } catch (cause) {
-      setError(parseStockError(cause, "Could not amend order.").message);
-      setOpKey(createOperationKey("po-amend"));
-      setSaving(false);
-    }
-  }
-
+/** Received value at receipt costs, outstanding commitment at current prices, and a chip when any line has no price. */
+function OrderValueSummary({ order }: { order: OrderRow }) {
+  const received = order.receivedValue ?? 0;
+  const outstanding = order.outstandingValue ?? 0;
+  const unpriced = order.unpricedLines ?? 0;
+  if (order.totalCost === undefined || (order.totalCost <= 0 && unpriced === 0)) return null;
   return (
-    <EditorSheet
-      open
-      wide
-      onClose={requestClose}
-      header={
-        <>
-          <SheetTitle>Amend {order.reference}</SheetTitle>
-          <SheetDescription>
-            Update expected date, outstanding quantities still due, or future unit costs. Creates a new issued revision.
-          </SheetDescription>
-        </>
-      }
-    >
-      <SheetForm onSubmit={handleSubmit} onCancel={requestClose} saving={saving} error={error} submitLabel="Issue amendment">
-        {isStale ? (
-          <StockStaleBanner
-            title="Purchase order changed while amending"
-            description={`This order moved from revision ${reviewedRevision} to ${order.revision}. Your typed amendment is preserved — review the updated order before issuing.`}
-            actionLabel="Review updated order"
-            onReview={() => {
-              setReviewedRevision(order.revision);
-              setError("");
-              setOpKey(createOperationKey("po-amend"));
-            }}
-          />
-        ) : null}
-
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="grid gap-1.5">
-            <Label htmlFor="amend-expected">Expected delivery date</Label>
-            <DatePicker id="amend-expected" value={expectedDate} onValueChange={setExpectedDate} clearable />
-          </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="amend-ref">Supplier reference</Label>
-            <Input id="amend-ref" value={supplierReference} onChange={(e) => setSupplierReference(e.target.value)} />
-          </div>
-        </div>
-
-        <ul className="grid gap-3">
-          {lines.map((line) => {
-            const err = lineErrors[line._id];
-            return (
-              <li
-                key={line._id}
-                className={cn(
-                  "grid gap-2.5 rounded-lg border border-border p-3.5",
-                  (err?.due || err?.cost) && "border-destructive/60",
-                )}
-              >
-                <div className="flex justify-between gap-2 text-sm">
-                  <span className="font-medium text-foreground">
-                    {line.item.productName} · {line.item.variantLabel}
-                  </span>
-                  <span className="font-mono text-xs text-muted-foreground">Accepted so far: {line.accepted}</span>
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="grid gap-1">
-                    <Label htmlFor={`amend-due-${line._id}`}>New still-due quantity</Label>
-                    <NumberField
-                      id={`amend-due-${line._id}`}
-                      value={dueByLine[line._id] ?? ""}
-                      aria-invalid={err?.due ? true : undefined}
-                      aria-describedby={err?.due ? `amend-due-${line._id}-err` : undefined}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setDueByLine((c) => ({ ...c, [line._id]: val }));
-                        setLineErrors((c) => (c[line._id]?.due ? { ...c, [line._id]: { ...c[line._id], due: undefined } } : c));
-                        setOpKey(createOperationKey("po-amend"));
-                      }}
-                    />
-                    <FieldError id={`amend-due-${line._id}-err`}>{err?.due}</FieldError>
-                  </div>
-                  <div className="grid gap-1">
-                    <Label htmlFor={`amend-cost-${line._id}`}>Unit cost (THB)</Label>
-                    <NumberField
-                      id={`amend-cost-${line._id}`}
-                      prefix="฿"
-                      inputMode="decimal"
-                      value={costByLine[line._id] ?? ""}
-                      aria-invalid={err?.cost ? true : undefined}
-                      aria-describedby={err?.cost ? `amend-cost-${line._id}-err` : undefined}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setCostByLine((c) => ({ ...c, [line._id]: val }));
-                        setLineErrors((c) => (c[line._id]?.cost ? { ...c, [line._id]: { ...c[line._id], cost: undefined } } : c));
-                        setOpKey(createOperationKey("po-amend"));
-                      }}
-                    />
-                    <FieldError id={`amend-cost-${line._id}-err`}>{err?.cost}</FieldError>
-                  </div>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-
-        <div className="grid gap-1.5">
-          <Label htmlFor="amend-reason">Reason for amendment</Label>
-          <Input
-            id="amend-reason"
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            placeholder="e.g. Supplier updated delivery date and unit price"
-          />
-        </div>
-      </SheetForm>
-    </EditorSheet>
-  );
-}
-
-function CloseRemainderSheet({
-  order,
-  onClose,
-  onClosed,
-  closeMutation,
-}: {
-  order: OrderRow;
-  onClose: () => void;
-  onClosed: () => void;
-  closeMutation: (args: {
-    orderId: Id<"purchaseOrders">;
-    expectedRevision: number;
-    reason: string;
-    operationKey: string;
-  }) => Promise<{ id: string }>;
-}) {
-  const [reviewedRevision, setReviewedRevision] = useState(order.revision);
-  const [reason, setReason] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const [opKey, setOpKey] = useState(() => createOperationKey("po-close"));
-
-  const { requestClose } = useStockDirtyGuard(reason.trim() !== "", onClose, saving);
-  const isStale = order.revision !== reviewedRevision;
-
-  async function handleSubmit(event: FormEvent) {
-    event.preventDefault();
-    setError("");
-    if (!reason.trim()) {
-      setError("Enter a reason for closing the remaining units.");
-      document.getElementById("close-rem-reason")?.focus();
-      return;
-    }
-    if (isStale) {
-      setError("This order changed while open. Review the latest order state above before closing remainder.");
-      return;
-    }
-    setSaving(true);
-    try {
-      await closeMutation({
-        orderId: order._id,
-        expectedRevision: reviewedRevision,
-        reason: reason.trim(),
-        operationKey: opKey,
-      });
-      onClosed();
-    } catch (cause) {
-      setError(parseStockError(cause, "Could not close remainder.").message);
-      setOpKey(createOperationKey("po-close"));
-      setSaving(false);
-    }
-  }
-
-  return (
-    <EditorSheet
-      open
-      onClose={requestClose}
-      header={
-        <>
-          <SheetTitle>Close remainder on {order.reference}</SheetTitle>
-          <SheetDescription>
-            Cancels all {order.dueUnits} remaining due units and sets On order for them to zero. Prior receipts and open holds remain intact.
-          </SheetDescription>
-        </>
-      }
-    >
-      <SheetForm
-        onSubmit={handleSubmit}
-        onCancel={requestClose}
-        saving={saving}
-        error={error}
-        submitLabel={order.acceptedUnits > 0 ? "Close short" : "Cancel order"}
-      >
-        {isStale ? (
-          <StockStaleBanner
-            title="Purchase order changed while open"
-            description={`This order moved from revision ${reviewedRevision} to ${order.revision} (${order.dueUnits} still due). Your reason is preserved — review the latest state before closing.`}
-            actionLabel="Review updated order"
-            onReview={() => {
-              setReviewedRevision(order.revision);
-              setError("");
-              setOpKey(createOperationKey("po-close"));
-            }}
-          />
-        ) : null}
-        <div className="grid gap-1.5">
-          <Label htmlFor="close-rem-reason">Reason</Label>
-          <Input
-            id="close-rem-reason"
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            placeholder="e.g. Supplier discontinued remaining items"
-          />
-        </div>
-      </SheetForm>
-    </EditorSheet>
+    <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+      <span>Total {formatSatang(order.totalCost)}</span>
+      {order.receivedValue !== undefined ? <span>· Received {formatSatang(received)}</span> : null}
+      {order.outstandingValue !== undefined ? <span>· Outstanding {formatSatang(outstanding)}</span> : null}
+      {unpriced > 0 ? (
+        <span className="rounded bg-amber-100 px-1.5 py-0.5 font-medium text-amber-900 dark:bg-amber-900/40 dark:text-amber-200">
+          Price missing on {unpriced} {unpriced === 1 ? "line" : "lines"}
+        </span>
+      ) : null}
+    </p>
   );
 }

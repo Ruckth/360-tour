@@ -35,18 +35,20 @@ export function SelectCheckbox({
   indeterminate = false,
   onChange,
   label,
+  className = "",
 }: {
   checked: boolean;
   indeterminate?: boolean;
   onChange: () => void;
   label: string;
+  className?: string;
 }) {
   const ref = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (ref.current) ref.current.indeterminate = indeterminate;
   }, [indeterminate]);
   return (
-    <label className="inline-flex size-11 cursor-pointer items-center justify-center rounded focus-within:ring-2 focus-within:ring-ring">
+    <label className={`inline-flex size-11 cursor-pointer items-center justify-center rounded focus-within:ring-2 focus-within:ring-ring ${className}`}>
     <input
       ref={ref}
       type="checkbox"

@@ -337,6 +337,7 @@ export type PaymentLeg = {
   reference: string | null;
   /** Shown on Check previous payment: "Card ฿4,900 · 14:02". */
   instructedAt: number | null;
+  stockHoldUntil?: number;
   /**
    * The server's word that no screen may show this part's instruction again (its outcome is unknown,
    * or it was sent before a handover): Check previous payment, whichever till holds it now.

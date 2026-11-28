@@ -1,6 +1,8 @@
 "use client";
 
 import { Download, ExternalLink, Undo2 } from "lucide-react";
+import { canReadMarketingPersonalData } from "convex/shared/marketingPrivacy";
+import { staffCalendarHref } from "@/lib/staff-links";
 import Link from "@/platform/link";
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -10,8 +12,8 @@ import { pluralize } from "../../admin-bulk";
 import { StatusBadge } from "../../StatusBadge";
 import { ChoiceGroup, CouponChip, EditorSheet, FactList } from "../MarketingBits";
 import { useMarketingAccess } from "../MarketingAccess";
-import { formatDay, formatStamp, thb } from "../marketing-format";
-import { csvFileName, salesCsv, summaryCsv, type ExportKind } from "./report-csv";
+import { exportStamp, formatDay, formatStamp, thb } from "../marketing-format";
+import { csvFileName, salesCsvModel, serializeExport, summaryCsvModel, type ExportKind } from "./report-csv";
 import { formatRoas, roasFor, sheetLines, slugPath, sumLines, type Breakdown, type Prepared, type SaleLine } from "./report-model";
 
 // The sales list a row drills into, the metric definitions, and the CSV export.
@@ -29,18 +31,19 @@ function SaleItem({ line, p, onOpenStay, orderHref }: { line: SaleLine; p: Prepa
   const refundedAll = sale.refunded > 0 && sale.refunded >= sale.collected;
   const otherFirst = p.filters.touch === "last" && sale.first && sale.last && sale.first.linkId !== sale.last.linkId ? sale.first : null;
   const net = line.collected - line.refunded;
-  const action = role !== "admin" ? <span className="text-xs text-muted-foreground">Read-only sale details. Booking and receipt screens require system administrator access.</span> :
+  const action = role !== "admin" ? null :
     sale.kind === "stay" ? (
-      <button type="button" onClick={() => onOpenStay(sale.id)} className="inline-flex w-fit items-center gap-1 rounded text-xs font-semibold text-foreground underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11">
-        Open booking
-      </button>
+      <div className="flex flex-wrap gap-x-3">
+        <button type="button" onClick={() => onOpenStay(sale.id)} className="inline-flex w-fit items-center gap-1 rounded text-xs font-semibold underline-offset-2 hover:underline pointer-coarse:min-h-11">Open booking</button>
+        <Link href={`/admin/hotel?booking=${encodeURIComponent(sale.id)}`} className="inline-flex w-fit items-center gap-1 rounded text-xs font-semibold underline-offset-2 hover:underline pointer-coarse:min-h-11">Open in Hotel bookings <ExternalLink aria-hidden className="size-3.5" /></Link>
+      </div>
     ) : sale.kind === "order" ? (
       <Link href={orderHref(sale.id)} className="inline-flex w-fit items-center gap-1 rounded text-xs font-semibold text-foreground underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:min-h-11">
         Open order
         <ExternalLink aria-hidden className="size-3.5" />
       </Link>
     ) : (
-      <span className="text-xs text-muted-foreground">Open it from Staff bookings.</span>
+      <Link href={staffCalendarHref({ appointmentId: sale.id })} className="inline-flex w-fit items-center text-xs font-semibold underline pointer-coarse:min-h-11 pointer-coarse:min-w-11">Open in Staff bookings</Link>
     );
   return (
     <li className="grid gap-2 py-3">
@@ -97,18 +100,19 @@ export function SalesSheet({
   onOpenStay: (id: string) => void;
   orderHref: (id: string) => string;
 }) {
-  const [showAll, setShowAll] = useState(false);
+  const [limit, setLimit] = useState(SHEET_LIMIT);
+  const { role } = useMarketingAccess();
   const lines = useMemo(() => (target ? sheetLines(target.lines) : []), [target]);
   const money = sumLines(lines);
   const refunded = lines.filter((line) => line.refunded > 0);
   // Spend is entered per campaign, so a link's list shows its whole campaign's ROAS, never the link's net over that spend.
   const roas = target?.campaignId ? roasFor(p, [target.campaignId]) : null;
-  const shown = showAll ? lines : lines.slice(0, SHEET_LIMIT);
+  const shown = lines.slice(0, limit);
   return (
     <EditorSheet
       open={!!target}
       onClose={() => {
-        setShowAll(false);
+        setLimit(SHEET_LIMIT);
         onClose();
       }}
       header={
@@ -117,6 +121,7 @@ export function SalesSheet({
           <SheetDescription>
             {target?.sub ? `${target.sub} · ` : ""}
             {p.cash ? "Payments, refunds or coupon settlements" : "Sales made"} {formatDay(p.report.from)}–{formatDay(p.report.to)} · {p.filters.touch === "first" ? "first touch" : "last touch"}
+            {` · Snapshot ${exportStamp(p.report.asOf)}`}
           </SheetDescription>
         </>
       }
@@ -146,7 +151,7 @@ export function SalesSheet({
               <Undo2 aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
               <p className="min-w-0 text-muted-foreground">
                 <span className="font-medium text-foreground">
-                  {pluralize(refunded.length, "refund")} reduced net by {thb(money.refunded)}.
+                  {pluralize(refunded.length, "sale")} with refunds reduced net by {thb(money.refunded)}.
                 </span>{" "}
                 Sales with money received still count as first paid; refunds don’t give coupon uses back.
               </p>
@@ -156,6 +161,7 @@ export function SalesSheet({
             <h3 id="sales-list" className="admin-eyebrow">
               Sales · refunded first, then newest
             </h3>
+            {role !== "admin" ? <p className="text-xs text-muted-foreground">Read-only sale details. Booking and receipt screens require system administrator access.</p> : null}
             {lines.length ? (
               <>
                 <ul className="divide-y divide-border border-y border-border">
@@ -163,11 +169,10 @@ export function SalesSheet({
                     <SaleItem key={line.sale.id} line={line} p={p} onOpenStay={onOpenStay} orderHref={orderHref} />
                   ))}
                 </ul>
-                {lines.length > shown.length ? (
-                  <Button type="button" variant="outline" size="sm" className="mt-3 w-full" onClick={() => setShowAll(true)}>
-                    Show all {lines.length} sales
-                  </Button>
-                ) : null}
+                <p role="status" className="py-2 text-xs text-muted-foreground">Showing {shown.length} of {lines.length} sales</p>
+                {lines.length > SHEET_LIMIT ? <Button type="button" variant="outline" size="sm" className="mt-1 w-full" aria-disabled={shown.length === lines.length} onClick={() => { if (shown.length < lines.length) setLimit(limit + SHEET_LIMIT); }}>
+                  {shown.length < lines.length ? `Show next ${Math.min(SHEET_LIMIT, lines.length - shown.length)} sales` : "All sales shown"}
+                </Button> : null}
               </>
             ) : (
               <p className="py-6 text-center text-sm text-muted-foreground">No sales in these dates.</p>
@@ -196,11 +201,12 @@ const DEFINITIONS: [string, string][] = [
   ["Time zone and currency", "Days are Bangkok days (Asia/Bangkok). Money is THB; sales in another currency are left out and counted in a note."],
 ];
 
-export function DefinitionsSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function DefinitionsSheet({ open, onClose, onCloseAutoFocus }: { open: boolean; onClose: () => void; onCloseAutoFocus?: (event: Event) => void }) {
   return (
     <EditorSheet
       open={open}
       onClose={onClose}
+      onCloseAutoFocus={onCloseAutoFocus}
       header={
         <>
           <SheetTitle>Metric definitions</SheetTitle>
@@ -241,6 +247,7 @@ export function ExportDialog({
   breakdown,
   pathLabel,
   propertyName,
+  stale,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -248,13 +255,17 @@ export function ExportDialog({
   breakdown: Breakdown;
   pathLabel: string;
   propertyName: string;
+  stale: boolean;
 }) {
-  const [kind, setKind] = useState<ExportKind>("summary");
-  const csv = useMemo(
-    () => (open ? (kind === "summary" ? summaryCsv(p, propertyName, breakdown, pathLabel) : salesCsv(p, propertyName)) : ""),
-    [open, kind, p, propertyName, breakdown, pathLabel],
-  );
-  const preview = csv.replace(/^﻿/, "").split("\r\n").slice(0, 15).join("\n");
+  const identifiable = canReadMarketingPersonalData(useMarketingAccess());
+  const [selectedKind, setKind] = useState<ExportKind>("summary");
+  const canExportDrill = Boolean(pathLabel && breakdown.scopedLines.length);
+  const kind = selectedKind === "drill" && !canExportDrill ? "summary" : selectedKind;
+  const model = useMemo(() => {
+    if (!open) return null;
+    if (kind === "summary") return summaryCsvModel(p, propertyName, breakdown, pathLabel, stale);
+    return salesCsvModel(p, propertyName, kind === "drill" ? { lines: breakdown.scopedLines, path: pathLabel, stale, identifiable } : { stale, identifiable });
+  }, [open, kind, p, propertyName, breakdown, pathLabel, stale, identifiable]);
   const tab = { source: "Source", campaign: "Campaign", link: "Link", coupon: "Coupon" }[breakdown.view];
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -270,10 +281,12 @@ export function ExportDialog({
           onChange={setKind}
           columns="grid-cols-1"
           options={[
-            { value: "summary", label: "This table", hint: `${tab}${pathLabel ? ` · ${pathLabel}` : ""}, with its totals` },
-            { value: "sales", label: "One row per sale", hint: pluralize(p.lines.length, "sale") },
+            { value: "summary", label: "Current breakdown table", hint: `${tab}${pathLabel ? ` · ${pathLabel}` : ""}, with its totals` },
+            { value: "sales", label: "All filtered sales", hint: pluralize(p.lines.length, "sale") },
+            ...(canExportDrill ? [{ value: "drill" as const, label: "Sales in this drill", hint: `${pathLabel} · ${pluralize(breakdown.scopedLines.length, "sale")}` }] : []),
           ]}
         />
+        {kind !== "summary" ? <p className="text-xs text-muted-foreground">{identifiable ? "This export includes sale identifiers, references and guest or customer names." : "This export contains operational fields only."}</p> : null}
         <FactList
           className="rounded-lg border border-border p-3"
           rows={[
@@ -285,11 +298,18 @@ export function ExportDialog({
           ]}
         />
         <div className="grid min-w-0 gap-2">
-          <p className="admin-eyebrow">First lines</p>
-          <pre data-testid="csv-preview" role="region" aria-label="First lines of the CSV" tabIndex={0} className="max-h-44 overflow-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-lg bg-muted/60 p-3 font-mono text-xs leading-5 text-foreground">
-            {preview}
-          </pre>
+          <p className="admin-eyebrow">Data preview</p>
+          {model ? <>
+            <div data-testid="csv-preview" role="region" aria-label="First data rows of the CSV" tabIndex={0} className="max-h-44 overflow-auto rounded-lg border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <table className="text-left text-xs">
+                <thead><tr>{model.header.map((column) => <th scope="col" key={column} className="whitespace-nowrap border-b px-3 py-2">{column}</th>)}</tr></thead>
+                <tbody>{model.rows.slice(0, model.rows.length <= 4 ? 4 : 3).map((row, index) => <tr key={index}>{row.map((cell, column) => <td key={column} className="min-w-20 whitespace-pre-wrap border-b px-3 py-2">{cell}</td>)}</tr>)}</tbody>
+              </table>
+            </div>
+            <details className="text-xs text-muted-foreground"><summary className="cursor-pointer pointer-coarse:min-h-11 pointer-coarse:content-center">File metadata</summary><ul className="mt-2 grid gap-1">{model.metadata.map(([line]) => <li key={line}>{line}</li>)}</ul></details>
+          </> : null}
         </div>
+        {stale || p.report.truncated ? <p role="status" className="text-sm text-amber-700 dark:text-amber-300">{stale ? "Refresh failed. This download uses the retained snapshot. " : ""}{p.report.truncated ? "The read limit was reached. The exported figures are partial." : ""}</p> : null}
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
@@ -297,7 +317,8 @@ export function ExportDialog({
           <Button
             type="button"
             onClick={() => {
-              download(csvFileName(p, kind), csv);
+              if (!model) return;
+              download(csvFileName(p, kind), serializeExport(model));
               onOpenChange(false);
             }}
           >

@@ -43,6 +43,12 @@ export type StockItemSnapshot = {
 };
 
 export type StockSupplierSnapshot = {
+  address?: string;
+  taxId?: string;
+  paymentTerms?: string;
+  deliveryDays?: string;
+  minimumOrder?: string;
+  leadTimeDays?: number;
   name: string;
   contactName?: string;
   phone?: string;
@@ -98,7 +104,8 @@ export type PurchaseOrderStatus =
   | "received"
   | "closed_short"
   | "cancelled"
-  | "deleted";
+  | "deleted"
+  | "awaiting_approval";
 
 export type SupplierStatus = "active" | "inactive";
 export type SupplierReceiptKind = "order" | "direct" | "rejected";
@@ -121,6 +128,7 @@ export type StockLineDraft = {
   variantLabel: string;
   sku?: string;
   quantityText: string;
+  quantityHint?: string;
   unitCostText?: string;
   requestLineId?: string;
   maxQuantity?: number;
@@ -129,4 +137,6 @@ export type StockLineDraft = {
   onOrder?: number;
   revision?: number;
   lotTracked?: boolean;
+  /** Order lines: the supplier will confirm the price (issues without a unit cost, prints TBC). */
+  priceTbc?: boolean;
 };

@@ -161,6 +161,11 @@ for (const [size, viewport] of Object.entries({
         })
         .waitFor();
       await assertTargets(page);
+      const plot = page.getByRole("button", { name: "Inspect a date on the plot" });
+      const box = (await plot.boundingBox())!;
+      await plot.tap({ position: { x: Math.floor(box.width * 0.99), y: Math.floor(box.height / 2) } });
+      await expect(page.getByRole("combobox", { name: "Inspect date" })).toHaveValue("2026-11-06");
+      await assertTargets(page);
     });
     test("overflow reveals Email and Channels", async ({ page }) => {
       await page.goto(

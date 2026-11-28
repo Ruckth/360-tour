@@ -3,8 +3,12 @@ import { sanitizeStockReturnTo } from "./stock-format";
 export const PURCHASING_HUB_PATH = "/admin/stock/purchasing";
 
 const tabs = ["requests", "orders", "receipts", "holds", "suppliers"] as const;
-const requestFilters = ["default", "mine", "awaiting_approval", "approved", "all", "item"] as const;
-const orderFilters = ["open", "draft", "closed", "supplier", "item"] as const;
+const requestFilters = ["default", "mine", "needs_changes", "draft", "declined", "closed", "awaiting_approval", "approved", "fully_ordered", "all", "item"] as const;
+/** `closed` stays accepted for older links; the UI offers received, closed_short and cancelled separately. */
+const orderFilters = [
+  "open", "overdue", "due_soon", "awaiting_approval", "draft", "received", "closed_short", "cancelled", "closed", "supplier", "item",
+] as const;
+const receiptFilters = ["all", "exceptions"] as const;
 const holdStatuses = ["open", "accepted", "declined"] as const;
 
 function choice<T extends string>(value: unknown, options: readonly T[]): T | undefined {
@@ -25,6 +29,7 @@ export function validatePurchasingSearch(search: Record<string, unknown>) {
     tab: choice(search.tab, tabs),
     requestFilter: choice(search.requestFilter, requestFilters),
     orderFilter: choice(search.orderFilter, orderFilters),
+    receiptFilter: choice(search.receiptFilter, receiptFilters),
     holdStatus: choice(search.holdStatus, holdStatuses),
     requestVariantId: stockId(search.requestVariantId),
     variantId: stockId(search.variantId),
@@ -47,4 +52,8 @@ export function purchasingDetailHref(path: string, params: URLSearchParams) {
   }
   const returnTo = search.size ? `${PURCHASING_HUB_PATH}?${search}` : PURCHASING_HUB_PATH;
   return `${path}?${new URLSearchParams({ returnTo })}`;
+}
+
+export function supplierActivityHref(tab: "orders" | "receipts", supplierId: string) {
+  return `${PURCHASING_HUB_PATH}?${new URLSearchParams({ tab, orderFilter: "supplier", supplierId })}`;
 }

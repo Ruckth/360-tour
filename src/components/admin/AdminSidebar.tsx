@@ -32,6 +32,7 @@ import {
   SidebarSeparator,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { OpenHoldBadge } from "@/components/stock/open-hold-count";
 import { cn } from "@/lib/utils";
 
 // Clerk's own styles outrank utility classes, so its focus ring is given as a style object: the
@@ -199,7 +200,7 @@ export function AdminSidebar({ userEmail }: { userEmail?: string }) {
                       </SidebarMenuAction>
                     ) : null}
                     {children?.length && expanded ? (
-                      <SidebarMenuSub>
+                      <SidebarMenuSub data-stock-pages={href === "/admin/stock/balances" && !searching ? "" : undefined}>
                         {children.map((child) => (
                           <SidebarMenuSubItem key={child.href}>
                             <SidebarMenuSubButton asChild isActive={child.href === activeSub} className={cn(isMobile && "h-11")}>
@@ -209,6 +210,7 @@ export function AdminSidebar({ userEmail }: { userEmail?: string }) {
                                 onClick={close}
                               >
                                 <span>{child.label}</span>
+                                {child.href === "/admin/stock/purchasing" ? <OpenHoldBadge /> : null}
                               </Link>
                             </SidebarMenuSubButton>
                           </SidebarMenuSubItem>

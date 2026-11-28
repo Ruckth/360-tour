@@ -1,23 +1,33 @@
+import { mergedStream, stream } from 'convex-helpers/server/stream';
+import schema from '../schema';
+import { createStockBin, readBinBalances, relocateStockBetweenBins } from './private/stockBins';
 import { paginationOptsValidator, type PaginationResult } from 'convex/server';
 import { v } from 'convex/values';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
-import { canReadCheckoutOrder, findStaffGrantByEmail, internalMutation, staffMutation, staffQuery, type StaffActor } from '../auth/model';
+import { canReadCheckoutOrder, internalMutation, staffMutation, staffQuery, type StaffActor } from '../auth/model';
 import { requireBranchAccess } from '../branches/model';
 import { readBudget } from '../lib/readBudget';
+import { MAX_MONEY } from '../shared/money';
 import { catalogueFields, recordCatalogueEdit } from './private/adjustments';
-import { readStockAccess, readStockGrant, readStockPolicy, requireStockAccess, type StockPermission } from './private/stockAccess';
+import { listBranchStockGrants, purchasingPolicyPatch, readStockAccess, readStockGrant, readStockPolicy, requireStockAccess, type StockPermission } from './private/stockAccess';
 import { getProductCategory, normalizeStockSku, refreshStockSearch, requireUniqueStockSku, stockSearchFields, stockSearchTerm } from './private/stockCatalog';
 import { normalizeStockFilter, readStockLevel, stockActorLabel, stockError, stockQuantity, stockRead, stockText, writeStockMovement } from './private/stockLedger';
 import { previewStockCorrection, previewStockOperation, requireBranchMovement, sameStockRevision, STOCK_LINE_LIMIT, stockOperationKey, stockPage, type StockOperationInputKind } from './private/stockOperations';
 import { stockGrantRoles, stockOperationInputKind, stockOperationLine, stockReportedStatus } from './stockValidators';
+import { PURCHASING_MAX_QUANTITY } from './purchasingTables';
 import { lotReceipt } from './stockExpansionTables';
 import { catalogueStatus, stockMovementKind, vatProfile } from './validators';
 
 const branchIdArg = { branchId: v.id('branches') };
 const operationLine = v.object(stockOperationLine);
-const postOperationLine = v.object({ ...stockOperationLine, expectedRevision: v.number(), lotReceipt: v.optional(lotReceipt) });
+const postOperationLine = v.object({
+  ...stockOperationLine,
+  expectedRevision: v.number(),
+  lotReceipt: v.optional(lotReceipt),
+  unitCost: v.optional(v.number()),
+});
 const operationArgs = {
   ...branchIdArg, kind: stockOperationInputKind, reason: v.optional(v.string()), reasonCode: v.optional(v.string()),
 };
@@ -33,17 +43,77 @@ export const access = staffQuery({
   args: branchIdArg,
   handler: async (ctx, { branchId }) => {
     const { branch, ...access } = await readStockAccess(ctx, ctx.staff, branchId);
-    return { ...access, canManageGrants: ctx.staff.capabilities.manageTeam, canManageProducts: access.lead && ctx.staff.capabilities.operations,
-      branchName: branch.name };
+    let recountCount = 0;
+    let openReportCount = 0;
+    let lastVerifiedCountAt: number | null = null;
+    if (access.read) {
+      const [recountRows, lastCount, openReports] = await Promise.all([
+        stockRead(ctx, () => ctx.db.query('stockLevels').withIndex('by_branchId_and_needsRecount', q =>
+          q.eq('branchId', branchId).eq('needsRecount', true)).take(101)),
+        stockRead(ctx, () => ctx.db.query('stockMovements').withIndex('by_branch_and_kind_and_date', q =>
+          q.eq('branchId', branchId).eq('kind', 'count')).order('desc').first()),
+        access.lead
+          ? stockRead(ctx, () => ctx.db.query('stockProblemReports').withIndex('by_branch_status_date', q =>
+            q.eq('branchId', branchId).eq('status', 'open')).take(101))
+          : Promise.resolve([]),
+      ]);
+      recountCount = recountRows.length;
+      lastVerifiedCountAt = lastCount?.createdAt ?? null;
+      openReportCount = openReports.length;
+    }
+    return {
+      ...access,
+      canManageGrants: ctx.staff.capabilities.manageTeam,
+      canManageProducts: access.lead && ctx.staff.capabilities.operations,
+      branchName: branch.name,
+      actorEmail: ctx.staff.email,
+      recountCount,
+      openReportCount,
+      lastVerifiedCountAt,
+    };
   },
 });
 
-async function stockBalanceRow(ctx: QueryCtx, branchId: Id<'branches'>, variant: Doc<'productVariants'>, loaded?: Doc<'stockLevels'>) {
-  const [balance, incoming, product] = await Promise.all([
+function readReorderPoint(ctx: QueryCtx | MutationCtx, branchId: Id<'branches'>, variantId: Id<'productVariants'>) {
+  return stockRead(ctx, () => ctx.db.query('stockReorderPoints').withIndex('by_branchId_and_variantId', q =>
+    q.eq('branchId', branchId).eq('variantId', variantId)).unique());
+}
+
+export const setReorderPoint = staffMutation({
+  capability: 'checkout', scope: selected,
+  args: {
+    ...branchIdArg, variantId: v.id('productVariants'),
+    quantity: v.union(v.number(), v.null()), expectedRevision: v.number(),
+  },
+  returns: v.null(),
+  handler: async (ctx, { branchId, variantId, quantity, expectedRevision }) => {
+    await requireStockAccess(ctx, ctx.staff, branchId, 'lead');
+    if (quantity !== null) stockQuantity(quantity, 'Reorder point', 0, PURCHASING_MAX_QUANTITY);
+    const variant = await ctx.db.get(variantId);
+    const product = variant && await ctx.db.get(variant.productId);
+    if (variant?.status !== 'active' || product?.status !== 'active') {
+      stockError('ITEM_NOT_AVAILABLE', 'Choose an active stock item.');
+    }
+    const current = await readReorderPoint(ctx, branchId, variantId);
+    if ((current?.quantity ?? null) === quantity) return null;
+    const revision = current?.revision ?? 0;
+    if (revision !== expectedRevision) stockError('STALE_REORDER_POINT', 'The reorder point changed. Review the latest value and try again.');
+    const patch = { quantity: quantity ?? undefined, revision: revision + 1, changedAt: Date.now(), changedBy: ctx.staff.email };
+    if (current) await ctx.db.patch(current._id, patch);
+    else await ctx.db.insert('stockReorderPoints', { branchId, variantId, ...patch });
+    return null;
+  },
+});
+
+async function stockBalanceRow(ctx: QueryCtx, branchId: Id<'branches'>, variant: Doc<'productVariants'>,
+  { balance: loaded, includeReorderPoint }: { balance?: Doc<'stockLevels'>; includeReorderPoint?: boolean } = {},
+) {
+  const [balance, incoming, product, reorderPoint] = await Promise.all([
     loaded ?? readStockLevel(ctx, branchId, variant._id),
     stockRead(ctx, () => ctx.db.query('stockIncoming').withIndex('by_branch_variant', q =>
       q.eq('branchId', branchId).eq('variantId', variant._id)).unique()),
     variant.productName ? null : stockRead(ctx, () => ctx.db.get(variant.productId)),
+    includeReorderPoint ? readReorderPoint(ctx, branchId, variant._id) : null,
   ]);
   const productStatus = variant.productStatus ?? product?.status ?? 'archived';
   return {
@@ -53,6 +123,10 @@ async function stockBalanceRow(ctx: QueryCtx, branchId: Id<'branches'>, variant:
     price: variant.price, onHand: balance?.onHand ?? 0, onOrder: incoming?.quantity ?? 0,
     revision: balance?.revision ?? 0, needsRecount: balance?.needsRecount ?? false, hasBalance: balance !== null,
     lotTracked: variant.lotTracked === true,
+    ...(reorderPoint ? {
+      reorderPointRevision: reorderPoint.revision,
+      ...(reorderPoint.quantity === undefined ? {} : { reorderPoint: reorderPoint.quantity }),
+    } : {}),
   };
 }
 
@@ -66,8 +140,8 @@ function countPage<T>(ctx: QueryCtx, result: PaginationResult<T>) {
 
 export const listBalances = staffQuery({
   capability: 'checkout', scope: selected,
-  args: { ...branchIdArg, ...paged, search: v.optional(v.string()), recountOnly: v.optional(v.boolean()) },
-  handler: async (ctx, { branchId, search, recountOnly, paginationOpts }) => {
+  args: { ...branchIdArg, ...paged, search: v.optional(v.string()), recountOnly: v.optional(v.boolean()), includeReorderPoint: v.optional(v.boolean()) },
+  handler: async (ctx, { branchId, search, recountOnly, includeReorderPoint, paginationOpts }) => {
     await requireStockAccess(ctx, ctx.staff, branchId, 'read');
     const options = stockPage(paginationOpts);
     const term = stockSearchTerm(search);
@@ -77,7 +151,7 @@ export const listBalances = staffQuery({
         q.eq('branchId', branchId).eq('needsRecount', true)).paginate(options));
       const page = await Promise.all(result.page.map(async balance => {
         const variant = await stockRead(ctx, () => ctx.db.get(balance.variantId));
-        return variant ? await stockBalanceRow(ctx, branchId, variant, balance) : null;
+        return variant ? await stockBalanceRow(ctx, branchId, variant, { balance, includeReorderPoint }) : null;
       }));
       return { ...result, page: page.filter(row => row !== null) };
     }
@@ -87,7 +161,7 @@ export const listBalances = staffQuery({
       : await ctx.db.query('productVariants').withIndex('by_active_product', q =>
         // Legacy variants sort before the active prefix until search fields are backfilled.
         q.eq('status', 'active').lte('productStatus', 'active')).paginate(options));
-    const page = await Promise.all(result.page.map(variant => stockBalanceRow(ctx, branchId, variant)));
+    const page = await Promise.all(result.page.map(variant => stockBalanceRow(ctx, branchId, variant, { includeReorderPoint })));
     return { ...result, page: page.filter(row => row.status === 'active') };
   },
 });
@@ -95,14 +169,14 @@ export const listBalances = staffQuery({
 /** Resolve items already selected in a form or deep link without paging the catalog. */
 export const selectedBalances = staffQuery({
   capability: 'checkout', scope: selected,
-  args: { ...branchIdArg, variantIds: v.array(v.string()), includeRecount: v.optional(v.boolean()) },
-  handler: async (ctx, { branchId, variantIds, includeRecount }) => {
+  args: { ...branchIdArg, variantIds: v.array(v.string()), includeRecount: v.optional(v.boolean()), includeReorderPoint: v.optional(v.boolean()) },
+  handler: async (ctx, { branchId, variantIds, includeRecount, includeReorderPoint }) => {
     await requireStockAccess(ctx, ctx.staff, branchId, 'read');
     if (variantIds.length > STOCK_LINE_LIMIT) stockError('INVALID_STOCK_LINES', 'Choose at most 50 different stock items.');
     const rows = await Promise.all([...new Set(variantIds)].map(async rawId => {
       const id = ctx.db.normalizeId('productVariants', rawId);
       const variant = id && await stockRead(ctx, () => ctx.db.get(id));
-      return variant ? await stockBalanceRow(ctx, branchId, variant) : null;
+      return variant ? await stockBalanceRow(ctx, branchId, variant, { includeReorderPoint }) : null;
     }));
     return rows.flatMap(row => row && (row.status === 'active' || includeRecount && row.needsRecount) ? [row] : []);
   },
@@ -129,8 +203,6 @@ export const listActivity = staffQuery({
     await requireStockAccess(ctx, ctx.staff, branchId, 'read');
     const actorFilter = normalizeStockFilter(actor, 400, 'Staff member');
     const reasonFilter = normalizeStockFilter(reasonCode, 60, 'Reason code');
-    const filters = [variantId, kind, actorFilter, reasonFilter].filter(value => value !== undefined);
-    if (filters.length > 1) stockError('STOCK_FILTER_CONFLICT', 'Choose one item, movement type, staff member, or reason code.');
     const lower = stockQuantity(from ?? 0, 'Start time');
     const upper = stockQuantity(to ?? Number.MAX_SAFE_INTEGER, 'End time', lower);
     const query = ctx.db.query('stockMovements');
@@ -138,13 +210,14 @@ export const listActivity = staffQuery({
       q.eq('variantId', variantId).eq('branchId', branchId).gte('createdAt', lower).lte('createdAt', upper))
       : kind ? query.withIndex('by_branch_and_kind_and_date', q =>
         q.eq('branchId', branchId).eq('kind', kind).gte('createdAt', lower).lte('createdAt', upper))
-      : actorFilter ? query.withIndex('by_branch_and_actor_and_date', q =>
-        q.eq('branchId', branchId).eq('actorSearch', actorFilter).gte('createdAt', lower).lte('createdAt', upper))
-      : reasonFilter ? query.withIndex('by_branch_and_reason_and_date', q =>
-        q.eq('branchId', branchId).eq('reasonCode', reasonFilter).gte('createdAt', lower).lte('createdAt', upper))
       : query.withIndex('by_branch_and_date', q => q.eq('branchId', branchId).gte('createdAt', lower).lte('createdAt', upper));
+    // The indexed range includes historical rows whose search keys were never populated.
     const result = countPage(ctx, await range.order('desc').paginate(stockPage(paginationOpts)));
-    return { ...result, page: await Promise.all(result.page.map(row => activityRow(ctx, row))) };
+    const matching = result.page.filter(row =>
+      (!kind || row.kind === kind) &&
+      (!actorFilter || normalizeStockFilter(stockActorLabel(row.actor, row.actorLabel), 400, 'Staff member') === actorFilter) &&
+      (!reasonFilter || row.reasonCode?.normalize('NFKC').toLowerCase().trim() === reasonFilter));
+    return { ...result, page: await Promise.all(matching.map(row => activityRow(ctx, row))) };
   },
 });
 
@@ -182,10 +255,15 @@ export const getOperation = staffQuery({
   capability: 'checkout', scope: selected,
   args: { ...branchIdArg, operationId: v.id('stockOperations') },
   handler: async (ctx, { branchId, operationId }) => {
-    await requireStockAccess(ctx, ctx.staff, branchId, 'read');
+    const access = await requireStockAccess(ctx, ctx.staff, branchId, 'read');
     const operation = await stockRead(ctx, () => ctx.db.get(operationId));
     if (!operation || operation.branchId !== branchId) stockError('STOCK_OPERATION_NOT_FOUND', 'This operation was not found in the selected branch.');
-    return { ...operation, actor: undefined };
+    const canReadCost = access.buyer || access.lead;
+    return {
+      ...operation,
+      actor: undefined,
+      lines: canReadCost ? operation.lines : operation.lines.map(line => ({ ...line, unitCost: undefined })),
+    };
   },
 });
 
@@ -240,7 +318,11 @@ export const postOperation = staffMutation({
     if (preview.requiresReason && (!preview.reason || (kind === 'adjust' && /^other\s*:?$/i.test(preview.reason.normalize('NFKC'))))) {
       stockError('STOCK_REASON_REQUIRED', 'Enter a reason for this stock change.');
     }
-    for (const [index, line] of preview.lines.entries()) sameStockRevision(input.lines[index].expectedRevision, line.revision);
+    for (const [index, line] of preview.lines.entries()) {
+      sameStockRevision(input.lines[index].expectedRevision, line.revision);
+      const unitCost = input.lines[index].unitCost;
+      if (unitCost !== undefined) stockQuantity(unitCost, 'Unit cost in satang', 0, MAX_MONEY);
+    }
     const header = {
       branchId, kind, createdAt: Date.now(), actor: ctx.staff.tokenIdentifier, actorLabel: ctx.staff.email,
       reason: preview.reason ?? (kind === 'adjust' ? preview.reasonCode : undefined), reasonCode: kind === 'opening' ? 'opening_stock' : preview.reasonCode,
@@ -254,7 +336,8 @@ export const postOperation = staffMutation({
         sourceKey: `stock:${operationId}:${line.variantId}`,
         sourceId: operationId, sourceRef: operationId, clearRecount: kind === 'count', lotReceipt: input.lines[index].lotReceipt,
       });
-      lines.push({ ...line, movementId: movement.movementId });
+      const unitCost = input.lines[index].unitCost;
+      lines.push({ ...line, movementId: movement.movementId, ...(unitCost !== undefined ? { unitCost } : {}) });
     }
     await ctx.db.patch(operationId, { lines });
     await key.save('operation', operationId);
@@ -314,8 +397,8 @@ export const postCorrection = staffMutation({
       await key.save('report', reportId);
       return { operationId: null, reportId };
     }
-    if (requiresReconciliation && (!existingReport || existingReport.requestedQuantity !== quantity || input.physicalCount === undefined)) {
-      stockError('STOCK_RECONCILIATION_REQUIRED', 'Open the reconciliation report and enter the physical count before confirming a negative correction.');
+    if (requiresReconciliation && (input.physicalCount === undefined || (existingReport?.requestedQuantity !== undefined && existingReport.requestedQuantity !== quantity))) {
+      stockError('STOCK_RECONCILIATION_REQUIRED', 'Enter the physical count before confirming a negative correction.');
     }
     if (input.physicalCount !== undefined) stockQuantity(input.physicalCount, 'Physical count');
     const header = {
@@ -330,7 +413,19 @@ export const postCorrection = staffMutation({
     await ctx.db.patch(operationId, { lines: [{ ...line, movementId: movement.movementId }] });
     if (counter) await ctx.db.patch(counter._id, { reversed: counter.reversed + quantity, revision: counter.revision + 1 });
     else await ctx.db.insert('stockCorrections', { originalMovementId: movementId, reversed: quantity, revision: 1 });
-    if (existingReport) await resolveStockReport(ctx, ctx.staff, existingReport, reason, operationId);
+    if (existingReport) {
+      if (requiresReconciliation) await ctx.db.patch(existingReport._id, {
+        requestedQuantity: quantity, reviewedRevision: line.revision,
+      });
+      await resolveStockReport(ctx, ctx.staff, existingReport, reason, operationId);
+    } else if (requiresReconciliation) {
+      const recordedAt = Date.now();
+      await ctx.db.insert('stockProblemReports', {
+        branchId, movementId, actor: ctx.staff.tokenIdentifier, actorLabel: ctx.staff.email, reason,
+        createdAt: recordedAt, status: 'resolved', revision: 1, requestedQuantity: quantity, reviewedRevision: line.revision,
+        resolution: reason, resolvedAt: recordedAt, resolvedBy: ctx.staff.tokenIdentifier, correctionId: operationId,
+      });
+    }
     await key.save('operation', operationId);
     return { operationId, reportId: null };
   },
@@ -361,7 +456,13 @@ export const listReports = staffQuery({
     await requireStockAccess(ctx, ctx.staff, branchId, 'lead');
     const result = countPage(ctx, await ctx.db.query('stockProblemReports').withIndex('by_branch_status_date', q =>
       q.eq('branchId', branchId).eq('status', status ?? 'open')).order('desc').paginate(stockPage(paginationOpts)));
-    return { ...result, page: result.page.map(row => ({ ...row, actor: undefined, resolvedBy: undefined })) };
+    const page = await Promise.all(result.page.map(async row => {
+      const movement = await stockRead(ctx, () => ctx.db.get(row.movementId));
+      const item = movement?.branchId === branchId ? await activityRow(ctx, movement) : null;
+      return { ...row, actor: undefined, resolvedBy: undefined,
+        movement: item && { itemLabel: item.itemLabel, kind: item.kind, delta: item.delta } };
+    }));
+    return { ...result, page };
   },
 });
 
@@ -394,6 +495,15 @@ export const listCategories = staffQuery({
   },
 });
 
+async function withProductCategories(ctx: QueryCtx, result: PaginationResult<Doc<'products'>>) {
+  const ids = [...new Set(result.page.map(product => product.categoryId))];
+  const categories = new Map(await Promise.all(ids.map(async id =>
+    [id, (await stockRead(ctx, () => ctx.db.get(id)))?.name] as const)));
+  return { ...result, page: result.page.map(product => ({
+    ...product, ...(categories.get(product.categoryId) ? { categoryName: categories.get(product.categoryId) } : {}),
+  })) };
+}
+
 export const listProducts = staffQuery({
   capability: 'checkout', scope: selected,
   args: { ...branchIdArg, ...paged, search: v.optional(v.string()), status: v.optional(catalogueStatus) },
@@ -401,41 +511,101 @@ export const listProducts = staffQuery({
     await requireStockAccess(ctx, ctx.staff, branchId, 'read');
     const term = stockSearchTerm(search);
     const options = stockPage(paginationOpts);
-    return countPage(ctx, term
+    if (term) {
+      const [indexed, legacy] = await Promise.all([
+        stockRead(ctx, () => ctx.db.query('productVariants').withIndex('by_normalizedSku',
+          q => q.eq('normalizedSku', normalizeStockSku(term))).first()),
+        stockRead(ctx, () => ctx.db.query('productVariants').withIndex('by_sku', q => q.eq('sku', term)).first()),
+      ]);
+      const match = indexed ?? legacy;
+      const product = match && await stockRead(ctx, () => ctx.db.get(match.productId));
+      if (product && (!status || product.status === status)) {
+        return await withProductCategories(ctx, { page: options.cursor ? [] : [product], isDone: true, continueCursor: '' });
+      }
+    }
+    const result = countPage(ctx, term
       ? await ctx.db.query('products').withSearchIndex('search_name', q => {
         const result = q.search('name', term);
         return status ? result.eq('status', status) : result;
       }).paginate(options)
       : await ctx.db.query('products').withIndex('by_status_and_sort', q => q.eq('status', status ?? 'active')).paginate(options));
+    return await withProductCategories(ctx, result);
   },
 });
 
 export const getProduct = staffQuery({
   capability: 'checkout', scope: selected,
-  args: { ...branchIdArg, productId: v.id('products') },
-  handler: async (ctx, { branchId, productId }) => {
+  args: { ...branchIdArg, productId: v.id('products'), includeStock: v.optional(v.boolean()) },
+  handler: async (ctx, { branchId, productId, includeStock }) => {
     await requireStockAccess(ctx, ctx.staff, branchId, 'read');
     const product = await stockRead(ctx, () => ctx.db.get(productId));
     if (!product) return null;
     const variants = await stockRead(ctx, () => ctx.db.query('productVariants').withIndex('by_productId', q =>
       q.eq('productId', productId)).take(STOCK_LINE_LIMIT + 1));
-    return { product, variants: variants.slice(0, STOCK_LINE_LIMIT), hasMoreVariants: variants.length > STOCK_LINE_LIMIT };
+    const visible = variants.slice(0, STOCK_LINE_LIMIT);
+    return {
+      product, variants: visible, hasMoreVariants: variants.length > STOCK_LINE_LIMIT,
+      ...(includeStock ? { balances: await Promise.all(visible.map(variant => stockBalanceRow(ctx, branchId, variant))) } : {}),
+    };
+  },
+});
+
+export const productArchiveImpact = staffQuery({
+  capability: 'checkout', scope: selected,
+  args: { ...branchIdArg, productId: v.id('products') },
+  handler: async (ctx, { branchId, productId }) => {
+    await requireStockAccess(ctx, ctx.staff, branchId, 'read');
+    const variants = await stockRead(ctx, () => ctx.db.query('productVariants').withIndex('by_productId',
+      q => q.eq('productId', productId)).take(STOCK_LINE_LIMIT + 1));
+    const visible = variants.slice(0, STOCK_LINE_LIMIT);
+    const rows = await Promise.all(visible.map(async variant => {
+      const [balance, lines] = await Promise.all([
+        stockBalanceRow(ctx, branchId, variant),
+        stockRead(ctx, () => ctx.db.query('purchaseOrderLines').withIndex('by_branchId_and_variantId_and_open',
+          q => q.eq('branchId', branchId).eq('variantId', variant._id).eq('open', true)).take(21)),
+      ]);
+      return { balance, lines };
+    }));
+    return {
+      onHand: rows.reduce((total, row) => total + row.balance.onHand, 0),
+      onOrder: rows.reduce((total, row) => total + row.balance.onOrder, 0),
+      hasStock: rows.some(row => row.balance.onHand !== 0),
+      openOrders: new Set(rows.flatMap(row => row.lines.map(line => line.orderId))).size,
+      partialOrders: rows.some(row => row.lines.length > 20),
+      partialVariants: variants.length > STOCK_LINE_LIMIT,
+      variantCount: visible.length,
+    };
   },
 });
 
 export const productHistory = staffQuery({
   capability: 'checkout', scope: selected,
-  args: { ...branchIdArg, ...paged, productId: v.id('products'), variantId: v.optional(v.id('productVariants')) },
-  handler: async (ctx, { branchId, productId, variantId, paginationOpts }) => {
+  args: { ...branchIdArg, ...paged, productId: v.id('products'), variantId: v.optional(v.id('productVariants')), allTargets: v.optional(v.boolean()) },
+  handler: async (ctx, { branchId, productId, variantId, allTargets, paginationOpts }) => {
     await requireStockAccess(ctx, ctx.staff, branchId, 'read');
     if (variantId && (await stockRead(ctx, () => ctx.db.get(variantId)))?.productId !== productId) {
       stockError('STOCK_VARIANT_NOT_FOUND', 'This variant does not belong to the product.');
     }
-    const result = countPage(ctx, await ctx.db.query('commerceAdjustments').withIndex('by_targetType_and_targetId_and_recordedAt',
-      q => variantId ? q.eq('targetType', 'variant').eq('targetId', variantId) : q.eq('targetType', 'product').eq('targetId', productId))
-      .order('desc').paginate(stockPage(paginationOpts)));
-    return { ...result, page: result.page.map(({ _id, actorLabel, before, after, recordedAt, revisionAfter }) =>
-      ({ _id, actorLabel, before, after, recordedAt, revisionAfter })) };
+    const options = stockPage(paginationOpts);
+    const variants = allTargets && !variantId ? await stockRead(ctx, () => ctx.db.query('productVariants')
+      .withIndex('by_productId', q => q.eq('productId', productId)).take(STOCK_LINE_LIMIT)) : null;
+    const result = countPage(ctx, variants
+      ? await mergedStream([
+          stream(ctx.db, schema).query('commerceAdjustments').withIndex('by_targetType_and_targetId_and_recordedAt',
+            q => q.eq('targetType', 'product').eq('targetId', productId)).order('desc'),
+          ...variants.map(variant => stream(ctx.db, schema).query('commerceAdjustments')
+            .withIndex('by_targetType_and_targetId_and_recordedAt',
+              q => q.eq('targetType', 'variant').eq('targetId', variant._id)).order('desc')),
+        ], ['recordedAt']).paginate(options)
+      : await ctx.db.query('commerceAdjustments').withIndex('by_targetType_and_targetId_and_recordedAt',
+          q => variantId ? q.eq('targetType', 'variant').eq('targetId', variantId) : q.eq('targetType', 'product').eq('targetId', productId))
+        .order('desc').paginate(options));
+    const categoryIds = new Set(result.page.flatMap(row => [row.before.categoryId, row.after.categoryId])
+      .flatMap(value => typeof value === 'string' ? [ctx.db.normalizeId('productCategories', value)] : []).filter(id => id !== null));
+    const categoryNames = Object.fromEntries(await Promise.all([...categoryIds].map(async id =>
+      [id, (await stockRead(ctx, () => ctx.db.get(id)))?.name ?? 'Unavailable category'] as const)));
+    return { ...result, page: result.page.map(({ _id, actorLabel, before, after, recordedAt, revisionBefore, revisionAfter, targetType, targetId }) =>
+      ({ _id, actorLabel, before, after, recordedAt, revisionBefore, revisionAfter, targetType, targetId, categoryNames })) };
   },
 });
 
@@ -566,29 +736,44 @@ export const saveProduct = staffMutation({
   },
 });
 
+async function changeProductStatus(
+  ctx: MutationCtx, actor: StaffActor,
+  { branchId, productId, expectedRevision }: { branchId: Id<'branches'>; productId: Id<'products'>; expectedRevision: number },
+  status: 'active' | 'archived',
+): Promise<Id<'products'>> {
+  await requireProductEditor(ctx, actor, branchId);
+  const product = await stockRead(ctx, () => ctx.db.get(productId));
+  if (!product) stockError('STOCK_PRODUCT_NOT_FOUND', 'This product no longer exists.');
+  if (product.revision !== expectedRevision) stockError('STALE_STOCK_PRODUCT', 'This product changed. Reload before changing its status.');
+  if (product.status === status) return productId;
+  if (status === 'active' && product.status !== 'archived') {
+    stockError('STOCK_PRODUCT_NOT_ARCHIVED', 'Only archived products can be restored.');
+  }
+  const fields = { status };
+  await recordCatalogueEdit(ctx, actor.email, { targetType: 'product', targetId: productId }, expectedRevision, {
+    ...await catalogueFields(product, fields),
+    apply: async ({ revisionAfter }) => {
+      await ctx.db.patch(productId, { ...fields, revision: revisionAfter });
+      const variants = await stockRead(ctx, () => ctx.db.query('productVariants').withIndex('by_productId',
+        q => q.eq('productId', productId)).take(STOCK_LINE_LIMIT + 1));
+      if (variants.length > STOCK_LINE_LIMIT) await queueVariantSearchRefresh(ctx, productId);
+      else for (const variant of variants) await refreshStockSearch(ctx, variant, { ...product, ...fields });
+      return [];
+    },
+  });
+  return productId;
+}
+
 export const archiveProduct = staffMutation({
   capability: 'operations', scope: selected,
   args: { ...branchIdArg, productId: v.id('products'), expectedRevision: v.number() },
-  handler: async (ctx, { branchId, productId, expectedRevision }): Promise<Id<'products'>> => {
-    await requireProductEditor(ctx, ctx.staff, branchId);
-    const product = await stockRead(ctx, () => ctx.db.get(productId));
-    if (!product) stockError('STOCK_PRODUCT_NOT_FOUND', 'This product no longer exists.');
-    if (product.revision !== expectedRevision) stockError('STALE_STOCK_PRODUCT', 'This product changed. Reload before archiving.');
-    if (product.status === 'archived') return productId;
-    const fields = { status: 'archived' as const };
-    await recordCatalogueEdit(ctx, ctx.staff.email, { targetType: 'product', targetId: productId }, expectedRevision, {
-      ...await catalogueFields(product, fields),
-      apply: async ({ revisionAfter }) => {
-        await ctx.db.patch(productId, { ...fields, revision: revisionAfter });
-        const variants = await stockRead(ctx, () => ctx.db.query('productVariants').withIndex('by_productId',
-          q => q.eq('productId', productId)).take(STOCK_LINE_LIMIT + 1));
-        if (variants.length > STOCK_LINE_LIMIT) await queueVariantSearchRefresh(ctx, productId);
-        else for (const variant of variants) await refreshStockSearch(ctx, variant, { ...product, ...fields });
-        return [];
-      },
-    });
-    return productId;
-  },
+  handler: (ctx, args) => changeProductStatus(ctx, ctx.staff, args, 'archived'),
+});
+
+export const restoreProduct = staffMutation({
+  capability: 'operations', scope: selected,
+  args: { ...branchIdArg, productId: v.id('products'), expectedRevision: v.number() },
+  handler: (ctx, args) => changeProductStatus(ctx, ctx.staff, args, 'active'),
 });
 
 export const backfillVariantSearch = internalMutation({
@@ -623,9 +808,8 @@ export const backfillMovementFilters = internalMutation({
     let updated = 0;
     for (const row of result.page) {
       const actorSearch = normalizeStockFilter(stockActorLabel(row.actor, row.actorLabel), 400, 'Staff member');
-      const reasonCode = normalizeStockFilter(row.reasonCode, 60, 'Reason code');
-      if (row.actorSearch === actorSearch && row.reasonCode === reasonCode) continue;
-      await ctx.db.patch(row._id, { actorSearch, reasonCode });
+      if (row.actorSearch === actorSearch) continue;
+      await ctx.db.patch(row._id, { actorSearch });
       updated++;
     }
     return { updated, isDone: result.isDone, continueCursor: result.continueCursor };
@@ -638,29 +822,21 @@ export const branchPolicy = staffQuery({
   handler: async (ctx, { branchId }) => {
     await requireBranchAccess(ctx, ctx.staff, branchId);
     const policy = await readStockPolicy(ctx, branchId);
-    return policy && { directOrder: policy.directOrder, directReceipt: policy.directReceipt, revision: policy.revision };
+    return policy && {
+      directOrder: policy.directOrder, directReceipt: policy.directReceipt, revision: policy.revision,
+      separateReceiving: policy.separateReceiving ?? false, directOrderLimit: policy.directOrderLimit ?? null,
+      overReceiptTolerancePct: policy.overReceiptTolerancePct ?? 0,
+      receivingContact: policy.receivingContact ?? '', receivingPhone: policy.receivingPhone ?? '',
+    };
   },
 });
 
 export const listGrants = staffQuery({
   capability: 'manageTeam', scope: selected,
-  args: { ...branchIdArg, ...paged, email: v.optional(v.string()) },
-  handler: async (ctx, { branchId, paginationOpts, email }) => {
+  args: { ...branchIdArg, ...paged, email: v.optional(v.string()), search: v.optional(v.string()) },
+  handler: async (ctx, { branchId, paginationOpts, email, search }) => {
     await requireBranchAccess(ctx, ctx.staff, branchId);
-    const search = email?.trim();
-    if (search && search.length > 254) stockError('INVALID_EMAIL', 'Email search is limited to 254 characters.');
-    const match = search ? await stockRead(ctx, () => findStaffGrantByEmail(ctx, search.toLowerCase())) : null;
-    // An ineligible or unknown email has the same terminal result and exposes no roster cursor.
-    const result = search
-      ? { isDone: true, continueCursor: '', page: match ? [match] : [] }
-      : countPage(ctx, await ctx.db.query('staffGrants').paginate(stockPage(paginationOpts)));
-    const eligible = result.page.filter(grant => grant.role === 'owner' || grant.branchIds.includes(branchId));
-    const page = await Promise.all(eligible.map(async staff => {
-      const grant = await readStockGrant(ctx, branchId, staff._id);
-      return { staffGrantId: staff._id, email: staff.email, role: staff.role,
-        stockGrant: grant && { roles: grant.roles, revision: grant.revision } };
-    }));
-    return { ...result, page };
+    return await listBranchStockGrants(ctx, branchId, paginationOpts, email, search);
   },
 });
 
@@ -684,16 +860,44 @@ export const setGrant = staffMutation({
 
 export const setBranchPolicy = staffMutation({
   capability: 'manageTeam', scope: selected,
-  args: { ...branchIdArg, directOrder: v.boolean(), directReceipt: v.boolean(), expectedRevision: v.number() },
-  handler: async (ctx, { branchId, directOrder, directReceipt, expectedRevision }) => {
+  args: {
+    ...branchIdArg, directOrder: v.boolean(), directReceipt: v.boolean(), expectedRevision: v.number(),
+    // Purchasing policies; omitted fields keep their current value.
+    separateReceiving: v.optional(v.boolean()), directOrderLimit: v.optional(v.union(v.number(), v.null())),
+    overReceiptTolerancePct: v.optional(v.number()),
+    receivingContact: v.optional(v.string()), receivingPhone: v.optional(v.string()),
+  },
+  handler: async (ctx, { branchId, directOrder, directReceipt, expectedRevision, ...purchasing }) => {
     await requireBranchAccess(ctx, ctx.staff, branchId);
     const current = await readStockPolicy(ctx, branchId);
     if ((current?.revision ?? 0) !== expectedRevision) stockError('STALE_STOCK_POLICY', 'This branch policy changed. Reload and try again.');
     const values = {
-      directOrder, directReceipt, revision: expectedRevision + 1, changedBy: ctx.staff.tokenIdentifier, changedAt: Date.now(),
+      directOrder, directReceipt, ...purchasingPolicyPatch(purchasing),
+      revision: expectedRevision + 1, changedBy: ctx.staff.tokenIdentifier, changedAt: Date.now(),
     };
     if (current) await ctx.db.patch(current._id, values);
     else await ctx.db.insert('stockBranchPolicies', { ...values, branchId });
     return values.revision;
   },
+});
+
+const binVariant = { ...branchIdArg, variantId: v.id('productVariants') };
+const binLocation = v.union(v.id('stockBins'), v.null());
+
+export const binBalances = staffQuery({
+  capability: 'checkout', scope: selected,
+  args: binVariant,
+  handler: (ctx, args) => readBinBalances(ctx, ctx.staff, args),
+});
+
+export const addBin = staffMutation({
+  capability: 'checkout', scope: selected,
+  args: { ...branchIdArg, name: v.string() },
+  handler: (ctx, args) => createStockBin(ctx, ctx.staff, args),
+});
+
+export const relocateBinStock = staffMutation({
+  capability: 'checkout', scope: selected,
+  args: { ...binVariant, from: binLocation, to: binLocation, lotId: v.optional(v.id('stockLots')), quantity: v.number(), requestKey: v.string() },
+  handler: (ctx, args) => relocateStockBetweenBins(ctx, ctx.staff, args),
 });

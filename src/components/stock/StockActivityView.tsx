@@ -4,9 +4,9 @@ import { usePaginatedQuery, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
-import { Filter, X } from "lucide-react";
-import { useMemo, useState } from "react";
-import { EmptyState, SkeletonRows, STACKED_TABLE } from "@/components/admin/admin-bulk";
+import { Filter } from "lucide-react";
+import { Fragment, useMemo, useState } from "react";
+import { EmptyState, SkeletonRows } from "@/components/admin/admin-bulk";
 import { useAdminBranch } from "@/components/admin/branch/branch-context";
 import { Callout, NoticeBar, useNotice } from "@/components/admin/marketing/MarketingBits";
 import { SegmentedTabs, tabPanelProps } from "@/components/admin/SegmentedTabs";
@@ -15,7 +15,7 @@ import { Button, ButtonLink } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { resortDateTime, resortMidnight } from "@/lib/staff-bookings";
 import { staffDateTime } from "@/lib/staff-time";
@@ -24,6 +24,7 @@ import { useRouter, useSearchParams } from "@/platform/navigation";
 import { MovementInspectSheet } from "./MovementInspectSheet";
 import {
   formatSignedDelta,
+  STOCK_ACTIVITY_REASONS,
   MOVEMENT_KIND_META,
   PROBLEM_STATUS_META,
   sanitizeStockReturnTo,
@@ -36,9 +37,18 @@ import { StockVariantPickerDialog, type BalancePickerRow } from "./StockVariantP
 
 type ProblemReportRow = FunctionReturnType<typeof api.commerce.stock.listReports>["page"][number];
 
-type FacetMode = "none" | "variant" | "kind" | "actor" | "reasonCode";
-
 const ALL_MOVEMENT_KINDS = Object.keys(MOVEMENT_KIND_META) as StockMovementKind[];
+
+function deltaClass(delta: number) {
+  return cn("font-mono font-semibold tabular-nums", delta > 0 && "text-emerald-700 dark:text-emerald-300", delta < 0 && "text-red-700 dark:text-red-300");
+}
+
+function operationLabel(movement: { kind: StockMovementKind; sourceId?: string; sourceRef?: string }) {
+  const { sourceId, sourceRef } = movement;
+  return sourceRef && sourceRef !== sourceId && !sourceRef.startsWith("[")
+    ? sourceRef
+    : MOVEMENT_KIND_META[movement.kind].label;
+}
 
 export function StockActivityView() {
   const { current: branch } = useAdminBranch();
@@ -48,14 +58,13 @@ export function StockActivityView() {
   const initialView = searchParams.get("view") === "needs-review" ? "reports" : "movements";
   const returnTo = sanitizeStockReturnTo(searchParams.get("returnTo"));
 
-  const [tab, setTab] = useState<"movements" | "reports">(initialView);
+  const [selectedTab, setTab] = useState<"movements" | "reports">(initialView);
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
-  const [facetMode, setFacetMode] = useState<FacetMode>(initialVariantId ? "variant" : "none");
   const [rawSelectedVariant, setSelectedVariant] = useState<{ id: Id<"productVariants">; label: string } | null>(
     initialVariantId ? { id: initialVariantId, label: "Selected item" } : null,
   );
-  const [kindFilter, setKindFilter] = useState<StockMovementKind>("adjust");
+  const [kindFilter, setKindFilter] = useState<StockMovementKind | "all">("all");
   const [actorFilter, setActorFilter] = useState("");
   const [reasonCodeFilter, setReasonCodeFilter] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -66,6 +75,8 @@ export function StockActivityView() {
   const { notice, show, clear } = useNotice();
 
   const access = useQuery(api.commerce.stock.access, branch ? { branchId: branch.id } : "skip");
+
+  const tab = access?.lead ? selectedTab : "movements";
 
   const initialVariantIds = useMemo(
     () => (initialVariantId ? [initialVariantId] : []),
@@ -97,12 +108,12 @@ export function StockActivityView() {
       branchId: branch.id,
       ...(from !== undefined ? { from } : {}),
       ...(to !== undefined ? { to } : {}),
-      ...(facetMode === "variant" && selectedVariant ? { variantId: selectedVariant.id } : {}),
-      ...(facetMode === "kind" ? { kind: kindFilter } : {}),
-      ...(facetMode === "actor" && actorFilter.trim() ? { actor: actorFilter.trim() } : {}),
-      ...(facetMode === "reasonCode" && reasonCodeFilter.trim() ? { reasonCode: reasonCodeFilter.trim() } : {}),
+      ...(selectedVariant ? { variantId: selectedVariant.id } : {}),
+      ...(kindFilter !== "all" ? { kind: kindFilter } : {}),
+      ...(actorFilter.trim() ? { actor: actorFilter.trim() } : {}),
+      ...(reasonCodeFilter ? { reasonCode: reasonCodeFilter.trim() } : {}),
     };
-  }, [branch, access?.read, fromDate, toDate, facetMode, selectedVariant, kindFilter, actorFilter, reasonCodeFilter]);
+  }, [branch, access?.read, fromDate, toDate, selectedVariant, kindFilter, actorFilter, reasonCodeFilter]);
 
   const dateRangeInvalid = Boolean(fromDate && toDate && toDate < fromDate);
 
@@ -122,6 +133,16 @@ export function StockActivityView() {
     { initialNumItems: STOCK_PAGE_SIZE },
   );
 
+  const openCount = access?.openReportCount;
+  const hasFilters = Boolean(fromDate || toDate || selectedVariant || kindFilter !== "all" || actorFilter || reasonCodeFilter);
+  const groups = new Map<string, typeof movements>();
+  for (const row of movements) {
+    const key = row.sourceId || row._id;
+    const group = groups.get(key);
+    if (group) group.push(row);
+    else groups.set(key, [row]);
+  }
+
   if (!branch) return null;
 
   if (access === undefined) {
@@ -136,11 +157,15 @@ export function StockActivityView() {
     );
   }
 
+  function openMovement(id: Id<"stockMovements">) {
+    setActiveReportContext(null);
+    setActiveMovementId(id);
+  }
+
   function clearFilters() {
     setFromDate("");
     setToDate("");
-    setFacetMode("none");
-    setKindFilter("adjust");
+    setKindFilter("all");
     setSelectedVariant(null);
     setActorFilter("");
     setReasonCodeFilter("");
@@ -153,7 +178,7 @@ export function StockActivityView() {
 
   const tabs = [
     { value: "movements" as const, label: "All activity" },
-    ...(access.lead ? [{ value: "reports" as const, label: "Needs review" }] : []),
+    ...(access.lead ? [{ value: "reports" as const, label: <>Needs review{openCount ? <span className="ml-1 rounded-full bg-muted px-2 text-xs">{openCount > 100 ? "100+" : openCount}</span> : null}</> }] : []),
   ];
 
   return (
@@ -163,13 +188,10 @@ export function StockActivityView() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="font-serif text-xl font-semibold text-foreground">Stock activity</h2>
-          <p className="text-sm text-muted-foreground">
-            Every movement at {branch.name}, newest first. Open any entry to inspect its source, report a problem, or post a linked correction.
-          </p>
         </div>
-        <ButtonLink href={returnTo ?? "/admin/stock/balances"} variant="outline" size="sm">
+        {returnTo ? <ButtonLink href={returnTo} variant="outline" size="sm">
           Back to {stockReturnLabel(returnTo, "Balances")}
-        </ButtonLink>
+        </ButtonLink> : null}
       </div>
 
       {tabs.length > 1 ? (
@@ -184,122 +206,40 @@ export function StockActivityView() {
 
       {tab === "movements" ? (
         <div {...tabPanelProps("stock-activity", "movements")} className="grid gap-4">
-          <Card className="p-4">
-            <div className="grid gap-3 md:grid-cols-4">
-              <div className="grid gap-1.5">
-                <Label htmlFor="activity-from">From date</Label>
-                <DatePicker
-                  id="activity-from"
-                  value={fromDate}
-                  onValueChange={setFromDate}
-                  clearable
-                  placeholder="Any start date"
-                />
-              </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="activity-to">To date</Label>
-                <DatePicker
-                  id="activity-to"
-                  value={toDate}
-                  onValueChange={setToDate}
-                  clearable
-                  placeholder="Any end date"
-                />
-              </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="activity-facet">Filter by (one at a time)</Label>
-                <Select
-                  value={facetMode}
-                  onValueChange={(value) => setFacetMode(value as FacetMode)}
-                >
-                  <SelectTrigger id="activity-facet">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">All movements</SelectItem>
-                    <SelectItem value="variant">Item / variant</SelectItem>
-                    <SelectItem value="kind">Movement type</SelectItem>
-                    <SelectItem value="actor">Staff member</SelectItem>
-                    <SelectItem value="reasonCode">Reason code</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid gap-1.5">
-                {facetMode === "variant" ? (
-                  <>
-                    <Label>Selected item</Label>
-                    <div className="flex gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="flex-1 justify-start truncate"
-                        onClick={() => setPickerOpen(true)}
-                      >
-                        <Filter aria-hidden className="size-4 shrink-0" />
-                        <span className="truncate">{selectedVariant?.label ?? "Pick item…"}</span>
-                      </Button>
-                      {selectedVariant ? (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          aria-label="Clear selected item"
-                          onClick={() => setSelectedVariant(null)}
-                        >
-                          <X aria-hidden className="size-4" />
-                        </Button>
-                      ) : null}
-                    </div>
-                  </>
-                ) : facetMode === "kind" ? (
-                  <>
-                    <Label htmlFor="activity-kind">Movement type</Label>
-                    <Select value={kindFilter} onValueChange={(v) => setKindFilter(v as StockMovementKind)}>
-                      <SelectTrigger id="activity-kind">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {ALL_MOVEMENT_KINDS.map((kind) => (
-                          <SelectItem key={kind} value={kind}>
-                            {MOVEMENT_KIND_META[kind].label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </>
-                ) : facetMode === "actor" ? (
-                  <>
-                    <Label htmlFor="activity-actor">Staff name or email</Label>
-                    <Input
-                      id="activity-actor"
-                      value={actorFilter}
-                      onChange={(event) => setActorFilter(event.target.value)}
-                      placeholder="Enter the name or email shown in Activity"
-                    />
-                  </>
-                ) : facetMode === "reasonCode" ? (
-                  <>
-                    <Label htmlFor="activity-reason-code">Reason code</Label>
-                    <Input
-                      id="activity-reason-code"
-                      value={reasonCodeFilter}
-                      onChange={(event) => setReasonCodeFilter(event.target.value)}
-                      placeholder="e.g. damaged, opening_stock"
-                    />
-                  </>
-                ) : null}
-              </div>
-            </div>
-            <Button type="button" variant="ghost" size="sm" className="mt-2"
-              disabled={!fromDate && !toDate && facetMode === "none"} onClick={clearFilters}>
-              Reset filters
+          <div className="flex flex-wrap items-center gap-2">
+            <Button type="button" variant="outline" className="max-w-56" onClick={() => setPickerOpen(true)}>
+              <Filter aria-hidden className="size-4 shrink-0" />
+              <span className="truncate">{selectedVariant?.label ?? "Item / SKU"}</span>
             </Button>
-            {dateRangeInvalid ? (
-              <p role="alert" className="mt-2 text-xs font-medium text-destructive">
-                End date must be on or after the start date.
-              </p>
-            ) : null}
-          </Card>
+            {selectedVariant ? <Button variant="ghost" size="sm" onClick={() => setSelectedVariant(null)}>Clear item</Button> : null}
+            <Select value={kindFilter} onValueChange={(value) => setKindFilter(value as StockMovementKind | "all")}>
+              <SelectTrigger aria-label="Movement type"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All types</SelectItem>
+                {ALL_MOVEMENT_KINDS.map(kind => <SelectItem key={kind} value={kind}>{MOVEMENT_KIND_META[kind].label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={reasonCodeFilter || "all"} onValueChange={value => setReasonCodeFilter(value === "all" ? "" : value)}>
+              <SelectTrigger aria-label="Reason"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All reasons</SelectItem>
+                {Object.entries(STOCK_ACTIVITY_REASONS).map(([code, label]) => <SelectItem key={code} value={code}>{label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Popover>
+              <PopoverTrigger asChild><Button variant="outline" className="max-w-40 truncate">{actorFilter || "Staff"}</Button></PopoverTrigger>
+              <PopoverContent><Input aria-label="Staff name or email" value={actorFilter} onChange={event => setActorFilter(event.target.value)} /></PopoverContent>
+            </Popover>
+            <Popover>
+              <PopoverTrigger asChild><Button variant="outline">{fromDate || toDate ? "Date range set" : "Date"}</Button></PopoverTrigger>
+              <PopoverContent className="grid gap-2">
+                <DatePicker id="activity-from" value={fromDate} onValueChange={setFromDate} clearable placeholder="Any start date" />
+                <DatePicker id="activity-to" value={toDate} onValueChange={setToDate} clearable placeholder="Any end date" />
+              </PopoverContent>
+            </Popover>
+            {hasFilters ? <Button variant="ghost" size="sm" onClick={clearFilters}>Reset filters</Button> : null}
+          </div>
+          {dateRangeInvalid ? <p role="alert" className="text-sm text-destructive">End date must be on or after the start date.</p> : null}
 
           <Card className="overflow-hidden">
             {dateRangeInvalid ? (
@@ -309,86 +249,67 @@ export function StockActivityView() {
             ) : movements.length === 0 ? (
               <EmptyState
                 action={
-                  fromDate || toDate || facetMode !== "none" ? (
+                  hasFilters ? (
                     <Button type="button" variant="outline" size="sm" onClick={clearFilters}>
                       Clear filters
                     </Button>
                   ) : null
                 }
               >
-                No stock movements match the current filters.
+                {movementStatus === "CanLoadMore" || movementStatus === "LoadingMore"
+                  ? "No matches in this page. Older movements are available."
+                  : "No stock movements match the current filters."}
               </EmptyState>
             ) : (
-              <table className={STACKED_TABLE.table}>
-                <thead className={STACKED_TABLE.head}>
-                  <tr>
-                    <th scope="col" className={STACKED_TABLE.th}>Time</th>
-                    <th scope="col" className={STACKED_TABLE.th}>Item</th>
-                    <th scope="col" className={STACKED_TABLE.th}>Type & Qty</th>
-                    <th scope="col" className={STACKED_TABLE.th}>Before → After</th>
-                    <th scope="col" className={STACKED_TABLE.th}>Staff</th>
-                    <th scope="col" className={STACKED_TABLE.th}>Reason</th>
-                    <th scope="col" className={cn(STACKED_TABLE.th, "text-right")}>Action</th>
-                  </tr>
-                </thead>
-                <tbody className={STACKED_TABLE.body}>
-                  {movements.map((row) => {
-                    const meta = MOVEMENT_KIND_META[row.kind] ?? { label: row.kind, tone: "neutral" as const };
-                    return (
-                      <tr key={row._id} className={STACKED_TABLE.row}>
-                        <td data-label="Time" className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled, "whitespace-nowrap tabular-nums text-xs text-muted-foreground")}>
-                          <time dateTime={new Date(row.createdAt).toISOString()}>
-                            {staffDateTime(row.createdAt)}
-                          </time>
-                        </td>
-                        <td data-label="Item" className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled)}>
-                          <span className="block font-medium text-foreground">{row.itemLabel}</span>
-                          {row.sku ? <span className="font-mono text-xs text-muted-foreground">{row.sku}</span> : null}
-                        </td>
-                        <td data-label="Type & Qty" className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled)}>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <StatusBadge tone={meta.tone} label={meta.label} />
-                            <span
-                              className={cn(
-                                "font-mono text-sm font-semibold tabular-nums",
-                                row.delta > 0
-                                  ? "text-emerald-700 dark:text-emerald-300"
-                                  : row.delta < 0
-                                    ? "text-red-700 dark:text-red-300"
-                                    : "text-muted-foreground",
-                              )}
-                            >
-                              {formatSignedDelta(row.delta)}
-                            </span>
-                          </div>
-                        </td>
-                        <td data-label="Before → After" className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled, "whitespace-nowrap font-mono text-xs tabular-nums")}>
-                          {row.before} → <strong className="text-foreground">{row.after}</strong>
-                        </td>
-                        <td data-label="Staff" className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled, "text-xs text-muted-foreground")}>
-                          {row.actorLabel}
-                        </td>
-                        <td data-label="Reason" className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled, "max-w-xs text-xs text-muted-foreground")}>
-                          {row.reason ?? (row.reasonCode ? row.reasonCode.replaceAll("_", " ") : "—")}
-                        </td>
-                        <td className={cn(STACKED_TABLE.cell, "lg:text-right")}>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              setActiveReportContext(null);
-                              setActiveMovementId(row._id);
-                            }}
-                          >
-                            Inspect
-                          </Button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+              <>
+                <div className="divide-y lg:hidden">
+                  {[...groups].map(([key, rows]) => (
+                    <div key={key} className="divide-y">
+                      {rows.length > 1 ? <p className="bg-muted/40 px-3 py-1 text-xs">{operationLabel(rows[0])} · {rows.length} movements</p> : null}
+                      {rows.map(row => (
+                        <button key={row._id} type="button" className="grid min-h-12 w-full grid-cols-[minmax(0,1fr)_auto] gap-x-2 px-3 py-2 text-left hover:bg-muted/40" onClick={() => openMovement(row._id)}>
+                          <span className="truncate text-sm font-medium">{row.itemLabel}</span>
+                          <span className={deltaClass(row.delta)}>{formatSignedDelta(row.delta)}</span>
+                          <span className="truncate text-xs text-muted-foreground">{MOVEMENT_KIND_META[row.kind].label} · {staffDateTime(row.createdAt)}</span>
+                          <span className="truncate font-mono text-xs text-muted-foreground">{row.before} → {row.after}</span>
+                        </button>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+                <table className="hidden w-full table-fixed text-left text-sm lg:table">
+                  <thead className="bg-muted/40 text-xs text-muted-foreground">
+                    <tr>
+                      {["Time", "Item", "Type & Qty", "Before → After", "Staff", "Reason"].map((label, index) =>
+                        <th key={label} scope="col" className={cn("whitespace-nowrap px-3 py-2", ["w-[16%]", "w-[27%]", "w-[16%]", "w-[12%]", "w-[15%]", "w-[14%]"][index])}>{label}</th>
+                      )}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {[...groups].map(([key, rows]) => (
+                      <Fragment key={key}>
+                        {rows.length > 1 ? <tr><th colSpan={6} className="bg-muted/40 px-3 py-1 text-xs font-medium">{operationLabel(rows[0])} · {rows.length} movements</th></tr> : null}
+                        {rows.map(row => (
+                          <tr key={row._id} className="cursor-pointer hover:bg-muted/40" onClick={() => openMovement(row._id)}>
+                            <td className="truncate whitespace-nowrap px-3 py-2 text-xs text-muted-foreground">{staffDateTime(row.createdAt)}</td>
+                            <td className="px-3 py-2">
+                              <button type="button" className="block w-full truncate text-left font-medium" title={row.itemLabel} onClick={event => { event.stopPropagation(); openMovement(row._id); }}>{row.itemLabel}</button>
+                              {row.sku ? <span className="block truncate whitespace-nowrap font-mono text-xs text-muted-foreground" title={row.sku}>{row.sku}</span> : null}
+                            </td>
+                            <td className="px-3 py-2">
+                              <span className="block truncate text-xs">{MOVEMENT_KIND_META[row.kind].label}</span>
+                              <span className={deltaClass(row.delta)}>{formatSignedDelta(row.delta)}</span>
+                            </td>
+                            <td className="truncate whitespace-nowrap px-3 py-2 font-mono text-xs">{row.before} → {row.after}</td>
+                            <td className="truncate px-3 py-2 text-xs text-muted-foreground" title={row.actorLabel}>{row.actorLabel}</td>
+                            <td className="px-3 py-2 text-xs text-muted-foreground"><span className="line-clamp-2 wrap-anywhere">{row.reason ?? (row.reasonCode ? row.reasonCode.replaceAll("_", " ") : "—")}</span></td>
+                          </tr>
+                        ))}
+                      </Fragment>
+                    ))}
+                  </tbody>
+                </table>
+              </>
             )}
           </Card>
 
@@ -433,7 +354,7 @@ export function StockActivityView() {
                     <div className="grid min-w-0 flex-1 gap-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <StatusBadge {...PROBLEM_STATUS_META[report.status]} />
-                        <span className="text-xs text-muted-foreground">
+                        <span className="max-w-full truncate text-xs text-muted-foreground" title={report.actorLabel}>
                           {report.actorLabel} · {staffDateTime(report.createdAt)}
                         </span>
                         {report.requestedQuantity !== undefined ? (
@@ -442,6 +363,11 @@ export function StockActivityView() {
                           </span>
                         ) : null}
                       </div>
+                      {report.movement ? (
+                        <p className="truncate text-sm font-medium">
+                          {report.movement.itemLabel} · {MOVEMENT_KIND_META[report.movement.kind].label} · {formatSignedDelta(report.movement.delta)}
+                        </p>
+                      ) : <p className="text-sm text-muted-foreground">Movement unavailable</p>}
                       <p className="text-sm text-foreground">{report.reason}</p>
                       {report.resolution ? (
                         <p className="text-xs text-muted-foreground">
@@ -490,12 +416,12 @@ export function StockActivityView() {
             id: item.variantId,
             label: `${item.productName} · ${item.label}${item.sku ? ` (${item.sku})` : ""}`,
           });
-          setFacetMode("variant");
         }}
       />
 
       {activeMovementId ? (
         <MovementInspectSheet
+          key={`${branch.id}:${activeMovementId}:${activeReportContext?._id ?? ""}`}
           branchId={branch.id}
           movementId={activeMovementId}
           access={access}

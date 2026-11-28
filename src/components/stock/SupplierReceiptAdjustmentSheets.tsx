@@ -12,7 +12,10 @@ import { Label } from "@/components/ui/label";
 import { ReasonField } from "@/components/ui/reason-field";
 import { SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { StockStaleBanner, useStockDirtyGuard } from "./StockFormGuard";
-import { CORRECTION_REASON_CHIPS, createOperationKey, parseStockError, parseWholeQuantity, SUPPLIER_RETURN_REASON_CHIPS } from "./stock-format";
+import {
+  CORRECTION_REASON_CHIPS, createOperationKey, parseStockError, parseWholeQuantity, RETURN_OUTCOME_OPTIONS, SUPPLIER_RETURN_REASON_CHIPS,
+  type ReturnOutcomeValue,
+} from "./stock-format";
 
 type ReceiptLineRow = FunctionReturnType<typeof api.commerce.purchasing.receipt>["lines"][number];
 type AdjustmentRow = FunctionReturnType<typeof api.commerce.purchasing.receiptAdjustments>["page"][number];
@@ -22,10 +25,13 @@ export function CorrectReceiptLineSheet({
   line,
   onClose,
   onDone,
+  onSwitchToReturn,
 }: {
   line: ReceiptLineRow;
   onClose: () => void;
   onDone: (resolvedReport: boolean) => void;
+  /** Damaged goods leave through a supplier return, not a correction. */
+  onSwitchToReturn?: () => void;
 }) {
   const correctReceipt = useMutation(api.commerce.purchasing.correctReceipt);
   const [qtyText, setQtyText] = useState("");
@@ -153,7 +159,7 @@ export function CorrectReceiptLineSheet({
         <>
           <SheetTitle>Correct quantity</SheetTitle>
           <SheetDescription>
-            {line.item.productName} · {line.item.variantLabel} (up to {line.eligible} eligible)
+            {line.item.productName} · {line.item.variantLabel} (up to {line.eligible} eligible). For counting or posting errors: the units become due again on the order.
           </SheetDescription>
         </>
       }
@@ -207,7 +213,7 @@ export function CorrectReceiptLineSheet({
               setQtyText(e.target.value);
               setOpKey(createOperationKey("gr-corr"));
             }}
-            placeholder={String(line.eligible)}
+            placeholder="0"
           />
           <FieldError id="gr-corr-qty-err">{inlineQtyError}</FieldError>
         </div>
@@ -243,6 +249,14 @@ export function CorrectReceiptLineSheet({
           }}
           chips={CORRECTION_REASON_CHIPS}
         />
+        {onSwitchToReturn ? (
+          <p className="text-xs text-muted-foreground">
+            Goods damaged, expired or the wrong item?{" "}
+            <button type="button" className="font-medium text-foreground underline underline-offset-4" onClick={onSwitchToReturn}>
+              Return them to the supplier instead
+            </button>
+          </p>
+        ) : null}
 
         {mayConfirmNegative ? (
           <div className="grid gap-3 rounded-lg border border-amber-300/60 bg-amber-50/60 p-3.5 dark:border-amber-500/30 dark:bg-amber-950/20">
@@ -283,17 +297,18 @@ export function ReturnToSupplierSheet({
 }: {
   line: ReceiptLineRow;
   onClose: () => void;
-  onDone: () => void;
+  onDone: (result: { adjustmentId: Id<"supplierReceiptAdjustments">; outcome: ReturnOutcomeValue; quantity: number }) => void;
 }) {
   const submitReturn = useMutation(api.commerce.purchasing.supplierReturn);
   const [qtyText, setQtyText] = useState("");
   const [reason, setReason] = useState("");
+  const [outcome, setOutcome] = useState<ReturnOutcomeValue | null>(null);
   const [supplierReference, setSupplierReference] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [opKey, setOpKey] = useState(() => createOperationKey("gr-ret"));
 
-  const isDirty = qtyText.trim() !== "" || reason.trim() !== "" || supplierReference.trim() !== "";
+  const isDirty = qtyText.trim() !== "" || reason.trim() !== "" || supplierReference.trim() !== "" || outcome !== null;
   const { requestClose } = useStockDirtyGuard(isDirty, onClose, saving);
 
   async function handleSubmit(event: FormEvent) {
@@ -310,16 +325,22 @@ export function ReturnToSupplierSheet({
       document.getElementById("ret-reason")?.focus();
       return;
     }
+    if (!outcome) {
+      setError("Choose what the supplier will do.");
+      document.getElementById("ret-outcome-credit_expected")?.focus();
+      return;
+    }
     setSaving(true);
     try {
-      await submitReturn({
+      const result = await submitReturn({
         receiptLineId: line._id,
         quantity: parsed.value,
         reason: reason.trim(),
+        outcome,
         supplierReference: supplierReference.trim() || undefined,
         operationKey: opKey,
       });
-      onDone();
+      onDone({ adjustmentId: result.id as Id<"supplierReceiptAdjustments">, outcome, quantity: parsed.value });
     } catch (cause) {
       setError(parseStockError(cause, "Could not post supplier return.").message);
       setOpKey(createOperationKey("gr-ret"));
@@ -352,6 +373,29 @@ export function ReturnToSupplierSheet({
           onChange={setReason}
           chips={SUPPLIER_RETURN_REASON_CHIPS}
         />
+        <fieldset className="grid gap-2">
+          <legend className="mb-1 text-sm font-medium text-foreground">Outcome (required)</legend>
+          {RETURN_OUTCOME_OPTIONS.map((option) => (
+            <label key={option.value} className="flex items-start gap-2.5 rounded-md border border-border p-2.5 text-sm has-[:checked]:border-foreground">
+              <input
+                id={`ret-outcome-${option.value}`}
+                type="radio"
+                name="ret-outcome"
+                value={option.value}
+                checked={outcome === option.value}
+                onChange={() => {
+                  setOutcome(option.value);
+                  setOpKey(createOperationKey("gr-ret"));
+                }}
+                className="mt-0.5 size-4 accent-foreground"
+              />
+              <span className="grid gap-0.5">
+                <span className="font-medium text-foreground">{option.label}</span>
+                <span className="text-xs text-muted-foreground">{option.hint}</span>
+              </span>
+            </label>
+          ))}
+        </fieldset>
         <div className="grid gap-1.5">
           <Label htmlFor="ret-ref">Supplier return / RMA reference (optional)</Label>
           <Input id="ret-ref" value={supplierReference} onChange={(e) => setSupplierReference(e.target.value)} />

@@ -7,7 +7,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 
 /** A button on the toast, e.g. Undo. The toast closes once it resolves, or shows its error. */
-export type ToastAction = { label: string; run: () => unknown | Promise<unknown> };
+export type ToastAction = { label: string; retryOnError?: boolean; run: () => unknown | Promise<unknown> };
 
 export type ToastState = { id: number; message: string; action?: ToastAction };
 
@@ -63,6 +63,7 @@ export function useToast(ms = 8000) {
     // Hold the toast while the action runs, and on an error until it is dismissed.
     clearTimeout(timer.current);
     setBusy(true);
+    setError("");
     try {
       await action.run();
       if (seq.current === id) setCurrent(null);
@@ -130,7 +131,7 @@ export function Toast({
           className="pointer-events-auto flex w-full max-w-md items-center gap-2 rounded-xl border border-border bg-card py-2 pl-4 pr-2 text-sm text-card-foreground shadow-xl sm:w-auto"
         >
           <p className={cn("min-w-0 flex-1 py-1 font-medium [overflow-wrap:anywhere]", error && "text-destructive")}>{error || current.message}</p>
-          {action && !error ? (
+          {action && (!error || action.retryOnError) ? (
             <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void run?.()}>
               {busy ? <Spinner label={`${action.label}…`} className="text-current" /> : <Undo2 aria-hidden className="size-4" />}
               {action.label}

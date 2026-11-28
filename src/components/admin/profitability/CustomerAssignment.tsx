@@ -10,12 +10,18 @@ export function CustomerAssignment({
   visit,
   expected,
   reference,
+  onDirty,
+  onSaving,
   done,
+  close,
 }: {
   visit: Id<'appointments'>;
   expected: Id<'customers'> | null;
   reference: string;
+  onDirty: () => void;
+  onSaving: (saving: boolean) => void;
   done: () => void;
+  close: () => void;
 }) {
   const field = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -25,10 +31,14 @@ export function CustomerAssignment({
     [selected, setSelected] = useState<Id<'customers'> | null>(null);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState('');
-  const matches = useQuery(api.marketing.profitability.findCustomers, name.trim().length >= 2 ? { name } : 'skip');
+  const matches = useQuery(
+    api.marketing.profitability.findCustomers,
+    name.trim().length >= 2 ? { name } : 'skip',
+  );
   const save = useMutation(api.marketing.profitability.identifyCustomer);
   async function assign(customerId: Id<'customers'> | null) {
     setBusy(true);
+    onSaving(true);
     setError('');
     try {
       await save({ appointmentId: visit, expected, customerId });
@@ -37,14 +47,15 @@ export function CustomerAssignment({
       setError(marketingErrorText(err, 'Could not link the customer.'));
     } finally {
       setBusy(false);
+      onSaving(false);
     }
   }
   return (
-    <div className="grid gap-3 border-y border-border bg-muted/40 p-4">
+    <div className="grid gap-3 border-y border-border bg-muted/40 p-4" onChange={onDirty}>
       <h3 className="font-semibold">Identify customer for {reference}</h3>
       <p className="text-sm text-muted-foreground">
-        Confirm who received this service. This correction applies on the delivery date and recalculates historical
-        LTV and CAC. The visit history records who made the change.
+        Confirm who received this service. This correction applies on the delivery date and recalculates
+        historical LTV and CAC. The visit history records who made the change.
       </p>
       <label className="grid gap-1 text-sm">
         Find customer
@@ -109,7 +120,7 @@ export function CustomerAssignment({
             Remove assignment
           </Button>
         )}
-        <Button size="sm" variant="ghost" disabled={busy} onClick={done}>
+        <Button size="sm" variant="ghost" disabled={busy} onClick={close}>
           Close
         </Button>
       </div>

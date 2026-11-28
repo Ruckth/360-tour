@@ -175,7 +175,9 @@ export function AdminBranchProvider({ children }: { children: ReactNode }) {
           !live.branches.some((branch) => branch.id === id)
         ) return false;
       }
-      const href = branchSwitchHref(pathname, search);
+      // Keep a first-time Stock bookmark until its branch-aware view can check access.
+      const firstStockChoice = !currentId && (pathname === "/admin/stock" || pathname.startsWith("/admin/stock/"));
+      const href = firstStockChoice ? null : branchSwitchHref(pathname, search);
       const back = currentId ? branchReturnHref(pathname, search) : null;
       if (back && href && currentId) {
         const landedOn = href.split("?")[0];

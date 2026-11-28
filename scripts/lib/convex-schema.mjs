@@ -15,16 +15,17 @@ export const COMMERCE_TABLE_NAMES = [
 ];
 const STOCK_TABLE_GROUPS = {
   'convex/commerce/stockCoreTables.ts': [
-    'stockGrants', 'stockBranchPolicies', 'stockOperations', 'stockOperationKeys', 'stockCorrections', 'stockProblemReports',
+    'stockBins', 'stockBinPositions', 'stockBinRelocations',
+    'stockGrants', 'stockBranchPolicies', 'stockReorderPoints', 'stockOperations', 'stockOperationKeys', 'stockCorrections', 'stockProblemReports',
   ],
   'convex/commerce/purchasingTables.ts': [
-    'suppliers', 'purchaseRequests', 'purchaseRequestLines', 'purchaseOrders', 'purchaseOrderLines',
+    'suppliers', 'supplierActivity', 'purchaseRequests', 'purchaseRequestLines', 'purchaseOrders', 'purchaseOrderLines',
     'purchaseOrderRevisions', 'supplierReceipts', 'supplierReceiptLines', 'supplierReceiptAdjustments', 'purchaseHolds',
     'stockIncoming', 'purchaseOperations', 'purchaseEvents',
   ],
   'convex/commerce/stockExpansionTables.ts': [
     'stockTracking', 'stockLots', 'stockLotBalances', 'stockLotMovements', 'stockReservations',
-    'stockTransfers', 'stockTransferLines', 'stockTransferEvents',
+    'stockTransfers', 'stockTransferLines', 'stockTransferEvents', 'stockLotCountSessions',
   ],
   'convex/pos/tables.ts': ['retailCartAdds'],
 };

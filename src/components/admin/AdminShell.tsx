@@ -202,8 +202,8 @@ function AdminFrameBody({ userEmail, checkoutBackend = convexCheckoutBackend, ch
     };
   }, []);
 
-  // A first-time person with two or more branches chooses once before any page.
-  if (branch.needsChoice && !redirect) return <BranchChooser email={access.email ?? userEmail ?? null} />;
+  // Stock renders its branch chooser in the workspace so a bookmarked task can resume in place.
+  if (branch.needsChoice && !redirect && !pathname.startsWith("/admin/stock/") && pathname !== "/admin/stock") return <BranchChooser email={access.email ?? userEmail ?? null} />;
 
   return (
     <SidebarProvider

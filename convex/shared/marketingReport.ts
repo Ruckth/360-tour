@@ -2,7 +2,7 @@ import { roundRatio } from "./money";
 import { v, type Infer } from 'convex/values';
 import type { Id } from '../_generated/dataModel';
 import { isIsoDate } from './dates';
-import type { ATTRIBUTION_MODEL } from './marketingAttribution';
+import { ATTRIBUTION_MODEL } from './marketingAttribution';
 
 /**
  * Release 3b: what the marketing dashboard reads.
@@ -135,6 +135,45 @@ export type ReportData = {
 	/** The read budget ran out: figures are incomplete and the UI must say so. */
 	truncated: boolean;
 };
+
+const reportEntry = v.union(v.literal('link'), v.literal('qr'));
+const reportSession = v.object({
+  id: v.id('marketingSessions'), day: v.string(), linkId: v.optional(v.id('marketingLinks')), campaignId: v.optional(v.id('marketingCampaigns'))
+});
+const reportTouch = v.object({
+  linkId: v.id('marketingLinks'), campaignId: v.id('marketingCampaigns'), slug: v.string(), campaignName: v.string(),
+  source: v.string(), medium: v.string(), entry: reportEntry
+});
+const reportSale = v.object({
+  kind: v.union(v.literal('stay'), v.literal('order'), v.literal('appointment')),
+  id: v.string(), label: v.string(), ref: v.optional(v.string()), propertyId: v.optional(v.id('properties')),
+  channel: v.union(v.literal('web'), v.literal('web_chat'), v.literal('messaging'), v.literal('admin'), v.literal('pos'), v.literal('desk')),
+  bucket: v.union(v.literal('tracked'), v.literal('unknown'), v.literal('staff'), v.literal('messaging')),
+  evidence: v.optional(v.union(v.literal('tracked'), v.literal('current_link'), v.literal('scanned'))),
+  session: v.optional(reportSession), customPrice: v.optional(v.boolean()), last: v.optional(reportTouch), first: v.optional(reportTouch),
+  coupon: v.optional(v.object({ couponId: v.id('coupons'), code: v.string(), campaignId: v.optional(v.id('marketingCampaigns')) })),
+  createdDay: v.string(), paidDay: v.optional(v.string()), settlementDay: v.optional(v.string()),
+  paid: v.boolean(), collected: v.number(), refunded: v.number(), discount: v.number(),
+  saleValue: v.optional(v.number()), vatBase: v.optional(v.number()), vat: v.optional(v.number())
+});
+
+export const reportDataValidator = v.object({
+  asOf: v.number(), from: v.string(), to: v.string(), basis: reportBasisValidator, timeZone: v.literal('Asia/Bangkok'),
+  currency: v.literal('THB'), model: v.literal(ATTRIBUTION_MODEL),
+  sales: v.array(reportSale),
+  events: v.array(v.object({ saleId: v.string(), kind: v.union(v.literal('payment'), v.literal('refund')), day: v.string(), amount: v.number() })),
+  sessions: v.array(v.object({ day: v.string(), linkId: v.optional(v.id('marketingLinks')), campaignId: v.optional(v.id('marketingCampaigns')), count: v.number() })),
+  convertedSessions: v.optional(v.array(reportSession)),
+  campaigns: v.array(v.object({ id: v.id('marketingCampaigns'), name: v.string(), source: v.string(), medium: v.string(), status: v.string(), budget: v.optional(v.number()) })),
+  links: v.array(v.object({ id: v.id('marketingLinks'), slug: v.string(), name: v.string(), campaignId: v.id('marketingCampaigns'), entry: reportEntry, status: v.string() })),
+  coupons: v.array(v.object({ id: v.id('coupons'), code: v.string(), campaignId: v.optional(v.id('marketingCampaigns')), status: v.string() })),
+  properties: v.array(v.object({ id: v.id('properties'), name: v.string() })),
+  spend: v.array(v.object({ id: v.id('marketingSpend'), campaignId: v.id('marketingCampaigns'), amount: v.number(), from: v.string(), to: v.string(), note: v.optional(v.string()) })),
+  tenderByDay: v.array(v.object({ day: v.string(), method: v.string(), moneyIn: v.number(), moneyOut: v.number() })),
+  voucherByDay: v.array(v.object({ day: v.string(), kind: v.union(v.literal('issued'), v.literal('redeemed'), v.literal('credited'), v.literal('revoked'), v.literal('expired')), paid: v.number(), goodwill: v.number() })),
+  goodwillByDay: v.array(v.object({ day: v.string(), target: v.union(v.literal('voucher'), v.literal('grant')), reasonCode: v.optional(v.string()), units: v.number(), faceValue: v.number() })),
+  excluded: v.object({ nonThb: v.number() }), truncated: v.boolean()
+});
 
 /** Days from `from` to `to` inclusive, or null when either is not a YYYY-MM-DD date or to < from. */
 export function reportDayCount(from: string, to: string): number | null {

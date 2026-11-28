@@ -14,7 +14,7 @@ import { MAX_LINES, orderLines } from './orderLines';
 import { hasCommerceReceipt, returnPayments } from './returnGuards';
 import type { encodeReturnApprovalReview } from './staffApprovalState';
 import type { returnPart } from '../validators';
-import { readReturnMovementLots, remainingReturnLots, selectReturnLots, type LotAllocation, type ReturnLot, type ReturnLotState } from './returnLots';
+import { readReturnMovementLots, packedReturnLots, remainingReturnLots, selectReturnLots, type LotAllocation, type ReturnLot, type ReturnLotState } from './returnLots';
 
 export type ReturnPart = Infer<typeof returnPart>;
 export type OrderReturn = Doc<'orderReturns'>;
@@ -41,7 +41,7 @@ type ReturnPartAmount = {
 export type ReturnRow = { line: Line; snapshot: Snapshot; amount: number; parts: ReturnPartAmount[]; visit?: VisitReturn };
 export type ReturnProduct = {
   contentKey: string; units: number; disposition: 'sellable' | 'damaged';
-  movementId: Id<'stockMovements'>; handover?: Handover; selection: UnitSelection; summary: ReturnPartAmount;
+  movementId: Id<'stockMovements'>; handover?: Handover; selection: UnitSelection; summary: ReturnPartAmount; content?: Snapshot['contents'][number];
 };
 type GrantClaim = { grant: Grant; paid: number; goodwill: number };
 type GoodsReturn = { stock: Stock; movementId: Id<'stockMovements'>; sellable: number; damaged: number; lotAllocations?: LotAllocation[] };
@@ -162,8 +162,10 @@ export async function selectReturnRows(ctx: ReadCtx, lines: Line[], parts: Retur
         previous.disposition === part.disposition;
     });
     if (samePart) returnError('RETURN_DUPLICATE_PART', 'Select each item or package content once.');
-    if ('lotAllocations' in part && part.lotAllocations && part.disposition !== 'sellable') {
-      returnError('RETURN_INVALID_LOTS', 'Confirm lots only for sellable goods received back.');
+    if ('lotAllocations' in part && part.lotAllocations && part.disposition !== 'sellable' &&
+        !(part.disposition === 'damaged' && line.saleSnapshot?.contents.find(content =>
+          content.contentKey === (part.kind === 'content' ? part.contentKey : 'product'))?.packedLots)) {
+      returnError('RETURN_INVALID_LOTS', 'Confirm lots only for eligible goods received back.');
     }
     if (part.kind === 'content' ? line.kind !== 'package' : part.kind === 'cancelPackage' ? line.kind !== 'package' : line.kind === 'package') {
       returnError('RETURN_INVALID_PART', 'Choose the package or its individual contents.');
@@ -359,7 +361,7 @@ export async function planReturnParts(
           }
           for (const item of physical) {
             products.push({ contentKey: content.contentKey, units: item.units, disposition: item.disposition!,
-              movementId: content.stockMovementId, handover, selection: item, summary: summaries.get(item)! });
+              movementId: content.stockMovementId, handover, content, selection: item, summary: summaries.get(item)! });
           }
         }
       }
@@ -393,7 +395,7 @@ export async function planReturnParts(
   if (!rows.length && !grants.length && !issued.length) returnError('RETURN_NOTHING_LEFT', 'There is no returnable value or quantity left.');
   const physical = new Set(products.map(product => product.selection));
   if (selected.some(row => row.selections.some(part => 'lotAllocations' in part && part.lotAllocations && !physical.has(part)))) {
-    returnError('RETURN_INVALID_LOTS', 'Confirm lots only for sellable goods received back.');
+    returnError('RETURN_INVALID_LOTS', 'Confirm lots only for eligible goods received back.');
   }
   return { rows, grants, issued, products, goodwill };
 }
@@ -468,20 +470,34 @@ export async function planReturnStock(ctx: ReadCtx, products: ReturnProduct[]) {
       groups.set(move._id, group);
     }
     group[product.disposition] += product.units;
-    if (product.disposition !== 'sellable') continue;
+    const packed = product.content?.packedLots;
+    if (product.disposition !== 'sellable' && !packed) continue;
     if (!remainingByMove.has(move._id)) {
       const { tracked, lots } = await readReturnMovementLots(ctx, move);
       remainingByMove.set(move._id, tracked ? remainingReturnLots(lots) : null);
     }
     const remaining = remainingByMove.get(move._id);
     if (!remaining) {
-      if (product.selection.lotAllocations) returnError('RETURN_INVALID_LOTS', 'This item has no tracked lots.');
+      if (packed || product.selection.lotAllocations) returnError('RETURN_INVALID_LOTS', 'This item has no tracked lots.');
       continue;
     }
-    const confirmedLots = selectReturnLots(product.units, product.selection.lotAllocations, remaining);
+    const partRemaining = packed && remainingReturnLots(packedReturnLots(
+      [...remaining.values()].map(({ lot, remaining }) => ({ ...lot, quantity: remaining })),
+      packed, product.content?.returnedPackedLots,
+    ));
+    const confirmedLots = selectReturnLots(product.units, product.selection.lotAllocations, partRemaining || remaining);
+    if (packed && product.content) {
+      const used = new Map(product.content.returnedPackedLots?.map(lot => [lot.lotId, lot.quantity]));
+      for (const { lotId, quantity } of confirmedLots) used.set(lotId, (used.get(lotId) ?? 0) + quantity);
+      product.content.returnedPackedLots = Array.from(used, ([lotId, quantity]) => ({ lotId, quantity }));
+    }
     const allocations = confirmedLots.map(({ lotId, quantity }) => ({ lotId, quantity }));
     product.summary.lots = confirmedLots;
     allocationsByPart.set(product.selection, allocations);
+    if (product.disposition !== 'sellable') continue;
+    if (partRemaining) {
+      for (const { lotId, quantity } of allocations) remaining.get(lotId)!.remaining -= quantity;
+    }
     const combined = new Map(group.lotAllocations?.map(lot => [lot.lotId, lot.quantity]));
     for (const { lotId, quantity } of allocations) combined.set(lotId, (combined.get(lotId) ?? 0) + quantity);
     group.lotAllocations = Array.from(combined, ([lotId, quantity]) => ({ lotId, quantity }));

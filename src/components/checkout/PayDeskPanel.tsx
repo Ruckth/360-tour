@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { useNow } from "@/lib/staff-bookings";
 import { parseMoneyInput } from "@/lib/money-input";
 import { cn } from "@/lib/utils";
 import { satangToBaht } from "convex/shared/money";
@@ -317,6 +318,7 @@ export default function PayDeskPanel({ mode: opened, view, onBack, onPaid, onSub
   // Nothing new starts while disconnected: the banner says why, and what was sent is kept.
   const tenderLocked = busy || moneyHeld || step?.kind === "recovery" || elsewhere || attempt?.status === "recovering" || !connected || loadingAttempt;
   // A give-back part, and a recovery child's part, show on their own; a split's parts show in place.
+  const holdUntil = step?.kind === "instruct" || step?.kind === "checkPrevious" ? step.leg.stockHoldUntil : undefined;
   const ownInstruction = instructing && (mode !== "split" || step.leg.direction === "giveBack" || attempt?.status === "recovering");
   return (
     <div ref={root} className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-y-auto px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] @container" data-testid="pay-panel" data-pay-desk="">
@@ -338,6 +340,7 @@ export default function PayDeskPanel({ mode: opened, view, onBack, onPaid, onSub
       )}
 
       {loadingAttempt ? <div className="grid min-h-28 place-items-center" data-testid="pay-loading"><Spinner /></div> : null}
+      {holdUntil ? <CheckoutStockHold until={holdUntil} /> : null}
       {roomSplit ? <LinkedShop shopOrderId={roomSplit.shopOrderId} onOpenOrder={onOpenOrder} /> : null}
       {elsewhere && attempt ? <InProgressElsewhere attempt={attempt} /> : null}
       {step?.kind === "checkPrevious" && step.leg.key !== arming ? <CheckPrevious key={step.leg.key} leg={step.leg} draft={attempt ? readCashDraft(attempt, step.leg) : undefined} busy={busy} onRecord={(outcome, extra) => void record(step.leg, outcome, extra)} onTendered={(tendered) => saveCashTendered(step.leg, tendered)} /> : null}
@@ -389,6 +392,13 @@ export default function PayDeskPanel({ mode: opened, view, onBack, onPaid, onSub
 
 /** "Charge ฿4,900 on the terminal": shown only after the part is armed. Confirm, or Not taken. */
 type TenderEntry = { onTendered: (leg: PaymentLeg, tendered: number | null) => void };
+
+function CheckoutStockHold({ until }: { until: number }) {
+  const now = useNow(5_000);
+  return <p className="text-sm text-muted-foreground" role="status">
+    {t(until > now ? "pay.stockHoldUntil" : "pay.stockHoldExpiredAt", { time: payCopy.time(until) })}
+  </p>;
+}
 
 function Instruction({ leg, busy, onTendered, onRecord }: TenderEntry & { leg: PaymentLeg; busy: boolean; onRecord: (outcome: LegOutcome, extra?: { received?: number }) => void }) {
   const cash = leg.method === "cash";

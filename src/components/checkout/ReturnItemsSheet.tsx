@@ -177,8 +177,10 @@ function ReturnPicker({ view, lineId, tillId, manager, outcome, onPreview, onAut
   const [uncertain, setUncertain] = useState(false);
   const lock = useRef(false);
 
-  const sellable = parts.filter(part => part.kind === "goods" && choices[part.partKey]?.condition === "sellable");
-  const lotResult = desk.useLots(sellable.length ? { orderId: view.order._id, parts: sellable.map(({ lineId, contentKey }) => ({
+  const physical = parts.filter(part => part.kind === "goods" && (
+    choices[part.partKey]?.condition === "sellable" || (part.packed && choices[part.partKey]?.condition === "damaged")
+  ));
+  const lotResult = desk.useLots(physical.length ? { orderId: view.order._id, parts: physical.map(({ lineId, contentKey }) => ({
     lineId, ...(contentKey === null ? {} : { contentKey }),
   })) } : null);
   const lotOptions = useMemo(() => Array.isArray(lotResult) ? new Map(lotResult.map(option => [returnLotKey(option), option])) : null, [lotResult]);
@@ -276,10 +278,10 @@ function ReturnPicker({ view, lineId, tillId, manager, outcome, onPreview, onAut
             ))}
           </ul>
         ) : <p className="text-sm text-muted-foreground">{t("returns.nothingToReturn")}</p>}
-        {sellable.length && lotResult instanceof Error ? (
+        {physical.length && lotResult instanceof Error ? (
           <p role="alert" className="text-sm text-destructive">{t("returns.lotsUnavailable")}</p>
         ) : null}
-        {sellable.length && lotResult === undefined ? (
+        {physical.length && lotResult === undefined ? (
           <p role="status" className="text-sm text-muted-foreground">{t("returns.loadingLots")}</p>
         ) : null}
         {voucherSale ? (
@@ -366,10 +368,10 @@ function PartChoice({ part, choice, disabled, lots, onChange }: {
             );
           })}
         </div>
-        {choice?.condition === "sellable" && lots?.unavailable ? (
+        {(choice?.condition === "sellable" || (choice?.condition === "damaged" && part.packed)) && lots?.unavailable ? (
           <p role="alert" className="text-sm text-destructive">{t("returns.lotsUnavailable")}</p>
         ) : null}
-        {choice?.condition === "sellable" && lots?.tracked ? <ReturnLotChoice options={lots.lots} choice={choice} disabled={disabled} onChange={onChange} /> : null}
+        {(choice?.condition === "sellable" || (choice?.condition === "damaged" && part.packed)) && lots?.tracked ? <ReturnLotChoice options={lots.lots} choice={choice} disabled={disabled} onChange={onChange} /> : null}
       </div>
     );
   }

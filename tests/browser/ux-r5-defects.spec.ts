@@ -151,9 +151,9 @@ for (const theme of ["light", "dark"]) {
       return (high + 0.05) / (low + 0.05);
     });
     expect(contrast).toBeGreaterThanOrEqual(3);
-    const subtitle = page.locator("#kpi-title + p");
-    const range = (await subtitle.innerText()).split(" · ")[0];
-    expect(range).toMatch(/\d.*2026/);
+    const scope = page.getByRole("region", { name: "Report scope", exact: true });
+    const range = "8 Oct–6 Nov 2026";
+    await expect(scope.getByText(range, { exact: true })).toBeVisible();
     expect((await page.locator("body").innerText()).split(range).length - 1).toBe(1);
   });
 }

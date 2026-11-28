@@ -2,11 +2,13 @@
 
 import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
+import { resortTodayIso } from "convex/shared/time";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import { ArrowLeft, Check, Pencil, Send, ShoppingCart, Undo2 } from "lucide-react";
 import { useState, type FormEvent } from "react";
-import { EmptyState, SkeletonRows, STACKED_TABLE } from "@/components/admin/admin-bulk";
+import { EmptyState, SkeletonRows } from "@/components/admin/admin-bulk";
+import { STOCK_TABLE } from "./stock-table";
 import { useAdminBranch } from "@/components/admin/branch/branch-context";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
 import {
@@ -30,9 +32,11 @@ import { staffDateTime } from "@/lib/staff-time";
 import { cn } from "@/lib/utils";
 import Link from "@/platform/link";
 import { useRouter, useSearchParams } from "@/platform/navigation";
+import { BranchStockAccessSheet } from "./BranchStockAccessSheet";
 import { PurchaseEventHistory } from "./PurchaseEventHistory";
 import {
   createOperationKey,
+  formatSatang,
   ORDER_STATUS_META,
   parseStockError,
   parseWholeQuantity,
@@ -57,6 +61,13 @@ export function PurchaseRequestDetailView({ requestId }: { requestId: string }) 
 
   const id = requestId as Id<"purchaseRequests">;
   const detail = useQuery(api.commerce.purchasing.request, { requestId: id });
+  const coverage = useQuery(api.commerce.purchasing.requestApproverCoverage,
+    detail?.request.mine && branch?.id === detail.request.branchId &&
+    (detail.request.status === "draft" || detail.request.status === "needs_changes" || detail.request.status === "awaiting_approval")
+      ? { branchId: detail.request.branchId } : "skip");
+  const copyRequest = useMutation(api.commerce.purchasing.copyPurchaseRequest);
+  const [copyKey, setCopyKey] = useState(() => createOperationKey("pr-copy"));
+  const [accessOpen, setAccessOpen] = useState(false);
   const [tab, setTab] = useState<"overview" | "history">("overview");
 
   const { results: events, status: historyStatus, loadMore: loadMoreHistory } = usePaginatedQuery(
@@ -75,13 +86,14 @@ export function PurchaseRequestDetailView({ requestId }: { requestId: string }) 
   const declineReq = useMutation(api.commerce.purchasing.declinePurchaseRequest);
   const closeReq = useMutation(api.commerce.purchasing.closePurchaseRequest);
 
-  const [editOpen, setEditOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(searchParams.get("edit") === "1");
   const [createOrderOpen, setCreateOrderOpen] = useState(false);
   const [approveOpen, setApproveOpen] = useState(false);
   const [reasonAction, setReasonAction] = useState<{
     action: "send_back" | "decline" | "discard" | "close";
     revision: number;
   } | null>(null);
+  const [submitWarning, setSubmitWarning] = useState<string>();
   const [busy, setBusy] = useState(false);
 
   if (!branch) return null;
@@ -113,21 +125,46 @@ export function PurchaseRequestDetailView({ requestId }: { requestId: string }) 
     );
   }
 
-  const canEdit = request.mine && (request.status === "draft" || request.status === "needs_changes");
+  const canEdit = permissions.requester && request.mine && (request.status === "draft" || request.status === "needs_changes");
   const canWithdraw = request.mine && request.status === "awaiting_approval";
   const canDecide = permissions.approver && !request.mine && request.status === "awaiting_approval";
   const hasAvailableForOrder = request.status === "approved" && lines.some((l) => l.available > 0);
   const canCreateOrder = permissions.buyer && hasAvailableForOrder;
-  const canCloseDemand = permissions.lead && request.status === "approved";
+  const fullyOrdered = request.status === "approved" && lines.length > 0 && !hasAvailableForOrder;
+  const canCloseDemand = permissions.lead && hasAvailableForOrder;
+  const canCopy = permissions.requester && request.mine &&
+    (request.status === "declined" || request.status === "closed" || request.status === "needs_changes");
 
-  async function handleSubmitNow() {
+  async function handleCopy() {
     setBusy(true);
     try {
-      await submitReq({
+      const result = await copyRequest({ requestId: request._id, operationKey: copyKey });
+      const search = new URLSearchParams({ edit: "1" });
+      if (result.skipped) search.set("skipped", String(result.skipped));
+      if (returnTo) search.set("returnTo", returnTo);
+      setCopyKey(createOperationKey("pr-copy"));
+      router.push(`/admin/stock/purchasing/requests/${result.id}?${search}`);
+    } catch (cause) {
+      show(parseStockError(cause, "Could not copy request.").message, "danger");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleSubmitNow() {
+    if (request.needBy && request.needBy < resortTodayIso()) {
+      show("Update or clear the past need-by date before submitting.", "danger");
+      setEditOpen(true);
+      return;
+    }
+    setBusy(true);
+    try {
+      const result = await submitReq({
         requestId: request._id,
         expectedRevision: request.revision,
         operationKey: createOperationKey("pr-submit"),
       });
+      setSubmitWarning(result.warning);
       show("Request submitted for approval.", "success");
     } catch (cause) {
       show(parseStockError(cause, "Could not submit request.").message, "danger");
@@ -189,7 +226,7 @@ export function PurchaseRequestDetailView({ requestId }: { requestId: string }) 
           </div>
           <div className="flex flex-wrap items-center gap-2.5">
             <h2 className="font-mono text-xl font-semibold text-foreground">{request.reference}</h2>
-            <StatusBadge {...REQUEST_STATUS_META[request.status]} />
+            <StatusBadge {...(fullyOrdered ? { ...REQUEST_STATUS_META.approved, label: "Fully ordered" } : REQUEST_STATUS_META[request.status])} />
           </div>
           <p className="text-xs text-muted-foreground">
             Requested by {request.requesterLabel}
@@ -210,6 +247,11 @@ export function PurchaseRequestDetailView({ requestId }: { requestId: string }) 
             <Button type="button" variant="outline" disabled={busy} onClick={() => setEditOpen(true)}>
               <Pencil aria-hidden className="size-4" />
               Edit
+            </Button>
+          ) : null}
+          {canCopy ? (
+            <Button type="button" variant="outline" disabled={busy} onClick={() => void handleCopy()}>
+              Copy to new request
             </Button>
           ) : null}
           {canWithdraw ? (
@@ -273,7 +315,15 @@ export function PurchaseRequestDetailView({ requestId }: { requestId: string }) 
         </div>
       </div>
 
-      {request.mine && request.status === "awaiting_approval" && permissions.approver ? (
+      {coverage?.otherApprovers === 0 ? (
+        <Callout tone="warning" action={coverage.canManageAccess ? (
+          <Button type="button" size="sm" variant="outline" onClick={() => setAccessOpen(true)}>Branch stock access</Button>
+        ) : undefined}>
+          No other stock approver at {coverage.branchName}. Ask the owner to assign one in Branch stock access.
+        </Callout>
+      ) : submitWarning && coverage === undefined && request.status === "awaiting_approval" ? (
+        <Callout tone="warning">{submitWarning}</Callout>
+      ) : request.mine && request.status === "awaiting_approval" && permissions.approver ? (
         <Callout tone="info">
           Self-approval is disabled. Another branch approver must review this request.
         </Callout>
@@ -286,8 +336,14 @@ export function PurchaseRequestDetailView({ requestId }: { requestId: string }) 
         </Callout>
       ) : null}
 
+      {request.copiedFromId ? (
+        <Callout tone="info">
+          Copied from <Link className="underline" href={`/admin/stock/purchasing/requests/${request.copiedFromId}`}>{request.copiedFromReference}</Link>.
+        </Callout>
+      ) : null}
+
       {request.note ? (
-        <Card className="px-4 py-3 text-sm text-muted-foreground">
+        <Card className="whitespace-pre-wrap break-words px-4 py-3 text-sm text-muted-foreground">
           <strong className="text-foreground">Requester note:</strong> {request.note}
         </Card>
       ) : null}
@@ -306,36 +362,37 @@ export function PurchaseRequestDetailView({ requestId }: { requestId: string }) 
       {tab === "overview" ? (
         <div {...tabPanelProps("pr-detail", "overview")} className="grid gap-5">
           <Card className="overflow-hidden">
-            <table className={STACKED_TABLE.table}>
-              <thead className={STACKED_TABLE.head}>
+            <table className={STOCK_TABLE.table}>
+              <thead className={STOCK_TABLE.head}>
                 <tr>
-                  <th scope="col" className={STACKED_TABLE.th}>Item</th>
-                  <th scope="col" className={cn(STACKED_TABLE.th, "text-right")}>Requested</th>
-                  <th scope="col" className={cn(STACKED_TABLE.th, "text-right")}>Approved</th>
-                  <th scope="col" className={cn(STACKED_TABLE.th, "text-right")}>Committed</th>
-                  <th scope="col" className={cn(STACKED_TABLE.th, "text-right")}>Available</th>
+                  <th scope="col" className={STOCK_TABLE.th}>Item</th>
+                  <th scope="col" className={cn(STOCK_TABLE.th, "text-right")}>Requested</th>
+                  <th scope="col" className={cn(STOCK_TABLE.th, "text-right")}>Approved</th>
+                  <th scope="col" className={cn(STOCK_TABLE.th, "text-right")}>Committed</th>
+                  <th scope="col" className={cn(STOCK_TABLE.th, "text-right")}>Available</th>
                 </tr>
               </thead>
-              <tbody className={STACKED_TABLE.body}>
+              <tbody className={STOCK_TABLE.body}>
                 {lines.map((line) => (
-                  <tr key={line._id} className={STACKED_TABLE.row}>
-                    <td data-label="Item" className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled)}>
+                  <tr key={line._id} className={STOCK_TABLE.row}>
+                    <td data-label="Item" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled)}>
                       <span className="block font-medium text-foreground">{line.item.productName}</span>
                       <span className="text-xs text-muted-foreground">
                         {line.item.variantLabel}
                         {line.item.sku ? ` · ${line.item.sku}` : ""}
                       </span>
+                      <RequestStockContext context={line.context} />
                     </td>
-                    <td data-label="Requested" className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled, "font-mono tabular-nums lg:text-right")}>
+                    <td data-label="Requested" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled, "font-mono tabular-nums lg:text-right")}>
                       {line.quantity}
                     </td>
-                    <td data-label="Approved" className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled, "font-mono tabular-nums lg:text-right")}>
+                    <td data-label="Approved" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled, "font-mono tabular-nums lg:text-right")}>
                       {line.approvedQuantity}
                     </td>
-                    <td data-label="Committed" className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled, "font-mono tabular-nums lg:text-right")}>
+                    <td data-label="Committed" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled, "font-mono tabular-nums lg:text-right")}>
                       {line.committedQuantity}
                     </td>
-                    <td data-label="Available" className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled, "font-mono font-semibold tabular-nums lg:text-right")}>
+                    <td data-label="Available" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled, "font-mono font-semibold tabular-nums lg:text-right")}>
                       {line.available}
                     </td>
                   </tr>
@@ -386,10 +443,17 @@ export function PurchaseRequestDetailView({ requestId }: { requestId: string }) 
         </div>
       )}
 
-      {editOpen ? (
+      {accessOpen && coverage?.canManageAccess ? (
+        <BranchStockAccessSheet branchId={branch.id} branchName={branch.name}
+          onClose={() => setAccessOpen(false)} onSaved={(message) => show(message, "success")} />
+      ) : null}
+
+      {editOpen && canEdit ? (
         <RequestEditorSheet
           branchId={branch.id}
           branchName={branch.name}
+          canSetReorderPoint={permissions.lead}
+          copySkipped={request.copiedFromId ? Number(searchParams.get("skipped")) : 0}
           liveRevision={request.revision}
           existing={{
             requestId: request._id,
@@ -404,9 +468,14 @@ export function PurchaseRequestDetailView({ requestId }: { requestId: string }) 
               quantityText: String(line.quantity),
             })),
           }}
-          onClose={() => setEditOpen(false)}
-          onSaved={() => {
+          onClose={() => {
             setEditOpen(false);
+            if (searchParams.get("edit") === "1") router.replace(`/admin/stock/purchasing/requests/${request._id}${returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : ""}`);
+          }}
+          onSaved={(_, warning) => {
+            setEditOpen(false);
+            if (searchParams.get("edit") === "1") router.replace(`/admin/stock/purchasing/requests/${request._id}${returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : ""}`);
+            setSubmitWarning(warning);
             show("Request updated.", "success");
           }}
         />
@@ -486,6 +555,19 @@ export function PurchaseRequestDetailView({ requestId }: { requestId: string }) 
   );
 }
 
+function RequestStockContext({ context }: { context: RequestLineRow["context"] }) {
+  return (
+    <dl className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+      <div className="flex gap-1"><dt>On hand</dt><dd>{context.onHand}</dd></div>
+      <div className="flex gap-1"><dt>On order</dt><dd>{context.onOrder}</dd></div>
+      <div className="flex gap-1"><dt>Other open demand</dt><dd>{context.otherDemand}</dd></div>
+      {context.lastUnitCost !== undefined ? (
+        <div className="flex gap-1"><dt>Last unit cost</dt><dd>{formatSatang(context.lastUnitCost)}</dd></div>
+      ) : null}
+    </dl>
+  );
+}
+
 function ApproveRequestSheet({
   request,
   lines,
@@ -542,6 +624,10 @@ function ApproveRequestSheet({
       document.getElementById(firstInvalidId)?.focus();
       return;
     }
+    if (!lineInputs.some((line) => line.approvedQuantity > 0)) {
+      setError("Approve at least one unit, or send back or decline this request.");
+      return;
+    }
     if (isStale) {
       setError("This request changed while open. Review the updated revision above before approving.");
       return;
@@ -557,7 +643,6 @@ function ApproveRequestSheet({
       onApproved();
     } catch (cause) {
       setError(parseStockError(cause, "Could not approve request.").message);
-      setOpKey(createOperationKey("pr-approve"));
       setSaving(false);
     }
   }
@@ -587,13 +672,23 @@ function ApproveRequestSheet({
             description={`This request moved from revision ${reviewedRevision} to ${request.revision}. Your entered quantities are preserved — review the latest request before approving.`}
             actionLabel="Review updated request"
             onReview={() => {
+              setQtys((current) => Object.fromEntries(lines.map((line) => [
+                line._id,
+                current[line._id] !== initialQtys[line._id] ? current[line._id] : String(line.quantity),
+              ])));
               setReviewedRevision(request.revision);
               setError("");
               setOpKey(createOperationKey("pr-approve"));
             }}
           />
         ) : null}
-        <ul className="grid gap-3">
+        {request.note ? (
+          <div className="grid gap-1 rounded-lg bg-muted p-3 text-sm">
+            <strong>Requester note</strong>
+            <p className="whitespace-pre-wrap break-words">{request.note}</p>
+          </div>
+        ) : null}
+        <ul className="grid gap-2">
           {lines.map((line) => {
             const err = lineErrors[line._id];
             const inputId = `appr-qty-${line._id}`;
@@ -605,6 +700,7 @@ function ApproveRequestSheet({
                   </span>
                   <span className="font-mono text-xs text-muted-foreground">Requested: {line.quantity}</span>
                 </div>
+                <RequestStockContext context={line.context} />
                 <div className="grid gap-1 sm:max-w-xs">
                   <Label htmlFor={inputId}>Approved quantity (0–{line.quantity})</Label>
                   <NumberField

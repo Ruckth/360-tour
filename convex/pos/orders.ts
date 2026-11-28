@@ -1,8 +1,13 @@
+import { requireBranchAccess } from '../branches/model';
+import { readStockAvailability } from '../commerce/model';
+import { packedPart } from './validators';
+import { defaultPaymentBranch } from './private/paymentAttempt';
+import { assertHandoverEditable } from './private/handoverCustody';
 import type { QueryCtx } from '../_generated/server';
 import { paginationOptsValidator } from 'convex/server';
 import { ConvexError, v } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
-import { canAccessCheckoutOrderBranch, canReadCheckoutOrder, staffQuery } from '../auth/model';
+import { canAccessCheckoutOrderBranch, canReadCheckoutOrder, staffMutation, staffQuery } from '../auth/model';
 import { appointmentMoney } from '../services/model';
 import { stayMoney } from '../shared/stayMoney';
 import { couponVersion } from '../marketing/model';
@@ -18,7 +23,7 @@ import { type OrderPromotionView } from '../shared/posCoupons';
 import { MAX_STAY_ROWS } from '../bookings/model';
 import { customerCard } from './private/customerModel';
 import { discardedInfo, restoreConflicts } from './private/lifecycleModel';
-import { ORDERS_PAGE_MAX, appointmentAttachable, appointmentRef, bookingClosed, customerName, discardedField, isSourceRow, lineDuration, linePhoto, oneSource, orderReads, orderSourceRefs, remaining, sourceArgs, sourceIssue, sourceRows, stayRef } from './private/orderModel';
+import { ORDERS_PAGE_MAX, appointmentAttachable, appointmentRef, bookingClosed, customerName, discardedField, editableLine, isSourceRow, lineDuration, linePhoto, oneSource, orderReads, orderSourceRefs, remaining, sourceArgs, sourceIssue, sourceRows, stayRef } from './private/orderModel';
 
 import { publicReturnClaim } from './private/returnModel';
 import { receiptVisitReturnParts } from './private/returnPlan';
@@ -558,4 +563,88 @@ export const listOpenOrders = staffQuery({
 		}
 		return { ...page, page: rows };
 	}
+});
+
+async function packingParts(ctx: QueryCtx, line: Doc<'orderLines'>) {
+  if (line.kind === 'product' && line.variantId) {
+    return [{ contentKey: 'product', variantId: line.variantId, units: line.qty }];
+  }
+  const { packageVersionId } = line;
+  const version = line.kind === 'package' && packageVersionId
+    ? await readOrderProjection(ctx, () => ctx.db.get(packageVersionId)) : null;
+  return (version?.contents ?? []).flatMap(part => {
+    if (part.kind !== 'product' && part.kind !== 'chooseProduct') return [];
+    const variantId = part.kind === 'product' ? part.variantId :
+      line.saleSnapshot?.chosenVariants.find(choice => choice.contentKey === part.contentKey)?.variantId;
+    return variantId ? [{ contentKey: part.contentKey, variantId, units: part.units }] : [];
+  });
+}
+
+async function packingOptions(ctx: QueryCtx, line: Doc<'orderLines'>, branchId: Id<'branches'>, display = true) {
+  const parts = await packingParts(ctx, line);
+  const variantIds = new Set(parts.map(part => part.variantId));
+  const now = Date.now();
+  const byVariant = new Map(await Promise.all([...variantIds].map(async variantId => {
+    const stock = await readOrderProjection(ctx, () => ctx.db.query('stockLevels').withIndex('by_variantId_and_branchId', q =>
+      q.eq('variantId', variantId).eq('branchId', branchId)).unique());
+    const availability = await readStockAvailability(ctx, { branchId, variantId, onHand: stock?.onHand ?? 0 });
+    if (!availability.tracking) return [variantId, null] as const;
+    const [variant, lots] = await Promise.all([
+      display ? readOrderProjection(ctx, () => ctx.db.get(variantId)) : null,
+      Promise.all(availability.lots.filter(lot => lot.available > 0 && lot.expiresAt > now).map(async lot => ({
+        lotId: lot.lotId, quantity: lot.available, code: display ? (await readOrderProjection(ctx, () => ctx.db.get(lot.lotId)))?.code ?? '' : '',
+      }))),
+    ]);
+    return [variantId, { label: variant?.label ?? line.name, lots }] as const;
+  })));
+  return parts.flatMap(part => {
+    const options = byVariant.get(part.variantId);
+    return options ? [{ ...part, ...options }] : [];
+  });
+}
+
+export const packedLotOptions = staffQuery({
+  capability: 'checkout',
+  args: { lineId: v.id('orderLines') },
+  handler: async (ctx, { lineId }) => {
+    const line = await ctx.db.get(lineId);
+    const order = line && await ctx.db.get(line.orderId);
+    if (!line || order?.status !== 'draft' || order.activeAttemptId || !canReadCheckoutOrder(ctx.staff, order)) return null;
+    const branchId = order.stockBranchId ?? (await defaultPaymentBranch(ctx))._id;
+    const branch = await requireBranchAccess(ctx, ctx.staff, branchId);
+    if (branch.state !== 'active') return null;
+    return { revision: order.revision, packing: line.packing ?? [], parts: await packingOptions(ctx, line, branchId) };
+  },
+});
+
+export const savePackedLots = staffMutation({
+  capability: 'checkout',
+  args: { lineId: v.id('orderLines'), expectedRevision: v.number(), parts: v.array(packedPart) },
+  handler: async (ctx, { lineId, expectedRevision, parts }) => {
+    const { line, order } = await editableLine(ctx, lineId, ctx.staff);
+    if (order.revision !== expectedRevision || !canReadCheckoutOrder(ctx.staff, order)) {
+      throw new ConvexError('This order changed. Review the packed lots again.');
+    }
+    await assertHandoverEditable(ctx, order, line);
+    const branchId = order.stockBranchId ?? (await defaultPaymentBranch(ctx))._id;
+    const branch = await requireBranchAccess(ctx, ctx.staff, branchId);
+    if (branch.state !== 'active') throw new ConvexError('Choose an active selling branch.');
+    if (parts.length > COMMERCE_LIMITS.package.contents || new Set(parts.map(part => part.contentKey)).size !== parts.length) {
+      throw new ConvexError('Choose each packed component once.');
+    }
+    const options = parts.length ? await packingOptions(ctx, line, branchId, false) : [];
+    for (const { contentKey, allocations } of parts) {
+      const part = options.find(option => option.contentKey === contentKey);
+      if (!part || allocations.length > part.lots.length ||
+          new Set(allocations.map(lot => lot.lotId)).size !== allocations.length ||
+          allocations.reduce((sum, lot) => sum + lot.quantity, 0) !== part.units ||
+          !allocations.every(lot => Number.isSafeInteger(lot.quantity) && lot.quantity > 0 &&
+            part.lots.some(option => option.lotId === lot.lotId && option.quantity >= lot.quantity))) {
+        throw new ConvexError('Choose available lots matching the packed quantity for this component.');
+      }
+    }
+    await ctx.db.patch(lineId, { packing: parts.length ? parts : undefined });
+    await ctx.db.patch(order._id, { revision: order.revision + 1, updatedAt: Date.now() });
+    return true;
+  },
 });

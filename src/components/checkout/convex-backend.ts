@@ -1,11 +1,11 @@
 "use client";
 
-import { useConvex, useConvexConnectionState, useMutation, usePaginatedQuery, useQueries, useQuery } from "convex/react";
+import { useConvex, useConvexConnectionState, useMutation, usePaginatedQuery, useQueries, useQuery, type RequestForQueries } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { PaginationResult } from "convex/server";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useStaffAccess } from "@/components/admin/staff-access";
-import { returnArgs, type AdjustTarget, type ApprovalQueueStatus, type CheckoutBackend, type CommerceBackend, type CustomerPage, type HistoryAudience, type HistoryEntry, type ReturnsDesk } from "./backend";
+import { returnArgs, type AdjustTarget, type ApprovalQueueStatus, type CheckoutBackend, type CommerceBackend, type CustomerPage, type HistoryAudience, type HistoryEntry, type ReturnsDesk, type ReturnLotsLookup, type ApprovalId } from "./backend";
 import { cutoverAccess, payDeskCommerce, type PayDeskTransport, withSwapOwner } from "./pay-desk-backend";
 
 const SKIP = "skip" as const;
@@ -196,7 +196,12 @@ const payDesk = payDeskCommerce(transport, cutoverAccess(transport));
 // sale switch Off nothing here runs; the managers' return queue loads only once payments use attempts.
 const returnsDesk: ReturnsDesk = {
   useReturn: (args) => useQuery(api.pos.commands.returnItems.get, args ? returnArgs(args) : SKIP),
-  useLots: (args) => useQueries(args ? { lots: { query: api.pos.commands.returnItems.lots, args } } : {}).lots,
+  useLots: (args) => {
+    const key = args ? JSON.stringify(args) : "";
+    const lotRequests = useMemo((): RequestForQueries =>
+      key ? { lots: { query: api.pos.commands.returnItems.lots, args: JSON.parse(key) as ReturnLotsLookup } } : {}, [key]);
+    return useQueries(lotRequests).lots;
+  },
   useRequestStatus: (requestId) => useQuery(api.pos.staffApprovals.myStatus, requestId ? { requestId } : SKIP),
   useActions: () => {
     const convex = useConvex();
@@ -295,9 +300,13 @@ export const convexCheckoutBackend: CheckoutBackend = {
   useOrderApprovals: (orderId) => useQuery(api.pos.staffApprovals.forOrder, orderId ? { orderId } : SKIP),
   // One cursor-paged compact list; only the selected request's detail is read (no per-row order or detail reads).
   usePendingApprovals: () => usePaginatedQuery(api.pos.staffApprovals.pendingPage, useStaffAccess().capabilities.approve ? {} : SKIP, { initialNumItems: 20 }),
-  useApprovalQueueStates: (rows) => useQueries(Object.fromEntries(rows.map(row => [row._id, {
-    query: api.pos.staffApprovals.queueStatus, args: { requestId: row._id },
-  }]))) as Record<string, ApprovalQueueStatus | Error | undefined>,
+  useApprovalQueueStates: (rows) => {
+    const ids = rows.map(row => row._id).join(",");
+    const approvalRequests = useMemo(() => Object.fromEntries(
+      (ids ? ids.split(",") : []).map(id => [id, { query: api.pos.staffApprovals.queueStatus, args: { requestId: id as ApprovalId } }]),
+    ), [ids]);
+    return useQueries(approvalRequests) as Record<string, ApprovalQueueStatus | Error | undefined>;
+  },
   useExpiredApprovals: (open) => useQuery(api.pos.staffApprovals.recentExpired, open ? {} : SKIP),
   useApprovalDetail: (requestId) => useQuery(api.pos.staffApprovals.detail, requestId ? { requestId } : SKIP),
   useFindOrder: (orderNumber, receipt) => useQuery(api.pos.orders.findOrderByNumber, orderNumber === null ? SKIP : { orderNumber, receipt }),

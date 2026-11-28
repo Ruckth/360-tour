@@ -65,7 +65,7 @@ export function inspectEndpointReferences(path: string, source: string) {
       const callee = node.expression;
       const name = ts.isIdentifier(callee) ? (callAliases.get(callee.text) ?? callee.text) : ts.isPropertyAccessExpression(callee) ? callee.name.text : '';
       const index = ['runAfter', 'runAt'].includes(name) ? 1 : ['interval', 'daily', 'weekly', 'monthly', 'cron'].includes(name) ? 2 : 0;
-      if (['watchQuery', 'usePaginatedQuery', 'useQuery', 'useMutation', 'useAction', 'query', 'mutation', 'action', 'runQuery', 'runMutation', 'runAction', 'runAfter', 'runAt', 'interval', 'daily', 'weekly', 'monthly', 'cron'].includes(name)) {
+      if (['watchQuery', 'usePaginatedQuery', 'useQuery', 'useMutation', 'useAction', 'query', 'consistentQuery', 'mutation', 'action', 'runQuery', 'runMutation', 'runAction', 'runAfter', 'runAt', 'interval', 'daily', 'weekly', 'monthly', 'cron'].includes(name)) {
         const arg = node.arguments[index];
         const target = arg && reference(arg);
         if (target) references.add(target);

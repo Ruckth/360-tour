@@ -17,45 +17,52 @@ export async function profitFees(ctx: QueryCtx, start: number, end: number): Pro
         .query('orders')
         .withIndex('by_status_and_paidAt', (q) => q.eq('status', status).gte('paidAt', start).lt('paidAt', end)),
     );
-  const [paid, voided, corrected, refunds] = await Promise.all([
-    byPaid('paid'),
-    byPaid('void'),
-    readRangeWithinBudget(
-      ctx,
-      ctx.db
-        .query('orders')
-        .withIndex('by_paymentEffectiveAt', (q) =>
-          q.gte('paymentEffectiveAt', start).lt('paymentEffectiveAt', end),
-        ),
-    ),
-    readRangeWithinBudget(
-      ctx,
-      ctx.db
-        .query('orderRefunds')
-        .withIndex('by_businessDate', (q) =>
-          q.gte('businessDate', resortTodayIso(start)).lte('businessDate', resortTodayIso(end - 1)),
-        ),
-    ),
-  ]);
-  const orders = new Map([...paid, ...voided, ...corrected].map((o) => [o._id, o]));
   const budget = readBudget(ctx);
   const lines: ProfitLine[] = [];
   const feeLines = new Map<Id<'orderLines'>, Doc<'orderLines'>>();
-  // Fee rows are sparse in most resorts. Probe their existing index before opening one
-  // extras range per receipt. Large fee histories keep the period-bounded fallback.
   const feeGroups = new Map<Id<'orders'>, Doc<'orderLines'>[]>();
-  const probeLimit = Math.min(500, orders.size + 1);
+  // A complete sparse fee probe avoids reading every paid service receipt in the period.
+  const probeLimit = 501;
   if (!budget.range()) throw new ReadBudgetExceeded();
-  const probe = await ctx.db
-    .query('orderLines')
-    .withIndex('by_feeAppointmentId', (q) => q.gt('feeAppointmentId', undefined))
-    .take(probeLimit);
-  for (const line of probe) {
-    if (!budget.document(line)) throw new ReadBudgetExceeded();
-    const group = feeGroups.get(line.orderId) ?? [];
-    group.push(line);
-    feeGroups.set(line.orderId, group);
+  const probe = await ctx.db.query('orderLines')
+    .withIndex('by_feeAppointmentId', (q) => q.gt('feeAppointmentId', undefined)).take(probeLimit);
+  for (const line of probe) if (!budget.document(line)) throw new ReadBudgetExceeded();
+  const sparse = probe.length < probeLimit;
+  const orders = new Map<Id<'orders'>, Doc<'orders'>>();
+  if (sparse) {
+    for (const line of probe) {
+      if (!line.fee) continue;
+      feeLines.set(line._id, line);
+      const group = feeGroups.get(line.orderId) ?? [];
+      group.push(line);
+      feeGroups.set(line.orderId, group);
+    }
+    for (const orderId of feeGroups.keys()) {
+      if (!budget.range()) throw new ReadBudgetExceeded();
+      const order = await ctx.db.get(orderId);
+      if (!order) continue;
+      if (!budget.document(order)) throw new ReadBudgetExceeded();
+      orders.set(order._id, order);
+    }
+  } else {
+    const [paid, voided, corrected] = await Promise.all([
+      byPaid('paid'),
+      byPaid('void'),
+      readRangeWithinBudget(
+        ctx,
+        ctx.db.query('orders').withIndex('by_paymentEffectiveAt', (q) =>
+          q.gte('paymentEffectiveAt', start).lt('paymentEffectiveAt', end),
+        ),
+      ),
+    ]);
+    for (const order of [...paid, ...voided, ...corrected]) orders.set(order._id, order);
   }
+  const refunds = await readRangeWithinBudget(
+    ctx,
+    ctx.db.query('orderRefunds').withIndex('by_businessDate', (q) =>
+      q.gte('businessDate', resortTodayIso(start)).lte('businessDate', resortTodayIso(end - 1)),
+    ),
+  );
   function entry(
     line: Doc<'orderLines'>,
     order: Doc<'orders'>,
@@ -83,7 +90,7 @@ export async function profitFees(ctx: QueryCtx, start: number, end: number): Pro
     const at = order.paymentEffectiveAt ?? order.paidAt;
     if (at === undefined || at < start || at >= end || order.voidUnreceived) continue;
     const extras =
-      probe.length < probeLimit
+      sparse
         ? (feeGroups.get(order._id) ?? [])
         : await readRangeWithinBudget(
             ctx,

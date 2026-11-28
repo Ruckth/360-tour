@@ -18,6 +18,7 @@ import {
   createOperationKey,
   parseOptionalSatang,
   parseStockError,
+  type RejectReasonCodeValue,
   parseWholeQuantity,
   STOCK_MAX_LINES,
   STOCK_PAGE_SIZE,
@@ -33,6 +34,7 @@ import {
   type PoLineFieldErrors,
   type ReceiveAcceptableHold,
 } from "./ReceiveDeliverySections";
+import { buildOrderReceiptLines, overReceiptErrors } from "./receive-order-lines";
 import { useStockDirtyGuard } from "./StockFormGuard";
 import type { StockLineFieldErrors } from "./StockLineEditor";
 import { StockVariantPickerDialog, type BalancePickerRow } from "./StockVariantPicker";
@@ -122,14 +124,20 @@ export function ReceiveDeliverySheet({
     orderId: Id<"purchaseOrders">;
     issuedRevision: number;
     revision: number;
+    /** Due quantity per line when the receiver last reviewed the order (P43). */
+    dueByLine?: Record<string, number>;
   } | null>(null);
+  /** Lines whose due quantity changed in the revision the receiver just reviewed: earlier → current. */
+  const [dueChanges, setDueChanges] = useState<{ lineId: string; label: string; before: number; after: number }[]>([]);
 
   if (orderDetail && (!reviewedOrder || reviewedOrder.orderId !== orderDetail.order._id)) {
     setReviewedOrder({
       orderId: orderDetail.order._id,
       issuedRevision: orderDetail.order.issuedRevision,
       revision: orderDetail.order.revision,
+      dueByLine: Object.fromEntries(orderDetail.lines.map((line) => [line._id, line.due])),
     });
+    if (dueChanges.length) setDueChanges([]);
   }
 
   const isOrderStale = Boolean(
@@ -145,6 +153,7 @@ export function ReceiveDeliverySheet({
   const [acceptedByLine, setAcceptedByLine] = useState<Record<string, string>>({});
   const [rejectedByLine, setRejectedByLine] = useState<Record<string, string>>({});
   const [rejectReasonByLine, setRejectReasonByLine] = useState<Record<string, string>>({});
+  const [rejectCodeByLine, setRejectCodeByLine] = useState<Record<string, RejectReasonCodeValue | undefined>>({});
   const [selectedHoldByLine, setSelectedHoldByLine] = useState<Record<string, Id<"purchaseHolds"> | "">>({});
   const [poLineErrors, setPoLineErrors] = useState<PoLineFieldErrors>({});
   const [holdAutoSelectedKey, setHoldAutoSelectedKey] = useState("");
@@ -161,6 +170,8 @@ export function ReceiveDeliverySheet({
 
   // Shared header + held goods + error recovery
   const [deliveryReference, setDeliveryReference] = useState("");
+  const [invoiceTotalText, setInvoiceTotalText] = useState("");
+  const [invoiceTotalError, setInvoiceTotalError] = useState("");
   const [reason, setReason] = useState("");
   const [note, setNote] = useState("");
   const [heldLines, setHeldLines] = useState<HeldLineDraft[]>([]);
@@ -315,7 +326,8 @@ export function ReceiveDeliverySheet({
     const hasPoValues =
       Object.values(acceptedByLine).some((v) => v.trim() !== "") ||
       Object.values(rejectedByLine).some((v) => v.trim() !== "") ||
-      Object.values(rejectReasonByLine).some((v) => v.trim() !== "");
+      Object.values(rejectReasonByLine).some((v) => v.trim() !== "") ||
+      Object.values(rejectCodeByLine).some(Boolean);
     const hasDirectEdits =
       directLines.length !== initialLines.length ||
       directLines.some((line, idx) => {
@@ -337,6 +349,7 @@ export function ReceiveDeliverySheet({
       hasLotValues ||
       supplierChanged ||
       deliveryReference.trim() !== "" ||
+      invoiceTotalText.trim() !== "" ||
       reason.trim() !== "" ||
       note.trim() !== "" ||
       heldLines.length > 0
@@ -345,6 +358,8 @@ export function ReceiveDeliverySheet({
     acceptedByLine,
     rejectedByLine,
     rejectReasonByLine,
+    rejectCodeByLine,
+    invoiceTotalText,
     directLines,
     initialLines,
     lotCodeByKey,
@@ -447,6 +462,16 @@ export function ReceiveDeliverySheet({
       return;
     }
 
+    const invoiceParsed = parseOptionalSatang(invoiceTotalText);
+    if (!invoiceParsed.ok) {
+      setInvoiceTotalError(invoiceParsed.error);
+      setError("Fix the invoice total before posting.");
+      document.getElementById("recv-invoice-total")?.focus();
+      return;
+    }
+    setInvoiceTotalError("");
+    const invoiceTotal = invoiceParsed.value;
+
     const confirmDuplicate =
       duplicateConflict && duplicateReason.trim()
         ? { receiptId: duplicateConflict.receiptId, reason: duplicateReason.trim() }
@@ -461,80 +486,10 @@ export function ReceiveDeliverySheet({
         setError("This purchase order changed while receiving. Review the updated order above before posting.");
         return;
       }
-      const lineInputs: ReceiveOrderArgs["lines"] = [];
-      const acceptedSummary: { variantId: Id<"productVariants">; accepted: number }[] = [];
-      const nextPoErrors: PoLineFieldErrors = {};
-      let firstInvalidId: string | undefined;
-      const usedHoldIds = new Set<string>();
-
-      for (const line of orderDetail.lines) {
-        const accRaw = (acceptedByLine[line._id] ?? "").trim();
-        const rejRaw = (rejectedByLine[line._id] ?? "").trim();
-        if (!accRaw && !rejRaw) continue;
-        const accParsed = parseWholeQuantity(accRaw || "0", { allowZero: true, label: "Accepted quantity" });
-        const rejParsed = parseWholeQuantity(rejRaw || "0", { allowZero: true, label: "Rejected quantity" });
-        if (!accParsed.ok || accParsed.value === undefined) {
-          nextPoErrors[line._id] = { ...(nextPoErrors[line._id] ?? {}), accepted: accParsed.ok ? "Invalid accepted quantity." : accParsed.error };
-          firstInvalidId ??= `po-acc-${line._id}`;
-        }
-        if (!rejParsed.ok || rejParsed.value === undefined) {
-          nextPoErrors[line._id] = { ...(nextPoErrors[line._id] ?? {}), rejected: rejParsed.ok ? "Invalid rejected quantity." : rejParsed.error };
-          firstInvalidId ??= `po-rej-${line._id}`;
-        }
-        if (rejParsed.ok && (rejParsed.value ?? 0) > 0 && !(rejectReasonByLine[line._id] ?? "").trim()) {
-          nextPoErrors[line._id] = { ...(nextPoErrors[line._id] ?? {}), rejectReason: `Enter a rejection reason for ${line.item.productName}.` };
-          firstInvalidId ??= `po-rej-reason-${line._id}`;
-        }
-        const chosenHoldId = selectedHoldByLine[line._id] || "";
-        let verifiedHoldId: Id<"purchaseHolds"> | undefined;
-        if (chosenHoldId && accParsed.ok && (accParsed.value ?? 0) > 0) {
-          const matchedHold = eligibleHoldsByLine.get(line._id)?.find((h) => h.holdId === chosenHoldId);
-          if (!matchedHold) {
-            nextPoErrors[line._id] = { ...(nextPoErrors[line._id] ?? {}), hold: "Selected held goods record is no longer open for this line." };
-            firstInvalidId ??= `po-hold-${line._id}`;
-          } else if (usedHoldIds.has(matchedHold.holdId)) {
-            nextPoErrors[line._id] = { ...(nextPoErrors[line._id] ?? {}), hold: "Each held goods record can only be accepted once per receipt." };
-            firstInvalidId ??= `po-hold-${line._id}`;
-          } else if ((accParsed.value ?? 0) > matchedHold.remaining) {
-            const label = matchedHold.receiptReference ?? "the selected hold";
-            nextPoErrors[line._id] = { ...(nextPoErrors[line._id] ?? {}), accepted: `Accept at most ${matchedHold.remaining} held units for ${label}.` };
-            firstInvalidId ??= `po-acc-${line._id}`;
-          } else {
-            usedHoldIds.add(matchedHold.holdId);
-            verifiedHoldId = matchedHold.holdId;
-          }
-        }
-        const isTracked = trackedVariantIds.has(line.variantId);
-        const lotCode = (lotCodeByKey[line._id] ?? "").trim();
-        const lotExpiry = lotExpiryByKey[line._id] ?? "";
-        if (isTracked && accParsed.ok && (accParsed.value ?? 0) > 0) {
-          if (!lotCode) {
-            nextPoErrors[line._id] = { ...(nextPoErrors[line._id] ?? {}), lotCode: `Enter a lot code for ${line.item.productName}.` };
-            firstInvalidId ??= `po-lot-code-${line._id}`;
-          }
-          if (!lotExpiry) {
-            nextPoErrors[line._id] = { ...(nextPoErrors[line._id] ?? {}), lotExpiry: `Select an expiry date for ${line.item.productName}.` };
-            firstInvalidId ??= `po-lot-exp-${line._id}`;
-          }
-        }
-
-        if (!nextPoErrors[line._id] && accParsed.ok && rejParsed.ok) {
-          const acceptedVal = accParsed.value ?? 0;
-          const rejectedVal = rejParsed.value ?? 0;
-          if (acceptedVal > 0 || rejectedVal > 0) {
-            lineInputs.push({
-              orderLineId: line._id,
-              accepted: acceptedVal,
-              ...(rejectedVal > 0 ? { rejected: rejectedVal, rejectReason: (rejectReasonByLine[line._id] ?? "").trim() } : {}),
-              ...(verifiedHoldId ? { holdId: verifiedHoldId } : {}),
-              ...(isTracked && acceptedVal > 0 && lotCode && lotExpiry
-                ? { lotReceipt: { code: lotCode, expiresAt: resortMidnight(lotExpiry) } }
-                : {}),
-            });
-            if (acceptedVal > 0) acceptedSummary.push({ variantId: line.variantId, accepted: acceptedVal });
-          }
-        }
-      }
+      const { lineInputs, acceptedSummary, errors: nextPoErrors, firstInvalidId } = buildOrderReceiptLines(orderDetail, {
+        acceptedByLine, rejectedByLine, rejectReasonByLine, rejectCodeByLine, selectedHoldByLine,
+        lotCodeByKey, lotExpiryByKey, trackedVariantIds, eligibleHoldsByLine,
+      });
 
       if (Object.keys(nextPoErrors).length > 0) {
         setPoLineErrors(nextPoErrors);
@@ -559,6 +514,7 @@ export function ReceiveDeliverySheet({
         orderId: orderDetail.order._id,
         expectedIssuedRevision: reviewedOrder?.issuedRevision ?? orderDetail.order.issuedRevision,
         deliveryReference: deliveryReference.trim() || undefined,
+        invoiceTotal,
         note: note.trim() || undefined,
         reason: reason.trim() || undefined,
         confirmDuplicate,
@@ -646,6 +602,7 @@ export function ReceiveDeliverySheet({
       supplierId: supplier?.id,
       reason: reason.trim(),
       deliveryReference: deliveryReference.trim() || undefined,
+      invoiceTotal,
       note: note.trim() || undefined,
       bypassOpenOrders: confirmBypassOpenOrders || undefined,
       confirmDuplicate,
@@ -689,19 +646,9 @@ export function ReceiveDeliverySheet({
         }
         setServerOpenOrderMatches(matches);
       }
-      if (data?.code === "OVER_RECEIPT" && Array.isArray(data.lines)) {
-        const nextErrors: PoLineFieldErrors = {};
-        let firstId: string | undefined;
-        for (const row of data.lines) {
-          if (row && typeof row === "object" && typeof (row as { orderLineId?: unknown }).orderLineId === "string") {
-            const { orderLineId, due } = row as { orderLineId: string; due?: number };
-            nextErrors[orderLineId] = {
-              accepted: due !== undefined ? `At most ${due} still due on this line.` : "Exceeds remaining due quantity.",
-            };
-            firstId ??= `po-acc-${orderLineId}`;
-          }
-        }
-        setPoLineErrors(nextErrors);
+      if (data?.code === "OVER_RECEIPT") {
+        const { errors, firstId } = overReceiptErrors(data.lines);
+        setPoLineErrors(errors);
         if (firstId) document.getElementById(firstId)?.focus();
       }
     }
@@ -717,6 +664,7 @@ export function ReceiveDeliverySheet({
     setAcceptedByLine({});
     setRejectedByLine({});
     setRejectReasonByLine({});
+    setRejectCodeByLine({});
     setSelectedHoldByLine({});
     setPoLineErrors({});
     setError("");
@@ -818,6 +766,18 @@ export function ReceiveDeliverySheet({
             />
           ) : null}
 
+          {mode === "po" && dueChanges.length > 0 ? (
+            <Callout tone="warning" title="Due quantities changed in the new revision">
+              <ul className="grid gap-0.5 text-xs">
+                {dueChanges.map((change) => (
+                  <li key={change.lineId}>
+                    {change.label}: <span className="font-mono tabular-nums">{change.before} → {change.after}</span> due
+                  </li>
+                ))}
+              </ul>
+            </Callout>
+          ) : null}
+
           {mode === "po" ? (
             <ReceivePurchaseOrderSection
               branchName={branchName}
@@ -845,14 +805,36 @@ export function ReceiveDeliverySheet({
               onSelectOrder={switchToMatchedOrder}
               onAcceptStaleOrder={() => {
                 if (!orderDetail) return;
+                // Compare each line's pinned due with the new revision; keep typed values and flag any that now exceed it.
+                const pinned = reviewedOrder?.dueByLine ?? {};
+                const changes = orderDetail.lines
+                  .filter((line) => pinned[line._id] !== undefined && pinned[line._id] !== line.due)
+                  .map((line) => ({
+                    lineId: line._id, label: `${line.item.productName} · ${line.item.variantLabel}`, before: pinned[line._id], after: line.due,
+                  }));
+                const errors: PoLineFieldErrors = {};
+                let firstExceeding: string | undefined;
+                for (const change of changes) {
+                  const typed = Number((acceptedByLine[change.lineId] ?? "").trim() || "0");
+                  if (Number.isFinite(typed) && typed > change.after) {
+                    errors[change.lineId] = { accepted: `Due changed ${change.before} → ${change.after}. Enter ${change.after} or less, or hold the excess.` };
+                    firstExceeding ??= `po-acc-${change.lineId}`;
+                  }
+                }
+                setDueChanges(changes);
                 setReviewedOrder({
                   orderId: orderDetail.order._id,
                   issuedRevision: orderDetail.order.issuedRevision,
                   revision: orderDetail.order.revision,
+                  dueByLine: Object.fromEntries(orderDetail.lines.map((line) => [line._id, line.due])),
                 });
                 setError("");
-                setPoLineErrors({});
+                setPoLineErrors(errors);
                 setOpKey(createOperationKey("recv"));
+                if (firstExceeding) {
+                  const id = firstExceeding;
+                  requestAnimationFrame(() => document.getElementById(id)?.focus());
+                }
               }}
               onReceiveAllRemaining={receiveAllRemaining}
               onAcceptedChange={(lineId, val) => {
@@ -862,6 +844,12 @@ export function ReceiveDeliverySheet({
               }}
               onRejectedChange={(lineId, val) => { setRejectedByLine((curr) => ({ ...curr, [lineId]: val })); setOpKey(createOperationKey("recv")); }}
               onRejectReasonChange={(lineId, val) => { setRejectReasonByLine((curr) => ({ ...curr, [lineId]: val })); setOpKey(createOperationKey("recv")); }}
+              rejectCodeByLine={rejectCodeByLine}
+              onRejectCodeChange={(lineId, code) => {
+                setRejectCodeByLine((curr) => ({ ...curr, [lineId]: code }));
+                setPoLineErrors((curr) => curr[lineId]?.rejectReasonCode ? { ...curr, [lineId]: { ...curr[lineId], rejectReasonCode: undefined } } : curr);
+                setOpKey(createOperationKey("recv"));
+              }}
               onHoldChange={(lineId, holdId) => { setSelectedHoldByLine((curr) => ({ ...curr, [lineId]: holdId })); setOpKey(createOperationKey("recv")); }}
               onLotCodeChange={(lineId, val) => {
                 setLotCodeByKey((curr) => ({ ...curr, [lineId]: val }));
@@ -914,6 +902,13 @@ export function ReceiveDeliverySheet({
 
           <ReceiveDeliveryMetaSection
             deliveryReference={deliveryReference}
+            invoiceTotal={invoiceTotalText}
+            invoiceTotalError={invoiceTotalError}
+            onInvoiceTotalChange={(val) => {
+              setInvoiceTotalText(val);
+              setInvoiceTotalError("");
+              setOpKey(createOperationKey("recv"));
+            }}
             note={note}
             duplicateConflict={duplicateConflict}
             duplicateReason={duplicateReason}

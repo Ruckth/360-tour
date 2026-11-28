@@ -94,6 +94,9 @@ export type BreakdownRow = Money & {
 export type TotalRow = Money & { key: string; name: string; note?: string; sessions: number | null; convertedSessions: number; conv: number | null; roas?: Roas };
 
 export type Breakdown = {
+  sort: Sort;
+  canSortRoas: boolean;
+  scopedLines: SaleLine[];
   view: BreakdownView;
   path: DrillStep[];
   /** Tracked rows first, then the pinned "Not tracked" rows (or "No coupon"). */
@@ -497,18 +500,32 @@ function totalRow(key: string, name: string, money: Money, sessions: number | nu
 /** The breakdown table for a tab and drill path. */
 export function buildBreakdown(p: Prepared, view: BreakdownView, path: DrillStep[], sort: Sort): Breakdown {
   const tracked = p.lines.filter((line) => line.group === "tracked");
+  const valid: DrillStep[] = [];
+  for (const step of path) {
+    const parent = valid.at(-1);
+    const validRows = parent?.level === "source" ? campaignRows(p, tracked.filter(pathMatches(valid)), parent.id)
+      : !parent && view === "source" ? sourceRows(p, tracked)
+      : !parent && view === "campaign" ? campaignRows(p, tracked)
+      : [];
+    if (!validRows.some((row) => row.drill.level === step.level && row.drill.id === step.id && (p.allProperties || row.lines.length > 0))) break;
+    valid.push(step);
+  }
+  path = valid;
   const scoped = tracked.filter(pathMatches(path));
   const top = path.length === 0;
   const last = path[path.length - 1];
-  const showSessions = !p.cash && view !== "coupon";
-  const showRoas = view === "source" || view === "campaign";
+  const showSessions = p.allProperties && !p.cash && view !== "coupon";
+  const showRoas = p.allProperties && (view === "source" || view === "campaign") && last?.level !== "campaign";
 
   let rows: BreakdownRow[];
   if (view === "coupon") rows = couponRows(p);
   else if (top) rows = view === "source" ? sourceRows(p, scoped) : view === "campaign" ? campaignRows(p, scoped) : linkRows(p, scoped);
   else if (last.level === "source") rows = campaignRows(p, scoped, last.id);
   else rows = linkRows(p, scoped, last.id);
-  rows = sortRows(rows, sort);
+  const canSortRoas = showRoas && rows.some((row) => row.roas?.kind === "value");
+  const currentSort = (!showSessions && (sort.key === "sessions" || sort.key === "conv")) || (!canSortRoas && sort.key === "roas")
+    ? { key: "net", dir: "desc" } as const : sort;
+  rows = sortRows(rows, currentSort);
 
   const pinned: BreakdownRow[] = [];
   if (view === "coupon") {
@@ -536,7 +553,7 @@ export function buildBreakdown(p: Prepared, view: BreakdownView, path: DrillStep
   }
   if (top) totals.push(totalRow("business", "Business total", business.all, null, 0, undefined, p.cash ? "Payments, refunds and coupon settlements, tracked or not" : "All paid sales, tracked or not"));
 
-  return { view, path, rows, pinned, totals, showSessions, showRoas };
+  return { view, path, sort: currentSort, canSortRoas, scopedLines: top ? p.lines : scoped, rows, pinned, totals, showSessions, showRoas };
 }
 
 /** Display name of a drill step for breadcrumbs. */
@@ -553,7 +570,7 @@ export function sheetLines(lines: readonly SaleLine[]) {
 
 // ---------------------------------------------------------------- chart
 
-export type ChartMetric = "net" | "paid";
+export type ChartMetric = "net" | "paid" | "collected" | "refunds";
 export type ChartSeries = { key: string; label: string; color: string };
 export type ChartBucket = { from: string; to: string; label: string; long: string; values: Record<string, number>; total: number };
 export type ChartData = { interval: "day" | "week"; series: ChartSeries[]; buckets: ChartBucket[] };
@@ -601,15 +618,16 @@ export function chartData(p: Prepared, metric: ChartMetric): ChartData {
       if (line.paid) points.push({ key: sourceOf(line), day: line.sale.paidDay, value: 1 });
     }
   }
-  if (p.cash && metric === "net") {
+  if (p.cash && metric !== "paid") {
     const bySale = new Map(p.lines.map((line) => [line.sale.id, line]));
     for (const event of p.report.events) {
       const line = bySale.get(event.saleId);
-      if (line && event.kind === "payment") points.push({ key: sourceOf(line), day: event.day, value: event.amount });
+      if (!line || (metric === "collected" && event.kind !== "payment") || (metric === "refunds" && event.kind !== "refund")) continue;
+      points.push({ key: sourceOf(line), day: event.day, value: metric === "net" && event.kind === "refund" ? -event.amount : event.amount });
     }
   }
   const totals = new Map<string, number>();
-  for (const point of points) if (point.key !== UNTRACKED.key) add(totals, point.key, point.value);
+  for (const point of points) if (point.key !== UNTRACKED.key) add(totals, point.key, Math.abs(point.value));
   const ranked = [...totals].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([key]) => key);
   const named = ranked.length > SOURCE_COLORS.length + 1 ? ranked.slice(0, SOURCE_COLORS.length) : ranked.slice(0, SOURCE_COLORS.length + 1);
   const series: ChartSeries[] = named.map((key, i) => ({ key, label: utmSourceLabel(key), color: SOURCE_COLORS[i] ?? OTHER.color }));
@@ -623,7 +641,7 @@ export function chartData(p: Prepared, metric: ChartMetric): ChartData {
     if (i < 0) continue;
     buckets[i].values[keyFor(point.key)] += point.value;
   }
-  for (const bucket of buckets) bucket.total = Object.values(bucket.values).reduce((a, b) => a + Math.max(0, b), 0);
+  for (const bucket of buckets) bucket.total = Object.values(bucket.values).reduce((a, b) => a + b, 0);
   return { interval, series, buckets };
 }
 

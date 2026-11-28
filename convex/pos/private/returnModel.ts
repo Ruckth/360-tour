@@ -25,7 +25,7 @@ import {
   approvalReturnReview, planReturnMoney, planReturnParts, planReturnStock, receiptRowsForReturn, returnedDelta, returnError, returnGet, rowsReturned,
   selectReturnRows, type OrderReturn, type ReturnPart,
 } from './returnPlan';
-import { MAX_RETURN_LOTS, readReturnMovementLots } from './returnLots';
+import { MAX_RETURN_LOTS, packedReturnLots, readReturnMovementLots } from './returnLots';
 import { returnApprovalCheckpoint, isOwnApproval, requesterFingerprint, rulesFingerprint } from './staffApprovalState';
 
 type ReadCtx = MutationCtx | QueryCtx;
@@ -58,8 +58,8 @@ function validateInput(args: ReturnInput): ReturnInput {
   }
   for (const part of args.parts) {
     if ('lotAllocations' in part && part.lotAllocations &&
-        (part.disposition !== 'sellable' || !part.lotAllocations.length || part.lotAllocations.length > MAX_RETURN_LOTS)) {
-      returnError('RETURN_INVALID_LOTS', 'Confirm up to 100 original lots for sellable goods received back.');
+        (!part.lotAllocations.length || part.lotAllocations.length > MAX_RETURN_LOTS)) {
+      returnError('RETURN_INVALID_LOTS', 'Confirm up to 100 original lots for goods received back.');
     }
   }
   return { ...args, clientKey: boundedText(args.clientKey, 8, 128, 'request key'),
@@ -190,7 +190,10 @@ export async function readReturnLots(ctx: QueryCtx, actor: StaffActor, orderId: 
       options = await lookupSaleLots(ctx, actor, movementId);
       byMovement.set(movementId, options);
     }
-    result.push({ lineId, ...(contentKey !== undefined ? { contentKey } : {}), ...(options ?? unavailableLots) });
+    if (options && content?.packedLots) {
+      options = { ...options, lots: packedReturnLots(options.lots, content.packedLots, content.returnedPackedLots) };
+    }
+    result.push({ ...(content?.packedLots ? { packed: true as const } : {}), lineId, ...(contentKey !== undefined ? { contentKey } : {}), ...(options ?? unavailableLots) });
   }
   return result;
 }
@@ -211,7 +214,7 @@ async function prepare(ctx: ReadCtx, order: Order, args: ReturnInput, now: numbe
   const selected = await selectReturnRows(ctx, lines, args.parts);
   const parts = await planReturnParts(ctx, order, selected, now, args.mistakenSale ?? false);
   const [{ stock, allocationsByPart }, money] = await Promise.all([planReturnStock(ctx, parts.products), planReturnMoney(ctx, order, previouslyReturned, parts, now)]);
-  if (!actor.companyScope && stock.some(group => group.lotAllocations && !actor.branchIds.includes(group.stock.branchId))) {
+  if (!actor.companyScope && stock.some(group => (group.lotAllocations || parts.products.some(product => product.movementId === group.movementId && product.content?.packedLots)) && !actor.branchIds.includes(group.stock.branchId))) {
     returnError('RETURN_STOCK_MISSING', 'The original stock movement for this receipt is unavailable.');
   }
   const review = returnApprovalCheckpoint(order, approvalReturnReview(order, selected, parts, stock, money.funding),

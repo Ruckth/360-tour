@@ -1,12 +1,13 @@
 "use client";
 
-import { useMutation, usePaginatedQuery } from "convex/react";
+import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import { Building2, Check, History, Pencil, Plus } from "lucide-react";
 import { useState, type FormEvent } from "react";
-import { EmptyState, SearchBox, SkeletonRows, STACKED_TABLE, useDebounced } from "@/components/admin/admin-bulk";
+import { EmptyState, SearchBox, SkeletonRows, useDebounced } from "@/components/admin/admin-bulk";
+import { STOCK_TABLE } from "./stock-table";
 import { Callout, EditorSheet, NoticeBar, SheetForm, useNotice } from "@/components/admin/marketing/MarketingBits";
 import { SegmentedTabs } from "@/components/admin/SegmentedTabs";
 import { StatusBadge } from "@/components/admin/StatusBadge";
@@ -16,9 +17,12 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SheetDescription, SheetTitle } from "@/components/ui/sheet";
+import Link from "@/platform/link";
+import { staffDateTime } from "@/lib/staff-time";
 import { cn } from "@/lib/utils";
 import { PurchaseEventHistory } from "./PurchaseEventHistory";
-import { createOperationKey, parseStockError, STOCK_PAGE_SIZE, SUPPLIER_STATUS_META } from "./stock-format";
+import { createOperationKey, parseStockError, rejectReasonLabel, STOCK_PAGE_SIZE, SUPPLIER_STATUS_META } from "./stock-format";
+import { supplierActivityHref } from "./purchasing-location";
 import type { SupplierStatus } from "./stock-types";
 import { StockStaleBanner, useStockDirtyGuard } from "./StockFormGuard";
 
@@ -42,7 +46,7 @@ export function SupplierPickerField({
   canCreate?: boolean;
   required?: boolean;
   disabled?: boolean;
-  onChange: (supplier: { id: Id<"suppliers">; name: string } | null) => void;
+  onChange: (supplier: { id: Id<"suppliers">; name: string; leadTimeDays?: number } | null) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -56,6 +60,7 @@ export function SupplierPickerField({
   const [error, setError] = useState("");
   const [opKey, setOpKey] = useState(() => createOperationKey("sup-add"));
 
+  const [confirmSimilar, setConfirmSimilar] = useState(false);
   const addSupplier = useMutation(api.commerce.purchasing.addSupplier);
   const { results, status, loadMore } = usePaginatedQuery(
     api.commerce.purchasing.suppliers,
@@ -80,6 +85,7 @@ export function SupplierPickerField({
         contactName: newContact.trim() || undefined,
         phone: newPhone.trim() || undefined,
         email: newEmail.trim() || undefined,
+        confirmSimilar,
         operationKey: opKey,
       });
       onChange({ id: res.id as Id<"suppliers">, name: newName.trim() });
@@ -143,7 +149,7 @@ export function SupplierPickerField({
                 <Input
                   id="quick-sup-name"
                   value={newName}
-                  onChange={(event) => setNewName(event.target.value)}
+                  onChange={(event) => { setConfirmSimilar(false); setNewName(event.target.value); }}
                   placeholder="e.g. Siam Wellness Supply"
                 />
               </div>
@@ -161,7 +167,7 @@ export function SupplierPickerField({
                   <Input
                     id="quick-sup-phone"
                     value={newPhone}
-                    onChange={(event) => setNewPhone(event.target.value)}
+                    onChange={(event) => { setConfirmSimilar(false); setNewPhone(event.target.value); }}
                   />
                 </div>
               </div>
@@ -171,9 +177,15 @@ export function SupplierPickerField({
                   id="quick-sup-email"
                   type="email"
                   value={newEmail}
-                  onChange={(event) => setNewEmail(event.target.value)}
+                  onChange={(event) => { setConfirmSimilar(false); setNewEmail(event.target.value); }}
                 />
               </div>
+              <SimilarSuppliers activeOnly branchId={branchId} name={newName} phone={newPhone} email={newEmail}
+                confirmed={confirmSimilar} onConfirm={setConfirmSimilar} onUse={(match) => {
+                  onChange({ id: match._id, name: match.name, leadTimeDays: match.leadTimeDays });
+                  setAdding(false);
+                  setOpen(false);
+                }} />
               <div className="flex justify-end gap-2 pt-2">
                 <Button type="button" variant="outline" onClick={() => setAdding(false)}>
                   Back to list
@@ -199,6 +211,7 @@ export function SupplierPickerField({
                     size="sm"
                     onClick={() => {
                       setNewName(search.trim());
+                      setConfirmSimilar(false);
                       setAdding(true);
                     }}
                   >
@@ -222,7 +235,7 @@ export function SupplierPickerField({
                         <button
                           type="button"
                           onClick={() => {
-                            onChange({ id: supplier._id, name: supplier.name });
+                            onChange({ id: supplier._id, name: supplier.name, leadTimeDays: supplier.leadTimeDays });
                             setOpen(false);
                           }}
                           className="flex min-h-11 w-full items-center justify-between gap-2 px-3.5 py-2 text-left text-sm transition hover:bg-muted focus-visible:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -266,16 +279,17 @@ export function SuppliersManagementPanel({
   branchId: Id<"branches">;
   canEdit: boolean;
 }) {
-  const [statusFilter, setStatusFilter] = useState<SupplierStatus>("active");
+  const [statusFilter, setStatusFilter] = useState<SupplierStatus | "all">("active");
   const [search, setSearch] = useState("");
   const debounced = useDebounced(search.trim(), 200);
   const [editing, setEditing] = useState<SupplierRow | "new" | null>(null);
+  const [rejectionTarget, setRejectionTarget] = useState<{ branchId: Id<"branches">; supplier: SupplierRow } | null>(null);
   const [historyTarget, setHistoryTarget] = useState<SupplierRow | null>(null);
   const { notice, show, clear } = useNotice();
 
   const { results, status, loadMore } = usePaginatedQuery(
     api.commerce.purchasing.suppliers,
-    { branchId, status: statusFilter, ...(debounced ? { search: debounced } : {}) },
+    { branchId, status: statusFilter, includeActivity: true, ...(debounced ? { search: debounced } : {}) },
     { initialNumItems: STOCK_PAGE_SIZE },
   );
 
@@ -292,6 +306,7 @@ export function SuppliersManagementPanel({
             tabs={[
               { value: "active", label: "Active" },
               { value: "inactive", label: "Inactive" },
+              { value: "all", label: "All statuses" },
             ]}
           />
           <SearchBox
@@ -320,44 +335,64 @@ export function SuppliersManagementPanel({
           <SkeletonRows label="Loading suppliers" rows={4} />
         ) : results.length === 0 ? (
           <EmptyState>
-            {debounced ? `No ${statusFilter} suppliers match “${debounced}”.` : `No ${statusFilter} suppliers yet.`}
+            {debounced ? `No ${statusFilter === "all" ? "" : statusFilter + " "}suppliers match “${debounced}”.` : `No ${statusFilter === "all" ? "" : statusFilter + " "}suppliers yet.`}
           </EmptyState>
         ) : (
-          <table className={STACKED_TABLE.table}>
-            <thead className={STACKED_TABLE.head}>
+          <table className={STOCK_TABLE.table}>
+            <thead className={STOCK_TABLE.head}>
               <tr>
-                <th scope="col" className={STACKED_TABLE.th}>Supplier</th>
-                <th scope="col" className={STACKED_TABLE.th}>Contact</th>
-                <th scope="col" className={STACKED_TABLE.th}>Status</th>
-                <th scope="col" className={cn(STACKED_TABLE.th, "text-right")}>Actions</th>
+                <th scope="col" className={STOCK_TABLE.th}>Supplier</th>
+                <th scope="col" className={STOCK_TABLE.th}>Contact</th>
+                <th scope="col" className={STOCK_TABLE.th}>Status</th>
+                <th scope="col" className={cn(STOCK_TABLE.th, "text-right")}>Actions</th>
               </tr>
             </thead>
-            <tbody className={STACKED_TABLE.body}>
+            <tbody className={STOCK_TABLE.body}>
               {results.map((supplier) => (
-                <tr key={supplier._id} className={STACKED_TABLE.row}>
-                  <td data-label="Supplier" className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled)}>
+                <tr key={supplier._id} className={STOCK_TABLE.row}>
+                  <td data-label="Supplier" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled)}>
                     <span className="font-medium text-foreground">{supplier.name}</span>
                     {supplier.note ? (
                       <span className="block text-xs text-muted-foreground">{supplier.note}</span>
                     ) : null}
                   </td>
-                  <td data-label="Contact" className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled, "text-xs text-muted-foreground")}>
-                    {[supplier.contactName, supplier.phone, supplier.email].filter(Boolean).join(" · ") || "—"}
+                  <td data-label="Contact" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled, "text-xs text-muted-foreground")}>
+                    <div className="grid">
+                      {supplier.contactName}
+                      {supplier.phone && <a className="underline" href={`tel:${supplier.phone.replace(/[^+0-9]/g, "")}`}>{supplier.phone}</a>}
+                      {supplier.email && <a className="underline" href={`mailto:${encodeURIComponent(supplier.email)}`}>{supplier.email}</a>}
+                      {!supplier.contactName && !supplier.phone && !supplier.email && "—"}
+                    </div>
                   </td>
-                  <td data-label="Status" className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled)}>
+                  <td data-label="Status" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled)}>
                     <StatusBadge {...SUPPLIER_STATUS_META[supplier.status]} />
+                    <div className="text-xs">Open POs · {supplier.openOrders ?? "Updating…"}</div>
+                    <div className="text-xs">Last delivery · {supplier.lastDeliveryAt ? staffDateTime(supplier.lastDeliveryAt) : supplier.datedDeliveries === undefined ? "Updating…" : "—"}</div>
+                    {supplier.datedDeliveries !== undefined && supplier.datedDeliveries > 0 && (
+                      <div className="text-xs">On time · {supplier.onTimeDeliveries ?? 0}/{supplier.datedDeliveries} dated deliveries</div>
+                    )}
+                    {supplier.rejectedUnits !== undefined && (
+                      <div className="text-xs">Rejected units · {supplier.rejectedUnits}</div>
+                    )}
                   </td>
-                  <td className={cn(STACKED_TABLE.cell, "lg:text-right")}>
+                  <td className={cn(STOCK_TABLE.cell, "lg:text-right")}>
                     <div className="flex flex-wrap gap-1.5 lg:justify-end">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setHistoryTarget(supplier)}
-                      >
-                        <History aria-hidden className="size-3.5" />
-                        History
+                      <SupplierActivityLinks supplierId={supplier._id} />
+                      <Button type="button" variant="outline" size="sm"
+                        onClick={() => setRejectionTarget({ branchId, supplier })}>
+                        Rejection reasons
                       </Button>
+                      {canEdit ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setHistoryTarget(supplier)}
+                        >
+                          <History aria-hidden className="size-3.5" />
+                          History
+                        </Button>
+                      ) : null}
                       {canEdit ? (
                         <Button
                           type="button"
@@ -388,16 +423,26 @@ export function SuppliersManagementPanel({
 
       {editing ? (
         <SupplierEditorSheet
+          key={editing === "new" ? "new" : editing._id}
           branchId={branchId}
           supplier={editing === "new" ? null : (results.find((row) => row._id === editing._id) ?? editing)}
+          onUse={(match) => {
+            setStatusFilter("all");
+            setSearch(match.name);
+            setEditing(match);
+          }}
           onClose={() => setEditing(null)}
-          onSaved={() => {
+          onSaved={(requested) => {
             setEditing(null);
-            show("Supplier saved.", "success");
+            show(requested ? "Deactivation request recorded in supplier history." : "Supplier saved.", "success");
           }}
         />
       ) : null}
 
+      {rejectionTarget?.branchId === branchId && (
+        <SupplierRejectionDialog branchId={branchId} supplier={rejectionTarget.supplier}
+          onClose={() => setRejectionTarget(null)} />
+      )}
       {historyTarget ? (
         <SupplierHistorySheet
           branchId={branchId}
@@ -409,20 +454,70 @@ export function SuppliersManagementPanel({
   );
 }
 
+function SupplierRejectionDialog({ branchId, supplier, onClose }: {
+  branchId: Id<"branches">; supplier: SupplierRow; onClose: () => void;
+}) {
+  const summary = useQuery(api.commerce.purchasing.supplierRejectionSummary, {
+    branchId,
+    supplierId: supplier._id,
+  });
+
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Rejection reasons</DialogTitle>
+          <DialogDescription>{supplier.name} · Selected branch</DialogDescription>
+        </DialogHeader>
+        {summary === undefined ? (
+          <SkeletonRows label="Loading rejection reasons" rows={3} />
+        ) : (
+          <div className="grid gap-3 text-sm">
+            <p className="text-muted-foreground">
+              Rejected units across the {summary.receiptsScanned} most recent receipts reviewed.
+            </p>
+            {summary.byReason.length ? (
+              <dl className="divide-y">
+                {summary.byReason.map(({ reason, units }) => (
+                  <div key={reason} className="flex justify-between gap-3 py-2">
+                    <dt>{rejectReasonLabel(reason) ?? "No reason recorded"}</dt>
+                    <dd className="tabular-nums">{units.toLocaleString()}</dd>
+                  </div>
+                ))}
+              </dl>
+            ) : <EmptyState>No rejected units in these receipts.</EmptyState>}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function SupplierEditorSheet({
   branchId,
   supplier,
   onClose,
   onSaved,
+  onUse,
 }: {
   branchId: Id<"branches">;
   supplier: SupplierRow | null;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (requested: boolean) => void;
+  onUse: (supplier: SupplierRow) => void;
 }) {
   const addSupplier = useMutation(api.commerce.purchasing.addSupplier);
   const editSupplier = useMutation(api.commerce.purchasing.editSupplier);
 
+  const impact = useQuery(api.commerce.purchasing.supplierImpact, supplier ? { branchId, supplierId: supplier._id } : "skip");
+  const [statusReason, setStatusReason] = useState("");
+  const [requestDeactivation, setRequestDeactivation] = useState(false);
+  const [confirmSimilar, setConfirmSimilar] = useState(false);
+  const [terms, setTerms] = useState(() => ({
+    address: supplier?.address ?? "", taxId: supplier?.taxId ?? "", paymentTerms: supplier?.paymentTerms ?? "",
+    leadTimeDays: supplier?.leadTimeDays?.toString() ?? "", deliveryDays: supplier?.deliveryDays ?? "",
+    minimumOrder: supplier?.minimumOrder ?? "",
+  }));
   const [reviewedRevision, setReviewedRevision] = useState<number | undefined>(() => supplier?.revision);
   const [name, setName] = useState(supplier?.name ?? "");
   const [contactName, setContactName] = useState(supplier?.contactName ?? "");
@@ -434,7 +529,10 @@ function SupplierEditorSheet({
   const [error, setError] = useState("");
   const [opKey, setOpKey] = useState(() => createOperationKey("sup-save"));
 
+  const statusChanging = Boolean(supplier && status !== supplier.status);
   const isDirty =
+    requestDeactivation || Boolean(statusReason) ||
+    Object.entries(terms).some(([field, value]) => value !== String(supplier?.[field as keyof typeof terms] ?? "")) ||
     name !== (supplier?.name ?? "") ||
     contactName !== (supplier?.contactName ?? "") ||
     phone !== (supplier?.phone ?? "") ||
@@ -456,6 +554,20 @@ function SupplierEditorSheet({
       setError("This supplier changed while open. Review the updated revision above before saving.");
       return;
     }
+    if (statusChanging && impact?.openOrders === undefined) {
+      setError("Open order totals are updating. Review them before changing supplier status.");
+      return;
+    }
+    if ((statusChanging || requestDeactivation) && (!impact || !statusReason.trim())) {
+      setError("Review the open orders and enter a reason.");
+      return;
+    }
+    const buyingTerms = {
+      address: terms.address.trim() || undefined, taxId: terms.taxId.trim() || undefined,
+      paymentTerms: terms.paymentTerms.trim() || undefined, deliveryDays: terms.deliveryDays.trim() || undefined,
+      minimumOrder: terms.minimumOrder.trim() || undefined,
+      leadTimeDays: terms.leadTimeDays === "" ? undefined : Number(terms.leadTimeDays),
+    };
     setSaving(true);
     try {
       if (supplier) {
@@ -464,6 +576,10 @@ function SupplierEditorSheet({
           supplierId: supplier._id,
           expectedRevision: reviewedRevision ?? supplier.revision,
           status,
+          statusReason: statusReason.trim() || undefined,
+          requestDeactivation,
+          replaceTerms: true,
+          ...buyingTerms,
           name: name.trim(),
           contactName: contactName.trim() || undefined,
           phone: phone.trim() || undefined,
@@ -474,6 +590,8 @@ function SupplierEditorSheet({
       } else {
         await addSupplier({
           branchId,
+          ...buyingTerms,
+          confirmSimilar,
           name: name.trim(),
           contactName: contactName.trim() || undefined,
           phone: phone.trim() || undefined,
@@ -482,7 +600,7 @@ function SupplierEditorSheet({
           operationKey: opKey,
         });
       }
-      onSaved();
+      onSaved(requestDeactivation);
     } catch (cause) {
       setError(parseStockError(cause, "Could not save supplier.").message);
       setOpKey(createOperationKey("sup-save"));
@@ -497,7 +615,7 @@ function SupplierEditorSheet({
       header={
         <>
           <SheetTitle>{supplier ? `Edit ${supplier.name}` : "Add supplier"}</SheetTitle>
-          <SheetDescription>Shared supplier master across branches. Buyers manage contact details and status.</SheetDescription>
+          <SheetDescription>Supplier details are shared across branches. Organization owners manage supplier status.</SheetDescription>
         </>
       }
     >
@@ -522,7 +640,7 @@ function SupplierEditorSheet({
         ) : null}
         <div className="grid gap-1.5">
           <Label htmlFor="sup-name">Supplier name</Label>
-          <Input id="sup-name" value={name} onChange={(event) => setName(event.target.value)} />
+          <Input id="sup-name" value={name} onChange={(event) => { setConfirmSimilar(false); setName(event.target.value); }} />
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="grid gap-1.5">
@@ -531,18 +649,31 @@ function SupplierEditorSheet({
           </div>
           <div className="grid gap-1.5">
             <Label htmlFor="sup-phone">Phone</Label>
-            <Input id="sup-phone" value={phone} onChange={(event) => setPhone(event.target.value)} />
+            <Input id="sup-phone" value={phone} onChange={(event) => { setConfirmSimilar(false); setPhone(event.target.value); }} />
           </div>
         </div>
         <div className="grid gap-1.5">
           <Label htmlFor="sup-email">Email</Label>
-          <Input id="sup-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} />
+          <Input id="sup-email" type="email" value={email} onChange={(event) => { setConfirmSimilar(false); setEmail(event.target.value); }} />
         </div>
         <div className="grid gap-1.5">
           <Label htmlFor="sup-note">Notes</Label>
           <Input id="sup-note" value={note} onChange={(event) => setNote(event.target.value)} />
         </div>
-        {supplier ? (
+        {([
+          ["address", "Address"], ["taxId", "Tax ID"], ["paymentTerms", "Payment terms"],
+          ["leadTimeDays", "Lead time (days)"], ["deliveryDays", "Delivery days"], ["minimumOrder", "Minimum order"],
+        ] as const).map(([field, label]) => (
+          <div className="grid gap-1.5" key={field}>
+            <Label htmlFor={`sup-${field}`}>{label}</Label>
+            <Input id={`sup-${field}`} value={terms[field]}
+              {...(field === "leadTimeDays" ? { type: "number", min: 0, max: 3650, step: 1 } : {})}
+              onChange={(event) => setTerms({ ...terms, [field]: event.target.value })} />
+          </div>
+        ))}
+        {!supplier && <SimilarSuppliers branchId={branchId} name={name} phone={phone} email={email}
+          confirmed={confirmSimilar} onConfirm={setConfirmSimilar} onUse={onUse} />}
+        {supplier && impact?.organizationWide ? (
           <label className="flex items-center gap-2.5 text-sm">
             <input
               type="checkbox"
@@ -553,6 +684,23 @@ function SupplierEditorSheet({
             <span>Active supplier (inactive suppliers cannot be used on new issued orders)</span>
           </label>
         ) : null}
+        {supplier?.status === "active" && impact && !impact.organizationWide && (
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={requestDeactivation} onChange={(event) => setRequestDeactivation(event.target.checked)} />
+            Request deactivation
+          </label>
+        )}
+        {(statusChanging || requestDeactivation) && impact && (
+          <div className="grid gap-2">
+            <p className="text-sm">
+              {impact.openOrders === undefined
+                ? "Open order totals are updating."
+                : `${impact.openOrders} open POs ${impact.organizationWide ? "across the organization" : "at this branch"}.`}
+            </p>
+            <Label htmlFor="sup-status-reason">Reason</Label>
+            <Input id="sup-status-reason" required value={statusReason} onChange={(event) => setStatusReason(event.target.value)} />
+          </div>
+        )}
       </SheetForm>
     </EditorSheet>
   );
@@ -586,6 +734,7 @@ function SupplierHistorySheet({
     >
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6">
+          <SupplierActivityLinks supplierId={supplier._id} />
           <PurchaseEventHistory
             events={results}
             loading={status === "LoadingFirstPage"}
@@ -601,5 +750,44 @@ function SupplierHistorySheet({
         </div>
       </div>
     </EditorSheet>
+  );
+}
+
+function SupplierActivityLinks({ supplierId }: { supplierId: Id<"suppliers"> }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-sm">
+      <Link className="underline" href={supplierActivityHref("orders", supplierId)}>View orders</Link>
+      <Link className="underline" href={supplierActivityHref("receipts", supplierId)}>View receipts</Link>
+    </div>
+  );
+}
+
+function SimilarSuppliers({ branchId, name, phone, email, activeOnly, confirmed, onConfirm, onUse }: {
+  branchId: Id<"branches">; name: string; phone: string; email: string; activeOnly?: boolean;
+  confirmed: boolean; onConfirm: (value: boolean) => void; onUse: (supplier: SupplierRow) => void;
+}) {
+  const debouncedName = useDebounced(name.trim(), 200);
+  const debouncedPhone = useDebounced(phone.trim(), 200);
+  const debouncedEmail = useDebounced(email.trim(), 200);
+  const matches = useQuery(api.commerce.purchasing.supplierMatches,
+    debouncedName.length >= 2 || debouncedPhone || debouncedEmail
+      ? { branchId, name: debouncedName, phone: debouncedPhone, email: debouncedEmail } : "skip");
+  if (!matches?.length) return null;
+  return (
+    <div className="grid gap-2 rounded-md border p-3 text-sm">
+      <p className="font-medium">Similar suppliers</p>
+      {matches.map((match) => (
+        <div key={match._id} className="flex flex-wrap items-center justify-between gap-2">
+          <span>{match.name} · {match.status}</span>
+          {(!activeOnly || match.status === "active") && (
+            <Button type="button" variant="outline" size="sm" onClick={() => onUse(match)}>Use this supplier</Button>
+          )}
+        </div>
+      ))}
+      <label className="flex items-center gap-2">
+        <input type="checkbox" checked={confirmed} onChange={(event) => onConfirm(event.target.checked)} />
+        Create a separate supplier
+      </label>
+    </div>
   );
 }

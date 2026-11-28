@@ -18,7 +18,7 @@ export const latestMonth = (ctx: QueryCtx, month: string) =>
     .order('desc')
     .first();
 
-async function expensesFor(ctx: QueryCtx, from: string, to: string) {
+export async function expensesFor(ctx: QueryCtx, from: string, to: string) {
   const expenses: Expense[] = [],
     missingMonths: string[] = [];
   const names = new Map<Id<'marketingCampaigns'>, string>();
@@ -31,6 +31,8 @@ async function expensesFor(ctx: QueryCtx, from: string, to: string) {
   for (let first = from.slice(0, 7) + '-01'; first <= to; ) {
     const month = first.slice(0, 7),
       last = endOfMonth(month);
+    const coverageStart = from > first ? from : first;
+    const coverageEnd = to < last ? to : last;
     const statement = await latestMonth(ctx, month);
     if (!statement) missingMonths.push(month);
     else {
@@ -44,7 +46,7 @@ async function expensesFor(ctx: QueryCtx, from: string, to: string) {
         const share = spendInRange({ from: first, to: last, amount: statement[field] }, from, to);
         expenses.push({
           id: statement._id + field,
-          day: first,
+          day: coverageStart,
           ref: month + ' service accounts',
           kind,
           amount: kind === 'Other income' ? share : -share,
@@ -53,13 +55,13 @@ async function expensesFor(ctx: QueryCtx, from: string, to: string) {
     }
     for (const row of entries) {
       if (row.deletedAt !== undefined || statement?.excludedCampaignIds?.includes(row.campaignId)) continue;
-      const share = spendInRange(row, from > first ? from : first, to < last ? to : last);
+      const share = spendInRange(row, coverageStart, coverageEnd);
       if (!share) continue;
       if (!names.has(row.campaignId))
         names.set(row.campaignId, (await ctx.db.get(row.campaignId))?.name ?? 'Archived campaign');
       expenses.push({
         id: row._id + month,
-        day: row.from > first ? row.from : first,
+        day: row.from > coverageStart ? row.from : coverageStart,
         ref: names.get(row.campaignId)!,
         kind: statement?.campaignIds.includes(row.campaignId) ? 'Marketing' : 'Unmapped spend',
         amount: -share,
@@ -80,6 +82,12 @@ export async function readServiceFinanceFacts(
   const { start, end } = reportRangeBounds(from, to);
   const { lines, customers, excludedCurrency } = await profitVisits(ctx, start, end);
   lines.push(...(await profitFees(ctx, start, end)));
+  const facts = { lines, customers, excludedCurrency, asOf: Date.now(), ...(await expensesFor(ctx, from, to)) };
+  return discloseServiceFinanceFacts(facts, named);
+}
+
+export function discloseServiceFinanceFacts(facts: ReportFacts, named: boolean): ReportFacts {
+  const { customers, lines } = facts;
   if (!named) {
     const tokens = new Map(customers.map((c, i) => [c.id, 'Attendee ' + (i + 1)]));
     for (const c of customers) {
@@ -96,5 +104,5 @@ export async function readServiceFinanceFacts(
       delete row.linkable;
     }
   }
-  return { lines, customers, excludedCurrency, asOf: Date.now(), ...(await expensesFor(ctx, from, to)) };
+  return facts;
 }

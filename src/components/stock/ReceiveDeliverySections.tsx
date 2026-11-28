@@ -16,7 +16,7 @@ import { Label } from "@/components/ui/label";
 import { ReasonField } from "@/components/ui/reason-field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { DIRECT_RECEIPT_REASON_CHIPS } from "./stock-format";
+import { DIRECT_RECEIPT_REASON_CHIPS, formatSatang, overReceiptAllowance, REJECT_REASON_OPTIONS, type RejectReasonCodeValue } from "./stock-format";
 import type { StockLineDraft } from "./stock-types";
 import { StockStaleBanner } from "./StockFormGuard";
 import { StockLineEditor, type StockLineFieldErrors } from "./StockLineEditor";
@@ -31,7 +31,7 @@ export type ReceiveAcceptableHold = ReceiveOrderDetail["acceptableHolds"][number
 
 export type PoLineFieldErrors = Record<
   string,
-  { accepted?: string; rejected?: string; rejectReason?: string; lotCode?: string; lotExpiry?: string; hold?: string }
+  { accepted?: string; rejected?: string; rejectReason?: string; rejectReasonCode?: string; lotCode?: string; lotExpiry?: string; hold?: string }
 >;
 
 export type HeldLineDraft = {
@@ -71,6 +71,7 @@ export function ReceivePurchaseOrderSection({
   acceptedByLine,
   rejectedByLine,
   rejectReasonByLine,
+  rejectCodeByLine,
   selectedHoldByLine,
   lotCodeByKey,
   lotExpiryByKey,
@@ -83,6 +84,7 @@ export function ReceivePurchaseOrderSection({
   onAcceptedChange,
   onRejectedChange,
   onRejectReasonChange,
+  onRejectCodeChange,
   onHoldChange,
   onLotCodeChange,
   onLotExpiryChange,
@@ -103,6 +105,7 @@ export function ReceivePurchaseOrderSection({
   acceptedByLine: Record<string, string>;
   rejectedByLine: Record<string, string>;
   rejectReasonByLine: Record<string, string>;
+  rejectCodeByLine: Record<string, RejectReasonCodeValue | undefined>;
   selectedHoldByLine: Record<string, Id<"purchaseHolds"> | "">;
   lotCodeByKey: Record<string, string>;
   lotExpiryByKey: Record<string, string>;
@@ -115,6 +118,7 @@ export function ReceivePurchaseOrderSection({
   onAcceptedChange: (lineId: string, val: string) => void;
   onRejectedChange: (lineId: string, val: string) => void;
   onRejectReasonChange: (lineId: string, val: string) => void;
+  onRejectCodeChange: (lineId: string, code: RejectReasonCodeValue) => void;
   onHoldChange: (lineId: string, holdId: Id<"purchaseHolds"> | "") => void;
   onLotCodeChange: (lineId: string, val: string) => void;
   onLotExpiryChange: (lineId: string, val: string) => void;
@@ -242,6 +246,10 @@ export function ReceivePurchaseOrderSection({
                 ? eligibleHolds.find((h) => h.holdId === selectedHoldId)
                 : undefined;
               const holdRemaining = activeHold?.remaining;
+              const tolerancePct = orderDetail.overReceiptTolerancePct;
+              const allowance = overReceiptAllowance(line, tolerancePct);
+              const acceptedNow = Number(acceptedByLine[line._id] ?? "");
+              const overage = Number.isSafeInteger(acceptedNow) && acceptedNow > line.due ? acceptedNow - line.due : 0;
               return (
                 <li
                   key={line._id}
@@ -273,7 +281,7 @@ export function ReceivePurchaseOrderSection({
                         id={`po-acc-${line._id}`}
                         value={acceptedByLine[line._id] ?? ""}
                         disabled={line.due <= 0}
-                        placeholder={line.due > 0 ? `0–${line.due}` : "0 due"}
+                        placeholder={line.due > 0 ? `0–${line.due + allowance}` : "0 due"}
                         aria-invalid={lineErr?.accepted ? true : undefined}
                         aria-describedby={lineErr?.accepted ? `po-acc-${line._id}-err` : undefined}
                         onChange={(event) => onAcceptedChange(line._id, event.target.value)}
@@ -292,12 +300,41 @@ export function ReceivePurchaseOrderSection({
                       />
                       <FieldError id={`po-rej-${line._id}-err`}>{lineErr?.rejected}</FieldError>
                     </div>
-                    {Number(rejectedByLine[line._id]) > 0 && <div className="grid gap-1.5">
-                      <Label htmlFor={`po-rej-reason-${line._id}`}>Rejection reason (required)</Label>
+                    {Number(rejectedByLine[line._id]) > 0 && <div className="grid gap-1.5 sm:col-span-3">
+                      <div
+                        role="radiogroup"
+                        id={`po-rej-code-${line._id}`}
+                        aria-label="Rejection reason (required)"
+                        aria-invalid={lineErr?.rejectReasonCode ? true : undefined}
+                        aria-describedby={lineErr?.rejectReasonCode ? `po-rej-code-${line._id}-err` : undefined}
+                        className="flex flex-wrap gap-1.5"
+                      >
+                        <span className="w-full text-sm font-medium text-foreground">Rejection reason (required)</span>
+                        {REJECT_REASON_OPTIONS.map((option) => {
+                          const checked = rejectCodeByLine[line._id] === option.code;
+                          return (
+                            <button
+                              key={option.code}
+                              type="button"
+                              role="radio"
+                              aria-checked={checked}
+                              onClick={() => onRejectCodeChange(line._id, option.code)}
+                              className={cn(
+                                "min-h-9 rounded-full border px-3 text-xs font-medium transition",
+                                checked ? "border-foreground bg-foreground text-background" : "border-border bg-background text-foreground hover:bg-muted",
+                              )}
+                            >
+                              {option.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <FieldError id={`po-rej-code-${line._id}-err`}>{lineErr?.rejectReasonCode}</FieldError>
+                      <Label htmlFor={`po-rej-reason-${line._id}`}>Rejection details (optional)</Label>
                       <Input
                         id={`po-rej-reason-${line._id}`}
                         value={rejectReasonByLine[line._id] ?? ""}
-                        aria-required="true"
+                        placeholder="e.g. Crushed outer carton"
                         aria-invalid={lineErr?.rejectReason ? true : undefined}
                         aria-describedby={lineErr?.rejectReason ? `po-rej-reason-${line._id}-err` : undefined}
                         onChange={(event) => onRejectReasonChange(line._id, event.target.value)}
@@ -305,6 +342,20 @@ export function ReceivePurchaseOrderSection({
                       <FieldError id={`po-rej-reason-${line._id}-err`}>{lineErr?.rejectReason}</FieldError>
                     </div>}
                   </div>
+                  {overage > 0 ? (
+                    overage <= allowance ? (
+                      <Callout tone="info" role="status" title={`${overage} over-delivered ${overage === 1 ? "unit" : "units"} within the ${tolerancePct}% tolerance`}>
+                        Posts {acceptedNow} against {line.due} due
+                        {line.unitCost !== undefined ? ` · extra value ${formatSatang(overage * line.unitCost)}` : ""}. The order records an over-delivery.
+                      </Callout>
+                    ) : (
+                      <Callout tone="warning" role="status" title="More than the order allows">
+                        {allowance > 0
+                          ? `At most ${line.due + allowance} can be accepted (${line.due} due + ${allowance} tolerance). Hold the excess for the buyer below.`
+                          : `Only ${line.due} still due. Hold the excess for the buyer below.`}
+                      </Callout>
+                    )
+                  ) : null}
 
                   {eligibleHolds.length > 0 ? (
                     <div className="grid gap-1.5 rounded-md border border-amber-300/60 bg-amber-50/50 p-2.5 dark:border-amber-500/30 dark:bg-amber-950/20">
@@ -567,6 +618,9 @@ export function ReceiveDirectSection({
 /** Shared delivery reference, note, and duplicate-delivery confirmation fields. */
 export function ReceiveDeliveryMetaSection({
   deliveryReference,
+  invoiceTotal,
+  invoiceTotalError,
+  onInvoiceTotalChange,
   note,
   duplicateConflict,
   duplicateReason,
@@ -575,6 +629,10 @@ export function ReceiveDeliveryMetaSection({
   onDuplicateReasonChange,
 }: {
   deliveryReference: string;
+  /** Supplier invoice total (THB text); omitted for forms that do not record it. */
+  invoiceTotal?: string;
+  invoiceTotalError?: string;
+  onInvoiceTotalChange?: (val: string) => void;
   note: string;
   duplicateConflict: { receiptId: Id<"supplierReceipts">; reference: string } | null;
   duplicateReason: string;
@@ -603,6 +661,27 @@ export function ReceiveDeliveryMetaSection({
             placeholder="Condition or driver notes"
           />
         </div>
+        {onInvoiceTotalChange ? (
+          <div className="grid gap-1.5">
+            <Label htmlFor="recv-invoice-total">Invoice total ฿ (optional)</Label>
+            <Input
+              id="recv-invoice-total"
+              inputMode="decimal"
+              value={invoiceTotal ?? ""}
+              aria-invalid={invoiceTotalError ? true : undefined}
+              aria-describedby={invoiceTotalError ? "recv-invoice-total-err" : "recv-invoice-total-hint"}
+              onChange={(event) => onInvoiceTotalChange(event.target.value)}
+              placeholder="0.00"
+            />
+            {invoiceTotalError ? (
+              <FieldError id="recv-invoice-total-err">{invoiceTotalError}</FieldError>
+            ) : (
+              <p id="recv-invoice-total-hint" className="text-xs text-muted-foreground">
+                The buyer sees a warning if it differs from the order price. Stock is not changed.
+              </p>
+            )}
+          </div>
+        ) : null}
       </div>
 
       {duplicateConflict ? (

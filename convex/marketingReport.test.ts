@@ -376,7 +376,13 @@ describe('report attribution and limits', () => {
 		for (const budget of [new ReadBudget(0), new ReadBudget(16000, 0), new ReadBudget(16000, 2000, 0)]) {
 			expect(await s.t.run(ctx => readMarketingReport(ctx, { from: '2026-11-09', to: '2026-11-09', basis: 'cohort' }, budget))).toMatchObject({ truncated: true });
 		}
-		expect((await s.report()).truncated).toBe(false);
+    expect((await s.report()).truncated).toBe(false);
+    const exhaust = vi.spyOn(ReadBudget.prototype, 'range').mockReturnValue(false);
+    try {
+      await expect(s.report()).resolves.toMatchObject({ truncated: true, sales: [], events: [] });
+    } finally {
+      exhaust.mockRestore();
+    }
 	});
 });
 
@@ -584,11 +590,22 @@ it.each(['viewer', 'marketer', 'finance', 'manager', 'admin'] as const)('redacts
 	await s.admin.mutation(api.services.commands.markAppointmentPaid.markAppointmentPaid, { appointmentId, expectedRevision: 0, method: 'cash', idempotencyKey: 'privacy-desk' });
 	const reader = role === 'admin' ? s.admin : s.t.withIdentity({ emailVerified: true, email: 'reader@example.com', tokenIdentifier: 'reader' });
 	if (role !== 'admin') await s.t.run(ctx => ctx.db.insert('marketingGrants', { email: 'reader@example.com', tokenIdentifier: 'reader', role, createdAt: now, updatedAt: now, updatedByEmail: email }));
-	const data = await reader.query(api.marketing.report.getReport, { from: '2026-11-09', to: '2026-11-09', basis: 'cohort' });
-	expect(data.sales.find(row => row.id === bookingId)).toMatchObject({ label: fullDetail ? 'Private Guest' : 'Guest' });
-	expect(data.sales.find(row => row.id === bookingId)?.ref).toBe(fullDetail ? 'PRIVATE-CONF' : undefined);
-	expect(data.sales.find(row => row.id === orderId)?.label).toBe(fullDetail ? 'Private Customer' : 'Guest');
-	expect(data.sales.find(row => row.id === appointmentId)?.label).toBe(fullDetail ? 'Desk guest' : 'Guest');
+  const reportRange = { from: '2026-11-09', to: '2026-11-09', basis: 'cash' as const };
+  await s.admin.mutation(api.marketing.report.saveSpend, { campaignId: s.campaignId, from: reportRange.from, to: reportRange.to, amount: 30000, note: 'Private spend note' });
+  const data = await reader.query(api.marketing.report.getReport, reportRange);
+  const stays = data.sales.filter(row => row.kind === 'stay');
+  const orders = data.sales.filter(row => row.kind === 'order');
+  const appointments = data.sales.filter(row => row.kind === 'appointment');
+  expect(stays[0]).toMatchObject({ label: fullDetail ? 'Private Guest' : 'Guest' });
+  expect(stays[0].ref).toBe(fullDetail ? 'PRIVATE-CONF' : undefined);
+  expect(orders[0].label).toBe(fullDetail ? 'Private Customer' : 'Guest');
+  expect(appointments[0].label).toBe(fullDetail ? 'Desk guest' : 'Guest');
+  expect(data.events.every(event => data.sales.some(sale => sale.id === event.saleId))).toBe(true);
+  const privateIds = new Set<string>([bookingId, orderId, appointmentId]);
+  expect(data.sales.some(sale => privateIds.has(sale.id))).toBe(fullDetail);
+  expect(data.spend[0]?.note).toBe(fullDetail ? 'Private spend note' : undefined);
+  const spends = await reader.query(api.marketing.report.listSpend, { campaignId: s.campaignId });
+  expect(spends[0]?.note).toBe(fullDetail ? 'Private spend note' : undefined);
 	const credits = await reader.query(api.marketing.affiliates.listCredits, {});
 	expect(credits.rows).toHaveLength(2);
 	for (const credit of credits.rows) {

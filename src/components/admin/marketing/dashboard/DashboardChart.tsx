@@ -3,7 +3,7 @@
 import { Card } from "@/components/ui/card";
 
 import { Table2, BarChart3 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
@@ -15,8 +15,9 @@ import { chartData, niceStep, type ChartMetric, type Prepared } from "./report-m
 
 const num = (value: number) => value.toLocaleString("en-US");
 
-export function formatChartTick(value: number, money: boolean) {
+export function formatChartTick(value: number, money: boolean): string {
   if (!money) return num(value);
+  if (value < 0) return `−${formatChartTick(-value, true)}`;
   value /= 100;
   if (value >= 1_000_000) return `฿${(value / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
   if (value >= 10_000) return `฿${Math.round(value / 1000)}K`;
@@ -24,20 +25,39 @@ export function formatChartTick(value: number, money: boolean) {
 }
 
 export function DashboardChart({ p }: { p: Prepared }) {
-  const [metric, setMetric] = useState<ChartMetric>("net");
+  const [selection, setMetric] = useState<ChartMetric>(p.cash ? "collected" : "net");
+  const metric = !p.cash && selection !== "paid" ? "net" : selection;
+  const [inspected, setInspected] = useState(0);
+  const inspector = useRef<HTMLSelectElement>(null);
+  const [inspecting, setInspecting] = useState(false);
+  const chart = useRef<HTMLDivElement>(null);
   const [hidden, setHidden] = useState<Set<string>>(() => new Set());
   const [asTable, setAsTable] = useState(false);
   const data = useMemo(() => chartData(p, metric), [p, metric]);
-  const money = metric === "net";
+  const money = metric !== "paid";
   const visible = data.series.filter((s) => !hidden.has(s.key));
-  const totals = data.buckets.map((b) => visible.reduce((sum, s) => sum + Math.max(0, b.values[s.key] ?? 0), 0));
-  const step = niceStep(Math.max(...totals, 0));
-  const top = Math.max(step, Math.ceil(Math.max(...totals, 0) / step) * step);
-  const ticks = Array.from({ length: Math.round(top / step) + 1 }, (_, i) => i * step);
+  const totals = data.buckets.map((b) => visible.reduce((sum, s) => sum + (b.values[s.key] ?? 0), 0));
+  const extent = (sign: number) => Math.max(0, ...data.buckets.map((bucket) => visible.reduce((sum, series) => sum + Math.max(0, sign * (bucket.values[series.key] ?? 0)), 0)));
+  const high = extent(1);
+  const low = extent(-1);
+  const step = niceStep(Math.max(high, low));
+  const top = Math.ceil(high / step) * step || (low ? 0 : step);
+  const bottom = Math.ceil(low / step) * step;
+  const scale = top + bottom;
+  const ticks = Array.from({ length: Math.round(scale / step) + 1 }, (_, i) => i * step - bottom);
+  const bucketIndex = Math.min(inspected, data.buckets.length - 1);
+  const bucket = data.buckets[bucketIndex];
   const labelEvery = Math.max(1, Math.ceil(data.buckets.length / 7));
-  const fmt = (value: number) => (money ? thb(Math.round(value)) : num(value));
-  const title = p.cash ? (money ? "Collected by source" : "First-payment sales by source") : money ? "Net collected by source" : "Paid bookings by source";
+  const fmt = (value: number) => (money ? thb(value) : num(value));
+  const title = p.cash ? { collected: "Collected by source", paid: "First-payment sales by source", refunds: "Refunds by source", net: "Net by source" }[metric] : money ? "Net collected by source" : "Paid bookings by source";
+  const dateBasis = !p.cash ? "by booking or sale date" : metric === "refunds" ? "by refund date" : metric === "net" ? "by payment and refund dates" : metric === "paid" ? "by first payment date" : "by payment date";
   const peak = totals.indexOf(Math.max(...totals));
+
+  function inspectBucket(index: number) {
+    setInspected(index);
+    setInspecting(true);
+    requestAnimationFrame(() => inspector.current?.focus());
+  }
 
   const table = (
     <table className="w-full min-w-[28rem] text-left text-sm">
@@ -85,14 +105,15 @@ export function DashboardChart({ p }: { p: Prepared }) {
             {title}
           </h2>
           <p className="text-xs text-muted-foreground">
-            {data.interval === "day" ? "Daily" : "Weekly, Monday to Sunday"} · {p.cash ? "by payment date" : "by booking date"}
+            {data.interval === "day" ? "Daily" : "Weekly, Monday to Sunday"} · {dateBasis}
             {p.cash ? "" : ` · ${p.filters.touch === "first" ? "first touch" : "last touch"}`}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <ToggleGroup variant="segmented" tone="subtle" value={metric} onValueChange={setMetric} aria-label="Measure">
+          <ToggleGroup variant="segmented" tone="subtle" value={metric} onValueChange={setMetric} aria-label="Measure" className="flex-wrap">
+            {p.cash ? <><ToggleGroupItem value="collected">Collected</ToggleGroupItem><ToggleGroupItem value="refunds">Refunds</ToggleGroupItem></> : null}
             <ToggleGroupItem value="net" className="whitespace-nowrap py-1.5">
-              {p.cash ? "Collected" : "Net collected"}
+              {p.cash ? "Net" : "Net collected"}
             </ToggleGroupItem>
             <ToggleGroupItem value="paid" className="whitespace-nowrap py-1.5">
               {p.cash ? "First paid" : "Paid bookings"}
@@ -129,40 +150,55 @@ export function DashboardChart({ p }: { p: Prepared }) {
           );
         })}
       </div>
-      {asTable ? (
+      {!visible.length ? (
+        <p role="status" className="flex items-center gap-2 px-4 py-3 text-sm">All sources are hidden. <Button variant="outline" size="sm" onClick={() => setHidden(new Set())}>Show all</Button></p>
+      ) : asTable ? (
         <div className="mt-3 max-h-80 overflow-auto border-t border-border">{table}</div>
       ) : (
         <>
           <div
-            role="img"
-            tabIndex={0}
+            ref={chart}
+            role="group"
+            tabIndex={-1}
             aria-label={`${title}. ${data.buckets.length} ${data.interval === "day" ? "days" : "weeks"}, highest ${fmt(totals[peak] ?? 0)} (${data.buckets[peak]?.long ?? ""}). The table after the chart has every value.`}
             className="relative mx-3 mb-3 mt-2 h-60 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             {/* Plot box: y labels on the left, bars on the right, x labels in the 1.5rem below. */}
-            <div aria-hidden className="absolute inset-x-0 bottom-6 top-3">
+            <div className="absolute inset-x-0 bottom-6 top-3">
               {ticks.map((value) => (
-                <span key={value} className="absolute left-0 w-10 -translate-y-1/2 pr-2 text-right text-xs font-sans tabular-nums text-muted-foreground" style={{ top: `${100 - (value / top) * 100}%` }}>
+                <span aria-hidden key={value} className="absolute left-0 w-10 -translate-y-1/2 pr-2 text-right text-xs font-sans tabular-nums text-muted-foreground" style={{ top: `${100 - ((value + bottom) / scale) * 100}%` }}>
                   {formatChartTick(value, money)}
                 </span>
               ))}
               <div className="absolute inset-y-0 left-12 right-0">
                 {ticks.map((value) => (
-                  <span key={value} className={cn("absolute inset-x-0 border-t", value === 0 ? "border-border" : "border-border/60")} style={{ bottom: `${(value / top) * 100}%` }} />
+                  <span key={value} className={cn("absolute inset-x-0 border-t", value === 0 ? "border-border" : "border-border/60")} style={{ bottom: `${((value + bottom) / scale) * 100}%` }} />
                 ))}
-                <div className="absolute inset-0 flex items-end gap-[2px] sm:gap-1">
+                <button
+                  type="button"
+                  aria-label="Inspect a date on the plot"
+                  onClick={(event) => {
+                    if (event.detail === 0) {
+                      inspectBucket(bucketIndex);
+                      return;
+                    }
+                    const { left, width } = event.currentTarget.getBoundingClientRect();
+                    const index = Math.floor((event.clientX - left) / width * data.buckets.length);
+                    inspectBucket(Math.max(0, Math.min(index, data.buckets.length - 1)));
+                  }}
+                  className="absolute inset-0 flex cursor-crosshair items-end rounded-md focus-visible:outline-2 focus-visible:outline-ring"
+                >
                   {data.buckets.map((b, i) => (
-                    <div key={b.from} title={`${b.long}: ${fmt(totals[i])}`} className="flex h-full min-w-0 flex-1 flex-col justify-end rounded-t-[3px] hover:bg-muted/60">
-                      {visible
-                        .slice()
-                        .reverse()
-                        .map((s) => {
-                          const value = Math.max(0, b.values[s.key] ?? 0);
-                          return value ? <span key={s.key} className="block w-full first:rounded-t-[3px]" style={{ height: `${(value / top) * 100}%`, background: s.color }} /> : null;
-                        })}
-                    </div>
+                    <span aria-hidden key={b.from} title={`${b.long}, ${fmt(totals[i])}`} className="relative h-full min-w-0 flex-1 hover:bg-muted/60">
+                      <span aria-hidden className="absolute inset-x-px flex flex-col-reverse" style={{ bottom: `${bottom / scale * 100}%`, height: `${top / scale * 100}%` }}>
+                        {visible.map((series) => <span key={series.key} style={{ height: `${top ? Math.max(0, b.values[series.key] ?? 0) / top * 100 : 0}%`, background: series.color }} />)}
+                      </span>
+                      <span aria-hidden className="absolute inset-x-px flex flex-col" style={{ top: `${top / scale * 100}%`, height: `${bottom / scale * 100}%` }}>
+                        {visible.map((series) => <span key={series.key} style={{ height: `${bottom ? Math.max(0, -(b.values[series.key] ?? 0)) / bottom * 100 : 0}%`, background: series.color }} />)}
+                      </span>
+                    </span>
                   ))}
-                </div>
+                </button>
               </div>
             </div>
             <div aria-hidden className="absolute bottom-0 left-12 right-0 flex h-6 items-end gap-[2px] sm:gap-1">
@@ -173,6 +209,29 @@ export function DashboardChart({ p }: { p: Prepared }) {
               ))}
             </div>
           </div>
+          {bucket ? <div className="grid gap-2 border-t px-4 py-3 text-sm">
+            {inspecting ? <>
+            <label className="flex flex-wrap items-center gap-2">Inspect date
+              <select
+                ref={inspector}
+                value={bucket.from}
+                onChange={(event) => setInspected(event.currentTarget.selectedIndex)}
+                onKeyDown={(event) => {
+                  if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+                  if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+                  event.preventDefault();
+                  const next = bucketIndex + (event.key === "ArrowDown" ? 1 : -1);
+                  setInspected(Math.max(0, Math.min(next, data.buckets.length - 1)));
+                }}
+                className="rounded-md border border-input bg-background px-2 py-1.5 pointer-coarse:min-h-11"
+              >
+                {data.buckets.map((entry) => <option key={entry.from} value={entry.from}>{entry.long}</option>)}
+              </select>
+            </label>
+            <p role="status" className="flex flex-wrap gap-x-4 gap-y-1"><strong>Total {fmt(totals[bucketIndex])}</strong>{visible.filter((series) => bucket.values[series.key]).map((series) => <span key={series.key}>{series.label} {fmt(bucket.values[series.key])}</span>)}</p>
+            <Button type="button" size="sm" variant="ghost" className="w-fit" onClick={() => { setInspecting(false); chart.current?.focus(); }}>Close date inspector</Button>
+            </> : <Button type="button" size="sm" variant="outline" className="w-fit" onClick={() => inspectBucket(bucketIndex)}>Inspect dates</Button>}
+          </div> : null}
           <div className="sr-only">{table}</div>
         </>
       )}

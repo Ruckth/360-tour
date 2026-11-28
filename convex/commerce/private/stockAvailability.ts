@@ -65,37 +65,57 @@ export function allocationCounts(rows: Allocation[]) {
   return sums;
 }
 
-export async function stockAvailability(ctx: QueryCtx, scope: StockScope, onHand: number, now = Date.now(), knownTracking?: boolean) {
-  const [config, reservations] = await Promise.all([
+export const maxBinPositions = 128;
+
+export async function readBinPositions(ctx: QueryCtx, { branchId, variantId }: StockScope) {
+  const positions = await expansionRead(ctx, () => ctx.db.query('stockBinPositions')
+    .withIndex('by_branchId_and_variantId_and_binId_and_lotId', q => q.eq('branchId', branchId).eq('variantId', variantId))
+    .take(maxBinPositions + 1));
+  if (positions.length > maxBinPositions) expansionError('STOCK_BIN_LIMIT', 'This item has too many bin positions.');
+  return positions;
+}
+
+export async function stockAvailability(ctx: QueryCtx, scope: StockScope, onHand: number, now = Date.now(), knownTracking?: boolean, knownBins?: Doc<'stockBinPositions'>[]) {
+  const [config, reservations, bins] = await Promise.all([
     knownTracking ?? readsTracking(ctx, scope.variantId),
     activeReservations(ctx, scope, now),
+    knownBins ?? readBinPositions(ctx, scope),
   ]);
   const held = reservations.reduce((sum, row) => sum + row.quantity, 0);
-  if (!config) return { tracking: false, held, sellable: Math.max(0, onHand - held), lots: [], reservations };
+  const assigned = bins.reduce((sum, row) => sum + row.quantity, 0);
+  const unassigned = bins.length ? onHand - assigned : null;
+  if (!config) return { tracking: false, held, assigned, sellable: Math.max(0, (unassigned ?? onHand) - held), lots: [], reservations, unassigned };
 
   const positions = await physicalLots(ctx, scope);
   if (positions.reduce((sum, row) => sum + row.onHand, 0) !== onHand) {
     expansionError('STOCK_LOT_RECONCILIATION', 'The lot balances and branch stock differ. Review the stock ledger.');
   }
   const heldByLot = allocationCounts(reservations.flatMap(row => row.allocations));
-  const lots = positions.map(row => ({ ...row, available: row.onHand - (heldByLot.get(row.lotId) ?? 0) }));
+  const assignedByLot = allocationCounts(bins.flatMap(row => row.lotId ? [{ lotId: row.lotId, quantity: row.quantity }] : []));
+  const lots = positions.map(row => {
+    const reserved = heldByLot.get(row.lotId) ?? 0;
+    const assigned = assignedByLot.get(row.lotId) ?? 0;
+    return { ...row, reserved, assigned, available: row.onHand - reserved - assigned };
+  });
   if (lots.some(row => row.available < 0) ||
-      lots.reduce((sum, row) => sum + row.onHand - row.available, 0) !== held) {
+      lots.reduce((sum, row) => sum + row.onHand - row.available, 0) !== held + assigned) {
     expansionError('STOCK_LOT_RECONCILIATION', 'The lot balances and stock holds differ. Review the stock ledger.');
   }
   const sellable = lots.reduce((sum, row) => sum + (row.expiresAt > now ? row.available : 0), 0);
-  return { tracking: true, held, sellable, lots, reservations };
+  return { tracking: true, held, assigned, sellable, lots, reservations, unassigned };
 }
 
 export async function readStockAvailability(ctx: QueryCtx, args: StockScope & { onHand: number; orderId?: Id<'orders'>; checkOrderHoldHistory?: boolean }) {
-  const { sellable, held, tracking, reservations } = await stockAvailability(ctx, args, args.onHand);
+  const { sellable, held, tracking, reservations, lots, unassigned } = await stockAvailability(ctx, args, args.onHand);
   const reservation = args.orderId && reservations.find(row => row.orderId === args.orderId);
   const ownHeld = reservation ? reservation.quantity : 0;
   const { orderId } = args;
   const hadOrderHold = Boolean(orderId && args.checkOrderHoldHistory && !reservation && await expansionRead(ctx, () =>
     ctx.db.query('stockReservations').withIndex('by_orderId_and_branchId_and_variantId', q =>
       q.eq('orderId', orderId).eq('branchId', args.branchId).eq('variantId', args.variantId)).first()));
-  return { sellable: sellable + ownHeld, held: held - ownHeld, tracking, hadOrderHold,
+  return { unassigned, sellable: sellable + ownHeld, held: held - ownHeld, tracking, hadOrderHold,
+    lots,
+    reservationAllocations: reservation?.allocations, reservationExpiresAt: reservation?.expiresAt,
     reservationId: reservation ? reservation._id : undefined, reservationQuantity: reservation ? ownHeld : undefined };
 }
 

@@ -42,7 +42,7 @@ test('staff can receive a partial tracked purchase order on a phone and inspect 
   const variantId = product?.variants[0]?._id;
   if (!variantId) throw new Error('The saved product needs its first variant.');
   await owner.mutation(api.commerce.stockExpansion.enableLotTracking, { branchId, variantId });
-  const supplier = await owner.mutation(purchasing.addSupplier, { branchId, name: `Local supplier ${token}`, operationKey: crypto.randomUUID() });
+  const supplier = await owner.mutation(purchasing.addSupplier, { branchId, name: `Local supplier ${token}`, confirmSimilar: true, operationKey: crypto.randomUUID() });
   const draft = await owner.mutation(purchasing.saveOrder, {
     branchId, supplierId: supplier.id as Id<'suppliers'>, lines: [{ variantId, quantity: 12, unitCost: 7000 }], operationKey: crypto.randomUUID(),
   });
@@ -76,7 +76,7 @@ test('staff can receive a partial tracked purchase order on a phone and inspect 
   await page.getByRole('button', { name: 'Receive', exact: true }).click();
   const form = page.getByRole('dialog', { name: /Receive delivery/ });
   const rejected = form.getByLabel('Rejected (optional)');
-  const reason = form.getByLabel('Rejection reason (required)');
+  const reason = form.getByLabel('Rejection details (optional)');
   await expect(reason).toHaveCount(0);
   await rejected.fill('1');
   await reason.fill('Damaged packaging');
@@ -114,7 +114,7 @@ test('staff can receive a partial tracked purchase order on a phone and inspect 
   await expect(row).toContainText('7');
   const balances = await owner.query(stock.listBalances, { branchId, search: sku, paginationOpts: firstPage });
   expect(balances.page).toEqual(expect.arrayContaining([expect.objectContaining({ variantId, onHand: 5, onOrder: 7 })]));
-  await row.getByRole('link', { name: 'Count', exact: true }).click();
+  await row.getByRole('link', { name: 'Open lots', exact: true }).click();
   await expect(page.getByRole('tab', { name: 'Lots & expiry' })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByText(`LOT-${token}`, { exact: true })).toBeVisible();
 });
@@ -149,7 +149,8 @@ test('bad adjust shows inline preview error without crashing and balance-to-requ
   await expect(adjustDialog).toBeVisible();
   const qtyInput = adjustDialog.getByLabel(/Quantity to remove/);
   const noteInput = adjustDialog.getByLabel(/Note/);
-  await adjustDialog.getByRole('radio', { name: 'Damaged', exact: true }).check();
+  await adjustDialog.getByText('Damaged', { exact: true }).click();
+  await expect(adjustDialog.getByRole('radio', { name: 'Damaged', exact: true })).toBeChecked();
   await qtyInput.fill('10');
   await noteInput.fill('Damaged on shelf');
   await expect(adjustDialog.getByRole('alert')).toBeVisible();
@@ -165,7 +166,7 @@ test('bad adjust shows inline preview error without crashing and balance-to-requ
 
   // 2. Balances -> Request stock prefills real variant and strips one-shot URL flags so browser Back stays clean
   await row.getByLabel(`Select ${name} 100 ml`).check();
-  await page.getByLabel('Actions for selected item').getByRole('button', { name: 'Request stock', exact: true }).click();
+  await page.getByLabel('Actions for selected item').getByRole('button', { name: 'Request 1', exact: true }).click();
 
   const requestDialog = page.getByRole('dialog', { name: /Request stock/ });
   await expect(requestDialog).toBeVisible();
@@ -199,7 +200,7 @@ test('purchasing searches posted documents and restores filtered queues from det
   if (!variantId) throw new Error('The saved product needs its first variant.');
   const supplierName = `Purchasing supplier ${token}`;
   const supplierId = (await owner.mutation(purchasing.addSupplier, {
-    branchId, name: supplierName, operationKey: crypto.randomUUID(),
+    branchId, name: supplierName, confirmSimilar: true, operationKey: crypto.randomUUID(),
   })).id as Id<'suppliers'>;
   const deliveryReference = `INV-${token}`;
   const receipt = await owner.mutation(purchasing.receiveWithoutOrder, {
@@ -224,7 +225,7 @@ test('purchasing searches posted documents and restores filtered queues from det
 
   const unusedSupplierName = `Empty queue supplier ${token}`;
   const unusedSupplier = await owner.mutation(purchasing.addSupplier, {
-    branchId, name: unusedSupplierName, operationKey: crypto.randomUUID(),
+    branchId, name: unusedSupplierName, confirmSimilar: true, operationKey: crypto.randomUUID(),
   });
   await page.goto(`${hub}?tab=orders&orderFilter=supplier&supplierId=${unusedSupplier.id}`);
   await expect(page.getByRole('button', { name: unusedSupplierName, exact: true })).toBeVisible();
@@ -274,4 +275,25 @@ test('purchasing searches posted documents and restores filtered queues from det
   await page.getByRole('link', { name: 'Receipts', exact: true }).click();
   await expect(page.getByRole('searchbox', { name: 'Receipt or delivery reference' })).toHaveValue(deliveryReference);
   await expect(receiptLink).toBeVisible();
+});
+
+test('Stock sections stay keyboard reachable with an expanded sidebar, icon rail and phone header', async ({ page }) => {
+  await setupStockOwner(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/admin/stock/balances');
+  const local = page.getByRole('navigation', { name: 'Stock pages', includeHidden: true });
+  await expect(local).toBeHidden();
+  await expect(page.getByTestId('approvals-button')).toBeVisible();
+  const sidebarActivity = page.locator('[data-stock-pages]').getByRole('link', { name: 'Activity' });
+  await sidebarActivity.focus();
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(/stock\/activity/);
+  await page.getByRole('button', { name: 'Toggle Sidebar', exact: true }).first().click();
+  await expect(local.getByRole('link')).toHaveCount(5);
+  await expect(local.getByRole('link', { name: 'Activity' })).toHaveAttribute('aria-current', 'page');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await local.getByRole('link', { name: 'Balances' }).focus();
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(/stock\/balances/);
+  await expect(page.locator('header')).toContainText('Koh Samui');
 });

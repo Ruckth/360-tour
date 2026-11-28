@@ -16,10 +16,13 @@ function nonSellableMovement(kind: StockMovementInput['kind']) {
   return ['supplier_return', 'correction', 'write_off', 'lot_adjustment', 'count'].includes(kind);
 }
 
-async function receiptLot(ctx: MutationCtx, args: StockMovementInput): Promise<Id<'stockLots'>> {
+export const legacyUnattributedLotCode = 'Pre-tracking stock (verify lot)';
+
+async function receiptLot(ctx: MutationCtx, args: StockMovementInput, legacy = false): Promise<Id<'stockLots'>> {
   const evidence = args.lotReceipt;
   if (!evidence) expansionError('STOCK_LOT_REQUIRED', 'Choose a lot code and expiry for received units.');
   const code = stockText(evidence.code, 80, 'a lot code');
+  if (!legacy && code === legacyUnattributedLotCode) expansionError('INVALID_STOCK_LOT', 'Enter the lot code printed on the stock.');
   const expiresAt = evidence.expiresAt;
   if (!Number.isSafeInteger(expiresAt) || expiresAt <= 0) {
     expansionError('INVALID_LOT_EXPIRY', 'Enter a valid lot expiry timestamp.');
@@ -64,13 +67,54 @@ export async function readStockReturnLots(ctx: QueryCtx, args: StockScope & {
     return { tracked: false, lots: [] };
   }
   const evidence = await readLotMovement(ctx, original._id);
-  if (!evidence) return { tracked: Boolean(await readsTracking(ctx, args.variantId)), lots: [] };
+  if (!evidence) {
+    const config = await readsTracking(ctx, args.variantId);
+    return { tracked: !!config && !predatesConversion(config, original), lots: [] };
+  }
   const lots = await Promise.all(remainingAllocations(evidence).map(async allocation => {
     const lot = await expansionRead(ctx, () => ctx.db.get(allocation.lotId));
     if (!lot) expansionError('STOCK_LOT_RECONCILIATION', 'A lot in this sale is missing. Review the stock ledger.');
     return { ...allocation, code: lot.code, expiresAt: lot.expiresAt };
   }));
   return { tracked: true, lots };
+}
+
+function predatesConversion(config: Doc<'stockTracking'> | null, movement: Doc<'stockMovements'>) {
+  return config?.convertedAt !== undefined && movement._creationTime <= config._creationTime;
+}
+
+async function legacyMovementAllocations(ctx: MutationCtx, args: StockMovementInput, availability: Awaited<ReturnType<typeof stockAvailability>>) {
+  if (!args.originalMovementId) return undefined;
+  const [config, movement] = await Promise.all([
+    readsTracking(ctx, args.variantId), expansionRead(ctx, () => ctx.db.get(args.originalMovementId!)),
+  ]);
+  if (!movement || !predatesConversion(config, movement) || movement.variantId !== args.variantId ||
+      await readLotMovement(ctx, movement._id)) return undefined;
+  const legacyTransfer = args.kind === 'transfer_in' && movement.kind === 'transfer_out' &&
+    args.sourceId !== undefined && args.sourceId === movement.sourceId;
+  const legacyReturn = isPhysicalReturn(args.kind) && isSaleSource(movement.kind) && movement.branchId === args.branchId;
+  const legacySupplierReversal = args.kind === 'correction' && movement.kind === 'supplier_return' &&
+    movement.delta < 0 && movement.branchId === args.branchId && args.sourceId !== undefined &&
+    args.sourceId === movement.sourceId && args.delta <= -movement.delta;
+  if (args.lotAllocations?.length) {
+    if (args.delta <= 0 || !legacySupplierReversal) return undefined;
+    if (args.lotAllocations.length > maxActiveLots) expansionError('INVALID_LOT_ALLOCATION', 'Too many verified lots.');
+    const verifiedPositions = await Promise.all(args.lotAllocations.map(({ lotId }) => expansionRead(ctx, () => ctx.db.query('stockLotBalances')
+      .withIndex('by_branchId_and_lotId', q => q.eq('branchId', args.branchId).eq('lotId', lotId)).unique())));
+    if (verifiedPositions.some(position => position?.variantId !== args.variantId)) {
+      expansionError('INVALID_STOCK_LOT', 'Choose a verified lot for this item at this branch.');
+    }
+    return args.lotAllocations;
+  }
+  if (args.delta < 0 && movement.branchId === args.branchId && movement.delta > 0 &&
+      ['correction', 'supplier_return'].includes(args.kind)) {
+    return allocateStockLots(availability.lots, -args.delta, 0);
+  }
+  if (args.delta <= 0 || (!legacyTransfer && !legacyReturn && !legacySupplierReversal)) return undefined;
+  // Pre-conversion movements have no physical lot evidence. A dedicated expired position
+  // keeps the original return valid and the units out of sales until staff identify the lot.
+  const lotId = await receiptLot(ctx, { ...args, lotReceipt: { code: legacyUnattributedLotCode, expiresAt: 1 } }, true);
+  return [{ lotId, quantity: args.delta }];
 }
 
 async function findOriginal(ctx: MutationCtx, args: StockMovementInput) {
@@ -135,7 +179,7 @@ async function applyLots(
     if (onHand < 0) expansionError('INSUFFICIENT_STOCK', 'There are insufficient units in the selected lot.');
     reserveWrites(ctx, 1);
     if (current) {
-      await ctx.db.patch(current._id, { onHand, inStock: onHand > 0 });
+      await ctx.db.patch(current._id, { onHand, inStock: onHand > 0, revision: (current.revision ?? 0) + 1 });
       if (onHand === 0) activeLots--;
       continue;
     }
@@ -146,9 +190,9 @@ async function applyLots(
         .withIndex('by_branchId_and_lotId', q => q.eq('branchId', args.branchId).eq('lotId', lotId)).unique()),
     ]);
     if (!lot || lot.variantId !== args.variantId) expansionError('INVALID_STOCK_LOT', 'This lot belongs to a different item.');
-    if (position) await ctx.db.patch(position._id, { onHand, inStock: true });
+    if (position) await ctx.db.patch(position._id, { onHand, inStock: true, revision: (position.revision ?? 0) + 1 });
     else await ctx.db.insert('stockLotBalances', {
-      branchId: args.branchId, variantId: args.variantId, lotId, expiresAt: lot.expiresAt, onHand, inStock: true,
+      branchId: args.branchId, variantId: args.variantId, lotId, expiresAt: lot.expiresAt, onHand, inStock: true, revision: 1,
     });
   }
 }
@@ -172,7 +216,7 @@ function holdsToInvalidate(
   });
 }
 
-export async function prepareStockExpansionMovement(ctx: MutationCtx, args: StockMovementInput, before: number, after: number) {
+export async function prepareStockExpansionMovement(ctx: MutationCtx, args: StockMovementInput, before: number, after: number, knownBins?: Doc<'stockBinPositions'>[]) {
   const now = Date.now();
   // Increases to untracked stock cannot take units away from any order's hold.
   let tracking: boolean | undefined;
@@ -185,7 +229,8 @@ export async function prepareStockExpansionMovement(ctx: MutationCtx, args: Stoc
       return undefined;
     }
   }
-  const availability = await stockAvailability(ctx, args, before, now, tracking);
+  // Stock increases land in Unassigned and leave all named positions and holds intact.
+  const availability = await stockAvailability(ctx, args, before, now, tracking, args.delta > 0 ? [] : knownBins);
   const reservation = args.reservationId
     ? availability.reservations.find(row => row._id === args.reservationId)
     : undefined;
@@ -194,9 +239,10 @@ export async function prepareStockExpansionMovement(ctx: MutationCtx, args: Stoc
     expansionError('INVALID_STOCK_RESERVATION', 'This hold does not match the sale, or has expired.');
   }
   const verifiedCount = args.kind === 'count' && (args.clearRecount || args.reasonCode === 'verified_lot_count');
-  const invalidated = verifiedCount && args.delta < 0 ? holdsToInvalidate(availability, after, args.lotAllocations) : [];
+  const availableAfter = availability.unassigned === null ? after : availability.unassigned + args.delta;
+  const invalidated = verifiedCount && args.delta < 0 ? holdsToInvalidate(availability, availableAfter, args.lotAllocations) : [];
   const invalidatedQuantity = invalidated.reduce((sum, row) => sum + row.quantity, 0);
-  if (availability.held > 0 && args.delta <= 0 && after < availability.held - (reservation?.quantity ?? 0) - invalidatedQuantity) {
+  if (availability.held > 0 && args.delta <= 0 && availableAfter < availability.held - (reservation?.quantity ?? 0) - invalidatedQuantity) {
     expansionError('STOCK_RESERVED', 'Some of these units are held for another order.');
   }
 
@@ -204,7 +250,10 @@ export async function prepareStockExpansionMovement(ctx: MutationCtx, args: Stoc
   let originalUpdate: { id: Id<'stockLotMovements'>; reversed: Allocation[] } | undefined;
   if (availability.tracking) {
     if (args.delta !== 0) {
-      if (args.originalMovementId || ['return', 'taken_back', 'correction', 'supplier_return'].includes(args.kind)) {
+      const legacyAllocations = await legacyMovementAllocations(ctx, args, availability);
+      if (legacyAllocations) {
+        allocations = legacyAllocations;
+      } else if (args.originalMovementId || ['return', 'taken_back', 'correction', 'supplier_return'].includes(args.kind)) {
         const original = await findOriginal(ctx, args);
         const reversal = reverseOriginal(original, args);
         allocations = reversal.allocations;

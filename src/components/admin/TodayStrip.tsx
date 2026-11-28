@@ -13,7 +13,7 @@ import { formatMoney } from "./labels";
 import { canEditBooking, paymentText } from "./admin-bookings-shared";
 
 import { Button } from "@/components/ui/button";
-import { errorText, resortIsoDate, useNow } from "@/lib/staff-bookings";
+import { errorText, useResortBusinessDate } from "@/lib/staff-bookings";
 import { useStayCheckout, useStaySpa } from "./stay-spa";
 
 export type TodayGroup = "arriving" | "leaving" | "inHouse" | "balanceDue";
@@ -39,7 +39,7 @@ export function todayBookingArgs(today: string) {
 
 /** Arriving · Leaving · In house · Balance due. A tile lists its guests; a guest opens their stay's actions. */
 export function TodayStrip({ villaName, onOpen }: { villaName: (id: string) => string; onOpen: (booking: AdminBooking, element: Element) => void }) {
-  const today = resortIsoDate(useNow());
+  const today = useResortBusinessDate();
   const data = useQuery(api.bookings.admin.listForAdmin, todayBookingArgs(today));
   // `?today=arriving` (from the Today page) opens with that group's guests listed.
   const linked = useSearchParams().get("today");
@@ -62,7 +62,7 @@ export function TodayStrip({ villaName, onOpen }: { villaName: (id: string) => s
           <button
             key={key}
             type="button"
-            aria-label={key === "balanceDue" ? `Balance due ${groups ? balanceLabel : "loading"}` : undefined}
+            aria-label={key === "balanceDue" ? `Balance due ${groups ? balanceLabel + (data?.complete === false ? " (partial)" : "") : "loading"}` : undefined}
             aria-expanded={open === key}
             aria-controls="today-list"
             disabled={!groups}
@@ -74,13 +74,14 @@ export function TodayStrip({ villaName, onOpen }: { villaName: (id: string) => s
           >
             <span className="flex items-center justify-between gap-0.5 whitespace-nowrap text-xs leading-tight font-normal text-muted-foreground sm:text-xs">{label}<ChevronDown aria-hidden className={cn("size-2.5 shrink-0 transition-transform sm:size-3", open === key && "rotate-180")} /></span>
             {groups ? <span className="money font-sans text-lg leading-none font-semibold tracking-tight tabular-nums sm:text-[28px]">{key === "balanceDue" ? amounts.length ? amounts.map((amount) => <span key={amount} className="block text-pretty wrap-anywhere">{amount}</span>) : "—" : groups[key].length}</span> : <Skeleton className="h-6 w-10" />}
+            {data?.complete === false ? <span className="text-xs text-muted-foreground">Partial</span> : null}
             {key === "balanceDue" ? <span className="text-pretty text-xs text-muted-foreground">Today’s guests · all villas</span> : null}
           </button>
         ))}
       </div>
       {open ? (
         <ul id="today-list" aria-label={GROUPS.find((g) => g.key === open)!.label} className="grid gap-1 rounded-xl border border-border bg-card p-1 sm:grid-cols-2 lg:grid-cols-3">
-          {list.length === 0 ? <li className="px-3 py-2 text-sm text-muted-foreground">No one today.</li> : null}
+          {list.length === 0 ? <li className="px-3 py-2 text-sm text-muted-foreground">{!data ? "Loading stays…" : data.complete === false ? "No matching stays were loaded. This list is partial." : "No one today."}</li> : null}
           {list.map((booking) => (
             <li key={booking._id}>
               <button

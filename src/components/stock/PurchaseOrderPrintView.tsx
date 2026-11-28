@@ -18,12 +18,19 @@ export type PrintableOrderRevision = {
   reason?: string;
   issuedAt?: number;
   actorLabel?: string;
+  /** Buying business and receiving contact from branch settings (absent → branch name only). */
+  buyer?: {
+    legalName: string; taxId?: string; address?: string; branchCode?: string;
+    receivingContact: string; receivingPhone?: string; contactName: string;
+  };
   lines: readonly {
     variantId: string;
     item: StockItemSnapshot;
     ordered: number;
     cancelled: number;
     unitCost?: number;
+    /** Price to be confirmed by the supplier. */
+    priceTbc?: boolean;
   }[];
 };
 
@@ -50,6 +57,8 @@ export function PurchaseOrderPrintDialog({
   const totalUnits = activeLines.reduce((sum, line) => sum + line.netQty, 0);
   const totalSatang = activeLines.reduce((sum, line) => sum + (line.lineTotal ?? 0), 0);
   const hasCosts = activeLines.some((line) => line.unitCost !== undefined);
+  const hasTbc = activeLines.some((line) => line.unitCost === undefined && line.priceTbc);
+  const buyer = order.buyer;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -75,11 +84,23 @@ export function PurchaseOrderPrintDialog({
               <p className="text-xs text-muted-foreground">
                 Revision {order.revision}
                 {order.issuedAt ? ` · Issued ${staffDateTime(order.issuedAt)}` : ""}
-                {order.actorLabel ? ` by ${order.actorLabel}` : ""}
               </p>
             </div>
             <div className="grid gap-0.5 text-right text-xs">
-              <p className="font-medium text-foreground">Deliver to: {order.branchName}</p>
+              {buyer ? (
+                <section aria-label="Buyer and delivery" className="grid gap-0.5">
+                  <p className="font-semibold text-foreground">{buyer.legalName}</p>
+                  {buyer.taxId ? <p className="text-muted-foreground">Tax ID {buyer.taxId}{buyer.branchCode ? ` · Branch ${buyer.branchCode}` : ""}</p> : null}
+                  <p className="font-medium text-foreground">Deliver to: {order.branchName}</p>
+                  {buyer.address ? <p className="whitespace-pre-wrap text-muted-foreground">{buyer.address}</p> : null}
+                  <p className="text-muted-foreground">
+                    Receiving: {buyer.receivingContact}{buyer.receivingPhone ? ` · ${buyer.receivingPhone}` : ""}
+                  </p>
+                  <p className="text-muted-foreground">Contact: {buyer.contactName}</p>
+                </section>
+              ) : (
+                <p className="font-medium text-foreground">Deliver to: {order.branchName}</p>
+              )}
               {order.expectedDate ? <p className="text-muted-foreground">Expected: {order.expectedDate}</p> : null}
               {order.supplierReference ? (
                 <p className="text-muted-foreground">Supplier ref: {order.supplierReference}</p>
@@ -89,6 +110,11 @@ export function PurchaseOrderPrintDialog({
 
           <section aria-label="Supplier details" className="grid gap-1 text-xs">
             <p className="font-semibold text-foreground">{order.supplier.name}</p>
+            {order.supplier.address && <p className="whitespace-pre-wrap">{order.supplier.address}</p>}
+            {order.supplier.taxId && <p>Tax ID · {order.supplier.taxId}</p>}
+            {order.supplier.paymentTerms && <p>Payment terms · {order.supplier.paymentTerms}</p>}
+            {order.supplier.deliveryDays && <p>Delivery days · {order.supplier.deliveryDays}</p>}
+            {order.supplier.minimumOrder && <p>Minimum order · {order.supplier.minimumOrder}</p>}
             <p className="text-muted-foreground">
               {[order.supplier.contactName, order.supplier.phone, order.supplier.email]
                 .filter(Boolean)
@@ -124,10 +150,10 @@ export function PurchaseOrderPrintDialog({
                       ) : null}
                     </td>
                     <td className="py-2 pr-3 text-right tabular-nums text-foreground">
-                      {formatSatang(line.unitCost)}
+                      {line.unitCost === undefined && line.priceTbc ? "TBC" : formatSatang(line.unitCost)}
                     </td>
                     <td className="py-2 text-right tabular-nums font-medium text-foreground">
-                      {formatSatang(line.lineTotal)}
+                      {line.unitCost === undefined && line.priceTbc ? "TBC" : formatSatang(line.lineTotal)}
                     </td>
                   </tr>
                 ))}
@@ -138,7 +164,7 @@ export function PurchaseOrderPrintDialog({
                   <td className="py-2.5 pr-3 text-right tabular-nums">{totalUnits.toLocaleString("en-US")}</td>
                   <td className="py-2.5 pr-3" />
                   <td className="py-2.5 text-right tabular-nums">
-                    {hasCosts ? formatSatang(totalSatang) : "—"}
+                    {hasCosts ? `${formatSatang(totalSatang)}${hasTbc ? " + TBC" : ""}` : hasTbc ? "TBC" : "—"}
                   </td>
                 </tr>
               </tfoot>

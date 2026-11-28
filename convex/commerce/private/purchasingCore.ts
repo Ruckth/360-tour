@@ -21,7 +21,23 @@ export function fail(code: string, message: string, data: Record<string, unknown
 }
 
 export function actorOf(staff: StaffActor): Actor {
-  return { actorKey: staff.tokenIdentifier, actorLabel: staff.email };
+  return { actorKey: staff.tokenIdentifier, actorLabel: staffDisplayName(staff.email) };
+}
+
+/**
+ * A short, human staff name for purchasing documents. Older records stored the login email; it is reduced on every read,
+ * so no full address reaches list rows, history or the supplier copy: the local part before any `+tag`, split on
+ * separators, without id-like tokens (any digit), title-cased and at most 40 characters. Plain names pass through.
+ */
+export function staffDisplayName(label: string | undefined) {
+  const value = label?.trim() ?? '';
+  if (!value) return 'Staff member';
+  if (!value.includes('@')) return value.length > 40 ? `${value.slice(0, 39)}…` : value;
+  const local = value.split('@')[0].split('+')[0];
+  const words = local.split(/[._\-\s]+/).filter(word => word && !/\d/.test(word));
+  const name = words.map(word => word[0].toUpperCase() + word.slice(1).toLowerCase()).join(' ');
+  if (!name) return 'Staff member';
+  return name.length > 40 ? `${name.slice(0, 39)}…` : name;
 }
 
 /** Current branch and action grant. Always called before replay lookup so revoked access cannot replay. */
@@ -69,6 +85,21 @@ export function isoDate(value: string | undefined, label: string) {
   }
   return value;
 }
+
+/**
+ * A date that must not be before today in resort time. An unchanged stored value is accepted as-is, so editing an older
+ * document never forces a new date.
+ */
+export function futureIsoDate(value: string | undefined, label: string, previous?: string, now = Date.now()) {
+  const date = isoDate(value, label);
+  if (date && date !== previous && date < resortTodayIso(now)) {
+    fail('DATE_IN_PAST', `${label} can't be in the past.`, { field: label, today: resortTodayIso(now) });
+  }
+  return date;
+}
+
+/** The 5-character random code at the end of a PR/PO/GR reference, for fragment lookup. */
+export const referenceCode = (reference: string) => reference.slice(-5);
 
 export function lineCount<T>(lines: T[], label = 'lines') {
   if (lines.length === 0) fail('NO_LINES', `Add at least one of the ${label}.`);
@@ -241,6 +272,12 @@ export async function requireSupplier(ctx: QueryCtx, supplierId: Id<'suppliers'>
 export function supplierSnapshot(supplier: Doc<'suppliers'>): Doc<'purchaseOrders'>['supplier'] {
   return {
     name: supplier.name,
+    address: supplier.address,
+    taxId: supplier.taxId,
+    paymentTerms: supplier.paymentTerms,
+    leadTimeDays: supplier.leadTimeDays,
+    deliveryDays: supplier.deliveryDays,
+    minimumOrder: supplier.minimumOrder,
     ...(supplier.contactName ? { contactName: supplier.contactName } : {}),
     ...(supplier.phone ? { phone: supplier.phone } : {}),
     ...(supplier.email ? { email: supplier.email } : {}),
@@ -266,13 +303,14 @@ export async function adjustIncoming(ctx: MutationCtx, branchId: Id<'branches'>,
 
 // ---------- Order lines ----------
 
+/** Units still due; never negative (an over-delivery accepted within the branch tolerance leaves 0 due). */
 export const lineDue = (line: Pick<Doc<'purchaseOrderLines'>, 'ordered' | 'cancelled' | 'accepted'>) =>
-  line.ordered - line.cancelled - line.accepted;
+  Math.max(0, line.ordered - line.cancelled - line.accepted);
 
 export const ISSUED_OPEN: OrderStatus[] = ['ordered', 'partially_received'];
 
 export function phaseOf(status: OrderStatus): OrderPhase {
-  if (status === 'draft') return 'draft';
+  if (status === 'draft' || status === 'awaiting_approval') return 'draft';
   if (status === 'deleted') return 'deleted';
   return status === 'ordered' || status === 'partially_received' ? 'open' : 'closed';
 }
@@ -294,24 +332,81 @@ export async function correctionClosesRemainder(ctx: QueryCtx, order: Doc<'purch
     !!(await otherHoldReplacement(ctx, order.forHoldId, order._id));
 }
 
-/** Header counters and status from its lines (≤ 50). An explicitly closed order stays closed. */
+/** A pre-feature line: units were accepted before accepted value and rejection counts were kept. */
+export const isLegacyLine = (line: Pick<Doc<'purchaseOrderLines'>, 'accepted' | 'rejected' | 'acceptedValue'>) =>
+  line.acceptedValue === undefined || line.rejected === undefined;
+
+/**
+ * Accepted value of a line at each receipt's recorded unit cost. A pre-feature line with accepted units has no exact
+ * value until it is reconstructed (`seedLegacyLine` or the chunked rebuild); policy checks that must compare amounts use
+ * this estimate only on both sides of the same comparison, and it is never persisted.
+ */
+export const lineAcceptedValue = (line: Pick<Doc<'purchaseOrderLines'>, 'accepted' | 'unitCost' | 'acceptedValue'>) =>
+  line.acceptedValue ?? line.accepted * (line.unitCost ?? 0);
+
+/** Receipt lines one transaction reads to reconstruct a pre-feature line; longer histories use the chunked rebuild. */
+export const LEGACY_RECEIPT_SCAN = 100;
+
+/** Exact accepted value and rejections from a slice of a line's receipt lines (accepted − corrected at recorded cost). */
+export const receiptValuation = (rows: Pick<Doc<'supplierReceiptLines'>, 'accepted' | 'corrected' | 'rejected' | 'unitCost'>[]) => ({
+  acceptedValue: rows.reduce((sum, row) => sum + (row.accepted - row.corrected) * (row.unitCost ?? 0), 0),
+  rejected: rows.reduce((sum, row) => sum + row.rejected, 0),
+});
+
+/**
+ * Lines written before accepted value and rejection counts were kept have neither. Reconstruct both exactly from the
+ * line's immutable receipt lines, so repricing or a later receipt never revalues history. Call before the current command
+ * writes any receipt line or correction for it. A line with more than LEGACY_RECEIPT_SCAN receipts is never estimated:
+ * the costing write fails with the retryable VALUATION_PENDING until the operator's chunked rebuild has valued it.
+ */
+export async function seedLegacyLine(ctx: QueryCtx, line: Doc<'purchaseOrderLines'>): Promise<Doc<'purchaseOrderLines'>> {
+  if (!isLegacyLine(line)) return line;
+  const receipts = await stockRead(ctx, () => ctx.db.query('supplierReceiptLines')
+    .withIndex('by_orderLineId', q => q.eq('orderLineId', line._id)).take(LEGACY_RECEIPT_SCAN + 1));
+  if (receipts.length > LEGACY_RECEIPT_SCAN) {
+    fail('VALUATION_PENDING', 'This order line has a long receipt history that is still being valued. Try again after the purchasing valuation backfill finishes.', {
+      orderLineId: line._id,
+    });
+  }
+  const exact = receiptValuation(receipts);
+  return { ...line, acceptedValue: line.acceptedValue ?? exact.acceptedValue, rejected: line.rejected ?? exact.rejected };
+}
+
+/**
+ * Header counters and status from its lines (≤ 50). An explicitly closed order stays closed.
+ * Value: received at receipt costs plus the open commitment (due × current cost); `totalCost` is their sum, so a
+ * repriced amendment changes only what is still outstanding. `unpricedLines` counts committed lines with no cost.
+ * While any line with accepted units is pre-feature, `receivedValue` is unknown (omitted) and `totalCost` keeps its
+ * pre-feature meaning (committed × current cost); no estimated historical value is stored.
+ */
 export function orderSummary(order: Doc<'purchaseOrders'>, lines: Doc<'purchaseOrderLines'>[]) {
-  let orderedUnits = 0, acceptedUnits = 0, dueUnits = 0, openLineCount = 0, totalCost = 0;
+  let orderedUnits = 0, acceptedUnits = 0, dueUnits = 0, openLineCount = 0, receivedValue = 0, outstandingValue = 0;
+  let unpricedLines = 0, rejectedUnits = 0, legacyTotal = 0, legacy = false;
   for (const line of lines) {
     const committed = line.ordered - line.cancelled;
+    const due = lineDue(line);
     orderedUnits += committed;
     acceptedUnits += line.accepted;
-    dueUnits += lineDue(line);
-    if (lineDue(line) > 0) openLineCount++;
-    totalCost += committed * (line.unitCost ?? 0);
+    rejectedUnits += line.rejected ?? 0;
+    dueUnits += due;
+    if (due > 0) openLineCount++;
+    if (line.acceptedValue === undefined && line.accepted > 0) legacy = true;
+    receivedValue += line.acceptedValue ?? 0;
+    outstandingValue += Math.max(0, due) * (line.unitCost ?? 0);
+    legacyTotal += committed * (line.unitCost ?? 0);
+    if (committed > 0 && line.unitCost === undefined) unpricedLines++;
   }
   let status: OrderStatus = order.status;
   if (status === 'closed_short' || status === 'cancelled') {
     status = acceptedUnits > 0 ? 'closed_short' : 'cancelled';
-  } else if (status !== 'draft' && status !== 'deleted') {
+  } else if (status !== 'draft' && status !== 'deleted' && status !== 'awaiting_approval') {
     status = dueUnits === 0 ? 'received' : acceptedUnits > 0 ? 'partially_received' : 'ordered';
   }
-  return { orderedUnits, acceptedUnits, dueUnits, openLineCount, totalCost, status, phase: phaseOf(status), lineCount: lines.length };
+  return {
+    orderedUnits, acceptedUnits, dueUnits, openLineCount, totalCost: legacy ? legacyTotal : receivedValue + outstandingValue,
+    receivedValue: legacy ? undefined : receivedValue, outstandingValue, unpricedLines, rejectedUnits,
+    status, phase: phaseOf(status), lineCount: lines.length,
+  };
 }
 
 /** Line subtotals and the order total must stay exact integers of satang. Checked wherever cost or quantity can grow. */
@@ -339,7 +434,10 @@ export function availableApproval(line: Doc<'purchaseRequestLines'>) {
   return line.requestStatus === 'approved' ? Math.max(0, line.approvedQuantity - line.committedQuantity) : 0;
 }
 
-/** Release or commit approved quantity for a request-backed line. Releases always apply; reuse depends on status. */
+/**
+ * Release or commit approved quantity for a request-backed line. Releases always apply; reuse depends on status.
+ * Callers refresh the request's Fully ordered flag once afterwards (`refreshFullyOrdered`; an order has one source request).
+ */
 export async function shiftCommitment(ctx: MutationCtx, requestLineId: Id<'purchaseRequestLines'> | undefined, delta: number) {
   if (!requestLineId || delta === 0) return;
   const line = await ctx.db.get(requestLineId);
@@ -351,6 +449,22 @@ export async function shiftCommitment(ctx: MutationCtx, requestLineId: Id<'purch
   }
   reserveWrites(ctx, 1);
   await ctx.db.patch(requestLineId, { committedQuantity: Math.max(0, line.committedQuantity + delta) });
+}
+
+/**
+ * An approved request whose every line is fully committed shows Fully ordered and leaves the default Approved queue.
+ * Closing a PO remainder releases commitment, which clears the flag again. Reads the request's lines (≤ 50).
+ */
+export async function refreshFullyOrdered(ctx: MutationCtx, requestId: Id<'purchaseRequests'> | undefined) {
+  if (!requestId) return;
+  const request = await ctx.db.get(requestId);
+  if (!request) return;
+  const lines = await readRequestLines(ctx, requestId);
+  const fullyOrdered = request.status === 'approved' && lines.some(line => line.approvedQuantity > 0) &&
+    lines.every(line => line.committedQuantity >= line.approvedQuantity);
+  if ((request.fullyOrdered ?? false) === fullyOrdered && request.fullyOrdered !== undefined) return;
+  reserveWrites(ctx, 1);
+  await ctx.db.patch(requestId, { fullyOrdered });
 }
 
 // ---------- History ----------
@@ -366,7 +480,7 @@ const historyValue = (value: string | number | boolean | null | undefined): Hist
 
 /** A draft line as history shows it: identity (variant), display label, quantity and optional unit cost. */
 export type DiffLine = { variantId: string; item: ItemRead['item']; quantity: number; unitCost?: number };
-const itemLabel = (item: ItemRead['item']) => `${item.productName} · ${item.variantLabel}${item.sku ? ` (${item.sku})` : ''}`;
+export const itemLabel = (item: ItemRead['item']) => `${item.productName} · ${item.variantLabel}${item.sku ? ` (${item.sku})` : ''}`;
 
 /**
  * Concise before/after changes for a draft edit: changed header scalars, then added, removed and changed lines keyed by
@@ -402,4 +516,57 @@ type EventInput = Omit<Doc<'purchaseEvents'>, '_id' | '_creationTime' | 'created
 export async function recordEvent(ctx: MutationCtx, actor: Actor, event: EventInput) {
   reserveWrites(ctx, 1);
   await ctx.db.insert('purchaseEvents', { ...event, ...actor, createdAt: Date.now() });
+}
+
+/**
+ * Units of a supplier return its replacement orders already cover: net ordered (or more if accepted) on a live order,
+ * every accepted unit on a received or closed-short one; cancelled and deleted orders cover nothing. `remaining` is what may still be
+ * replaced or reversed. `active` is the one live replacement, if any. Bounded to 50 linked orders.
+ */
+export async function replacementCoverage(ctx: QueryCtx, ret: Doc<'supplierReceiptAdjustments'>, exceptOrderId?: Id<'purchaseOrders'>) {
+  const linked = await stockRead(ctx, () => ctx.db.query('purchaseOrders').withIndex('by_replacesReturnId', q =>
+    q.eq('replacesReturnId', ret._id)).take(PURCHASING_MAX_LINES + 1));
+  if (linked.length > PURCHASING_MAX_LINES) fail('TOO_MANY_REPLACEMENTS', 'This return has too many replacement orders. Review them before continuing.');
+  let covered = 0;
+  let active: Doc<'purchaseOrders'> | null = null;
+  const orders: Doc<'purchaseOrders'>[] = [];
+  for (const order of linked) {
+    if (order._id === exceptOrderId || order.status === 'deleted' || order.status === 'cancelled') continue;
+    const [line] = await stockRead(ctx, () => ctx.db.query('purchaseOrderLines').withIndex('by_orderId_and_variantId', q =>
+      q.eq('orderId', order._id).eq('variantId', ret.variantId)).take(1));
+    const live = order.phase === 'draft' || order.phase === 'open';
+    // Every physically accepted replacement unit counts (even beyond the order), plus what a live order still expects.
+    const units = !line ? 0 : live ? Math.max(line.ordered - line.cancelled, line.accepted) : line.accepted;
+    if (units <= 0 && !live) continue;
+    covered += units;
+    orders.push(order);
+    if (live) active ??= order;
+  }
+  const unreversed = ret.quantity - ret.reversedQuantity;
+  return { unreversed, covered, remaining: Math.max(0, unreversed - covered), active, orders };
+}
+
+/**
+ * A replacement order holds only the returned item, at most the units no other replacement covers, and a return has at
+ * most one live (draft or open) replacement. Called on draft save and on amendment with the order's net quantities.
+ */
+export async function assertReplacementLines(
+  ctx: QueryCtx, returnId: Id<'supplierReceiptAdjustments'>, lines: { variantId: Id<'productVariants'>; quantity: number }[],
+  orderId?: Id<'purchaseOrders'>,
+) {
+  const ret = await stockRead(ctx, () => ctx.db.get(returnId));
+  if (!ret || ret.kind !== 'supplier_return') fail('LINK_NOT_FOUND', 'The supplier return is not available.');
+  if (lines.some(line => line.variantId !== ret.variantId)) fail('LINK_MISMATCH', 'A replacement order holds only the returned item.');
+  const coverage = await replacementCoverage(ctx, ret, orderId);
+  if (coverage.active) {
+    fail('REPLACEMENT_EXISTS', `Replacement order ${coverage.active.reference} is already open for this return. Use or cancel it first.`, {
+      orderId: coverage.active._id, reference: coverage.active.reference,
+    });
+  }
+  const units = lines.reduce((sum, line) => sum + line.quantity, 0);
+  if (units > coverage.remaining) {
+    fail('REPLACEMENT_EXCEEDS', coverage.remaining > 0
+      ? `Replace at most ${coverage.remaining} units: the rest were reversed or are already replaced.`
+      : 'Nothing is left to replace on this return: its units were reversed or already replaced.', { remaining: coverage.remaining });
+  }
 }

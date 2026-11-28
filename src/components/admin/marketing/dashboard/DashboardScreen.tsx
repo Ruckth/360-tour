@@ -11,19 +11,57 @@ import { adminMarketingPath } from "../../admin-routes";
 import { BookingSheet } from "../../BookingSheet";
 import { useMarketingAccess } from "../MarketingAccess";
 import { bangkokToday, marketingErrorText } from "../marketing-format";
-import { DashboardView, initialRequest, type ReportRequest, type ReportState } from "./DashboardView";
-import { presetRange } from "./report-model";
+import { DashboardView, DEFAULT_REQUEST, initialRequest, type ReportRequest, type ReportState } from "./DashboardView";
+import { customRangeProblem, PRESETS, presetRange } from "./report-model";
+
+export function dashboardRequest(search: URLSearchParams, today: string, fallback: ReportRequest): ReportRequest {
+  const from = search.get("from") ?? "";
+  const to = search.get("to") ?? "";
+  const preset = PRESETS.find((choice) => choice.id === search.get("preset"));
+  const basis = search.get("basis");
+  const property = search.get("property") ?? "";
+  const touch = search.get("touch");
+  const breakdown = search.get("breakdown");
+  const suppliedDates = search.has("from") || search.has("to") || search.has("preset");
+  const exactPreset = preset && presetRange(preset.id, today);
+  const range = !suppliedDates ? fallback.range
+    : customRangeProblem(from, to, today) ? DEFAULT_REQUEST(today).range
+    : { preset: exactPreset?.from === from && exactPreset.to === to ? preset?.id ?? "custom" : "custom" as const, from, to };
+  return {
+    range,
+    basis: basis === "cash" ? "cash" : "cohort",
+    property: /^[a-z0-9]{20,40}$/.test(property) ? property : "all",
+    touch: touch === "first" ? "first" : "last",
+    breakdown: breakdown === "campaign" || breakdown === "link" || breakdown === "coupon" ? breakdown : "source",
+  };
+}
 
 /**
  * The dashboard wired to Convex. The report is a one-off read (not a subscription): it's the
  * largest read in the admin, so it runs when the dates or basis change, after a spend change, or on
  * Refresh, and the page shows its as-of time. The range starts where this device left it.
  */
-export function DashboardScreen() {
+type DashboardScreenProps = { search?: URLSearchParams; onScopeChange?: (params: URLSearchParams) => void };
+
+export function DashboardScreen(props: DashboardScreenProps = {}) {
+  const access = useMarketingAccess();
+  return <DashboardRead key={`${access.email}:${access.role}`} {...props} />;
+}
+
+function DashboardRead({ search, onScopeChange }: DashboardScreenProps) {
   const access = useMarketingAccess();
   const convex = useConvex();
   const today = bangkokToday(useNow());
-  const [request, setRequest] = useState<ReportRequest>(() => initialRequest(today));
+  const [localRequest, setLocalRequest] = useState(() => initialRequest(today));
+  const request = search ? dashboardRequest(search, today, localRequest) : localRequest;
+  function setRequest(next: ReportRequest) {
+    const params = new URLSearchParams({
+      from: next.range.from, to: next.range.to, preset: next.range.preset, basis: next.basis, property: next.property ?? "all",
+      touch: next.touch ?? "last", breakdown: next.breakdown ?? "source",
+    });
+    if (onScopeChange) onScopeChange(params);
+    else setLocalRequest(next);
+  }
   const [nonce, setNonce] = useState(0);
   const [state, setState] = useState<ReportState>({ status: "loading" });
   const [stay, setStay] = useState<Id<"bookings"> | null>(null);
@@ -32,7 +70,7 @@ export function DashboardScreen() {
 
   // A preset follows the calendar: when the Bangkok day changes, its dates move on and the report is read again.
   const preset = request.range.preset;
-  const range = preset === "custom" ? request.range : { preset, ...presetRange(preset, today) };
+  const range = search?.has("from") || preset === "custom" ? request.range : { preset, ...presetRange(preset, today) };
   const { from, to } = range;
   const basis = request.basis;
   // A new read keeps the same dates' figures on screen while refreshing; other dates start loading.

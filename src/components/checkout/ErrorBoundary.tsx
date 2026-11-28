@@ -9,6 +9,7 @@ type Props = {
   /** When this changes (e.g. the search text), a failed part tries again by itself. */
   resetKey?: string;
   retryLabel?: string;
+  renderFallback?: (retry: () => void) => ReactNode;
 };
 
 /**
@@ -29,6 +30,7 @@ export class InlineErrorBoundary extends Component<Props, { failed: boolean }> {
 
   render() {
     if (!this.state.failed) return this.props.children;
+    if (this.props.renderFallback) return this.props.renderFallback(() => this.setState({ failed: false }));
     return (
       <div role="alert" className="grid gap-3 text-sm">
         <p className="text-destructive">{this.props.message}</p>

@@ -1,48 +1,48 @@
 "use client";
 
-import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
-import type { FunctionArgs, FunctionReturnType } from "convex/server";
+import { useConvex, useMutation, usePaginatedQuery, useQuery } from "convex/react";
+import type { FunctionReturnType } from "convex/server";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
-import { Archive, ArrowRight, History, PackagePlus, Pencil, Plus, Trash2 } from "lucide-react";
-import { useState, type FormEvent } from "react";
-import { EmptyState, SearchBox, SkeletonRows, STACKED_TABLE, useDebounced } from "@/components/admin/admin-bulk";
+import { ArrowRight, PackagePlus, Plus } from "lucide-react";
+import { useRef, useState } from "react";
+import { EmptyState, SearchBox, SkeletonRows, useDebounced } from "@/components/admin/admin-bulk";
+import { STOCK_TABLE } from "./stock-table";
 import { useAdminBranch } from "@/components/admin/branch/branch-context";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
-import { Callout, EditorSheet, FieldError, NoticeBar, NumberField, SheetForm, useNotice } from "@/components/admin/marketing/MarketingBits";
-import { SegmentedTabs } from "@/components/admin/SegmentedTabs";
+import { Callout, EditorSheet, NoticeBar, useNotice } from "@/components/admin/marketing/MarketingBits";
+import { SegmentedTabs, tabPanelProps } from "@/components/admin/SegmentedTabs";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import { Button, ButtonLink } from "@/components/ui/button";
+import { MoreMenu } from "@/components/ui/more-menu";
+import { Toast, useToast } from "@/components/ui/toast";
 import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { staffDateTime } from "@/lib/staff-time";
 import { cn } from "@/lib/utils";
 import {
   CATALOGUE_STATUS_META,
   formatSatang,
-  parseOptionalSatang,
   parseStockError,
-  STOCK_MAX_LINES,
   STOCK_PAGE_SIZE,
 } from "./stock-format";
 import type { CatalogueStatus } from "./stock-types";
-import { reviewProductDraft, type ProductDraft, type VariantDraft } from "./stock-product-draft";
-import { useStockDirtyGuard } from "./StockFormGuard";
+import { ProductEditorSheet } from "./ProductEditorSheet";
 
-type VatProfile = FunctionArgs<typeof api.commerce.stock.saveProduct>["vatProfile"];
-type CategoryRow = FunctionReturnType<typeof api.commerce.stock.listCategories>[number];
 type ProductRow = FunctionReturnType<typeof api.commerce.stock.listProducts>["page"][number];
 type ProductDetail = FunctionReturnType<typeof api.commerce.stock.getProduct>;
-
-let draftKeySeq = 0;
-const nextDraftKey = () => `v-${++draftKeySeq}`;
 
 export function StockProductsView() {
   const { current: branch } = useAdminBranch();
   const confirm = useConfirm();
+  const client = useConvex();
+  const archiveToast = useToast(10_000);
+  const screen = useRef<HTMLDivElement>(null);
+  const sheetOpener = useRef<HTMLElement | null>(null);
+  const sheetClosing = useRef(false);
+  const undoProductId = useRef<Id<"products"> | null>(null);
+  const [expandedProduct, setExpandedProduct] = useState<Id<"products"> | null>(null);
+  const [pending, setPending] = useState(false);
   const { notice, show, clear } = useNotice();
 
   const [search, setSearch] = useState("");
@@ -74,6 +74,8 @@ export function StockProductsView() {
   );
   const archiveProduct = useMutation(api.commerce.stock.archiveProduct);
 
+  const restoreProduct = useMutation(api.commerce.stock.restoreProduct);
+
   if (!branch) return null;
   if (access === undefined) return <SkeletonRows label="Loading products" rows={5} />;
   if (!access.read) {
@@ -84,41 +86,125 @@ export function StockProductsView() {
     );
   }
 
+  function fallbackFocus() {
+    return screen.current?.querySelector<HTMLElement>('[id^="stock-product-status-tab-"][aria-selected="true"]')
+      ?? null;
+  }
+
+  function restoreSheetFocus(event: Event) {
+    event.preventDefault();
+    if (!sheetClosing.current) return;
+    sheetClosing.current = false;
+    const opener = sheetOpener.current;
+    sheetOpener.current = null;
+    (opener?.isConnected ? opener : fallbackFocus())?.focus();
+  }
+
+  function openEditor(id: Id<"products"> | "new", opener: HTMLElement) {
+    sheetClosing.current = false;
+    sheetOpener.current = opener;
+    setEditingProductId(id);
+  }
+
+  function closeEditor() {
+    sheetClosing.current = true;
+    setEditingProductId(null);
+  }
+
+  function rowMenu(product: ProductRow) {
+    return document.getElementById(`stock-product-actions-${product._id}`)?.querySelector<HTMLButtonElement>('[aria-haspopup="menu"]') ?? null;
+  }
+
+  function focusAfterRowRemoval(opener: Element | null, nextStatus?: CatalogueStatus) {
+    if (document.activeElement === opener || document.activeElement === document.body) {
+      const target = nextStatus && document.getElementById(`stock-product-status-tab-${nextStatus}`);
+      (target || fallbackFocus())?.focus();
+    }
+  }
+
   async function handleArchive(product: ProductRow) {
-    if (!branch) return;
-    const confirmed = await confirm({
-      title: `Archive “${product.name}”?`,
-      description:
-        "Archived products cannot be added to new purchase requests or orders. Existing issued orders remain receivable.",
-      confirmLabel: "Archive product",
-      destructive: true,
-    });
-    if (!confirmed) return;
+    if (!branch || pending) return;
+    setPending(true);
+    const opener = rowMenu(product);
+    let archived = false;
     try {
-      await archiveProduct({
-        branchId: branch.id,
-        productId: product._id,
-        expectedRevision: product.revision,
+      const args = { branchId: branch.id, productId: product._id };
+      const impact = await client.query(api.commerce.stock.productArchiveImpact, args);
+      const confirmed = await confirm({
+        title: `Archive “${product.name}”?`,
+        description: (
+          <>
+            <span className="block">Archived products cannot be added to new purchase requests or orders. Existing issued orders remain receivable.</span>
+            <span className="mt-2 block font-medium">
+              {impact.partialVariants && "First 50 variants: "}
+              {impact.onHand} on hand at {branch.name} · {impact.onOrder} on order
+              {" "}({impact.partialOrders ? "at least " : ""}{impact.openOrders} open {impact.openOrders === 1 ? "order" : "orders"}) · {impact.variantCount} variants
+            </span>
+            {impact.hasStock || impact.partialVariants ? (
+              <ButtonLink href="/admin/stock/balances" variant="link" className="mt-1 px-0">View balances</ButtonLink>
+            ) : null}
+          </>
+        ),
+        confirmLabel: impact.hasStock || impact.partialVariants ? "Archive anyway" : "Archive product",
+        destructive: true,
+        returnFocusTo: () => !archived && opener?.isConnected ? opener : fallbackFocus(),
       });
-      show(`Archived ${product.name}.`, "success");
+      if (!confirmed) return;
+      await archiveProduct({ ...args, expectedRevision: product.revision });
+      archived = true;
+      focusAfterRowRemoval(opener);
+      clear();
+      undoProductId.current = product._id;
+      archiveToast.show(`Archived ${product.name}.`, {
+        label: "Undo",
+        retryOnError: true,
+        run: async () => {
+          const undoTrigger = document.activeElement;
+          try {
+            await restoreProduct({ ...args, expectedRevision: product.revision + 1 });
+            setStatusFilter("active");
+            focusAfterRowRemoval(undoTrigger, "active");
+          } catch (cause) {
+            setStatusFilter("archived");
+            const failure = parseStockError(cause, "Could not undo the archive.");
+            throw new Error(`${failure.message} You can also restore from the Archived tab.`);
+          }
+        },
+      });
     } catch (cause) {
       show(parseStockError(cause, "Could not archive this product.").message, "danger");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function handleRestore(product: ProductRow, opener: HTMLElement) {
+    if (!branch || pending) return;
+    setPending(true);
+    try {
+      await restoreProduct({ branchId: branch.id, productId: product._id, expectedRevision: product.revision });
+      focusAfterRowRemoval(opener, "active");
+      if (undoProductId.current === product._id) archiveToast.dismiss();
+      setStatusFilter("active");
+      show(`Restored ${product.name}.`, "success");
+    } catch (cause) {
+      show(parseStockError(cause, "Could not restore this product.").message, "danger");
+    } finally {
+      setPending(false);
     }
   }
 
   return (
-    <div className="grid gap-5">
-      <NoticeBar notice={notice} onClose={clear} />
+    <div ref={screen} className="grid gap-5">
+      <NoticeBar notice={archiveToast.current && notice?.tone === "success" ? null : notice} onClose={clear} />
+      <Toast {...archiveToast} />
 
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="font-serif text-xl font-semibold text-foreground">Products</h2>
-          <p className="text-sm text-muted-foreground">
-            Create, edit, or archive retail products and their sellable variants, SKUs, and prices.
-          </p>
         </div>
         {access.canManageProducts ? (
-          <Button type="button" onClick={() => setEditingProductId("new")}>
+          <Button type="button" onClick={event => openEditor("new", event.currentTarget)}>
             <PackagePlus aria-hidden className="size-4" />
             New product
           </Button>
@@ -139,10 +225,11 @@ export function StockProductsView() {
         <SearchBox
           value={search}
           onChange={setSearch}
-          label="Search products by name"
-          placeholder="Search product name…"
+          label="Search products by name or SKU"
+          placeholder="Search product name or SKU…"
         />
         <SegmentedTabs
+          id="stock-product-status"
           label="Product status"
           value={statusFilter}
           onValueChange={setStatusFilter}
@@ -154,14 +241,14 @@ export function StockProductsView() {
         />
       </div>
 
-      <Card className="overflow-hidden">
+      <Card {...tabPanelProps("stock-product-status", statusFilter)} className="overflow-hidden">
         {status === "LoadingFirstPage" ? (
           <SkeletonRows label="Loading products" rows={5} />
         ) : products.length === 0 ? (
           <EmptyState
             action={
               access.canManageProducts && statusFilter === "active" && !debounced ? (
-                <Button type="button" onClick={() => setEditingProductId("new")}>
+                <Button type="button" onClick={event => openEditor("new", event.currentTarget)}>
                   <Plus aria-hidden className="size-4" />
                   Create first product
                 </Button>
@@ -173,71 +260,64 @@ export function StockProductsView() {
               : `No ${statusFilter} products yet.`}
           </EmptyState>
         ) : (
-          <table className={STACKED_TABLE.table}>
-            <thead className={STACKED_TABLE.head}>
+          <table className={STOCK_TABLE.table}>
+            <thead className={STOCK_TABLE.head}>
               <tr>
-                <th scope="col" className={STACKED_TABLE.th}>Product</th>
-                <th scope="col" className={STACKED_TABLE.th}>Variants</th>
-                <th scope="col" className={STACKED_TABLE.th}>Price range</th>
-                <th scope="col" className={STACKED_TABLE.th}>VAT</th>
-                <th scope="col" className={STACKED_TABLE.th}>Status</th>
-                <th scope="col" className={cn(STACKED_TABLE.th, "text-right")}>Actions</th>
+                <th scope="col" className={STOCK_TABLE.th}>Product</th>
+                <th scope="col" className={STOCK_TABLE.th}>Category</th>
+                <th scope="col" className={STOCK_TABLE.th}>Variants</th>
+                <th scope="col" className={STOCK_TABLE.th}>Price range</th>
+                <th scope="col" className={STOCK_TABLE.th}>VAT</th>
+                <th scope="col" className={STOCK_TABLE.th}>Status</th>
+                <th scope="col" className={cn(STOCK_TABLE.th, "text-right")}>Actions</th>
               </tr>
             </thead>
-            <tbody className={STACKED_TABLE.body}>
+            <tbody className={STOCK_TABLE.body}>
               {products.map((product) => (
-                <tr key={product._id} className={STACKED_TABLE.row}>
-                  <td data-label="Product" className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled)}>
-                    <span className="font-medium text-foreground">{product.name}</span>
+                <tr key={product._id} className={STOCK_TABLE.row}>
+                  <td data-label="Product" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled)}>
+                    {access.canManageProducts && product.status !== "archived" ? (
+                      <Button type="button" variant="link" className="h-auto whitespace-normal px-0 text-left" onClick={event => openEditor(product._id, event.currentTarget)}>
+                        {product.name}
+                      </Button>
+                    ) : <span className="font-medium text-foreground">{product.name}</span>}
                   </td>
-                  <td data-label="Variants" className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled, "tabular-nums")}>
-                    {product.variantCount}
+                  <td data-label="Category" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled)}>
+                    {product.categoryName ?? "—"}
                   </td>
-                  <td data-label="Price range" className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled, "tabular-nums")}>
+                  <td data-label="Variants" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled, "tabular-nums")}>
+                    {product.variantCount} variants
+                    {expandedProduct === product._id && <ProductVariants branchId={branch.id} product={product} />}
+                  </td>
+                  <td data-label="Price range" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled, "tabular-nums")}>
                     {product.minPrice === product.maxPrice
                       ? formatSatang(product.minPrice)
                       : `${formatSatang(product.minPrice)} – ${formatSatang(product.maxPrice)}`}
                   </td>
-                  <td data-label="VAT" className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled, "text-xs text-muted-foreground")}>
+                  <td data-label="VAT" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled, "text-xs text-muted-foreground")}>
                     {product.vatProfile === "standard" ? "Standard VAT" : "VAT exempt"}
                   </td>
-                  <td data-label="Status" className={cn(STACKED_TABLE.cell, STACKED_TABLE.labelled)}>
+                  <td data-label="Status" className={cn(STOCK_TABLE.cell, STOCK_TABLE.labelled)}>
                     <StatusBadge {...CATALOGUE_STATUS_META[product.status]} />
                   </td>
-                  <td className={cn(STACKED_TABLE.cell, "lg:text-right")}>
-                    <div className="flex flex-wrap gap-1.5 lg:justify-end">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setHistoryProduct(product)}
-                      >
-                        <History aria-hidden className="size-3.5" />
-                        History
-                      </Button>
-                      {access.canManageProducts && product.status !== "archived" ? (
-                        <>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setEditingProductId(product._id)}
-                          >
-                            <Pencil aria-hidden className="size-3.5" />
-                            Edit
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="text-destructive hover:text-destructive"
-                            onClick={() => void handleArchive(product)}
-                          >
-                            <Archive aria-hidden className="size-3.5" />
-                            Archive
-                          </Button>
-                        </>
+                  <td className={cn(STOCK_TABLE.cell, "lg:text-right")}>
+                    <div id={`stock-product-actions-${product._id}`} className="flex flex-wrap gap-1.5 lg:justify-end">
+                      {access.canManageProducts && product.status === "archived" ? (
+                        <Button type="button" variant="outline" size="sm" disabled={pending} onClick={event => void handleRestore(product, event.currentTarget)}>
+                          Restore
+                        </Button>
                       ) : null}
+                      <MoreMenu label={`Actions for ${product.name}`} items={[
+                        { label: expandedProduct === product._id ? "Hide variants" : "Show variants",
+                          onSelect: () => setExpandedProduct(current => current === product._id ? null : product._id) },
+                        { label: "History", onSelect: () => {
+                          sheetClosing.current = false;
+                          sheetOpener.current = rowMenu(product);
+                          setHistoryProduct(product);
+                        } },
+                        { label: "Archive", destructive: true, hidden: !access.canManageProducts || product.status === "archived",
+                          disabled: pending, onSelect: () => void handleArchive(product) },
+                      ]} />
                     </div>
                   </td>
                 </tr>
@@ -260,9 +340,10 @@ export function StockProductsView() {
           branchId={branch.id}
           productId={editingProductId === "new" ? undefined : editingProductId}
           categories={categories ?? []}
-          onClose={() => setEditingProductId(null)}
+          onClose={closeEditor}
+          onCloseAutoFocus={restoreSheetFocus}
           onSaved={(productId) => {
-            setEditingProductId(null);
+            closeEditor();
             setSavedProductId(productId);
             show("Product saved.", "success");
           }}
@@ -273,9 +354,32 @@ export function StockProductsView() {
         <ProductHistorySheet
           branchId={branch.id}
           product={historyProduct}
-          onClose={() => setHistoryProduct(null)}
+          onCloseAutoFocus={restoreSheetFocus}
+          onClose={() => {
+            sheetClosing.current = true;
+            setHistoryProduct(null);
+          }}
         />
       ) : null}
+    </div>
+  );
+}
+
+function ProductVariants({ branchId, product }: { branchId: Id<"branches">; product: ProductRow }) {
+  const detail = useQuery(api.commerce.stock.getProduct, { branchId, productId: product._id, includeStock: true });
+  return (
+    <div aria-live="polite">
+      {detail === undefined ? <p>Loading variants…</p> : detail?.balances?.length ? (
+        <ul className="mt-2 grid gap-2 text-xs">
+          {detail.balances.map(variant => (
+            <li key={variant.variantId}>
+              <strong>{variant.label}</strong>
+              <span className="block text-muted-foreground">{variant.sku ?? "No SKU"} · {formatSatang(variant.price)} · {variant.onHand} on hand</span>
+            </li>
+          ))}
+          {detail.hasMoreVariants && <li>Showing the first 50 variants.</li>}
+        </ul>
+      ) : <p>No variants available.</p>}
     </div>
   );
 }
@@ -336,415 +440,43 @@ function SavedProductCard({
   );
 }
 
-function productDraft(detail: NonNullable<ProductDetail>): ProductDraft {
-  return {
-    name: detail.product.name,
-    categoryId: detail.product.categoryId ?? "",
-    vatProfile: detail.product.vatProfile,
-    variants: detail.variants.map((variant) => ({
-      key: variant._id,
-      variantId: variant._id,
-      label: variant.label,
-      sku: variant.sku ?? "",
-      priceBaht: (variant.price / 100).toString(),
-      status: variant.status,
-    })),
-  };
-}
+const HISTORY_FIELDS: Record<string, string> = {
+  name: "Product name", categoryId: "Category", vatProfile: "VAT profile",
+  label: "Label", sku: "SKU", price: "Price", status: "Status",
+};
 
-function ProductEditorSheet({
-  branchId,
-  productId,
-  categories,
-  onClose,
-  onSaved,
-}: {
-  branchId: Id<"branches">;
-  productId?: Id<"products">;
-  categories: readonly CategoryRow[];
-  onClose: () => void;
-  onSaved: (productId: Id<"products">) => void;
-}) {
-  const detail = useQuery(api.commerce.stock.getProduct, productId ? { branchId, productId } : "skip");
-
-  if (productId && detail === undefined) {
-    return (
-      <EditorSheet open wide onClose={onClose} header={<SheetTitle>Loading product…</SheetTitle>}>
-        <div className="p-6">
-          <SkeletonRows label="Loading product" rows={4} />
-        </div>
-      </EditorSheet>
-    );
+function formatHistoryValue(field: string, value: unknown, categories: Record<string, string>) {
+  if (value == null) return "—";
+  if (field === "categoryId") return typeof value === "string" ? categories[value] ?? "Unavailable category" : "Unavailable category";
+  if (field === "price" && typeof value === "number") return formatSatang(value);
+  if (field === "vatProfile") return value === "standard" ? "Standard VAT" : "VAT exempt";
+  if (field === "status" && typeof value === "string" && Object.hasOwn(CATALOGUE_STATUS_META, value)) {
+    return CATALOGUE_STATUS_META[value as CatalogueStatus].label;
   }
-
-  return (
-    <ProductEditorForm
-      key={productId ?? "new"}
-      branchId={branchId}
-      detail={detail ?? null}
-      categories={categories}
-      onClose={onClose}
-      onSaved={onSaved}
-    />
-  );
-}
-
-function ProductEditorForm({
-  branchId,
-  detail,
-  categories,
-  onClose,
-  onSaved,
-}: {
-  branchId: Id<"branches">;
-  detail: ProductDetail;
-  categories: readonly CategoryRow[];
-  onClose: () => void;
-  onSaved: (productId: Id<"products">) => void;
-}) {
-  const saveProduct = useMutation(api.commerce.stock.saveProduct);
-  const [reviewed, setReviewed] = useState(() => ({
-    revision: detail?.product.revision,
-    draft: detail ? productDraft(detail) : {
-      name: "",
-      categoryId: categories[0]?._id ?? "",
-      vatProfile: "standard" as VatProfile,
-      variants: [{ key: nextDraftKey(), label: "Standard", sku: "", priceBaht: "", status: "active" as const }],
-    },
-  }));
-  const [name, setName] = useState(reviewed.draft.name);
-  const [categoryId, setCategoryId] = useState<string>(reviewed.draft.categoryId);
-  const [vatProfile, setVatProfile] = useState<VatProfile>(reviewed.draft.vatProfile);
-  const [variants, setVariants] = useState<VariantDraft[]>(reviewed.draft.variants);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const [variantErrors, setVariantErrors] = useState<Record<string, string>>({});
-  const [latestChoices, setLatestChoices] = useState<{ revision: number; keys: Set<string> }>();
-
-  const currentDraft: ProductDraft = { name, categoryId, vatProfile, variants };
-  const isDirty = JSON.stringify(currentDraft) !== JSON.stringify(reviewed.draft);
-  const { requestClose } = useStockDirtyGuard(isDirty, onClose, saving);
-
-  const liveRevision = detail?.product.revision;
-  const liveDraft = detail && liveRevision !== reviewed.revision ? productDraft(detail) : null;
-  const useLatest = latestChoices && latestChoices.revision === liveRevision ? latestChoices.keys : new Set<string>();
-  const review = liveDraft ? reviewProductDraft(reviewed.draft, liveDraft, currentDraft, useLatest) : null;
-
-  function applyReview(next: ProductDraft) {
-    if (!liveDraft || liveRevision === undefined) return;
-    setName(next.name);
-    setCategoryId(next.categoryId);
-    setVatProfile(next.vatProfile);
-    setVariants(next.variants);
-    setReviewed({ revision: liveRevision, draft: liveDraft });
-    setLatestChoices(undefined);
-    setVariantErrors({});
-    setError("");
-  }
-
-  function updateVariant(index: number, patch: Partial<VariantDraft>) {
-    setVariants((current) => current.map((row, i) => (i === index ? { ...row, ...patch } : row)));
-  }
-
-  function addVariant() {
-    if (variants.length >= STOCK_MAX_LINES) return;
-    setVariants((current) => [
-      ...current,
-      { key: nextDraftKey(), label: "", sku: "", priceBaht: "", status: "active" },
-    ]);
-  }
-
-  function removeVariant(index: number) {
-    setVariants((current) => current.filter((_, i) => i !== index));
-  }
-
-  async function handleSubmit(event: FormEvent) {
-    event.preventDefault();
-    setError("");
-    const nextVariantErrors: Record<string, string> = {};
-
-    if (!name.trim()) {
-      setError("Enter a product name.");
-      document.getElementById("prod-name")?.focus();
-      return;
-    }
-
-    const payloadVariants: {
-      variantId?: Id<"productVariants">;
-      label: string;
-      sku?: string;
-      price: number;
-      status?: CatalogueStatus;
-    }[] = [];
-
-    let firstInvalidId: string | undefined;
-    for (const row of variants) {
-      if (!row.label.trim()) {
-        nextVariantErrors[row.key] = "Variant label is required.";
-        firstInvalidId ??= `var-label-${row.key}`;
-        continue;
-      }
-      const parsedPrice = parseOptionalSatang(row.priceBaht);
-      if (!parsedPrice.ok || parsedPrice.value === undefined) {
-        nextVariantErrors[row.key] = parsedPrice.ok ? "Enter a selling price in THB." : parsedPrice.error;
-        firstInvalidId ??= `var-price-${row.key}`;
-        continue;
-      }
-      payloadVariants.push({
-        ...(row.variantId ? { variantId: row.variantId } : {}),
-        label: row.label.trim(),
-        ...(row.sku.trim() ? { sku: row.sku.trim() } : {}),
-        price: parsedPrice.value,
-        status: row.status,
-      });
-    }
-
-    setVariantErrors(nextVariantErrors);
-    if (firstInvalidId) {
-      document.getElementById(firstInvalidId)?.focus();
-      return;
-    }
-    if (payloadVariants.length > STOCK_MAX_LINES) {
-      setError(`Keep at most ${STOCK_MAX_LINES} variants. Remove any extra variants added in this draft.`);
-      return;
-    }
-    if (!payloadVariants.some((v) => v.status === "active")) {
-      setError("Keep at least one active sellable variant or archive the product.");
-      return;
-    }
-    if (liveDraft) {
-      setError("This product changed elsewhere while editing. Review the updated revision above before saving.");
-      return;
-    }
-
-    setSaving(true);
-    try {
-      const id = await saveProduct({
-        branchId,
-        ...(detail ? { productId: detail.product._id, expectedRevision: reviewed.revision ?? detail.product.revision } : {}),
-        ...(categoryId ? { categoryId: categoryId as Id<"productCategories"> } : {}),
-        name: name.trim(),
-        vatProfile,
-        variants: payloadVariants,
-      });
-      onSaved(id);
-    } catch (cause) {
-      setError(parseStockError(cause, "Could not save this product. Check the fields and try again.").message);
-      setSaving(false);
-    }
-  }
-
-  return (
-    <EditorSheet
-      open
-      wide
-      onClose={requestClose}
-      header={
-        <>
-          <SheetTitle>{detail ? `Edit ${detail.product.name}` : "New product"}</SheetTitle>
-          <SheetDescription>
-            Set product details, VAT profile, and sellable variants (up to {STOCK_MAX_LINES}).
-          </SheetDescription>
-        </>
-      }
-    >
-      <SheetForm
-        onSubmit={handleSubmit}
-        onCancel={requestClose}
-        saving={saving}
-        error={error}
-        submitLabel={detail ? "Save product" : "Create product"}
-      >
-        {review && liveDraft && liveRevision !== undefined ? (
-          <Callout tone="warning" title="Review changed fields">
-            <p>Revision {reviewed.revision} → {liveRevision}. The review includes new saved values and keeps your draft edits.</p>
-            {review.changes.length ? (
-              <ul className="mt-2 grid gap-2 text-xs">
-                {review.changes.map((change) => {
-                  const formatValue = (value: string) => change.key === "category"
-                    ? categories.find((category) => category._id === value)?.name ?? (value || "Default")
-                    : value || "—";
-                  return (
-                    <li key={change.key}>
-                      <strong>{change.label}</strong>
-                      <p>Opened {formatValue(change.opened)} · Latest {formatValue(change.latest)} · Your draft {formatValue(change.draft)}</p>
-                      {change.conflict ? (
-                        <label className="mt-1 flex items-center gap-2">
-                          <input
-                            type="checkbox"
-                            checked={useLatest.has(change.key)}
-                            onChange={(event) => {
-                              const keys = new Set(useLatest);
-                              if (event.target.checked) keys.add(change.key);
-                              else keys.delete(change.key);
-                              setLatestChoices({ revision: liveRevision, keys });
-                            }}
-                          />
-                          Use latest {change.label}
-                        </label>
-                      ) : null}
-                    </li>
-                  );
-                })}
-              </ul>
-            ) : null}
-            <div className="mt-3 flex flex-wrap gap-2">
-              <Button type="button" size="sm" onClick={() => applyReview(review.merged)}>Apply review</Button>
-              <Button type="button" variant="outline" size="sm" onClick={() => applyReview(liveDraft)}>Reload live values</Button>
-            </div>
-          </Callout>
-        ) : null}
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="grid gap-1.5 sm:col-span-2">
-            <Label htmlFor="prod-name">Product name</Label>
-            <Input
-              id="prod-name"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              placeholder="e.g. Organic Massage Oil"
-            />
-          </div>
-
-          <div className="grid gap-1.5">
-            <Label htmlFor="prod-category">Category</Label>
-            <Select value={categoryId} onValueChange={setCategoryId}>
-              <SelectTrigger id="prod-category">
-                <SelectValue placeholder="Default (General)" />
-              </SelectTrigger>
-              <SelectContent>
-                {categories.map((cat) => (
-                  <SelectItem key={cat._id} value={cat._id}>
-                    {cat.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="grid gap-1.5">
-            <Label htmlFor="prod-vat">VAT profile</Label>
-            <Select value={vatProfile} onValueChange={(v) => setVatProfile(v as VatProfile)}>
-              <SelectTrigger id="prod-vat">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="standard">Standard VAT</SelectItem>
-                <SelectItem value="exempt">VAT exempt</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        <section aria-label="Variants" className="grid gap-3">
-          <div className="flex items-center justify-between gap-2">
-            <div>
-              <h3 className="text-sm font-semibold text-foreground">
-                Sellable variants ({variants.length}/{STOCK_MAX_LINES})
-              </h3>
-              <p className="text-xs text-muted-foreground">
-                Each active variant needs a unique label and optional unique SKU.
-              </p>
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={variants.length >= STOCK_MAX_LINES}
-              onClick={addVariant}
-            >
-              <Plus aria-hidden className="size-4" />
-              Add variant
-            </Button>
-          </div>
-
-          <ul className="grid gap-3">
-            {variants.map((row, index) => (
-              <li key={row.key} className="grid gap-3 rounded-lg border border-border bg-card p-3">
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <div className="grid gap-1.5">
-                    <Label htmlFor={`var-label-${row.key}`}>Variant label</Label>
-                    <Input
-                      id={`var-label-${row.key}`}
-                      value={row.label}
-                      onChange={(event) => updateVariant(index, { label: event.target.value })}
-                      placeholder="e.g. 250 ml"
-                    />
-                  </div>
-                  <div className="grid gap-1.5">
-                    <Label htmlFor={`var-sku-${row.key}`}>SKU (optional)</Label>
-                    <Input
-                      id={`var-sku-${row.key}`}
-                      value={row.sku}
-                      onChange={(event) => updateVariant(index, { sku: event.target.value })}
-                      placeholder="e.g. OIL-250"
-                    />
-                  </div>
-                  <div className="grid gap-1.5">
-                    <Label htmlFor={`var-price-${row.key}`}>Price (THB)</Label>
-                    <NumberField
-                      id={`var-price-${row.key}`}
-                      prefix="฿"
-                      inputMode="decimal"
-                      value={row.priceBaht}
-                      onChange={(event) => updateVariant(index, { priceBaht: event.target.value })}
-                      placeholder="0"
-                    />
-                  </div>
-                </div>
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <Select
-                    value={row.status}
-                    onValueChange={(v) => updateVariant(index, { status: v as CatalogueStatus })}
-                  >
-                    <SelectTrigger aria-label="Variant status" className="h-8 w-36 text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="active">Active</SelectItem>
-                      <SelectItem value="archived">Archived</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  {!row.variantId && variants.length > 1 ? (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => removeVariant(index)}
-                      className="text-muted-foreground hover:text-destructive"
-                    >
-                      <Trash2 aria-hidden className="size-3.5" />
-                      Remove
-                    </Button>
-                  ) : null}
-                </div>
-                <FieldError id={`var-err-${row.key}`}>{variantErrors[row.key]}</FieldError>
-              </li>
-            ))}
-          </ul>
-        </section>
-      </SheetForm>
-    </EditorSheet>
-  );
+  return typeof value === "string" || typeof value === "number" ? String(value) : "Value unavailable";
 }
 
 function ProductHistorySheet({
   branchId,
   product,
   onClose,
+  onCloseAutoFocus,
 }: {
   branchId: Id<"branches">;
   product: ProductRow;
   onClose: () => void;
+  onCloseAutoFocus: (event: Event) => void;
 }) {
   const detail = useQuery(api.commerce.stock.getProduct, { branchId, productId: product._id });
-  const [selectedVariantId, setSelectedVariantId] = useState<string>("product");
+  const [selectedVariantId, setSelectedVariantId] = useState<string>("all");
 
   const { results, status, loadMore } = usePaginatedQuery(
     api.commerce.stock.productHistory,
     {
       branchId,
       productId: product._id,
-      ...(selectedVariantId !== "product"
+      allTargets: selectedVariantId === "all",
+      ...(selectedVariantId !== "product" && selectedVariantId !== "all"
         ? { variantId: selectedVariantId as Id<"productVariants"> }
         : {}),
     },
@@ -755,6 +487,7 @@ function ProductHistorySheet({
     <EditorSheet
       open
       onClose={onClose}
+      onCloseAutoFocus={onCloseAutoFocus}
       header={
         <>
           <SheetTitle>{product.name} · History</SheetTitle>
@@ -763,23 +496,15 @@ function ProductHistorySheet({
       }
     >
       <div className="flex min-h-0 flex-1 flex-col">
-        <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto px-5 py-5 sm:px-6">
-          <div className="grid gap-1.5">
-            <Label htmlFor="history-target">Target</Label>
-            <Select value={selectedVariantId} onValueChange={setSelectedVariantId}>
-              <SelectTrigger id="history-target">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="product">Product ({product.name})</SelectItem>
-                {(detail?.variants ?? []).map((variant) => (
-                  <SelectItem key={variant._id} value={variant._id}>
-                    Variant: {variant.label} {variant.sku ? `(${variant.sku})` : ""}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+        <div className="grid min-h-0 flex-1 content-start gap-4 overflow-y-auto px-5 py-5 sm:px-6">
+          <SegmentedTabs label="History target" value={selectedVariantId} onValueChange={setSelectedVariantId}
+            tabs={[
+              { value: "all", label: "All" },
+              { value: "product", label: "Product" },
+              ...(detail?.variants ?? []).map(variant => ({ value: variant._id, label: variant.label })),
+            ]}
+          />
+          {detail?.hasMoreVariants && <p className="text-sm text-muted-foreground">History includes the first 50 variants.</p>}
 
           {status === "LoadingFirstPage" ? (
             <SkeletonRows label="Loading product history" rows={4} />
@@ -791,7 +516,10 @@ function ProductHistorySheet({
                 <li key={entry._id} className="grid gap-1.5 py-3 first:pt-0 text-xs">
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-medium text-foreground">
-                      Revision {entry.revisionAfter} · {entry.actorLabel}
+                      {entry.revisionBefore === 0 ? "Created" : `Revision ${entry.revisionAfter}`} by {entry.actorLabel}
+                      <span className="ml-2 rounded bg-muted px-1.5 py-0.5">
+                        {entry.targetType === "product" ? "Product" : ["Variant", detail?.variants.find(variant => variant._id === entry.targetId)?.label].filter(Boolean).join(" · ")}
+                      </span>
                     </span>
                     <time
                       dateTime={new Date(entry.recordedAt).toISOString()}
@@ -800,17 +528,19 @@ function ProductHistorySheet({
                       {staffDateTime(entry.recordedAt)}
                     </time>
                   </div>
-                  <dl className="grid gap-1 rounded-md bg-muted/40 p-2.5">
-                    {Object.entries(entry.after).map(([field, afterVal]) => (
-                      <div key={field} className="flex flex-wrap gap-1.5">
-                        <dt className="font-medium text-foreground">{field}:</dt>
-                        <dd className="text-muted-foreground">
-                          {entry.before[field] !== undefined ? `${String(entry.before[field])} → ` : ""}
-                          <span className="text-foreground">{String(afterVal)}</span>
-                        </dd>
-                      </div>
-                    ))}
-                  </dl>
+                  {Object.keys(entry.after).some(field => HISTORY_FIELDS[field]) ? (
+                    <dl className="grid gap-1 rounded-md bg-muted/40 p-2.5">
+                      {Object.entries(entry.after).filter(([field]) => HISTORY_FIELDS[field]).map(([field, value]) => (
+                        <div key={field} className="flex flex-wrap gap-1.5">
+                          <dt className="font-medium">{HISTORY_FIELDS[field]}</dt>
+                          <dd className="text-muted-foreground">
+                            {entry.revisionBefore !== 0 && `${formatHistoryValue(field, entry.before[field], entry.categoryNames)} → `}
+                            <span className="text-foreground">{formatHistoryValue(field, value, entry.categoryNames)}</span>
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
+                  ) : <p className="text-muted-foreground">Variants updated</p>}
                 </li>
               ))}
             </ol>

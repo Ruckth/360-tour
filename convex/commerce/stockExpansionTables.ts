@@ -10,9 +10,17 @@ export const transferEvidence = v.object({
 });
 export const lotReceipt = v.object({ code: v.string(), expiresAt: v.number() });
 
+export const lotConversionBranch = v.object({
+  branchId: v.id('branches'), expectedRevision: v.number(),
+  lots: v.array(v.object({ code: v.string(), expiresAt: v.number(), quantity: v.number() })),
+});
+
 export const stockExpansionTables = {
   stockTracking: defineTable({
-    variantId: v.id('productVariants'), enabledBy: v.string(), enabledAt: v.number(), lastExpiryAt: v.optional(v.number()),
+    variantId: v.id('productVariants'), enabledBy: v.string(), enabledAt: v.number(), convertedAt: v.optional(v.number()), lastExpiryAt: v.optional(v.number()),
+    conversion: v.optional(v.object({
+      fromBranchId: v.id('branches'), requestId: v.string(), fingerprint: v.string(),
+    })),
   }).index('by_variantId', ['variantId']),
 
   stockLots: defineTable({
@@ -21,9 +29,17 @@ export const stockExpansionTables = {
 
   stockLotBalances: defineTable({
     branchId: v.id('branches'), variantId: v.id('productVariants'), lotId: v.id('stockLots'),
-    expiresAt: v.number(), onHand: v.number(), inStock: v.boolean(),
+    expiresAt: v.number(), onHand: v.number(), inStock: v.boolean(), revision: v.optional(v.number()),
   }).index('by_branchId_and_lotId', ['branchId', 'lotId'])
+    .index('by_branchId_and_inStock_and_expiresAt', ['branchId', 'inStock', 'expiresAt'])
     .index('by_branchId_and_variantId_and_inStock_and_expiresAt', ['branchId', 'variantId', 'inStock', 'expiresAt']),
+
+  stockLotCountSessions: defineTable({
+    branchId: v.id('branches'), variantId: v.id('productVariants'), actor: v.string(),
+    state: v.union(v.literal('open'), v.literal('complete')),
+    startedAt: v.number(), completedAt: v.optional(v.number()),
+    lots: v.array(v.object({ lotId: v.id('stockLots'), reviewedRevision: v.optional(v.number()), movementId: v.optional(v.id('stockMovements')) })),
+  }).index('by_branchId_and_variantId_and_actor_and_state', ['branchId', 'variantId', 'actor', 'state']),
 
   stockLotMovements: defineTable({
     movementId: v.id('stockMovements'), allocations: v.array(lotAllocation),
@@ -40,16 +56,19 @@ export const stockExpansionTables = {
   }).index('by_sourceKey', ['sourceKey'])
     .index('by_orderId_and_state_and_expiresAt', ['orderId', 'state', 'expiresAt'])
     .index('by_orderId_and_branchId_and_variantId', ['orderId', 'branchId', 'variantId'])
+    .index('by_branchId_and_state_and_expiresAt', ['branchId', 'state', 'expiresAt'])
     .index('by_branchId_and_variantId_and_state_and_expiresAt', ['branchId', 'variantId', 'state', 'expiresAt']),
 
   stockTransfers: defineTable({
     originId: v.id('branches'), destinationId: v.id('branches'), sourceKey: v.string(),
-    state: transferState,
+    state: transferState, revision: v.optional(v.number()), creationFingerprint: v.optional(v.string()),
     createdBy: v.string(), note: v.optional(v.string()), createdAt: v.number(),
     sentAt: v.optional(v.number()), sentBy: v.optional(v.string()),
     closedAt: v.optional(v.number()), closedBy: v.optional(v.string()), shortageReason: v.optional(v.string()),
   }).index('by_sourceKey', ['sourceKey'])
-    .index('by_originId', ['originId']).index('by_destinationId', ['destinationId']),
+    .index('by_originId', ['originId']).index('by_destinationId', ['destinationId'])
+    .index('by_originId_and_state', ['originId', 'state'])
+    .index('by_destinationId_and_state', ['destinationId', 'state']),
 
   stockTransferLines: defineTable({
     transferId: v.id('stockTransfers'), variantId: v.id('productVariants'),

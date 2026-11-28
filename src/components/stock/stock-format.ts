@@ -148,6 +148,29 @@ export function formatItemDisplay(item: { productName?: string; variantLabel?: s
   return item.sku ? `${name} (${item.sku})` : name;
 }
 
+/** Attention badges for a stock balance row; omits healthy tracked rows so problems stand out. */
+export function balanceStatusBadges(row: {
+  hasBalance: boolean;
+  onHand: number;
+  needsRecount: boolean;
+  reorderPoint?: number;
+}): { label: string; tone: Tone }[] {
+  const badges: { label: string; tone: Tone }[] = [];
+  if (row.needsRecount) {
+    badges.push({ label: "Needs recount", tone: "warning" });
+  }
+  if (!row.hasBalance) {
+    badges.push({ label: "Never stocked", tone: "neutral" });
+  } else if (row.onHand < 0) {
+    badges.push({ label: "Negative", tone: "danger" });
+  } else if (row.onHand === 0) {
+    badges.push({ label: "Out", tone: "danger" });
+  } else if (row.reorderPoint !== undefined && row.onHand <= row.reorderPoint) {
+    badges.push({ label: "Low", tone: "warning" });
+  }
+  return badges;
+}
+
 export type StockErrorPayload = {
   code?: string;
   message?: string;
@@ -189,6 +212,7 @@ export const ORDER_STATUS_META: Record<PurchaseOrderStatus, { label: string; ton
   closed_short: { label: "Closed short", tone: "muted" },
   cancelled: { label: "Cancelled", tone: "muted" },
   deleted: { label: "Deleted", tone: "muted" },
+  awaiting_approval: { label: "Awaiting approval", tone: "warning" },
 };
 
 export const RECEIPT_KIND_META: Record<SupplierReceiptKind, { label: string; tone: Tone }> = {
@@ -250,6 +274,29 @@ export const ADJUST_ADD_REASONS = [
   { code: "other", label: "Other" },
 ] as const;
 
+export const STOCK_ACTIVITY_REASONS = {
+  opening_stock: "Opening stock",
+  found: "Found",
+  damaged: "Damaged",
+  expired: "Expired",
+  lost: "Lost",
+  verified_count: "Verified count",
+  count_variance: "Count variance",
+  verified_lot_count: "Verified lot count",
+  correction: "Correction",
+  other: "Other",
+} as const;
+
+export function movementProblemReasons(kind: StockMovementKind): readonly string[] {
+  if (kind === "transfer_out" || kind === "transfer_in" || kind === "transfer_short") {
+    return ["Incorrect quantity dispatched", "Wrong destination", "Stock missing in transit", "Other"];
+  }
+  if (kind === "purchase_receipt" || kind === "direct_receipt") {
+    return ["Supplier quantity mismatch", "Wrong item supplied", "Damage on delivery", "Other"];
+  }
+  return ["Wrong quantity", "Wrong item", "Duplicate entry", "Other"];
+}
+
 export const COUNT_VARIANCE_CHIPS = [
   "Shelf recount",
   "Unrecorded breakage",
@@ -264,11 +311,11 @@ export const DIRECT_RECEIPT_REASON_CHIPS = [
   "Wrong-item follow-up",
 ] as const;
 
+/** Counting and posting errors only. Damaged goods go back to the supplier through a return, not a correction. */
 export const CORRECTION_REASON_CHIPS = [
   "Overcount on delivery",
   "Posted against wrong SKU",
   "Duplicate entry",
-  "Damaged unit found after posting",
 ] as const;
 
 export const SUPPLIER_RETURN_REASON_CHIPS = [
@@ -277,3 +324,52 @@ export const SUPPLIER_RETURN_REASON_CHIPS = [
   "Expired or short-dated",
   "Quality defect",
 ] as const;
+
+/** Fixed rejection reasons at the door (stored as `rejectReasonCode`). */
+export const REJECT_REASON_OPTIONS = [
+  { code: "damaged", label: "Damaged" },
+  { code: "expired", label: "Expired / short dated" },
+  { code: "wrong_item", label: "Wrong item" },
+  { code: "not_ordered", label: "Not ordered" },
+  { code: "quality", label: "Quality" },
+] as const;
+export type RejectReasonCodeValue = (typeof REJECT_REASON_OPTIONS)[number]["code"];
+export function rejectReasonLabel(code: string | undefined): string | undefined {
+  return REJECT_REASON_OPTIONS.find((option) => option.code === code)?.label;
+}
+
+/** What the supplier will do about returned goods. */
+export const RETURN_OUTCOME_OPTIONS = [
+  { value: "credit_expected", label: "Credit note expected", hint: "The supplier owes a credit for these units." },
+  { value: "replacement_expected", label: "Replacement expected", hint: "Opens a linked replacement order next." },
+  { value: "no_action", label: "No action", hint: "Nothing further is expected from the supplier." },
+] as const;
+export type ReturnOutcomeValue = (typeof RETURN_OUTCOME_OPTIONS)[number]["value"];
+export function returnOutcomeLabel(value: string | undefined): string | undefined {
+  return RETURN_OUTCOME_OPTIONS.find((option) => option.value === value)?.label;
+}
+
+/**
+ * Invoice price variance against Σ accepted × recorded unit cost. Flagged when the difference exceeds ฿1 or 1% of the
+ * receipt value, whichever is larger. `null` when either amount is missing.
+ */
+export function invoiceVariance(invoiceTotal: number | undefined, acceptedValue: number | undefined) {
+  if (invoiceTotal === undefined || acceptedValue === undefined) return null;
+  const difference = invoiceTotal - acceptedValue;
+  const threshold = Math.max(100, Math.round(acceptedValue / 100));
+  return { difference, flagged: Math.abs(difference) > threshold };
+}
+
+/** Whole days a hold has been open, with the queue's amber (>3 d) and red (>7 d) thresholds. */
+export function holdAge(createdAt: number, now = Date.now()) {
+  const days = Math.max(0, Math.floor((now - createdAt) / 86_400_000));
+  const tone: Tone = days > 7 ? "danger" : days > 3 ? "warning" : "neutral";
+  return { days, label: `Held ${days} d`, tone };
+}
+
+/** Units a PO line may accept beyond due under the branch tolerance (mirrors the server rule). */
+export function overReceiptAllowance(line: { ordered: number; cancelled: number; accepted: number; due: number }, tolerancePct: number) {
+  if (!(tolerancePct > 0) || line.due <= 0) return 0;
+  const net = line.ordered - line.cancelled;
+  return Math.max(0, Math.floor((net * tolerancePct) / 100) - Math.max(0, line.accepted - net));
+}
