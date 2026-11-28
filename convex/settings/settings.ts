@@ -1,6 +1,6 @@
 import { settingsPublicProfileResult } from './validators';
 import { v } from 'convex/values';
-import { adminQuery, internalQuery, publicQuery, staffMutation, type QueryCtx } from '../auth/model';
+import { adminQuery, internalQuery, publicQuery, staffAccess, staffMutation, type QueryCtx } from '../auth/model';
 import { BOOKING_RULE_RANGES, bookingRulesValidator, BUSINESS_FIELDS, mergeSiteSettings, resolveBookingRules, validateSettingsInput, type BookingRules, type EffectiveSettings, type SettingsInput } from '../shared/siteSettings';
 import { settingsSnapshot } from './configurationWriter';
 import { getEffectiveSettings, getSiteSettingsRow } from './model';
@@ -11,9 +11,23 @@ const text = v.optional(v.string());
 
 export const get = adminQuery({
 	args: {},
-	handler: async (ctx): Promise<EffectiveSettings & { revision: number }> => {
-		const row = await getSiteSettingsRow(ctx);
-		return { ...mergeSiteSettings(row), revision: row?.revision ?? 0 };
+	handler: async (
+		ctx
+	): Promise<
+		EffectiveSettings & {
+			revision: number;
+			defaultOwnerNotificationEmail: string | null;
+			defaultOwnerNotificationConfigured: boolean;
+		}
+	> => {
+		const [row, access] = await Promise.all([getSiteSettingsRow(ctx), staffAccess(ctx)]);
+		const envOwnerEmail = process.env.OWNER_NOTIFICATION_EMAIL?.trim() || null;
+		return {
+			...mergeSiteSettings(row),
+			revision: row?.revision ?? 0,
+			defaultOwnerNotificationEmail: access.capabilities.settings ? envOwnerEmail : null,
+			defaultOwnerNotificationConfigured: Boolean(envOwnerEmail)
+		};
 	}
 });
 

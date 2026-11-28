@@ -198,11 +198,14 @@ describe("Settings › Branches", () => {
     expect(inputs).toHaveLength(6);
     expect(dialog.textContent).not.toContain("Branch key");
     const [nameInput, slugInput, legalInput, taxInput, codeInput, addressInput] = inputs;
+    expect(dialog.textContent).toContain("Legal name and tax ID copied from Koh Samui. Verify both for this branch.");
+    expect(legalInput.value).toBe("360 Tour Co., Ltd.");
+    expect(taxInput.value).toBe("0105560000000");
 
     await setInputValue(nameInput, "Chiang Mai");
     expect(slugInput.value).toBe("chiang-mai");
-    await setInputValue(legalInput, "360 Tour Co., Ltd.");
-    await setInputValue(taxInput, "0105560000000");
+    await setInputValue(legalInput, "360 Tour North Co., Ltd.");
+    await setInputValue(taxInput, "0105560000009");
     await setInputValue(codeInput, "123");
     await setInputValue(addressInput, "10 Nimman Rd, Chiang Mai 50200");
 
@@ -224,8 +227,8 @@ describe("Settings › Branches", () => {
           name: "Chiang Mai",
           slug: "chiang-mai",
           issuer: {
-            legalName: "360 Tour Co., Ltd.",
-            taxId: "0105560000000",
+            legalName: "360 Tour North Co., Ltd.",
+            taxId: "0105560000009",
             branchCode: "00004",
             address: "10 Nimman Rd, Chiang Mai 50200",
           },

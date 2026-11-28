@@ -58,7 +58,11 @@ export function BranchesSettings() {
   const editingBranch = editingBranchId ? (branches?.find((row) => row._id === editingBranchId) ?? null) : null;
   const defaultIssuerSource = sorted?.find((row) => row.state === "active") ?? sorted?.[0];
   const defaultIssuer = defaultIssuerSource
-    ? { legalName: defaultIssuerSource.issuer.legalName, taxId: defaultIssuerSource.issuer.taxId }
+    ? {
+        legalName: defaultIssuerSource.issuer.legalName,
+        taxId: defaultIssuerSource.issuer.taxId,
+        sourceBranchName: defaultIssuerSource.name,
+      }
     : undefined;
 
   return (

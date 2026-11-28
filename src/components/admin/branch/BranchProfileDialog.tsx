@@ -51,7 +51,7 @@ export function BranchProfileDialog({
 }: {
   open: boolean;
   branch: BranchRow | null;
-  defaultIssuer?: { legalName: string; taxId: string };
+  defaultIssuer?: { legalName: string; taxId: string; sourceBranchName?: string };
   onOpenChange: (open: boolean) => void;
   onSaved: (message: string) => void;
 }) {
@@ -77,7 +77,7 @@ function BranchProfileDialogBody({
   onSaved,
 }: {
   branch: BranchRow | null;
-  defaultIssuer?: { legalName: string; taxId: string };
+  defaultIssuer?: { legalName: string; taxId: string; sourceBranchName?: string };
   onClose: () => void;
   onSaved: (message: string) => void;
 }) {
@@ -218,6 +218,11 @@ function BranchProfileDialogBody({
 
         <fieldset className="grid gap-3 rounded-lg border border-border bg-muted/20 p-3 sm:grid-cols-2">
           <legend className="px-1 text-xs font-medium text-muted-foreground">Receipt issuer</legend>
+          {!isEdit && defaultIssuer?.sourceBranchName ? (
+            <p className="text-xs leading-5 text-muted-foreground sm:col-span-2">
+              Legal name and tax ID copied from {defaultIssuer.sourceBranchName}. Verify both for this branch.
+            </p>
+          ) : null}
           {field("legalName", "Issuer legal name", { maxLength: 120, placeholder: "360 Tour Co., Ltd.", wrapperClassName: "sm:col-span-2" })}
           {field("taxId", "Tax ID", { maxLength: 32, placeholder: "0105560000000" })}
           {field("branchCode", "Issuer branch code (5 digits)", { inputMode: "numeric", maxLength: 5, placeholder: "00001" })}

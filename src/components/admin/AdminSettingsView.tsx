@@ -166,8 +166,8 @@ const SECTIONS: Record<
     title: "Booking rules",
     description: "Timing and stay limits for online villa bookings; staff-created bookings are exempt from stay limits and unpaid expiry.",
     fields: () => [
-      { name: "unpaidHoldMinutes", label: "Hold unpaid bookings for", type: "number", unit: "min", hint: "Minutes the dates stay reserved while the guest pays. Opening the payment page extends this until that page expires." },
-      { name: "chatQuoteValidityMinutes", label: "Chat booking quote expires after", type: "number", unit: "min", hint: "Minutes a guest has to confirm a booking summary sent in chat." },
+      { name: "unpaidHoldMinutes", label: "Reservation held while awaiting payment", type: "number", unit: "min", hint: "Minutes the dates stay reserved while the guest pays. Opening the payment page extends this until that page expires." },
+      { name: "chatQuoteValidityMinutes", label: "Guest confirmation window for chat quotes", type: "number", unit: "min", hint: "Minutes a guest has to confirm a booking summary sent in chat before the quote expires." },
       { name: "preArrivalDaysBefore", label: "Pre-arrival email", type: "number", unit: "days before", hint: "Includes late bookings up to the day before arrival." },
       { name: "reviewDaysAfter", label: "Review request email", type: "number", unit: "days after", hint: "Catches up through 7 days after check-out." },
       { name: "minNights", label: "Minimum stay", type: "number", unit: "nights" },
@@ -253,8 +253,8 @@ const SECTIONS: Record<
         name: "ownerNotificationEmail",
         label: "Owner notification email",
         type: "email",
-        placeholder: "Default notification email",
-        hint: "Receives new-booking notifications and staff alerts; leave blank to use the default.",
+        placeholder: "Override default recipient",
+        hint: "Receives new-booking notifications and staff alerts; leave blank to use the server default.",
       },
       { name: "footer", label: "Footer", type: "textarea", hint: "Shown at the bottom of guest emails. Leave blank for none.", wide: true },
     ],
@@ -283,12 +283,25 @@ function FastRepliesCard({ checked, disabled, onChange }: { checked: boolean; di
   );
 }
 
-function toInput(section: Section, values: Record<string, string>): SettingsInput {
+type SettingsRecord = EffectiveSettings & {
+  revision: number;
+  defaultOwnerNotificationEmail?: string | null;
+  defaultOwnerNotificationConfigured?: boolean;
+};
+
+function toInput(section: Section, values: Record<string, string>, changedOnlyFrom?: Record<string, string>): SettingsInput {
   if (section === "bookingRules") {
-    return { bookingRules: {
-      ...Object.fromEntries(Object.keys(BOOKING_RULE_RANGES).map(key => [key, values[key].trim() === "" ? NaN : Number(values[key])])),
-      sameDayCutoff: values.sameDayCutoff,
-    } };
+    const keys = Object.keys(BOOKING_RULE_RANGES) as (keyof typeof BOOKING_RULE_RANGES)[];
+    const bookingRules: Partial<EffectiveSettings["bookingRules"]> = {};
+    for (const key of keys) {
+      if (!changedOnlyFrom || values[key] !== changedOnlyFrom[key]) {
+        bookingRules[key] = values[key].trim() === "" ? NaN : Number(values[key]);
+      }
+    }
+    if (!changedOnlyFrom || values.sameDayCutoff !== changedOnlyFrom.sameDayCutoff) {
+      bookingRules.sameDayCutoff = values.sameDayCutoff;
+    }
+    return { bookingRules };
   }
   if (section === "ai") {
     const maxWords = values.maxWords.trim() === "" ? NaN : Number(values.maxWords);
@@ -302,7 +315,18 @@ function toInput(section: Section, values: Record<string, string>): SettingsInpu
   return { [section]: values };
 }
 
-function SettingsForm({ section, settings, readOnly = false, onDirtyChange }: { section: Section; settings: EffectiveSettings & { revision: number }; readOnly?: boolean; onDirtyChange: (dirty: boolean) => void }) {
+function formatCompareValue(name: string, value: string | undefined): string {
+  if (name === "fastReplies") return value === "true" ? "On" : "Off";
+  const trimmed = (value ?? "").trim();
+  return trimmed ? trimmed : "(blank)";
+}
+
+function formatTimerMinutes(value: string | undefined): string {
+  const parsed = Number(value);
+  return value?.trim() && Number.isInteger(parsed) && parsed > 0 ? `${parsed} min` : "not set";
+}
+
+function SettingsForm({ section, settings, readOnly = false, onDirtyChange }: { section: Section; settings: SettingsRecord; readOnly?: boolean; onDirtyChange: (dirty: boolean) => void }) {
   const config = SECTIONS[section];
   const pending = useRef(false);
   const update = useMutation(api.settings.settings.update);
@@ -334,7 +358,10 @@ function SettingsForm({ section, settings, readOnly = false, onDirtyChange }: { 
     pending.current = true;
     setState({ saving: true, saved: false, error: "" });
     try {
-      await update({ ...toInput(section, values), expectedRevision: revision });
+      const payload = section === "bookingRules" && dirty
+        ? toInput(section, values, savedValues)
+        : toInput(section, values);
+      await update({ ...payload, expectedRevision: revision });
       setRevision(revision + 1);
       setSavedValues(values);
       setState({ saving: false, saved: true, error: "" });
@@ -387,10 +414,71 @@ function SettingsForm({ section, settings, readOnly = false, onDirtyChange }: { 
   }
 
   const fields = config.fields(settings);
+  const replyFields: FieldDef[] = Object.entries(CHAT_REPLY_LIMIT_RANGES).map(([key, [min, max]]) => ({
+    name: `chatReplyLimits.${key}`,
+    label: key === "perChat" ? "Each chat" : CHAT_CHANNEL_LABELS[key as keyof typeof CHAT_CHANNEL_LABELS],
+    type: "number",
+    unit: "per hour",
+    min, max,
+    hint: key === "perChat" ? "Stops one guest from using up a channel’s allowance." : undefined,
+  }));
+  const sectionFieldLabels = new Map<string, string>([
+    ...fields.map((field) => [field.name, field.label] as const),
+    ...(section === "ai"
+      ? [["fastReplies", "Fast replies"] as const, ...replyFields.map((field) => [field.name, field.label] as const)]
+      : []),
+  ]);
+  const latestValues = config.values(settings);
+  const isStale = settings.revision > revision;
+  const affectedFields = isStale
+    ? [...sectionFieldLabels.entries()]
+        .filter(([name]) => latestValues[name] !== savedValues[name] || values[name] !== savedValues[name])
+        .map(([name, label]) => ({
+          name,
+          label,
+          latest: latestValues[name],
+          draft: values[name],
+          saved: savedValues[name],
+        }))
+    : [];
+  const serverChangedThisSection = affectedFields.some((item) => item.latest !== item.saved);
+
+  async function loadCurrentSettings() {
+    if (state.saving) return;
+    if (dirty) {
+      const localChanges = affectedFields.filter((item) => item.draft !== item.saved).map((item) => item.label);
+      const summary = localChanges.length ? `This discards your unsaved edits to ${localChanges.join(", ")}.` : "This discards your unsaved edits.";
+      const ok = await confirm({
+        title: "Replace your draft with current settings?",
+        description: `${summary} Saving after loading will still check the current settings revision.`,
+        confirmLabel: "Replace my draft with current settings",
+        cancelLabel: "Keep editing",
+      });
+      if (!ok) return;
+    }
+    const latest = config.values(settings);
+    setValues(latest);
+    setSavedValues(latest);
+    setRevision(settings.revision);
+    setTouched(new Set());
+    setSubmitted(false);
+    setState({ saving: false, saved: false, error: "" });
+  }
+
+  const emailFallbackContext =
+    section === "email" && !values.ownerNotificationEmail.trim()
+      ? !readOnly && settings.defaultOwnerNotificationEmail
+        ? `Effective default recipient: ${settings.defaultOwnerNotificationEmail} (from server configuration).`
+        : !readOnly && settings.defaultOwnerNotificationConfigured === false
+          ? "No default notification address is configured in server settings (OWNER_NOTIFICATION_EMAIL). Enter an address above or check Channels → Backend services."
+          : "Default recipient is managed in server configuration (OWNER_NOTIFICATION_EMAIL in Channels → Backend services)."
+      : null;
+
   const renderField = (field: FieldDef) => {
     const id = `settings-${section}-${field.name}`;
     const error = errorFor(field.name);
-    const describedBy = [field.unit && `${id}-unit`, error && `${id}-error`].filter(Boolean).join(" ") || undefined;
+    const showEmailFallback = section === "email" && field.name === "ownerNotificationEmail" && emailFallbackContext;
+    const describedBy = [field.unit && `${id}-unit`, showEmailFallback && `${id}-fallback`, error && `${id}-error`].filter(Boolean).join(" ") || undefined;
     const common = {
       id,
       name: field.name,
@@ -459,6 +547,11 @@ function SettingsForm({ section, settings, readOnly = false, onDirtyChange }: { 
             className={cn(error && "border-destructive")}
           />
         )}
+        {showEmailFallback ? (
+          <p id={`${id}-fallback`} className="text-xs leading-5 text-muted-foreground">
+            {emailFallbackContext}
+          </p>
+        ) : null}
         {error ? (
           <p id={`${id}-error`} className="text-xs text-destructive">
             {error}
@@ -467,28 +560,71 @@ function SettingsForm({ section, settings, readOnly = false, onDirtyChange }: { 
       </div>
     );
   };
-  const replyFields: FieldDef[] = Object.entries(CHAT_REPLY_LIMIT_RANGES).map(([key, [min, max]]) => ({
-    name: `chatReplyLimits.${key}`,
-    label: key === "perChat" ? "Each chat" : CHAT_CHANNEL_LABELS[key as keyof typeof CHAT_CHANNEL_LABELS],
-    type: "number",
-    unit: "per hour",
-    min, max,
-    hint: key === "perChat" ? "Stops one guest from using up a channel’s allowance." : undefined,
-  }));
   const businessGroups = [
     { title: "Identity", description: "The name and welcome guests see", names: ["businessName", "tagline"] },
     { title: "Contact", description: "Where guests can reach your team", names: ["contactEmail", "contactPhone", "whatsapp", "lineId", "lineUrl"] },
     { title: "Location & currency", description: "Your address, local currency and time", names: ["address", "currency", "timezone"] },
     { title: "Check-in, check-out & policy", description: "Arrival times and cancellation terms", names: ["checkInTime", "checkOutTime", "cancellationPolicy"] },
   ];
+  const bookingRuleGroups = [
+    {
+      title: "Reservation and chat timers",
+      description: `Awaiting payment: ${formatTimerMinutes(values.unpaidHoldMinutes)} · Chat quote confirmation: ${formatTimerMinutes(values.chatQuoteValidityMinutes)}. Opening the payment page still extends the payment hold until that page expires.`,
+      names: ["unpaidHoldMinutes", "chatQuoteValidityMinutes"],
+    },
+    {
+      title: "Stay limits & guest emails",
+      description: "Minimum stay, booking window, same-day cutoff and lifecycle email timing.",
+      names: ["preArrivalDaysBefore", "reviewDaysAfter", "minNights", "maxAdvanceDays", "sameDayCutoff"],
+    },
+  ];
 
   return (
     <Panel title={config.title} description={config.description} grouped>
       <form onSubmit={submit} noValidate className={cn("grid min-w-0 grid-cols-[minmax(0,1fr)] gap-5", showSaveBar && "pb-20")}>
-      {settings.revision > revision ? <Alert variant="warning"><AlertDescription>Settings changed on another device. Your draft is retained. <Button type="button" variant="outline" size="sm" disabled={state.saving} onClick={() => { const latest = config.values(settings); setValues(latest); setSavedValues(latest); setRevision(settings.revision); setState({ saving: false, saved: false, error: "" }); }}>Load current settings</Button></AlertDescription></Alert> : null}
+      {isStale ? (
+        <Alert variant="warning" data-testid="stale-settings-alert">
+          <AlertDescription className="grid gap-2">
+            <p>Settings changed on another device. {dirty ? "Your draft is retained." : "Review the updated values before continuing."}</p>
+            <details open className="rounded-md border border-border/70 bg-background/60 px-3 py-2 text-xs">
+              <summary className="cursor-pointer font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                Review changes on another device
+              </summary>
+              {affectedFields.length > 0 ? (
+                <dl className="mt-2 grid gap-1.5 text-muted-foreground">
+                  {affectedFields.map((item) => (
+                    <div key={item.name} className="grid gap-0.5">
+                      <dt className="font-semibold text-foreground">{item.label}</dt>
+                      <dd className="break-words [overflow-wrap:anywhere]">
+                        Current: {formatCompareValue(item.name, item.latest)} · Your draft: {formatCompareValue(item.name, item.draft)}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              ) : null}
+              {!serverChangedThisSection ? (
+                <p className="mt-2 text-muted-foreground">The newer save updated another settings tab.</p>
+              ) : null}
+              <div className="mt-3">
+                <Button type="button" variant="outline" size="sm" disabled={state.saving} onClick={() => void loadCurrentSettings()}>
+                  {dirty ? "Replace my draft with current settings" : "Load current settings"}
+                </Button>
+              </div>
+            </details>
+          </AlertDescription>
+        </Alert>
+      ) : null}
         {/* Read-only for managers: the fields show the settings, and nothing can be saved. */}
         <fieldset disabled={readOnly} data-readonly={readOnly || undefined} className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-5 [&[data-readonly]_input]:opacity-100 [&[data-readonly]_textarea]:opacity-100 [&[data-readonly]_button]:opacity-100 [&[data-readonly]_input]:text-foreground [&[data-readonly]_textarea]:text-foreground">
           {section === "business" ? businessGroups.map((group) => (
+            <Card key={group.title} className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-5 p-5 lg:grid-cols-[1fr_2fr] lg:gap-8 lg:p-6">
+              <header className="min-w-0">
+                <h3 className="text-balance text-[15px] font-semibold">{group.title}</h3>
+                <p className="mt-1 text-pretty text-[13px] leading-5 text-muted-foreground">{group.description}</p>
+              </header>
+              <div className="grid min-w-0 content-start grid-cols-[minmax(0,1fr)] gap-x-5 gap-y-5 sm:grid-cols-2">{fields.filter((field) => group.names.includes(field.name)).map(renderField)}</div>
+            </Card>
+          )) : section === "bookingRules" ? bookingRuleGroups.map((group) => (
             <Card key={group.title} className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-5 p-5 lg:grid-cols-[1fr_2fr] lg:gap-8 lg:p-6">
               <header className="min-w-0">
                 <h3 className="text-balance text-[15px] font-semibold">{group.title}</h3>
@@ -598,10 +734,7 @@ function ChannelsPanel() {
                       />
                     </dl>
                     {channel.latestError ? (
-                      <p className="mt-3 break-words rounded-md bg-muted/60 px-3 py-2 text-xs text-muted-foreground [overflow-wrap:anywhere]">
-                        <span className="font-semibold text-foreground">Latest error ({formatTime(channel.latestError.at)}):</span>{" "}
-                        {channel.latestError.message}
-                      </p>
+                      <ChannelErrorBox at={channel.latestError.at} message={channel.latestError.message} />
                     ) : channel.failed24h > 0 || channel.failed7d > 0 ? (
                       <p className="mt-3 text-[13px] text-muted-foreground">{channel.failed7d}{channel.failedCapped ? "+" : ""} {channel.failed7d === 1 && !channel.failedCapped ? "reply" : "replies"} failed in the last 7 days</p>
                     ) : null}
@@ -693,6 +826,40 @@ function channelHealthMeta(
   if (!configured) return statusMeta("channelHealth", "not_configured");
   if (!channel.lastEventAt) return { tone: "neutral", label: "No messages yet" };
   return recent ? { tone: "success", label: "Receiving" } : { tone: "neutral", label: "No recent messages" };
+}
+
+function splitChannelError(message: string): { summary: string; hasDetails: boolean } {
+  const normalized = message.trim();
+  const firstLine = normalized.split(/\r?\n/, 1)[0]?.trim() ?? normalized;
+  const colonIndex = firstLine.indexOf(": ");
+  const shouldFold = normalized.length > 80 || normalized.includes("\n") || (colonIndex > 0 && normalized.length - colonIndex > 24);
+  if (!shouldFold) return { summary: normalized, hasDetails: false };
+  if (colonIndex > 0 && colonIndex <= 72) {
+    return { summary: firstLine.slice(0, colonIndex).trim(), hasDetails: true };
+  }
+  const clipped = firstLine.length > 80 ? `${firstLine.slice(0, 79).trimEnd()}…` : firstLine;
+  return { summary: clipped, hasDetails: true };
+}
+
+function ChannelErrorBox({ at, message }: { at: number; message: string }) {
+  const { summary, hasDetails } = splitChannelError(message);
+  return (
+    <div className="mt-3 rounded-md bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
+      <p className="break-words [overflow-wrap:anywhere]">
+        <span className="font-semibold text-foreground">Latest error at {formatTime(at)}</span>
+        {" · "}
+        {summary}
+      </p>
+      {hasDetails ? (
+        <details className="mt-1">
+          <summary className="min-h-11 cursor-pointer content-center rounded font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            Technical details
+          </summary>
+          <p className="break-words pb-1 pt-1 text-muted-foreground [overflow-wrap:anywhere]">{message}</p>
+        </details>
+      ) : null}
+    </div>
+  );
 }
 
 function formatTime(timestamp: number) {
