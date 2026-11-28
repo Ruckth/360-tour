@@ -737,7 +737,8 @@
     "next": "Next services",
     "first": "Back to first page",
     "moreCategories": "More categories",
-    "draft": "I am interested in {name}. Please help me choose a date and time."
+    "draft": "I am interested in {name}. Please help me choose a date and time.",
+    "showAll": "Show all services"
   },
   "Consent": {
     "label": "Measurement choice",

@@ -737,7 +737,8 @@
     "next": "Services suivants",
     "first": "Première page",
     "moreCategories": "Autres catégories",
-    "draft": "Le service {name} m’intéresse. Aidez-moi à choisir une date et un horaire."
+    "draft": "Le service {name} m’intéresse. Aidez-moi à choisir une date et un horaire.",
+    "showAll": "Afficher tous les services"
   },
   "Consent": {
     "label": "Choix de mesure",

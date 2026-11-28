@@ -737,7 +737,8 @@
     "next": "Weitere Angebote",
     "first": "Zur ersten Seite",
     "moreCategories": "Weitere Kategorien",
-    "draft": "Ich interessiere mich für {name}. Bitte helfen Sie mir, Datum und Uhrzeit auszuwählen."
+    "draft": "Ich interessiere mich für {name}. Bitte helfen Sie mir, Datum und Uhrzeit auszuwählen.",
+    "showAll": "Alle Leistungen anzeigen"
   },
   "Consent": {
     "label": "Auswahl zur Messung",

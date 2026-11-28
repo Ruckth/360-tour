@@ -74,7 +74,7 @@ describe("public service catalog", () => {
     const t = getPublicMessages("th").ServiceCatalog;
     await render({ category: service.category, q: "Massage", cursor: "old" });
     expect(document.querySelector("article")?.textContent).toContain(
-      "THB 2,400",
+      "฿2,400",
     );
     expect(document.querySelector("article")?.textContent).toContain("60");
     expect(document.querySelector("form")?.getAttribute("action")).toBe(
@@ -118,6 +118,32 @@ describe("public service catalog", () => {
     expect(link(getPublicMessages("en").ServiceCatalog.next)).toBeUndefined();
   });
 
+  it("G19: an empty filtered search offers one reset that clears both query and category", async () => {
+    vi.mocked(getServiceCatalog).mockResolvedValue([
+      { categories: [{ name: "Dining" }], nextCategory: null },
+      { page: [], continueCursor: "", isDone: true },
+    ]);
+    state.locale = "th";
+    const t = getPublicMessages("th").ServiceCatalog;
+    await render({ q: "no-match-xyz", category: "Dining" });
+    const reset = link(t.showAll);
+    expect(reset.getAttribute("href")).toBe("/th/services");
+    const all = new URL(link(t.all).href);
+    expect(all.searchParams.get("q")).toBe("no-match-xyz");
+    await render({ q: "no-match-xyz" });
+    expect(link(t.showAll).getAttribute("href")).toBe("/th/services");
+    // An empty unfiltered catalog has nothing to reset.
+    await render();
+    expect(link(t.showAll)).toBeUndefined();
+    // Matching results never show the reset.
+    vi.mocked(getServiceCatalog).mockResolvedValue([
+      { categories: [], nextCategory: null },
+      { page: [service], continueCursor: "", isDone: true },
+    ]);
+    await render({ q: "Massage" });
+    expect(link(t.showAll)).toBeUndefined();
+  });
+
   it("ignores repeated query parameters and bounds user search input", async () => {
     await ServicesPage({
       searchParams: Promise.resolve({
@@ -143,11 +169,14 @@ const thai = {
 };
 
 describe("service durations on the catalog", () => {
-  it("lists the lengths with a from-price and links the default length to chat", async () => {
+  it("G20: shows each length's price once, in the site currency format, and links the default length to chat", async () => {
     vi.mocked(getServiceCatalog).mockResolvedValue([{ categories: [], nextCategory: null }, { page: [thai], continueCursor: "", isDone: true }]);
     await render();
     const card = document.querySelector("article")!;
-    expect(card.textContent).toContain("60 / 90 / 120 min · from THB 800");
+    expect(card.textContent).not.toContain("from");
+    expect(card.textContent).not.toContain("THB");
+    for (const price of ["฿800", "฿1,100", "฿1,400"]) expect(card.textContent!.split(price)).toHaveLength(2);
+    expect([...card.querySelectorAll("fieldset label")].map((label) => label.textContent)).toEqual(["60 min฿800", "90 min฿1,100", "120 min฿1,400"]);
     expect(card.querySelector("fieldset legend")?.textContent).toBe("Choose a duration");
     expect([...card.querySelectorAll<HTMLInputElement>("input[type=radio]")].map((radio) => [radio.value, radio.checked])).toEqual([["60", true], ["90", false], ["120", false]]);
     expect(link("Ask about this service").getAttribute("href")).toBe("/chat?service=thai-massage&duration=60");
@@ -156,6 +185,7 @@ describe("service durations on the catalog", () => {
   it("keeps a one-length service as it was: no chips and no duration in the link", async () => {
     await render();
     expect(document.querySelectorAll("input[type=radio]")).toHaveLength(0);
+    expect(document.querySelector("article")?.textContent).toContain("60 min฿2,400");
     expect(document.querySelector("article")?.textContent).not.toContain("from");
     expect(link("Ask about this service").getAttribute("href")).toBe("/chat?service=thai%20massage");
   });
@@ -170,7 +200,7 @@ describe("service durations on the catalog", () => {
     const ninety = [...document.querySelectorAll<HTMLInputElement>("input[type=radio]")].find((radio) => radio.value === "90")!;
     await act(async () => ninety.click());
     expect(ninety.checked).toBe(true);
-    expect(document.querySelector("article")?.textContent).toContain("THB 1,100");
+    expect(document.querySelector("article")?.textContent!.split("฿1,100")).toHaveLength(2);
     expect(link("Ask about this service").getAttribute("href")).toBe("/chat?service=thai-massage&duration=90");
     await act(async () => root.unmount());
     vi.unstubAllGlobals();
