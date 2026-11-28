@@ -27,7 +27,9 @@
     "readyTitle": "Bereit für {resortName}?",
     "readyCopy": "Buchen Sie direkt und sparen Sie 15% gegenüber Online-Reiseportalen. Inklusive kostenlosem Flughafentransfer und Willkommens-Annehmlichkeiten.",
     "contactUs": "Kontakt aufnehmen",
-    "viewVillas": "Villen ansehen"
+    "viewVillas": "Villen ansehen",
+    "openInMaps": "In Google Maps öffnen",
+    "showInteractiveMap": "Interaktive Karte anzeigen"
   },
   "Experiences": {
     "eyebrow": "Erlebnisse",
@@ -419,7 +421,11 @@
     "appearance": "Darstellung",
     "themeSystem": "System",
     "themeLight": "Hell",
-    "themeDark": "Dunkel"
+    "themeDark": "Dunkel",
+    "pauseHero": "Animation pausieren",
+    "playHero": "Animation abspielen",
+    "ratingOutOfFive": "{rating} von 5 Sternen",
+    "galleryThumbnails": "Zimmerfotos"
   },
   "Resort": {
     "tagline": "Wo der Ozean auf Ruhe trifft",
@@ -545,7 +551,10 @@
     "leadEmailPlaceholder": "you@example.com",
     "invalidEmail": "Geben Sie eine gültige E-Mail-Adresse ein.",
     "saveError": "Diese E-Mail konnte nicht gespeichert werden.",
-    "save": "Speichern"
+    "save": "Speichern",
+    "viewerLabel": "360°-Tour von {propertyName}",
+    "emailLabel": "E-Mail",
+    "saving": "Wird gespeichert..."
   },
   "TourConclusions": {
     "pool-villa": {

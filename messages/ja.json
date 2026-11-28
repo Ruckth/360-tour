@@ -27,7 +27,9 @@
     "readyTitle": "{resortName} を体験する準備はできましたか？",
     "readyCopy": "直接予約ならオンライン旅行会社より 15% お得です。無料空港送迎とウェルカムアメニティ付き。",
     "contactUs": "お問い合わせ",
-    "viewVillas": "ヴィラを見る"
+    "viewVillas": "ヴィラを見る",
+    "openInMaps": "Google マップで開く",
+    "showInteractiveMap": "インタラクティブ地図を表示"
   },
   "Experiences": {
     "eyebrow": "体験",
@@ -419,7 +421,11 @@
     "appearance": "外観",
     "themeSystem": "システム",
     "themeLight": "ライト",
-    "themeDark": "ダーク"
+    "themeDark": "ダーク",
+    "pauseHero": "アニメーションを一時停止",
+    "playHero": "アニメーションを再生",
+    "ratingOutOfFive": "5つ星中 {rating}",
+    "galleryThumbnails": "客室の写真"
   },
   "Resort": {
     "tagline": "海と静けさが出会う場所",
@@ -545,7 +551,10 @@
     "leadEmailPlaceholder": "you@example.com",
     "invalidEmail": "有効なメールアドレスを入力してください。",
     "saveError": "このメールを保存できません。",
-    "save": "保存"
+    "save": "保存",
+    "viewerLabel": "{propertyName} 360° ツアー",
+    "emailLabel": "メールアドレス",
+    "saving": "保存中..."
   },
   "TourConclusions": {
     "pool-villa": {

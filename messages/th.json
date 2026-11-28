@@ -27,7 +27,9 @@
     "readyTitle": "พร้อมสัมผัส {resortName} แล้วหรือยัง?",
     "readyCopy": "จองตรงประหยัด 15% เมื่อเทียบกับแพลตฟอร์มออนไลน์ พร้อมบริการรับส่งสนามบินและของต้อนรับ",
     "contactUs": "ติดต่อเรา",
-    "viewVillas": "ดูวิลล่า"
+    "viewVillas": "ดูวิลล่า",
+    "openInMaps": "เปิดใน Google Maps",
+    "showInteractiveMap": "แสดงแผนที่แบบโต้ตอบ"
   },
   "Experiences": {
     "eyebrow": "ประสบการณ์",
@@ -419,7 +421,11 @@
     "appearance": "รูปแบบการแสดงผล",
     "themeSystem": "ตามระบบ",
     "themeLight": "สว่าง",
-    "themeDark": "มืด"
+    "themeDark": "มืด",
+    "pauseHero": "หยุดแอนิเมชันชั่วคราว",
+    "playHero": "เล่นแอนิเมชันต่อ",
+    "ratingOutOfFive": "{rating} จาก 5 ดาว",
+    "galleryThumbnails": "รูปภาพห้องพัก"
   },
   "Resort": {
     "tagline": "ที่ที่ทะเลพบความสงบ",
@@ -545,7 +551,10 @@
     "leadEmailPlaceholder": "you@example.com",
     "invalidEmail": "กรอกอีเมลให้ถูกต้อง",
     "saveError": "ยังบันทึกอีเมลนี้ไม่ได้",
-    "save": "บันทึก"
+    "save": "บันทึก",
+    "viewerLabel": "ทัวร์ 360 องศาของ {propertyName}",
+    "emailLabel": "อีเมล",
+    "saving": "กำลังบันทึก..."
   },
   "TourConclusions": {
     "pool-villa": {

@@ -27,7 +27,9 @@
     "readyTitle": "{resortName} 을 경험할 준비가 되셨나요?",
     "readyCopy": "직접 예약하면 온라인 여행사 대비 15% 절약됩니다. 무료 공항 픽업과 웰컴 어메니티가 포함됩니다.",
     "contactUs": "문의하기",
-    "viewVillas": "빌라 보기"
+    "viewVillas": "빌라 보기",
+    "openInMaps": "Google 지도에서 열기",
+    "showInteractiveMap": "대화형 지도 보기"
   },
   "Experiences": {
     "eyebrow": "경험",
@@ -419,7 +421,11 @@
     "appearance": "화면 테마",
     "themeSystem": "시스템",
     "themeLight": "라이트",
-    "themeDark": "다크"
+    "themeDark": "다크",
+    "pauseHero": "애니메이션 일시정지",
+    "playHero": "애니메이션 재생",
+    "ratingOutOfFive": "5점 만점에 {rating}점",
+    "galleryThumbnails": "객실 사진"
   },
   "Resort": {
     "tagline": "바다와 고요함이 만나는 곳",
@@ -545,7 +551,10 @@
     "leadEmailPlaceholder": "you@example.com",
     "invalidEmail": "유효한 이메일을 입력하세요.",
     "saveError": "이 이메일을 저장할 수 없습니다.",
-    "save": "저장"
+    "save": "저장",
+    "viewerLabel": "{propertyName} 360° 투어",
+    "emailLabel": "이메일",
+    "saving": "저장 중..."
   },
   "TourConclusions": {
     "pool-villa": {

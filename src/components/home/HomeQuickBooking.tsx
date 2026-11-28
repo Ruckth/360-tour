@@ -3,8 +3,9 @@
 import dynamic from "@/platform/dynamic";
 import { useLocale, useTranslations } from "@/platform/intl";
 import { useRouter } from "@/platform/navigation";
-import { useRef, useState, type FormEvent } from "react";
+import { useCallback, useRef, useState, type FormEvent } from "react";
 import { defaultLocale, isLocale, localizeHref } from "@/i18n/routing";
+import type { BookingRangePickerHandle } from "@/components/booking/BookingDatePicker";
 import { dateToIso } from '@/lib/booking/dates';
 import { resortTodayIso as todayIsoResort } from 'convex/shared/time';
 import { finishGuestPerformanceClock, startGuestPerformanceClock } from "@/lib/marketing/analytics";
@@ -38,10 +39,18 @@ export function HomeQuickBooking() {
   const [checkIn, setCheckIn] = useState("");
   const [checkOut, setCheckOut] = useState("");
   const [error, setError] = useState("");
+  const pickerRef = useRef<BookingRangePickerHandle | null>(null);
+  const pendingOpenCheckIn = useRef(false);
   const calendarOpening = useRef<{
     clock: ReturnType<typeof startGuestPerformanceClock>;
     trigger: "check_in" | "check_out";
   } | null>(null);
+
+  const handlePickerReady = useCallback(() => {
+    if (!pendingOpenCheckIn.current || !pickerRef.current) return;
+    pendingOpenCheckIn.current = false;
+    pickerRef.current.openCheckIn();
+  }, []);
 
   function prefetchBooking() {
     router.prefetch(bookingHref);
@@ -49,6 +58,16 @@ export function HomeQuickBooking() {
 
   function submitQuickBooking(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (!checkIn && !checkOut) {
+      setError("");
+      if (pickerRef.current) {
+        pickerRef.current.openCheckIn();
+      } else {
+        pendingOpenCheckIn.current = true;
+      }
+      return;
+    }
 
     if (!checkIn || !checkOut) {
       setError(bookingT("chooseDates"));
@@ -75,6 +94,8 @@ export function HomeQuickBooking() {
         aria-label={bookingT("directBooking")}
       >
         <BookingRangePicker
+          pickerRef={pickerRef}
+          onReady={handlePickerReady}
           checkIn={checkIn}
           checkOut={checkOut}
           onChange={(range) => {

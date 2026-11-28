@@ -1,8 +1,8 @@
-import Image from "@/platform/image";
 import { useTranslations } from "@/platform/intl";
 import { Anchor, Bell, Car, Check, Heart, Sparkles, Sun, Utensils, Waves } from "lucide-react";
 import { HomeHero } from "@/components/home/HomeHero";
 import { HomeQuickBooking } from "@/components/home/HomeQuickBooking";
+import { LocationMapPreview } from "@/components/home/LocationMapPreview";
 import { VillaCard } from "@/components/home/VillaCard";
 import { ReviewCarousel } from "@/components/social/ReviewCarousel";
 import { ButtonLink } from "@/components/ui/button";
@@ -204,24 +204,14 @@ export function HomeView({
                 ))}
               </ul>
             </div>
-            <div className="overflow-hidden rounded-2xl border border-border bg-muted shadow-sm md:hidden">
-              <iframe
-                title={`${resort.name} Google Map, Lipa Noi, Ko Samui District, Surat Thani`}
-                src="https://www.google.com/maps?q=9.499354,99.997034&z=15&output=embed"
-                className="h-[320px] w-full"
-                loading="lazy"
-                referrerPolicy="no-referrer-when-downgrade"
-                allowFullScreen
-              />
-            </div>
-            <div className="relative hidden min-h-[320px] overflow-hidden rounded-2xl md:block">
-              <Image
-                src="https://images.unsplash.com/photo-1537956965359-7573183d1f57?w=800&h=600&fit=crop"
-                alt={getLocationImageAlt(messages)}
-                fill
-                className="object-cover"
-              />
-            </div>
+            <LocationMapPreview
+              resortName={resort.name}
+              location={resort.location}
+              address={resort.address}
+              imageAlt={getLocationImageAlt(messages)}
+              openInMapsLabel={t("openInMaps")}
+              showInteractiveMapLabel={t("showInteractiveMap")}
+            />
           </div>
         </div>
       </section>

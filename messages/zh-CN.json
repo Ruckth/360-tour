@@ -27,7 +27,9 @@
     "readyTitle": "准备体验 {resortName} 吗？",
     "readyCopy": "直接预订相比在线旅行平台节省 15%。包含免费机场接送和欢迎礼遇。",
     "contactUs": "联系我们",
-    "viewVillas": "查看别墅"
+    "viewVillas": "查看别墅",
+    "openInMaps": "在 Google 地图中打开",
+    "showInteractiveMap": "显示交互式地图"
   },
   "Experiences": {
     "eyebrow": "体验",
@@ -419,7 +421,11 @@
     "appearance": "外观",
     "themeSystem": "跟随系统",
     "themeLight": "浅色",
-    "themeDark": "深色"
+    "themeDark": "深色",
+    "pauseHero": "暂停动画",
+    "playHero": "播放动画",
+    "ratingOutOfFive": "{rating} / 5 星",
+    "galleryThumbnails": "房间照片"
   },
   "Resort": {
     "tagline": "海洋与宁静相遇之处",
@@ -545,7 +551,10 @@
     "leadEmailPlaceholder": "you@example.com",
     "invalidEmail": "请输入有效的电子邮箱。",
     "saveError": "无法保存此邮箱。",
-    "save": "保存"
+    "save": "保存",
+    "viewerLabel": "{propertyName} 360° 全景导览",
+    "emailLabel": "电子邮箱",
+    "saving": "正在保存..."
   },
   "TourConclusions": {
     "pool-villa": {

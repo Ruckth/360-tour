@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState, type ComponentProps } from "react";
+import { useEffect, useRef, useState, type ComponentProps } from "react";
 import { TourIntro } from "@/components/tour/TourIntro";
 import { useBodyScrollLock } from "@/lib/interaction/use-body-scroll-lock";
+import { useModalFocusTrap } from "@/lib/interaction/use-modal-focus";
 import { useTranslations } from "@/platform/intl";
 import { loadTourViewer } from "@/lib/tour/preload";
 import type { TourRenderer } from "@/lib/tour/renderer";
@@ -42,6 +43,7 @@ export function RoomTourViewer({ closeHref, renderer = "three", ...props }: Comp
 }) {
   const tourT = useTranslations("Tour");
   const a11y = useTranslations("A11y");
+  const loadingDialogRef = useRef<HTMLDivElement>(null);
   const [state, setState] = useState<{ viewer: Viewer } | { error: unknown } | null>(() => {
     const viewer = loaded.get(renderer);
     return viewer ? { viewer } : null;
@@ -49,6 +51,7 @@ export function RoomTourViewer({ closeHref, renderer = "three", ...props }: Comp
   const { onClose } = props;
   // The pending intro holds its own reference-counted lock; the viewer takes its own once mounted.
   useBodyScrollLock(!state);
+  useModalFocusTrap(loadingDialogRef, !state);
   useEffect(() => {
     if (state) return;
     let active = true;
@@ -70,11 +73,15 @@ export function RoomTourViewer({ closeHref, renderer = "three", ...props }: Comp
   if (!state) {
     return (
       <div
+        ref={loadingDialogRef}
+        tabIndex={-1}
         data-testid="tour-viewer-loading"
+        data-tour-dialog="true"
         role="dialog"
-        aria-label={props.property.name}
+        aria-modal="true"
+        aria-label={tourT("viewerLabel", { propertyName: props.property.name })}
         aria-busy
-        className="fixed inset-0 z-[70] bg-black"
+        className="fixed inset-0 z-[70] bg-black focus:outline-none"
         // Before hydration no lock exists yet: the covering surface refuses page pans itself.
         style={{ touchAction: "none" }}
       >
