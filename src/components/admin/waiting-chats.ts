@@ -14,11 +14,14 @@ export function waitingBadge(waiting: number | null | undefined): WaitingBadge |
   return { text, label: `${text} ${waiting === 1 ? "chat needs" : "chats need"} you` };
 }
 
+const queueCountQuery = api.messaging.adminChat.queueCounts;
+const queueCountRequest = { queue: { query: queueCountQuery, args: {} } };
+const noQueueCountRequest = {};
+
 /** Preserve the common Convex subscription while isolating a failed count from its host view. */
 export function useSafeQueueCounts(enabled = true) {
-  const query = api.messaging.adminChat.queueCounts;
-  const { queue } = useQueries(enabled ? { queue: { query, args: {} } } : {}) as {
-    queue?: FunctionReturnType<typeof query> | Error;
+  const { queue } = useQueries(enabled ? queueCountRequest : noQueueCountRequest) as {
+    queue?: FunctionReturnType<typeof queueCountQuery> | Error;
   };
   return queue instanceof Error ? null : queue;
 }

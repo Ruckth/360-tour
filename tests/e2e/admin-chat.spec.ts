@@ -24,6 +24,11 @@ test("authorized admin entry opens Today", async ({ page }) => {
   await expect(page).toHaveURL(/\/admin\/today$/);
   await clerk.signIn({ page, emailAddress: process.env.E2E_OWNER_EMAIL! });
   await expect(page.getByRole("heading", { name: "Today", exact: true })).toBeVisible();
+  await page.getByRole("link", { name: /^Needs you/ }).click();
+  const search = page.getByRole("textbox", { name: "Search chats" });
+  await search.fill("Guest e2e search");
+  await expect(search).toHaveValue("Guest e2e search");
+  await expect(page.getByRole("tablist", { name: "Chat queue" })).toBeVisible();
 });
 
 test("invalid staff bookmark offers recovery within Staff bookings", async ({ page }) => {

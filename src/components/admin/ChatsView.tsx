@@ -231,7 +231,7 @@ export function ChatsView() {
   }
   const queueCounts = useSafeQueueCounts();
   const queryText = urlSearchQuery.trim();
-  const listRequests = Object.fromEntries(
+  const listRequests = useMemo(() => Object.fromEntries(
     (invalidMessageDateRange ? [] : pageCursors).map((cursor, index) => [String(index), {
       query: api.messaging.adminChat.listSessions,
       args: {
@@ -247,7 +247,7 @@ export function ChatsView() {
         ...(status === "active" || status === "inactive" ? { now: presenceMinute } : {}),
       },
     }]),
-  );
+  ), [invalidMessageDateRange, pageCursors, retryKeys, status, adminStatus, emptyFilter, channelFilter, queryText, parsedMessageStartAt, parsedMessageEndAt, presenceMinute]);
   const listResults = useQueries(listRequests) as Record<string, SessionListResult | Error | undefined>;
   const firstPage = listResults["0"];
   const { sessions, lastPage, failedPage, replacementCursors, loadingOlder } = useMemo(() => {
