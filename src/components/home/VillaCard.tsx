@@ -1,6 +1,7 @@
 "use client";
 
 import { satangToBaht } from 'convex/shared/money';
+import { calculateDirectQuote } from 'convex/shared/pricing';
 
 import dynamic from "@/platform/dynamic";
 import Link from "@/platform/link";
@@ -36,6 +37,7 @@ export function VillaCard({
   storyTagline?: string;
 }) {
   const t = useTranslations("Villa");
+  const pricingT = useTranslations("Pricing");
   const a11y = useTranslations("A11y");
   const activeLocale = useLocale();
   const locale = isLocale(activeLocale) ? activeLocale : defaultLocale;
@@ -45,6 +47,16 @@ export function VillaCard({
   const { begin, cancel, finish } = useTourOpenTiming(false);
   const images = property.images.length ? property.images : [resort.heroImage];
   const hasMultiple = images.length > 1;
+  const directQuote = calculateDirectQuote(
+    {
+      pricePerNight: property.pricePerNight,
+      directDiscountPercent: property.directDiscountPercent,
+      currency: property.currency,
+    },
+    1,
+  );
+  const hasDirectDiscount =
+    property.directDiscountPercent > 0 && directQuote.directTotal < property.pricePerNight;
 
   function goTo(next: number) {
     setIndex(clampIndex(next, images.length));
@@ -84,12 +96,29 @@ export function VillaCard({
           ))}
         </div>
         <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/55 via-black/15 to-transparent" />
-        <div className="absolute bottom-3 right-3 rounded-full bg-navy/90 px-3 py-1 text-xs font-semibold text-white backdrop-blur-sm md:text-sm">
-          {currencyPrefix(property.currency)}
-          {satangToBaht(property.pricePerNight).toLocaleString()}
-          <span className="text-[10px] font-normal text-white/60 md:text-xs">
-            {t("perNight")}
+        <div
+          data-testid="villa-card-rate"
+          className="absolute bottom-3 right-3 flex items-baseline gap-1.5 rounded-full bg-navy/90 px-3 py-1 text-xs font-semibold text-white backdrop-blur-sm md:text-sm"
+        >
+          {hasDirectDiscount ? (
+            <s className="text-[10px] font-normal text-white/60 md:text-xs">
+              <span className="sr-only">{pricingT("standardRate")} </span>
+              {currencyPrefix(property.currency)}
+              {satangToBaht(property.pricePerNight).toLocaleString()}
+            </s>
+          ) : null}
+          <span>
+            {currencyPrefix(property.currency)}
+            {satangToBaht(directQuote.directTotal).toLocaleString()}
+            <span className="text-[10px] font-normal text-white/60 md:text-xs">
+              {t("perNight")}
+            </span>
           </span>
+          {hasDirectDiscount ? (
+            <span className="hidden text-[10px] font-medium text-gold-light sm:inline">
+              · {t("directRate")}
+            </span>
+          ) : null}
         </div>
 
         {hasMultiple ? (

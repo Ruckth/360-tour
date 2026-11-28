@@ -27,7 +27,9 @@
     "readyTitle": "Ready to Experience {resortName}?",
     "readyCopy": "Book direct and save 15% compared to online travel agencies. Includes complimentary airport transfer and welcome amenities.",
     "contactUs": "Contact Us",
-    "viewVillas": "View Villas"
+    "viewVillas": "View Villas",
+    "openInMaps": "Open in Google Maps",
+    "showInteractiveMap": "Show interactive map"
   },
   "Experiences": {
     "eyebrow": "Experiences",
@@ -419,7 +421,11 @@
     "appearance": "Appearance",
     "themeSystem": "System",
     "themeLight": "Light",
-    "themeDark": "Dark"
+    "themeDark": "Dark",
+    "pauseHero": "Pause animation",
+    "playHero": "Play animation",
+    "ratingOutOfFive": "{rating} out of 5 stars",
+    "galleryThumbnails": "Room photos"
   },
   "Resort": {
     "tagline": "Where the ocean meets serenity",
@@ -545,7 +551,10 @@
     "leadEmailPlaceholder": "you@example.com",
     "invalidEmail": "Enter a valid email.",
     "saveError": "Unable to save this email.",
-    "save": "Save"
+    "save": "Save",
+    "viewerLabel": "{propertyName} 360 tour",
+    "emailLabel": "Email",
+    "saving": "Saving..."
   },
   "TourConclusions": {
     "pool-villa": {

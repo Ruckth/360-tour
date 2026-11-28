@@ -27,7 +27,9 @@
     "readyTitle": "Pronto a vivere {resortName}?",
     "readyCopy": "Prenota diretto e risparmia il 15% rispetto alle agenzie online. Include trasferimento aeroportuale gratuito e amenità di benvenuto.",
     "contactUs": "Contattaci",
-    "viewVillas": "Vedi le ville"
+    "viewVillas": "Vedi le ville",
+    "openInMaps": "Apri in Google Maps",
+    "showInteractiveMap": "Mostra mappa interattiva"
   },
   "Experiences": {
     "eyebrow": "Esperienze",
@@ -419,7 +421,11 @@
     "appearance": "Aspetto",
     "themeSystem": "Sistema",
     "themeLight": "Chiaro",
-    "themeDark": "Scuro"
+    "themeDark": "Scuro",
+    "pauseHero": "Metti in pausa l’animazione",
+    "playHero": "Riproduci l’animazione",
+    "ratingOutOfFive": "{rating} su 5 stelle",
+    "galleryThumbnails": "Foto della villa"
   },
   "Resort": {
     "tagline": "Dove l’oceano incontra la serenità",
@@ -545,7 +551,10 @@
     "leadEmailPlaceholder": "you@example.com",
     "invalidEmail": "Saisissez une adresse e-mail valide.",
     "saveError": "Impossible d’enregistrer cet e-mail.",
-    "save": "Sauvegarder"
+    "save": "Sauvegarder",
+    "viewerLabel": "Tour 360° di {propertyName}",
+    "emailLabel": "Email",
+    "saving": "Salvataggio..."
   },
   "TourConclusions": {
     "pool-villa": {

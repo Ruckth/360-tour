@@ -27,7 +27,9 @@
     "readyTitle": "¿Listo para vivir {resortName}?",
     "readyCopy": "Reserve directo y ahorre 15% frente a agencias de viaje online. Incluye traslado gratuito desde el aeropuerto y detalles de bienvenida.",
     "contactUs": "Contáctenos",
-    "viewVillas": "Ver villas"
+    "viewVillas": "Ver villas",
+    "openInMaps": "Abrir en Google Maps",
+    "showInteractiveMap": "Mostrar mapa interactivo"
   },
   "Experiences": {
     "eyebrow": "Experiencias",
@@ -419,7 +421,11 @@
     "appearance": "Apariencia",
     "themeSystem": "Sistema",
     "themeLight": "Claro",
-    "themeDark": "Oscuro"
+    "themeDark": "Oscuro",
+    "pauseHero": "Pausar animación",
+    "playHero": "Reproducir animación",
+    "ratingOutOfFive": "{rating} de 5 estrellas",
+    "galleryThumbnails": "Fotos de la villa"
   },
   "Resort": {
     "tagline": "Donde el océano encuentra la serenidad",
@@ -545,7 +551,10 @@
     "leadEmailPlaceholder": "you@example.com",
     "invalidEmail": "Saisissez une adresse e-mail valide.",
     "saveError": "Impossible d’enregistrer cet e-mail.",
-    "save": "Sauvegarder"
+    "save": "Sauvegarder",
+    "viewerLabel": "Recorrido 360° de {propertyName}",
+    "emailLabel": "Correo electrónico",
+    "saving": "Guardando..."
   },
   "TourConclusions": {
     "pool-villa": {

@@ -27,7 +27,9 @@
     "readyTitle": "Prêt à découvrir {resortName} ?",
     "readyCopy": "Réservez en direct et économisez 15% par rapport aux agences de voyage en ligne. Transfert aéroport offert et attentions de bienvenue inclus.",
     "contactUs": "Nous contacter",
-    "viewVillas": "Voir les villas"
+    "viewVillas": "Voir les villas",
+    "openInMaps": "Ouvrir dans Google Maps",
+    "showInteractiveMap": "Afficher la carte interactive"
   },
   "Experiences": {
     "eyebrow": "Expériences",
@@ -419,7 +421,11 @@
     "appearance": "Apparence",
     "themeSystem": "Système",
     "themeLight": "Clair",
-    "themeDark": "Sombre"
+    "themeDark": "Sombre",
+    "pauseHero": "Mettre l’animation en pause",
+    "playHero": "Lire l’animation",
+    "ratingOutOfFive": "{rating} sur 5 étoiles",
+    "galleryThumbnails": "Photos de la villa"
   },
   "Resort": {
     "tagline": "Là où l’océan rencontre la sérénité",
@@ -545,7 +551,10 @@
     "leadEmailPlaceholder": "you@example.com",
     "invalidEmail": "Saisissez une adresse e-mail valide.",
     "saveError": "Impossible d’enregistrer cet e-mail.",
-    "save": "Sauvegarder"
+    "save": "Sauvegarder",
+    "viewerLabel": "Visite 360° de {propertyName}",
+    "emailLabel": "E-mail",
+    "saving": "Enregistrement..."
   },
   "TourConclusions": {
     "pool-villa": {

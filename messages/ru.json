@@ -27,7 +27,9 @@
     "readyTitle": "Готовы открыть для себя {resortName}?",
     "readyCopy": "Бронируйте напрямую и экономьте 15% по сравнению с онлайн-агентствами. Включены бесплатный трансфер из аэропорта и приветственные удобства.",
     "contactUs": "Связаться с нами",
-    "viewVillas": "Смотреть виллы"
+    "viewVillas": "Смотреть виллы",
+    "openInMaps": "Открыть в Google Картах",
+    "showInteractiveMap": "Показать интерактивную карту"
   },
   "Experiences": {
     "eyebrow": "Впечатления",
@@ -419,7 +421,11 @@
     "appearance": "Оформление",
     "themeSystem": "Системная",
     "themeLight": "Светлая",
-    "themeDark": "Тёмная"
+    "themeDark": "Тёмная",
+    "pauseHero": "Приостановить анимацию",
+    "playHero": "Воспроизвести анимацию",
+    "ratingOutOfFive": "{rating} из 5 звёзд",
+    "galleryThumbnails": "Фотографии виллы"
   },
   "Resort": {
     "tagline": "Где океан встречает спокойствие",
@@ -545,7 +551,10 @@
     "leadEmailPlaceholder": "you@example.com",
     "invalidEmail": "Введите действительный email.",
     "saveError": "Не удалось сохранить этот email.",
-    "save": "Сохранить"
+    "save": "Сохранить",
+    "viewerLabel": "360°-тур по {propertyName}",
+    "emailLabel": "Эл. почта",
+    "saving": "Сохранение..."
   },
   "TourConclusions": {
     "pool-villa": {

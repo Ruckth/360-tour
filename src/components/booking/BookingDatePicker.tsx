@@ -1,6 +1,6 @@
 "use client";
 
-import { type ComponentProps, type Ref, useEffect, useId, useMemo, useRef, useState } from "react";
+import { type ComponentProps, type Ref, type RefObject, useEffect, useId, useMemo, useRef, useState } from "react";
 import { api } from "convex/_generated/api";
 import { BOOKING_RULE_DEFAULTS } from "convex/shared/siteSettings";
 import { useConvex } from 'convex/react';
@@ -19,6 +19,9 @@ import { cn } from "@/lib/utils";
 
 type BookingRange = { checkIn: string; checkOut: string };
 type ActiveDateField = "checkIn" | "checkOut";
+export type BookingRangePickerHandle = {
+  openCheckIn: () => void;
+};
 
 type BookingRangePickerProps = {
   checkIn: string;
@@ -35,6 +38,8 @@ type BookingRangePickerProps = {
   clearable?: boolean;
   className?: string;
   contentClassName?: string;
+  pickerRef?: RefObject<BookingRangePickerHandle | null>;
+  onReady?: () => void;
   onRangeChange?: () => void;
   onCalendarOpening?: (field: ActiveDateField) => void;
   onCalendarOpened?: () => void;
@@ -102,6 +107,8 @@ export function BookingRangePicker({
   clearable = true,
   className,
   contentClassName,
+  pickerRef,
+  onReady,
   onRangeChange,
   onCalendarOpening,
   onCalendarOpened,
@@ -116,8 +123,11 @@ export function BookingRangePicker({
   const [visibleMonth, setVisibleMonth] = useState<Date>();
   const calendarId = useId();
   const triggerGroup = useRef<HTMLDivElement>(null);
+  const checkInTrigger = useRef<HTMLButtonElement>(null);
   const checkOutTrigger = useRef<HTMLButtonElement>(null);
   const openingTrigger = useRef<HTMLButtonElement>(null);
+  const popoverContentRef = useRef<HTMLDivElement>(null);
+  const focusFirstSelectableDay = useRef(false);
   const dismissedFromOutside = useRef(false);
   const checkInLabel = checkIn ? formatPickerDate(checkIn, locale) : t("checkIn");
   const checkOutLabel = checkOut ? formatPickerDate(checkOut, locale) : t("checkOut");
@@ -219,12 +229,58 @@ export function BookingRangePicker({
     setOpen(true);
   }
 
+  function focusFirstEnabledDay() {
+    const content = popoverContentRef.current;
+    if (!content) return;
+    const dayButton = content.querySelector<HTMLButtonElement>(
+      '[role="grid"] button:not([disabled]), table button:not([disabled])',
+    );
+    dayButton?.focus({ preventScroll: true });
+  }
+
+  useEffect(() => {
+    if (!pickerRef) return;
+    pickerRef.current = {
+      openCheckIn() {
+        const trigger = checkInTrigger.current;
+        if (!trigger) return;
+        focusFirstSelectableDay.current = true;
+        if (open && activeField === "checkIn") {
+          focusFirstEnabledDay();
+          return;
+        }
+        if (!open) onCalendarOpening?.("checkIn");
+        openingTrigger.current = trigger;
+        dismissedFromOutside.current = false;
+        showMonth(checkInDate ?? isoToDate(todayIsoResort())!);
+        setActiveField("checkIn");
+        setOpen(true);
+      },
+    };
+    return () => {
+      pickerRef.current = null;
+    };
+  });
+
+  useEffect(() => {
+    onReady?.();
+  }, [onReady]);
+
   const popoverContent = (
     <RangePickerContent
+      ref={popoverContentRef}
       id={calendarId}
       aria-label={t("chooseDates")}
       className={calendarPopoverClassName}
-      onOpenAutoFocus={onCalendarOpened}
+      onOpenAutoFocus={(event) => {
+        onCalendarOpened?.();
+        if (focusFirstSelectableDay.current) {
+          focusFirstSelectableDay.current = false;
+          event.preventDefault();
+          focusFirstEnabledDay();
+          window.requestAnimationFrame(focusFirstEnabledDay);
+        }
+      }}
       onCloseAutoFocus={(event) => {
         event.preventDefault();
         if (!dismissedFromOutside.current) openingTrigger.current?.focus();
@@ -260,6 +316,7 @@ export function BookingRangePicker({
         <PopoverAnchor asChild>
           <div ref={triggerGroup} className={cn("grid gap-3 sm:grid-cols-2", compact && "gap-2")}>
             <DateTriggerField
+              triggerRef={checkInTrigger}
               field="checkIn"
               compact={compact}
               label={t("checkIn")}
