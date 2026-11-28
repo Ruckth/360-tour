@@ -3,7 +3,7 @@ import { addDaysIso } from "../../convex/shared/dates";
 import { resortTodayIso } from "../../convex/shared/time";
 import { chooseBranchIfPrompted } from "../support/choose-branch.mjs";
 import { signedInBackend } from "./backend";
-import { expect, test, type Locator, type Page } from "./fixtures";
+import { expect, test, type Page } from "./fixtures";
 
 test.setTimeout(75_000);
 
@@ -16,7 +16,7 @@ async function openHotelForm(page: Page, name: string) {
   return page.getByRole("dialog", { name, exact: true });
 }
 
-async function pickDay(calendar: Locator, date: string) {
+async function pickDay(calendar: Page, date: string) {
   const day = calendar.locator(`[data-day="${date}"]:not([data-outside]) button`).first();
   for (let month = 0; month < 3 && !(await day.isVisible()); month++) {
     await calendar.getByRole("button", { name: /next month/i }).first().click();
