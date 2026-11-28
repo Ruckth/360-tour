@@ -70,8 +70,8 @@ export default function ApprovalsList({ rows, states, history, verifying, select
         <ul className="grid gap-3" aria-label="Requests">
           {rows.map((row) => {
             const chosen = row._id === selectedId;
-            if (!chosen && states && states[row._id] !== "pending") {
-              const status = states[row._id];
+            const status = states?.[row._id];
+            if (row.expiresAt <= now || row.actionable === false || (states && status !== "pending")) {
               const label = status === "expired" || row.expiresAt <= now ? "Expired" : status === "revoked" ? "Access changed"
                 : status === "stale" || !row.actionable ? "Request changed" : status === undefined ? "Checking eligibility" : "Unavailable";
               return <UnavailableQueueRow key={row._id} row={row} status={label} />;
@@ -187,7 +187,7 @@ function ApprovalItem({ request, lineName, title, onResult }: { request: Approva
         <InfoTip label="About approvals" className="-my-3 -ml-2">Works once, for this order as it is now.</InfoTip>
       </p>
       {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
-      {request.status === "pending"
+      {request.status === "pending" && !expiring
         ? <ApprovalDecisionButtons busy={busy} onDecide={(choice) => { void decide(choice).then((result) => { if (result) onResult(result); }); }} />
         : <p className="text-sm text-muted-foreground">No longer waiting.</p>}
     </Card>

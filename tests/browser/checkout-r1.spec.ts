@@ -52,7 +52,7 @@ test("invalid order numbers never open a different order", async ({ page }) => {
   await expect(page.getByTestId("order-panel-title")).toHaveText("Order #1042");
 });
 
-test("an approval past its local expiry names its item and leaves the decision to the server", async ({ page }) => {
+test("an open approval becomes read-only at expiry and stays visible in the queue", async ({ page }) => {
   await page.clock.install();
   await open(page, "?role=manager&scenario=pending");
   await page.getByTestId("approvals-button").click();
@@ -60,12 +60,11 @@ test("an approval past its local expiry names its item and leaves the decision t
   const request = page.locator('[data-testid="approval-request"][data-approval-selected="true"]');
   await expect(request).toContainText("Thai massage 60");
   await page.clock.fastForward(5 * 60_000);
-  // The expired request leaves the actionable count but can still be opened for review.
   await expect(request).toHaveCount(0);
-  await page.getByRole("button", { name: /฿100 discount.*Unavailable · Expired/ }).click();
-  await expect(request).toContainText("Expiring now");
-  await expect(request.getByRole("button", { name: "Approve", exact: true })).toBeEnabled();
-  await expect(request.getByRole("button", { name: "Decline", exact: true })).toBeEnabled();
+  const expired = page.getByRole("listitem").filter({ hasText: "฿100 discount" });
+  await expect(expired).toContainText("Expired at");
+  await expect(expired.getByRole("button")).toHaveCount(0);
+  await expect(page.getByRole("dialog").getByRole("button", { name: /^(Approve|Decline)$/ })).toHaveCount(0);
 });
 
 test.describe("phone payment layouts", () => {
