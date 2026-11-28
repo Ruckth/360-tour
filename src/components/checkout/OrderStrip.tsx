@@ -41,6 +41,7 @@ export function OrderStrip({
   onOrderChange,
   canStartNew = false,
   displayControl,
+  ordersFilterScope,
 }: {
   view: OrderView | null | undefined;
   title: string;
@@ -50,12 +51,19 @@ export function OrderStrip({
   canStartNew?: boolean;
   /** Rendered beside Orders, e.g. the customer display button (not in the dev preview). */
   displayControl?: ReactNode;
+  ordersFilterScope?: string;
 }) {
   const actions = useCheckoutBackend().useActions();
   // Cashiers get the open orders and today's receipts by number, not the full order lists (an operations area).
   const cashier = useStaffAccess().role === "cashier";
   const [panel, setPanel] = useState<Panel>(null);
   const [ordersFilter, setOrdersFilter] = useState<OrderFilter>("unpaid");
+  const filterKey = ordersFilterScope ? `checkout:orders-filter:${ordersFilterScope}` : null;
+  function changeOrdersFilter(filter: OrderFilter) {
+    setOrdersFilter(filter);
+    if (!filterKey) return;
+    try { sessionStorage.setItem(filterKey, filter); } catch { /* Browser storage can be disabled. */ }
+  }
   const [ordersPending, setOrdersPending] = useState(false);
   const [customerPending, setCustomerPending] = useState(false);
   const order = view?.order;
@@ -65,6 +73,12 @@ export function OrderStrip({
   const customer = view?.customer ?? null;
   const dialogSession = useRef(0);
   const changePanel = (next: Panel) => {
+    if (next === "orders" && !cashier && filterKey) {
+      try {
+        const stored = sessionStorage.getItem(filterKey);
+        setOrdersFilter(FILTERS.find(filter => filter.value === stored)?.value ?? "unpaid");
+      } catch { /* The in-memory filter still works. */ }
+    }
     dialogSession.current += 1;
     setPanel(next);
   };
@@ -195,7 +209,7 @@ export function OrderStrip({
               <DialogTitle>Orders</DialogTitle>
               <DialogDescription className="text-pretty">{cashier ? "Open orders on every till. Look up today's receipts by order or receipt number." : "Find an order by order or receipt number, or browse by status."}</DialogDescription>
             </DialogHeader>
-            {panel === "orders" ? (cashier ? <OpenOrders currentId={order?._id} onOpen={(id) => { close(); onOrderChange(id); }} /> : <OrdersBrowser filter={ordersFilter} onFilterChange={setOrdersFilter} onPending={setOrdersPending} currentId={order?._id} onOpen={(id) => { close(); onOrderChange(id); }} />) : null}
+            {panel === "orders" ? (cashier ? <OpenOrders currentId={order?._id} onOpen={(id) => { close(); onOrderChange(id); }} /> : <OrdersBrowser filter={ordersFilter} onFilterChange={changeOrdersFilter} onPending={setOrdersPending} currentId={order?._id} onOpen={(id) => { close(); onOrderChange(id); }} />) : null}
           </CheckoutDialogContent>
         </Dialog>
         {phone ? (
