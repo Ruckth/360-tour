@@ -152,16 +152,17 @@ function checkDetailReads(ctx: ReadCtx, accessReads: number) {
   if (availableDetailReads(ctx, accessReads) < 0) throw new Error('Approval detail exceeded its read budget.');
 }
 
-async function adjustmentAccessIsCurrent(ctx: ReadCtx, request: AdjustmentRequest) {
+async function adjustmentAuthorityStatus(ctx: ReadCtx, request: AdjustmentRequest) {
   const [rules, grant] = await Promise.all([
     readApprovalDocument(ctx, () => cashierRules(ctx)),
     readApprovalDocument(ctx, () => ctx.db.query('staffGrants')
       .withIndex('by_tokenIdentifier', q => q.eq('tokenIdentifier', request.requesterTokenIdentifier)).unique()),
   ]);
-  return request.payload.requester === request.requesterTokenIdentifier &&
+  if (rules.revision !== request.rulesRevision || await sha256(JSON.stringify(convexToJson(rules))) !== request.rulesFingerprint) return 'stale';
+  const grantCurrent = request.payload.requester === request.requesterTokenIdentifier &&
     grant?.role === 'cashier' && await sha256(JSON.stringify(convexToJson(grant))) === request.requesterAccessFingerprint &&
-    rules.revision === request.rulesRevision && await sha256(JSON.stringify(convexToJson(rules))) === request.rulesFingerprint &&
     (await listAssignedBranches(ctx, grant.branchIds, readBudget(ctx))).length > 0;
+  return grantCurrent ? 'current' : 'revoked';
 }
 
 function pendingStatus(request: ApprovalRequest) {
@@ -260,11 +261,11 @@ export async function adjustmentApprovalDetail(ctx: ReadCtx, accessReads: number
     };
   })) : [];
   const current = valid && targets.every(({ revision }) => revision.current === revision.expected && !revision.blockedByReturn);
-  const authorityCurrent = baseStatus === 'pending' ? await adjustmentAccessIsCurrent(ctx, request) : null;
-  const status = baseStatus === 'pending' && (!current || !authorityCurrent) ? 'stale' : baseStatus;
+  const authority = baseStatus === 'pending' ? await adjustmentAuthorityStatus(ctx, request) : null;
+  const status = baseStatus === 'pending' && (!current || authority !== 'current') ? 'stale' : baseStatus;
   const targetView = includeTarget ? await adjustmentTargetView(ctx, targets[0]?.row ?? null) : null;
   checkDetailReads(ctx, accessReads);
-  return { status, authorityCurrent, target: targetView, revisions: targets.map(({ revision }) => revision) };
+  return { status, authorityRevoked: authority === 'revoked', target: targetView, revisions: targets.map(({ revision }) => revision) };
 }
 
 const returnRevision = v.union(
@@ -344,14 +345,15 @@ export function pendingReturnSummary(ctx: ReadCtx, request: ReturnRequest) {
 export async function returnApprovalDetail(ctx: ReadCtx, accessReads: number, request: ReturnRequest, includeTarget: boolean) {
   const baseStatus = pendingStatus(request);
   let authorityCurrent = true;
+  let authorityRevoked = false;
   if (baseStatus === 'pending') {
     const [rules, requester] = await Promise.all([
       readApprovalDocument(ctx, () => cashierRules(ctx)),
       requesterFingerprint(ctx, request.requesterTokenIdentifier),
     ]);
-    authorityCurrent = rules.revision === request.rulesRevision &&
-      (request.rulesFingerprint === undefined || rulesFingerprint(rules) === request.rulesFingerprint) &&
-      requester.role === 'cashier' && requester.fingerprint === request.requesterAccessFingerprint;
+    authorityRevoked = requester.role !== 'cashier' || requester.fingerprint !== request.requesterAccessFingerprint;
+    authorityCurrent = !authorityRevoked && rules.revision === request.rulesRevision &&
+      (request.rulesFingerprint === undefined || rulesFingerprint(rules) === request.rulesFingerprint);
   }
   const order = await getApprovalTarget(ctx, request.orderId);
   const review = parseReturnReview(ctx, request);
@@ -387,7 +389,7 @@ export async function returnApprovalDetail(ctx: ReadCtx, accessReads: number, re
     : checked ? 'checked' as const : 'partial' as const;
   checkDetailReads(ctx, accessReads);
   return {
-    status, freshness, authorityCurrent: baseStatus === 'pending' ? authorityCurrent : null,
+    status, freshness, authorityRevoked, authorityCurrent: baseStatus === 'pending' ? authorityCurrent : null,
     target: order && orderView(order), orderRevision, rows, revisions,
   };
 }
@@ -418,7 +420,7 @@ export async function verifiedQueueStatus(ctx: ReadCtx, actor: StaffActor & { ac
   const detail = request.kind === 'adjustment'
     ? await adjustmentApprovalDetail(ctx, actor.accessReads, request, false)
     : await returnApprovalDetail(ctx, actor.accessReads, request, false);
-  return detail.authorityCurrent === false ? 'revoked' as const : detail.status;
+  return detail.authorityRevoked ? 'revoked' as const : detail.status;
 }
 
 export async function ownApprovalStatus(ctx: ReadCtx, actor: Awaited<ReturnType<typeof requireStaff>>, request: ApprovalRequest) {
