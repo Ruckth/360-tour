@@ -5,6 +5,8 @@ import { staffDateTime } from "@/lib/staff-time";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
+import type { FunctionArgs } from "convex/server";
+import { staffDate } from "@/lib/staff-time";
 import { useRef, useState, type FormEvent } from "react";
 import { appointmentEntrySlot, appointmentEntryStatus, isPastEntry } from "@/components/admin/appointment-entry";
 import { ServicePicker } from "@/components/admin/ServicePicker";
@@ -438,6 +440,16 @@ export function NewAppointmentDialog({
                         Next day
                       </Button>
                       {otherTimeChip}
+                      {serviceId && date >= today ? (
+                        <NextOpenTime
+                          args={{ serviceId, ...durationArg, afterDate: date, staffId }}
+                          onChoose={(slot) => {
+                            setDate(slot.date);
+                            setStartChange(null);
+                            setStart(slot.start);
+                          }}
+                        />
+                      ) : null}
                     </div>
                   ) : (
                     <div className="grid max-h-48 grid-cols-4 gap-1.5 overflow-y-auto sm:grid-cols-8">
@@ -496,5 +508,27 @@ export function NewAppointmentDialog({
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** D20: the first open time on a later date for the chosen service, length and staff, within a bounded window. */
+export function NextOpenTime({ args, onChoose }: {
+  args: FunctionArgs<typeof api.services.admin.findNextOpenSlot>;
+  onChoose: (slot: { date: string; start: number }) => void;
+}) {
+  const next = useQuery(api.services.admin.findNextOpenSlot, args);
+  if (next === undefined) return <span role="status" className="w-full text-xs">Looking for the next open time…</span>;
+  if (!next.slot) {
+    return (
+      <span className="w-full text-xs">
+        No open times from {staffDate(resortMidnight(next.from), { weekday: true })} through {staffDate(resortMidnight(next.through), { weekday: true })} for these choices. Change the date, staff or length.
+      </span>
+    );
+  }
+  const slot = next.slot;
+  return (
+    <Button type="button" size="sm" className="w-full sm:w-auto" onClick={() => onChoose(slot)}>
+      Next open: {staffDate(slot.start, { weekday: true })} · {resortTime24(slot.start)}
+    </Button>
   );
 }
