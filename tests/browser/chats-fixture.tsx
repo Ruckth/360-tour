@@ -160,15 +160,24 @@ function stable<A>(name: string, compute: (args: A) => unknown) {
 
 registerFixtureFunctions({
   queries: {
-    "messaging/adminChat:listSessions": stable("list", ({ status, adminStatus, searchQuery }: { status: string; adminStatus: string; searchQuery?: string }) => ({
-      sessions: sessions
-        .filter((session) => matches(session, status, adminStatus))
-        .filter((session) => !searchQuery || (session.visitorName ?? "").toLowerCase().includes(searchQuery.toLowerCase()))
-        .sort((a, b) => (b.latestMessageAt ?? 0) - (a.latestMessageAt ?? 0))
-        .map(view),
-      continueCursor: null,
-      isDone: true,
-    })),
+    "messaging/adminChat:listSessions": stable("list", (args: {
+      status: string; adminStatus: string; searchQuery?: string;
+      paginationOpts: { cursor: string | null }; retryKey?: string;
+    }) => {
+      const pageFailure = new URLSearchParams(location.search).has("pageFailure");
+      const older = Boolean(args.paginationOpts.cursor);
+      if (pageFailure && older && !args.retryKey) throw new Error("Older page unavailable");
+      const matched = sessions
+        .filter(session => matches(session, args.status, args.adminStatus))
+        .filter(session => !args.searchQuery || (session.visitorName ?? "").toLowerCase().includes(args.searchQuery.toLowerCase()))
+        .sort((a, b) => (b.latestMessageAt ?? 0) - (a.latestMessageAt ?? 0));
+      const hasOlder = pageFailure && !older && matched.length > 1;
+      return {
+        sessions: (older ? matched.slice(1) : hasOlder ? matched.slice(0, 1) : matched).map(view),
+        continueCursor: hasOlder ? "older" : null,
+        isDone: !hasOlder,
+      };
+    }),
     "messaging/adminChat:getSessionDetail": stable("detail", ({ sessionId }: { sessionId: string }) => {
       const session = byId(sessionId);
       return {

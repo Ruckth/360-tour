@@ -91,6 +91,7 @@ test("the reply counter appears near the limit and pasted text is capped", async
   await expect(page.getByText(/of 1,000 characters/)).toHaveCount(0);
   await input.fill("a".repeat(920));
   await expect(page.getByText("920 of 1,000 characters")).toBeVisible();
+  await expect(page.getByRole("textbox", { name: /reply/i })).toHaveAccessibleDescription(/920 of 1,000 characters/);
   await input.selectText();
   await page.keyboard.insertText("b".repeat(1001));
   await expect(input).toHaveValue("b".repeat(1000));

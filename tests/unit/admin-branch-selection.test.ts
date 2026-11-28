@@ -62,13 +62,14 @@ describe("working branch selection", () => {
     });
   });
 
-  it("scopes Settings and Marketing to the company, and every other route to the branch", () => {
+  it("distinguishes company, resort desk and working branch routes", () => {
     for (const path of ["/admin/settings", "/admin/marketing", "/admin/marketing/dashboard", "/admin/leads"]) expect(branchRouteScope(path), path).toBe("company");
-    for (const path of ["/admin/chats", "/admin/hotel", "/admin/checkout", "/admin/settingsx"]) expect(branchRouteScope(path), path).toBe("branch");
+    for (const path of ["/admin/chats", "/admin/hotel"]) expect(branchRouteScope(path), path).toBe("resort");
+    for (const path of ["/admin/checkout", "/admin/settingsx"]) expect(branchRouteScope(path), path).toBe("branch");
   });
 
   it("drops the old branch's URL state on a switch, keeping only the tab", () => {
-    expect(branchSwitchHref("/admin/chats", new URLSearchParams("session=s1&q=maya&state=open"))).toBe("/admin/chats");
+    expect(branchSwitchHref("/admin/chats", new URLSearchParams("session=s1&q=maya&state=open"))).toBeNull();
     expect(branchSwitchHref("/admin/staff-bookings", new URLSearchParams("tab=list&booking=b1"))).toBe("/admin/staff-bookings?tab=list");
     expect(branchSwitchHref("/admin/hotel", new URLSearchParams(""))).toBeNull();
     expect(branchSwitchHref("/admin/properties/villa-1", new URLSearchParams())).toBe("/admin/properties");

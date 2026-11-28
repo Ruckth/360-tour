@@ -227,6 +227,8 @@ export function ChatsView() {
   const [searchQuery, setSearchQuery] = useState(urlSearchQuery);
   const lastWrittenSearchQuery = useRef(urlSearchQuery);
   const [pageCursors, setPageCursors] = useState<Array<string | null>>([null]);
+  const [pageDepth, setPageDepth] = useState(1);
+  const [retryKeys, setRetryKeys] = useState<Record<number, string>>({});
   const selectedSessionId = searchParams.get("session") as Id<"conversations"> | null;
   const [incomingSessionId, setIncomingSessionId] = useState(() =>
     !searchParams.has("view") && !searchParams.has("state") ? selectedSessionId : null,
@@ -273,6 +275,8 @@ export function ChatsView() {
   if (pagedFilterKey !== filterResetKey) {
     setPagedFilterKey(filterResetKey);
     setPageCursors([null]);
+    setPageDepth(1);
+    setRetryKeys({});
   }
   const queueCounts = useQuery(api.messaging.adminChat.queueCounts, {});
   const queryText = urlSearchQuery.trim();
@@ -281,6 +285,7 @@ export function ChatsView() {
       query: api.messaging.adminChat.listSessions,
       args: {
         paginationOpts: { numItems: 10, cursor },
+        ...(retryKeys[index] ? { retryKey: retryKeys[index] } : {}),
         status,
         adminStatus,
         empty: emptyFilter,
@@ -293,19 +298,45 @@ export function ChatsView() {
     }]),
   );
   const listResults = useQueries(listRequests) as Record<string, SessionListResult | Error | undefined>;
-  const tail = listResults[String(pageCursors.length - 1)];
-  const lastPage = tail instanceof Error ? undefined : tail;
   const firstPage = listResults["0"];
-  const sessions = useMemo(() => {
-    const byId = new Map<Id<"conversations">, AdminSession>();
-    for (const page of Object.values(listResults)) {
-      if (page instanceof Error) throw page;
-      for (const session of page?.sessions ?? []) {
-        if (!byId.has(session._id)) byId.set(session._id, withLivePresence(session, now));
-      }
+  const loadedPages: SessionListResult[] = [];
+  let failedPage: number | undefined;
+  let replacementCursors: Array<string | null> | undefined;
+  // A later page is valid only while its input matches the preceding live boundary.
+  for (let index = 0; index < pageCursors.length; index++) {
+    const page = listResults[String(index)];
+    if (page instanceof Error) {
+      failedPage = index;
+      break;
     }
-    return [...byId.values()];
-  }, [listResults, now]);
+    if (!page) break;
+    loadedPages.push(page);
+    const next = page.continueCursor ?? page.nextCursor ?? null;
+    if (page.isDone || !next) {
+      if (index + 1 < pageCursors.length) replacementCursors = pageCursors.slice(0, index + 1);
+      break;
+    }
+    if (next !== pageCursors[index + 1]) {
+      if (index + 1 < pageDepth) replacementCursors = [...pageCursors.slice(0, index + 1), next];
+      break;
+    }
+  }
+  useEffect(() => {
+    if (replacementCursors) {
+      setPageCursors(current => current === pageCursors ? replacementCursors : current);
+    }
+  }, [pageCursors, replacementCursors]);
+  const lastPage = loadedPages.at(-1);
+  const loadingOlder = failedPage === undefined && (
+    replacementCursors !== undefined || loadedPages.length < pageCursors.length
+  );
+  const byId = new Map<Id<"conversations">, AdminSession>();
+  for (const page of loadedPages) {
+    for (const session of page.sessions) {
+      if (!byId.has(session._id)) byId.set(session._id, withLivePresence(session, now));
+    }
+  }
+  const sessions = [...byId.values()];
   const liveSessionDetail = useQuery(
     api.messaging.adminChat.getSessionDetail,
     selectedSessionId ? { sessionId: selectedSessionId } : "skip",
@@ -402,6 +433,7 @@ export function ChatsView() {
   function handleNextPage() {
     const nextCursor = lastPage?.continueCursor ?? lastPage?.nextCursor ?? null;
     if (!nextCursor || lastPage?.isDone) return;
+    setPageDepth(pageCursors.length + 1);
     setPageCursors(current => current.includes(nextCursor) ? current : [...current, nextCursor]);
   }
 
@@ -434,7 +466,7 @@ export function ChatsView() {
         key={selectedSession?._id ?? "none"}
         {...detailProps}
         compact={compact}
-        emptyList={!loadingSessions && sessions.length === 0}
+        emptyList={!loadingSessions && failedPage === undefined && sessions.length === 0}
         onBack={compact ? () => selectSession(null) : undefined}
         actions={actions}
         replyAction={replyAction}
@@ -838,7 +870,7 @@ export function ChatsView() {
                 </p>
               ) : null}
               {loadingSessions && sessions.length === 0 ? <SkeletonRows label="Loading chats" rows={6} /> : null}
-              {!invalidMessageDateRange && !loadingSessions && sessions.length === 0 ? (
+              {!invalidMessageDateRange && !loadingSessions && failedPage === undefined && !loadingOlder && sessions.length === 0 ? (
                 <EmptyState action={emptyList.action}>{emptyList.message}</EmptyState>
               ) : null}
               {sessions.map((session) => {
@@ -913,10 +945,24 @@ export function ChatsView() {
             </div>
             <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 px-4 py-3 text-xs text-muted-foreground">
               <span>{loadingSessions ? "Loading chats…" : `${sessions.length} ${sessions.length === 1 ? "chat" : "chats"} loaded`}</span>
-              {!invalidMessageDateRange && !loadingSessions && !lastPage?.isDone ? (
+              {failedPage !== undefined ? (
+                <>
+                  <span role="status">{failedPage === 0 ? "Couldn’t load chats." : "Couldn’t load older chats."}</span>
+                  <Button type="button" variant="outline" size="sm"
+                    onClick={() => {
+                      const failure = listResults[String(failedPage)];
+                      const expiredCursor = failedPage > 0 && failure instanceof Error && failure.message.includes("InvalidCursor");
+                      const retryKey = crypto.randomUUID();
+                      if (expiredCursor) setPageCursors([null]);
+                      setRetryKeys(current => expiredCursor ? { 0: retryKey } : { ...current, [failedPage]: retryKey });
+                    }}>
+                    {failedPage === 0 ? "Retry chats" : "Retry older chats"}
+                  </Button>
+                </>
+              ) : !invalidMessageDateRange && !loadingSessions && (loadingOlder || !lastPage?.isDone) ? (
                 <Button type="button" variant="outline" size="sm" onClick={handleNextPage}
-                  disabled={!lastPage || !(lastPage.continueCursor ?? lastPage.nextCursor)}>
-                  {lastPage ? "Load older chats" : "Loading older chats…"}
+                  disabled={loadingOlder || !lastPage || !(lastPage.continueCursor ?? lastPage.nextCursor)}>
+                  {loadingOlder ? "Loading older chats…" : "Load older chats"}
                   <ChevronRight aria-hidden="true" className="size-4" />
                 </Button>
               ) : null}

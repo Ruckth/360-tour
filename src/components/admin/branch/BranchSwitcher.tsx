@@ -1,5 +1,6 @@
 "use client";
 
+import { RESORT_BRANCH_KEY } from "convex/shared/resortBranch";
 import { Menu } from "@base-ui/react/menu";
 import { Building2, Check, ChevronsUpDown, MapPin, Settings2 } from "lucide-react";
 import { useState, type ReactElement } from "react";
@@ -114,10 +115,14 @@ function BranchSheet({ children, onLeave }: { children: ReactElement; onLeave?: 
  * routes show "Company". Checkout and receipts show nothing.
  */
 export function SidebarBranchSwitcher() {
-  const { branches, current, select, readOnly } = useAdminBranch();
+  const { branches, current, select, readOnly, scope } = useAdminBranch();
   const { isMobile, setOpenMobile } = useSidebar();
   const access = useStaffAccess();
   const company = useShowsCompany();
+  if (scope === "resort") {
+    const resort = branches.find(branch => branch.key === RESORT_BRANCH_KEY);
+    return resort ? <div className="px-2 py-1 text-sm">{resort.name} resort</div> : null;
+  }
   if (readOnly || (!company && !current)) return null;
   const branch = company ? null : current;
   const name = (
@@ -194,11 +199,15 @@ export function SidebarBranchSwitcher() {
  * company routes "Company". Checkout and receipts, the till included, show nothing.
  */
 export function HeaderBranchPill({ tillOnly = false }: { tillOnly?: boolean }) {
-  const { branches, current, readOnly } = useAdminBranch();
+  const { branches, current, readOnly, scope } = useAdminBranch();
   const company = useShowsCompany();
   const { state } = useSidebar();
   const visibility = tillOnly || state === "collapsed" ? "" : "xl:hidden";
 
+  if (scope === "resort") {
+    const resort = branches.find(branch => branch.key === RESORT_BRANCH_KEY);
+    return <BranchPill name={resort?.name ?? "Resort desk"} label="Resort desk" className={resort ? visibility : ""} />;
+  }
   if (readOnly) return null;
   if (company) return <BranchPill name="Company" company label="Branch" className={visibility} />;
   if (!current) return null;

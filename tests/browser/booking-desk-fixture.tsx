@@ -5,6 +5,9 @@ import { DEFAULT_CASHIER_RULES } from "convex/shared/staffTypes";
 import { IntlProvider } from "@/platform/intl";
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { StartAdminHotelRoute } from "@/start-app/routes/admin.hotel";
+import { AdminBranchProvider } from "@/components/admin/branch/branch-context";
+import { RESORT_BRANCH_KEY } from "convex/shared/resortBranch";
 import { AdminBookingsView } from "@/components/admin/AdminBookingsView";
 import { AdminStaffBookingsView } from "@/components/admin/AdminStaffBookingsView";
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
@@ -50,8 +53,12 @@ const day = (n: number) => addDaysIso(today, n);
 const at = (date: string, time: string) => resortDateTime(date, time);
 const fid = <T extends string>(prefix: string, n: number) => `fx${prefix}${String(n).padStart(6, "0")}` as Id<T & never>;
 
+const directResortLink = params.has("directResortLink");
 const access: StaffAccessView = {
-  email: EMAIL, role: "manager", pendingInvitation: null, companyScope: false, branches: [], marketingInvitation: null, marketingRole: null,
+  email: EMAIL, role: "manager", pendingInvitation: null, companyScope: false, branches: directResortLink ? [
+    { id: "phuket" as Id<"branches">, key: "phuket", slug: "phuket", name: "Phuket", state: "active" },
+    ...params.has("denyResort") ? [] : [{ id: "resort" as Id<"branches">, key: RESORT_BRANCH_KEY, slug: RESORT_BRANCH_KEY, name: "Koh Samui", state: "active" as const }],
+  ] : [], marketingInvitation: null, marketingRole: null,
   cashierRules: DEFAULT_CASHIER_RULES,
   capabilities: {
     checkout: true, approve: true, operations: true, manageTeam: false, settings: false, bookings: true, services: true, customers: true,
@@ -371,7 +378,7 @@ createRoot(document.getElementById("root")!).render(
   <IntlProvider locale="en" timeZone="Asia/Bangkok" messages={en}>
     <StaffAccessProvider access={access}>
       <ConfirmProvider>
-        <Desk />
+        {directResortLink ? <AdminBranchProvider><StartAdminHotelRoute /></AdminBranchProvider> : <Desk />}
       </ConfirmProvider>
     </StaffAccessProvider>
   </IntlProvider>,

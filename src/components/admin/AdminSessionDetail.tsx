@@ -556,9 +556,11 @@ export function AdminSessionDetail({
               </Button>
             </div>
             <div id={replyHintId}>
-              {replyDraft.length >= MAX_ADMIN_REPLY_LENGTH - 100 ? (
-                <p className="mt-2 text-xs text-muted-foreground">{replyDraft.length} of {MAX_ADMIN_REPLY_LENGTH.toLocaleString("en-US")} characters</p>
-              ) : null}
+              <span role="status" className="block text-xs text-muted-foreground">
+                {replyDraft.length >= MAX_ADMIN_REPLY_LENGTH - 100 ? (
+                  <span className="mt-2 block">{replyDraft.length} of {MAX_ADMIN_REPLY_LENGTH.toLocaleString("en-US")} characters</span>
+                ) : null}
+              </span>
               {replyWindowClosingSoon && typeof windowClosesAt === "number" ? (
                 <p role="status" className={cn("mt-2 text-xs font-medium", TONES.warning.text)}>
                   The {sourceLabel(session.channel)} reply window closes in {durationLabel(windowClosesAt - now)}.
