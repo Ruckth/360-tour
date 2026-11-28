@@ -393,7 +393,7 @@ function CouponBuilder({
       ) : (
         <Button type="submit" form={`${id}-form`} size="sm" disabled={saving}>
           {spinner}
-          Save draft
+          Save as draft
         </Button>
       )
     ) : (
@@ -435,11 +435,11 @@ function CouponBuilder({
 
       <div className="mt-3">
         <NoticeBar notice={notice} onClose={clear} />
-        {retryPublish && detail?.status === "draft" && canPublish && (
+        {retryPublish && detail?.status === "draft" && (canPublish ? (
           <Button type="button" variant="outline" size="sm" disabled={saving || statusBusy} onClick={() => void changeStatus("active")}>
             Retry publishing saved draft
           </Button>
-        )}
+        ) : <p className="text-sm text-muted-foreground">Publishing this saved draft requires publish access.</p>)}
       </div>
       {archived ? (
         <Callout className="mt-3" title="This coupon is archived">

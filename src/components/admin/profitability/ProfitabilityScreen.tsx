@@ -34,6 +34,7 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
     to = params.get('to') || today;
   const [dateDraft, setDateDraft] = useState({ from, to, start: from, end: to });
   const dates = dateDraft.from === from && dateDraft.to === to ? dateDraft : { from, to, start: from, end: to };
+  if (dates !== dateDraft) setDateDraft(dates);
   const draftDays = reportDayCount(dates.start, dates.end);
   const draftInvalid = draftDays === null || draftDays > MAX_REPORT_DAYS;
   const [refreshRevision, setRefreshRevision] = useState<number | null>(null);
@@ -97,13 +98,16 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
     [viewId, from, to, overview, additional, submitted, category, page, descending, detailPage, metric],
   );
   const key = JSON.stringify([request, revision]);
-  const [state, setState] = useState<{ key: string; data?: Report; error?: string } | null>(null);
+  const stampScope = JSON.stringify([access.email, access.role, from, to, detailPage]);
+  const [state, setState] = useState<{
+    key: string; data?: Report; error?: string; lastSuccess?: { scope: string; asOf: number };
+  } | null>(null);
   useEffect(() => {
     if (!valid || !viewId) return;
     let active = true;
     convex.query(api.marketing.profitability.report, request).then(
       (data) => {
-        if (active) setState({ key, data });
+        if (active) setState({ key, data, lastSuccess: { scope: stampScope, asOf: data.asOf } });
       },
       (err) => {
         if (!active) return;
@@ -111,13 +115,13 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
         if (message.includes('view expired') && expiredView.current !== viewId) {
           expiredView.current = viewId;
           setRevision((n) => n + 1);
-        } else setState({ key, error: message });
+        } else setState((previous) => ({ key, error: message, lastSuccess: previous?.lastSuccess }));
       },
     );
     return () => {
       active = false;
     };
-  }, [convex, key, request, valid, viewId]);
+  }, [convex, key, request, stampScope, valid, viewId]);
   const href: Href = (detail, updates) => {
     const next = new URLSearchParams();
     for (const k of ['rules', 'metric', 'additional', 'page', 'sort', 'lookup', 'category']) {
@@ -146,6 +150,7 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
   const report = valid && state?.key === key ? state.data : undefined;
   const options = state?.data ?? { services: [], sources: [] };
   const loading = valid && state?.key !== key && !(view?.key === viewKey && view.error);
+  const lastStamp = state?.lastSuccess?.scope === stampScope ? staffDateTime(state.lastSuccess.asOf) : null;
   const group = detailPage ? additional : overview;
   return (
     <section
@@ -169,7 +174,7 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span role="status" className="text-xs text-muted-foreground">
-            {report ? `${refreshing ? 'Report refreshed' : 'Report updated'} ${staffDateTime(report.asOf)}` : refreshing && loading ? 'Refreshing report…' : ''}
+            {report && refreshing ? `Report refreshed ${lastStamp}` : lastStamp ? `Report updated ${lastStamp}` : ''}
           </span>
           {report && (
             <Button
