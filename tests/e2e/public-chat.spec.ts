@@ -34,7 +34,8 @@ const localizedSmoke = [
 ];
 
 const CONTACT_PREFILL_MESSAGE =
-  "Hi, I'm interested in having a website built with you. I'm available on [date] at [time]. Could we talk then?";
+  "Hello, I have a question about staying at Auralis Cove Retreat.";
+const CONTACT_EMAIL_SUBJECT = "Stay enquiry — Auralis Cove Retreat";
 const CONTACT_EMAIL = "rugbykritsakorn@gmail.com";
 const LINE_URL = "https://line.me/R/ti/p/@361jhvij";
 
@@ -52,15 +53,7 @@ async function getVisibleBoundingBox(locator: Locator) {
 }
 
 async function chooseLanguage(page: Page, optionName: string) {
-  const languageButtons = page.getByTestId("language-switcher");
-  const buttonCount = await languageButtons.count();
-  for (let index = 0; index < buttonCount; index += 1) {
-    const button = languageButtons.nth(index);
-    if (await button.isVisible()) {
-      await button.click();
-      break;
-    }
-  }
+  await page.getByTestId("language-switcher").filter({ visible: true }).click();
   await page.getByRole("link", { name: optionName }).click();
 }
 
@@ -91,7 +84,7 @@ async function expectPrefilledEmail(link: Locator) {
   const url = new URL(href!);
   expect(url.protocol).toBe("mailto:");
   expect(url.pathname).toBe(CONTACT_EMAIL);
-  expect(url.searchParams.get("subject")).toBe("Website inquiry");
+  expect(url.searchParams.get("subject")).toBe(CONTACT_EMAIL_SUBJECT);
   expect(url.searchParams.get("body")).toBe(CONTACT_PREFILL_MESSAGE);
 }
 
@@ -151,6 +144,8 @@ test("@smoke home page opens chat, shows server replies, and exposes contact cap
   // Start a new conversation before testing another automatic reply; never fake a resumed AI turn.
   await expect(page.getByRole("status").filter({ hasText: "A team member will reply here shortly." })).toBeVisible();
   await page.getByRole("button", { name: /Restart chat/i }).click();
+  // G22: a non-empty conversation asks before it is discarded.
+  await page.getByRole("button", { name: "Start a new chat", exact: true }).click();
   await expect(page.getByText("Ask anything?")).toBeVisible();
   const bookingInitial = await initialChipTexts(page);
   await page.getByPlaceholder("Ask a question").fill("What do I get when I book direct?");
@@ -162,6 +157,8 @@ test("@smoke home page opens chat, shows server replies, and exposes contact cap
   await expectFreshFollowUpChips(page, bookingInitial);
 
   await page.getByRole("button", { name: /Restart chat/i }).click();
+  // G22: a non-empty conversation asks before it is discarded.
+  await page.getByRole("button", { name: "Start a new chat", exact: true }).click();
   await expect(page.getByText("Ask anything?")).toBeVisible();
   await page.getByPlaceholder("Ask a question").fill("Do you have airport pickup?");
   await page.getByRole("button", { name: "Send message" }).click();
@@ -169,6 +166,8 @@ test("@smoke home page opens chat, shows server replies, and exposes contact cap
   await expectServerReplies(page, 1);
 
   await page.getByRole("button", { name: /Restart chat/i }).click();
+  // G22: a non-empty conversation asks before it is discarded.
+  await page.getByRole("button", { name: "Start a new chat", exact: true }).click();
   await expect(page.getByText("Do you have airport pickup?")).toHaveCount(0);
   await expect(page.getByText("Ask anything?")).toBeVisible();
   await expect(

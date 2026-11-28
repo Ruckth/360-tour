@@ -86,7 +86,7 @@ export function CustomerDisplayControl({ orderId }: { orderId: string | null | u
             <>
               <StatusDot online={online} />
               <span className="truncate">Display · {display.name}</span>
-              <span className="sr-only">{online ? "(online)" : "(offline)"}</span>
+              <span className="shrink-0 text-xs text-muted-foreground">{online ? "Online" : "Offline"}</span>
             </>
           ) : (
             <>

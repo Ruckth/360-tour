@@ -1,7 +1,7 @@
 import type { Id } from "convex/_generated/dataModel";
 import { describe, expect, it } from "vitest";
 import { BRANCH_STATE_META } from "@/components/admin/branch/branch-pills";
-import { branchReadOnlyRoute, branchRouteScope, branchStorageKeys, branchSwitchHref, resolveWorkingBranch } from "@/components/admin/branch/branch-selection";
+import { branchReadOnlyRoute, branchReturnHref, branchRouteScope, branchStorageKeys, branchSwitchHref, resolveWorkingBranch } from "@/components/admin/branch/branch-selection";
 
 const branch = (id: string) => ({ id: id as Id<"branches"> });
 const samui = branch("samui");
@@ -62,19 +62,35 @@ describe("working branch selection", () => {
     });
   });
 
-  it("scopes Settings and Marketing to the company, and every other route to the branch", () => {
-    for (const path of ["/admin/settings", "/admin/marketing", "/admin/marketing/dashboard"]) expect(branchRouteScope(path), path).toBe("company");
-    for (const path of ["/admin/chats", "/admin/hotel", "/admin/checkout", "/admin/settingsx"]) expect(branchRouteScope(path), path).toBe("branch");
+  it("distinguishes company, resort desk and working branch routes", () => {
+    for (const path of ["/admin/settings", "/admin/marketing", "/admin/marketing/dashboard", "/admin/leads"]) expect(branchRouteScope(path), path).toBe("company");
+    for (const path of ["/admin/chats", "/admin/hotel"]) expect(branchRouteScope(path), path).toBe("resort");
+    for (const path of ["/admin/checkout", "/admin/settingsx"]) expect(branchRouteScope(path), path).toBe("branch");
   });
 
   it("drops the old branch's URL state on a switch, keeping only the tab", () => {
-    expect(branchSwitchHref("/admin/chats", new URLSearchParams("session=s1&q=maya&state=open"))).toBe("/admin/chats");
-    expect(branchSwitchHref("/admin/staff-bookings", new URLSearchParams("tab=list&booking=b1"))).toBe("/admin/staff-bookings?tab=list");
-    expect(branchSwitchHref("/admin/hotel", new URLSearchParams(""))).toBeNull();
+    expect(branchSwitchHref("/admin/chats", new URLSearchParams("session=s1&q=maya&state=open"))).toBeNull();
+    expect(branchSwitchHref("/admin/staff/calendar", new URLSearchParams("appointment=appt1&date=2026-12-02&staff=staff1"))).toBe("/admin/staff/calendar");
+    expect(branchSwitchHref("/admin/hotel", new URLSearchParams("booking=stay1&q=maya"))).toBeNull();
+    expect(branchSwitchHref("/admin/questions", new URLSearchParams("tab=facts&q=pool"))).toBe("/admin/questions?tab=facts");
     expect(branchSwitchHref("/admin/properties/villa-1", new URLSearchParams())).toBe("/admin/properties");
     expect(branchSwitchHref("/admin/settings", new URLSearchParams("tab=team&draft=1"))).toBeNull();
     expect(branchSwitchHref("/admin/marketing/coupons/coupon-1", new URLSearchParams("draft=1"))).toBeNull();
     expect(branchSwitchHref("/admin/checkout", new URLSearchParams("order=o1"))).toBeNull();
     expect(branchSwitchHref("/admin/receipt/o1", new URLSearchParams("print=1"))).toBeNull();
+  });
+});
+
+describe("branchReturnHref (D04)", () => {
+  it("keeps the path, tab and open record, and drops filters and search", () => {
+    expect(branchReturnHref("/admin/staff/calendar", new URLSearchParams("appointment=appt1&date=2026-12-02&staff=staff1"))).toBe("/admin/staff/calendar?appointment=appt1");
+    expect(branchReturnHref("/admin/properties/p1", new URLSearchParams("tab=rooms"))).toBe("/admin/properties/p1?tab=rooms");
+  });
+  it("offers nothing when the switch drops nothing, or on resort, company and till pages", () => {
+    expect(branchReturnHref("/admin/staff/calendar", new URLSearchParams())).toBeNull();
+    expect(branchReturnHref("/admin/hotel", new URLSearchParams("booking=stay1"))).toBeNull();
+    expect(branchReturnHref("/admin/chats", new URLSearchParams("session=chat1"))).toBeNull();
+    expect(branchReturnHref("/admin/settings", new URLSearchParams("tab=team&x=1"))).toBeNull();
+    expect(branchReturnHref("/admin/checkout", new URLSearchParams("q=1"))).toBeNull();
   });
 });

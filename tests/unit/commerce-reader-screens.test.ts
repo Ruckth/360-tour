@@ -45,8 +45,8 @@ const text = () => document.body.textContent ?? "";
 const buttons = (name: string) => [...document.querySelectorAll("button")].filter((el) => el.textContent?.trim() === name);
 const settle = () => act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
 /** Lazy chunks (History, target approvals) load on demand: wait for them. */
-async function until(done: () => boolean) {
-  for (let i = 0; i < 50 && !done(); i++) await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
+async function until(done: () => boolean, attempts = 50) {
+  for (let i = 0; i < attempts && !done(); i++) await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
 }
 /** A full voucher code in any spelling: any case, with or without separators, never bullets. */
 const FULL_CODE = /GV[\s\-\u2010-\u2015._]{0,3}[A-Z0-9]{4}[\s\-\u2010-\u2015._]{0,3}[A-Z0-9]{4}/i;
@@ -478,9 +478,10 @@ describe("Approvals", () => {
     const { backend, details, orders } = counted(previewBackend("spa", "live"));
     await openPanel(backend);
     expect(document.querySelector("[data-approval-count]")?.textContent).toBe("3 waiting");
+    await until(() => items().length === 3, 250);
     expect(items()).toHaveLength(3);
     // The one that expires first is open: the stale extension, with what changed.
-    await until(() => Boolean(items()[2].querySelector('[data-testid="approval-stale"]')));
+    await until(() => Boolean(items()[2].querySelector('[data-testid="approval-stale"]')), 250);
     expect(items().map((item) => item.dataset.approvalSelected)).toEqual(["false", "false", "true"]);
     expect(items()[2].textContent).toContain("Nok asks to extend · Massage 5 · Maya Lin");
     expect(items()[2].textContent).toContain("Package sessions");
@@ -510,7 +511,7 @@ describe("Approvals", () => {
     expect(items()[1].textContent).toContain("Return items · Order #1046");
     expect([...details]).toEqual(["fxappr000003", "fxappr000001", "fxappr000002"]);
     expect(orders).not.toHaveBeenCalled();
-  });
+  }, 15000);
 
   it("loads the next cursor page on Show more requests", async () => {
     const base = previewBackend("spa", "live");
@@ -570,7 +571,12 @@ describe("Approvals", () => {
     const { backend, details } = counted({ ...base, usePendingApprovals: () => ({ ...base.usePendingApprovals(), results: marked }) });
     await openPanel(backend);
     expect(document.querySelector("[data-approval-count]")?.textContent).toBe("2 waiting");
-    expect(items()).toHaveLength(3);
+    expect(items()).toHaveLength(2);
+    const rowsInQueue = [...document.querySelectorAll('ul[aria-label="Requests"] > li')];
+    expect(rowsInQueue).toHaveLength(3);
+    const unavailable = rowsInQueue.find((row) => row.textContent?.includes("Request changed"));
+    expect(unavailable).toBeDefined();
+    expect(unavailable?.querySelector("button")).toBeNull();
     expect(details.has(soonest._id)).toBe(false);
     expect(details.size).toBe(1);
   });

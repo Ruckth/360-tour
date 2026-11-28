@@ -38,9 +38,33 @@ const QUICK_STARTS = [
 
 const ALL_CAMPAIGNS = "all";
 
+type LinkFilters = { tab: Tab; query: string; campaignFilter: string; offerIssuesOnly: boolean };
+const defaultFilters: LinkFilters = { tab: "all", query: "", campaignFilter: ALL_CAMPAIGNS, offerIssuesOnly: false };
+
+export function readLinkFilters(params: URLSearchParams): LinkFilters {
+  const campaign = params.get("campaign");
+  return {
+    tab: TABS.find((item) => item.value === params.get("status"))?.value ?? "all",
+    query: (params.get("q") ?? "").slice(0, 120),
+    campaignFilter: campaign && /^[a-z0-9]{32}$/.test(campaign) ? campaign : ALL_CAMPAIGNS,
+    offerIssuesOnly: params.get("offerIssues") === "1",
+  };
+}
+
+export function writeLinkFilters(filters: LinkFilters) {
+  const params = new URLSearchParams();
+  if (filters.tab !== "all") params.set("status", filters.tab);
+  if (filters.query) params.set("q", filters.query.slice(0, 120));
+  if (filters.campaignFilter !== ALL_CAMPAIGNS) params.set("campaign", filters.campaignFilter);
+  if (filters.offerIssuesOnly) params.set("offerIssues", "1");
+  return params;
+}
+
 type LinksViewProps = {
   /** `undefined` while loading. */
   links?: LinkRow[];
+  filters?: LinkFilters;
+  onFiltersChange?: (filters: LinkFilters) => void;
   campaigns?: (CampaignOption & { source?: string; medium?: string })[];
   coupons?: CouponRow[];
   properties?: MarketingProperty[];
@@ -55,7 +79,7 @@ type LinksViewProps = {
   history?: (linkId: Id<"marketingLinks">) => ReactNode;
 };
 
-export function LinksView({ links, campaigns, coupons, properties, origin, brand, today, campaignsHref, actions, history }: LinksViewProps) {
+export function LinksView({ links, campaigns, coupons, properties, origin, brand, today, campaignsHref, actions, history, filters, onFiltersChange }: LinksViewProps) {
   const access = useMarketingAccess();
   const router = useRouter();
   const canonicalPartnerLink = (link: LinkRow) => !!link.affiliateId && link.slug.startsWith("r/");
@@ -63,10 +87,16 @@ export function LinksView({ links, campaigns, coupons, properties, origin, brand
   const { notice, show, clear } = useNotice();
   const { pending, run } = useConfirmedChange<Id<"marketingLinks">>(show);
   const sheet = useEditorSheet<{ link?: LinkRow; preset?: LinkPreset }>();
-  const [tab, setTab] = useState<Tab>("all");
-  const [query, setQuery] = useState("");
-  const [campaignFilter, setCampaignFilter] = useState<string>(ALL_CAMPAIGNS);
-  const [offerIssuesOnly, setOfferIssuesOnly] = useState(false);
+  const [localFilters, setLocalFilters] = useState(defaultFilters);
+  const currentFilters = filters ?? localFilters;
+  const { tab, query, offerIssuesOnly } = currentFilters;
+  const campaignFilter = campaigns && !campaigns.some(item => item._id === currentFilters.campaignFilter)
+    ? ALL_CAMPAIGNS : currentFilters.campaignFilter;
+  const changeFilters = onFiltersChange ?? setLocalFilters;
+  const setTab = (tab: Tab) => changeFilters({ ...currentFilters, campaignFilter, tab });
+  const setQuery = (query: string) => changeFilters({ ...currentFilters, campaignFilter, query });
+  const setCampaignFilter = (campaignFilter: string) => changeFilters({ ...currentFilters, campaignFilter });
+  const setOfferIssuesOnly = (offerIssuesOnly: boolean) => changeFilters({ ...currentFilters, campaignFilter, offerIssuesOnly });
   const [qrLink, setQrLink] = useState<LinkRow | null>(null);
 
   const loading = links === undefined || campaigns === undefined || coupons === undefined || properties === undefined;
@@ -90,14 +120,12 @@ export function LinksView({ links, campaigns, coupons, properties, origin, brand
   const filtered = tab !== "all" || q !== "" || campaignFilter !== ALL_CAMPAIGNS || offerIssuesOnly;
 
   function clearFilters() {
-    setTab("all");
-    setQuery("");
-    setCampaignFilter(ALL_CAMPAIGNS);
-    setOfferIssuesOnly(false);
+    changeFilters(defaultFilters);
   }
 
   const openNew = (preset?: LinkPreset) => { if (access.capabilities.draft) sheet.open({ preset }); };
-  const openEdit = (link: LinkRow) => { if (canonicalPartnerLink(link)) router.push(adminMarketingPath("affiliates")); else sheet.open({ link }); };
+  const partnerHref = (link: LinkRow) => adminMarketingPath("affiliates") + "?" + new URLSearchParams({ partner: link.affiliateId ?? "" });
+  const openEdit = (link: LinkRow) => { if (canonicalPartnerLink(link)) router.push(partnerHref(link)); else sheet.open({ link }); };
   // The open QR card follows the live row, so publishing from it unlocks the downloads.
   const qrCurrent = qrLink ? (all.find((link) => link._id === qrLink._id) ?? qrLink) : null;
 
@@ -144,7 +172,7 @@ export function LinksView({ links, campaigns, coupons, properties, origin, brand
     const busy = pending === link._id;
     const list: RowAction[] = [];
     if (canonicalPartnerLink(link)) {
-      list.push({ label: access.capabilities.partners ? "Manage partner" : "View partner", icon: Pencil, onSelect: () => router.push(adminMarketingPath("affiliates")) });
+      list.push({ label: access.capabilities.partners ? "Manage partner" : "View partner", icon: Pencil, onSelect: () => openEdit(link) });
       return list;
     }
     if (link.status !== "archived") list.push({ label: editable(link) ? "Edit" : "View details", icon: Pencil, onSelect: () => openEdit(link) });
@@ -334,7 +362,7 @@ export function LinksView({ links, campaigns, coupons, properties, origin, brand
                               >
                                 {link.name}
                               </button>
-                              {canonicalPartnerLink(link) ? <Link href={adminMarketingPath("affiliates")} className="block text-xs font-semibold underline underline-offset-2">{access.capabilities.partners ? "Manage partner" : "View partner"}</Link> : null}
+                              {canonicalPartnerLink(link) ? <Link href={partnerHref(link)} className="block text-xs font-semibold underline underline-offset-2">{access.capabilities.partners ? "Manage partner" : "View partner"}</Link> : null}
                               <div className="flex min-w-0 items-center gap-0.5">
                                 <span className="min-w-0 break-all font-mono text-xs text-muted-foreground">{url.display}</span>
                                 <CopyButton text={url.full} label={`Copy ${url.display}`} className="size-7 [&_svg]:size-3.5" />
@@ -396,7 +424,7 @@ export function LinksView({ links, campaigns, coupons, properties, origin, brand
                       <SlugChip path={link.shortUrlPath} large />
                       <div className="min-w-0 flex-1">
                         <p className="font-medium text-foreground">{link.name}</p>
-                        {canonicalPartnerLink(link) ? <Link href={adminMarketingPath("affiliates")} className="text-xs font-semibold underline underline-offset-2">{access.capabilities.partners ? "Manage partner" : "View partner"}</Link> : null}
+                        {canonicalPartnerLink(link) ? <Link href={partnerHref(link)} className="text-xs font-semibold underline underline-offset-2">{access.capabilities.partners ? "Manage partner" : "View partner"}</Link> : null}
                         <p className="break-all font-mono text-xs text-muted-foreground">{url.display}</p>
                       </div>
                       <StatusBadge {...LINK_STATUS[link.status]} />

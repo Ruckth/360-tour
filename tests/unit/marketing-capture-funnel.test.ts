@@ -12,6 +12,8 @@ const fixture = vi.hoisted(() => ({
   client: {},
   t: (key: string) => key,
   coupon: null as null | { code: string | null; source: string },
+  phone: { country: "TH", text: "+66812345678" } as { country: string; text: string },
+  review: null as null | { contact: { name: string; email: string; phone: string }; onEditContact: () => void },
   queryInventory: vi.fn(({ includeSlug }: { includeSlug?: string }) => {
     const villa = {
       _id: "p1", slug: "pool-villa", name: "Pool villa", tagline: "", description: "", pricePerNight: 500000, maxGuests: 4,
@@ -59,15 +61,18 @@ vi.mock("@/components/booking/BookingStepNav", () => ({ BookingStepNav: () => nu
 vi.mock("@/components/booking/BookingPanels", () => ({
   DateStatus: () => null,
   GuestCountsPanel: () => null,
-  GuestDetailsPanel: (props: { onGuestNameChange: (v: string) => void; onGuestEmailChange: (v: string) => void; onGuestPhoneChange: (v: string) => void }) => {
+  GuestDetailsPanel: (props: { onGuestNameChange: (v: string) => void; onGuestEmailChange: (v: string) => void; onGuestPhoneChange: (v: { country: string; text: string }) => void }) => {
     useEffect(() => {
       props.onGuestNameChange("Anna Lee");
       props.onGuestEmailChange("anna@example.com");
-      props.onGuestPhoneChange("+66812345678");
+      props.onGuestPhoneChange(fixture.phone);
     }, []); // eslint-disable-line react-hooks/exhaustive-deps
     return null;
   },
-  ReviewPanel: ({ coupon }: { coupon: unknown }) => coupon,
+  ReviewPanel: ({ coupon, ...props }: { coupon: unknown; contact: { name: string; email: string; phone: string }; onEditContact: () => void }) => {
+    fixture.review = props;
+    return coupon;
+  },
 }));
 
 let root: Root;
@@ -92,6 +97,8 @@ beforeEach(() => {
   window.sessionStorage.clear();
   window.history.replaceState(null, "", "/booking");
   fixture.coupon = null;
+  fixture.phone = { country: "TH", text: "+66812345678" };
+  fixture.review = null;
   fixture.queryInventory.mockClear();
   fixture.createBooking = vi.fn().mockResolvedValue({ bookingId: "b1", accessToken: "t" });
   root = createRoot(document.body.appendChild(document.createElement("div")));
@@ -149,6 +156,31 @@ describe("direct villa booking links", () => {
     expect(fixture.createBooking).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       propertySlug: "pool-villa", guestName: "Anna Lee", guestEmail: "anna@example.com",
     }));
+  });
+
+  it("G26/G27: submits the normalized E.164 phone shown on Review, and Edit guest details keeps the stay", async () => {
+    fixture.phone = { country: "TH", text: "+39 06 1234 5678" };
+    await openBookingLink("pool-villa");
+    for (let step = 0; step < 2; step++) await act(async () => button("continue").click());
+    expect(fixture.review?.contact).toEqual({ name: "Anna Lee", email: "anna@example.com", phone: "+390612345678" });
+    await act(async () => fixture.review!.onEditContact());
+    expect(button("continueToPay")).toBeUndefined();
+    // Back on Guest details, the step's data is intact and Review is one Continue away.
+    await act(async () => button("continue").click());
+    await act(async () => button("continueToPay").click());
+    expect(fixture.createBooking).toHaveBeenCalledTimes(1);
+    expect(fixture.createBooking).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      propertySlug: "pool-villa", checkIn: "2030-01-10", checkOut: "2030-01-12", guestPhone: "+390612345678",
+    }));
+    expect(window.location.href).not.toMatch(/anna|390612345678/i);
+  });
+
+  it("G26: keeps an invalid phone out of the booking by holding Guest details", async () => {
+    fixture.phone = { country: "TH", text: "12345" };
+    await openBookingLink("pool-villa");
+    await act(async () => button("continue").click());
+    expect(button("continue").disabled).toBe(true);
+    expect(fixture.createBooking).not.toHaveBeenCalled();
   });
 
   it("keeps active inventory selectable for retired villa links", async () => {

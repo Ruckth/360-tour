@@ -26,7 +26,7 @@ export function ReturnQueueItem({ request, onSelect }: { request: ReturnQueueRow
         <span className="text-[15px] font-semibold text-balance [overflow-wrap:anywhere]">
           {personName(request.requesterEmail)} {t("returns.approvalAsk", { count: request.summary.partCount, amount: money(request.summary.amount) })}
         </span>
-        <span className="text-xs text-muted-foreground">{now >= request.expiresAt ? "Expiring now" : `Expires in ${minutesLeft(request.expiresAt, now)} min`}</span>
+        <span className="text-xs text-muted-foreground">{request.actionable !== false && now < request.expiresAt ? "Action required · " : "Unavailable · "}{now >= request.expiresAt ? "Expired" : `Expires in ${minutesLeft(request.expiresAt, now)} min`}</span>
       </button>
     </li>
   );

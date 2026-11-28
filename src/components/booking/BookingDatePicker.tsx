@@ -1,6 +1,6 @@
 "use client";
 
-import { type ComponentProps, type Ref, useEffect, useId, useMemo, useRef, useState } from "react";
+import { type ComponentProps, type Ref, type RefObject, useEffect, useId, useMemo, useRef, useState } from "react";
 import { api } from "convex/_generated/api";
 import { BOOKING_RULE_DEFAULTS } from "convex/shared/siteSettings";
 import { useConvex } from 'convex/react';
@@ -19,6 +19,9 @@ import { cn } from "@/lib/utils";
 
 type BookingRange = { checkIn: string; checkOut: string };
 type ActiveDateField = "checkIn" | "checkOut";
+export type BookingRangePickerHandle = {
+  openCheckIn: () => void;
+};
 
 type BookingRangePickerProps = {
   checkIn: string;
@@ -35,6 +38,8 @@ type BookingRangePickerProps = {
   clearable?: boolean;
   className?: string;
   contentClassName?: string;
+  pickerRef?: RefObject<BookingRangePickerHandle | null>;
+  onReady?: () => void;
   onRangeChange?: () => void;
   onCalendarOpening?: (field: ActiveDateField) => void;
   onCalendarOpened?: () => void;
@@ -102,6 +107,8 @@ export function BookingRangePicker({
   clearable = true,
   className,
   contentClassName,
+  pickerRef,
+  onReady,
   onRangeChange,
   onCalendarOpening,
   onCalendarOpened,
@@ -116,8 +123,11 @@ export function BookingRangePicker({
   const [visibleMonth, setVisibleMonth] = useState<Date>();
   const calendarId = useId();
   const triggerGroup = useRef<HTMLDivElement>(null);
+  const checkInTrigger = useRef<HTMLButtonElement>(null);
   const checkOutTrigger = useRef<HTMLButtonElement>(null);
   const openingTrigger = useRef<HTMLButtonElement>(null);
+  const popoverContentRef = useRef<HTMLDivElement>(null);
+  const focusFirstSelectableDay = useRef(false);
   const dismissedFromOutside = useRef(false);
   const checkInLabel = checkIn ? formatPickerDate(checkIn, locale) : t("checkIn");
   const checkOutLabel = checkOut ? formatPickerDate(checkOut, locale) : t("checkOut");
@@ -219,12 +229,58 @@ export function BookingRangePicker({
     setOpen(true);
   }
 
+  function focusFirstEnabledDay() {
+    const content = popoverContentRef.current;
+    if (!content) return;
+    const dayButton = content.querySelector<HTMLButtonElement>(
+      '[role="grid"] button:not([disabled]), table button:not([disabled])',
+    );
+    dayButton?.focus({ preventScroll: true });
+    return Boolean(dayButton);
+  }
+
+  useEffect(() => {
+    if (!pickerRef) return;
+    pickerRef.current = {
+      openCheckIn() {
+        const trigger = checkInTrigger.current;
+        if (!trigger) return;
+        if (open && activeField === "checkIn") {
+          focusFirstEnabledDay();
+          return;
+        }
+        focusFirstSelectableDay.current = true;
+        if (!open) onCalendarOpening?.("checkIn");
+        openingTrigger.current = trigger;
+        dismissedFromOutside.current = false;
+        showMonth(checkInDate ?? isoToDate(todayIsoResort())!);
+        setActiveField("checkIn");
+        setOpen(true);
+      },
+    };
+    return () => {
+      pickerRef.current = null;
+    };
+  });
+
+  useEffect(() => {
+    onReady?.();
+  }, [onReady]);
+
   const popoverContent = (
     <RangePickerContent
+      ref={popoverContentRef}
       id={calendarId}
       aria-label={t("chooseDates")}
       className={calendarPopoverClassName}
-      onOpenAutoFocus={onCalendarOpened}
+      onOpenAutoFocus={(event) => {
+        onCalendarOpened?.();
+        if (focusFirstSelectableDay.current) {
+          focusFirstSelectableDay.current = false;
+          if (focusFirstEnabledDay()) event.preventDefault();
+          window.requestAnimationFrame(focusFirstEnabledDay);
+        }
+      }}
       onCloseAutoFocus={(event) => {
         event.preventDefault();
         if (!dismissedFromOutside.current) openingTrigger.current?.focus();
@@ -251,6 +307,9 @@ export function BookingRangePicker({
       onClear={clearable && clearLabel ? clearActiveDate : undefined}
       onSelectDate={selectDate}
       onMonthChange={showMonth}
+      minNights={minNights}
+      legendId={`${calendarId}-key`}
+      aria-describedby={`${calendarId}-key`}
     />
   );
 
@@ -260,6 +319,7 @@ export function BookingRangePicker({
         <PopoverAnchor asChild>
           <div ref={triggerGroup} className={cn("grid gap-3 sm:grid-cols-2", compact && "gap-2")}>
             <DateTriggerField
+              triggerRef={checkInTrigger}
               field="checkIn"
               compact={compact}
               label={t("checkIn")}
@@ -363,6 +423,8 @@ function RangePickerContent({
   onClear,
   onSelectDate,
   onMonthChange,
+  minNights,
+  legendId,
   ...popoverProps
 }: ComponentProps<typeof PopoverContent> & {
   checkInValue: string;
@@ -380,6 +442,8 @@ function RangePickerContent({
   onClear?: () => void;
   onSelectDate: (date: Date) => void;
   onMonthChange: (month: Date) => void;
+  minNights: number;
+  legendId: string;
 }) {
   return (
     <PopoverContent align="center" collisionPadding={16} {...popoverProps}>
@@ -403,7 +467,35 @@ function RangePickerContent({
         onSelectDate={onSelectDate}
         onMonthChange={onMonthChange}
       />
+      <RangeLegend id={legendId} compact={compact} minNights={minNights} unavailableDayClassName={unavailableDayClassName} />
     </PopoverContent>
+  );
+}
+
+/** Explains why days are disabled: the minimum stay plus a key for available, booked and unselectable days. */
+function RangeLegend({ id, compact, minNights, unavailableDayClassName }: { id: string; compact: boolean; minNights: number; unavailableDayClassName: string }) {
+  const t = useTranslations("Booking");
+  const swatch = "relative inline-block size-3.5 shrink-0 rounded-[4px]";
+  return (
+    <div id={id} data-testid="booking-calendar-key" className={cn("mt-2 space-y-1.5 border-t border-border pt-2 text-muted-foreground", compact ? "text-[11px]" : "text-xs")}>
+      {minNights > 1 ? (
+        <p data-testid="booking-min-stay" className="font-medium text-foreground">{t("minStayHint", { count: minNights })}</p>
+      ) : null}
+      <ul aria-label={t("calendarKey")} className="flex flex-wrap gap-x-3 gap-y-1">
+        <li className="inline-flex items-center gap-1.5">
+          <span aria-hidden className={cn(swatch, "border border-border bg-background")} />
+          {t("legendAvailable")}
+        </li>
+        <li className="inline-flex items-center gap-1.5">
+          <span aria-hidden className={cn(swatch, unavailableDayClassName, "after:w-3")} />
+          {t("legendBooked")}
+        </li>
+        <li className="inline-flex items-center gap-1.5">
+          <span aria-hidden className={cn(swatch, "border border-border bg-muted opacity-50")} />
+          {t("legendNotSelectable")}
+        </li>
+      </ul>
+    </div>
   );
 }
 

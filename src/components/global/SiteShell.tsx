@@ -1,5 +1,6 @@
 "use client";
 
+import { useHydrated } from "@/platform/hydration";
 import dynamic from "@/platform/dynamic";
 import Link from "@/platform/link";
 import { MessageCircle } from "lucide-react";
@@ -10,9 +11,10 @@ import { stripLocalePrefix } from "@/i18n/routing";
 import { buildChatHref } from "@/lib/chat/navigation";
 import { loadAIChatWidget, preloadAIChatWidget } from "@/lib/chat/preload";
 import { resort } from "@/lib/data/resort-config";
+import { registerGuestBottomControl } from "@/lib/guest-bottom-inset";
 import { useLocale, useTranslations } from "@/platform/intl";
 import { usePathname, useSearchParams } from "@/platform/navigation";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 const LazyAIChatWidget = dynamic(loadAIChatWidget, { ssr: false });
 
@@ -28,6 +30,7 @@ const LazyAIChatWidget = dynamic(loadAIChatWidget, { ssr: false });
  * they dispatch `open-concierge-chat`, which mounts the widget with `initialOpen`.
  */
 function IntentionalChatWidget() {
+  const hydrated = useHydrated();
   const locale = useLocale();
   const t = useTranslations("Chat");
   const pathname = usePathname();
@@ -37,6 +40,8 @@ function IntentionalChatWidget() {
   const propertySlug = chatContext?.context.propertySlug;
 
   const [activated, setActivated] = useState(false);
+  const mobileLauncherRef = useRef<HTMLDivElement>(null);
+  const desktopLauncherRef = useRef<HTMLButtonElement>(null);
 
   const chatHref = buildChatHref({
     locale,
@@ -45,6 +50,30 @@ function IntentionalChatWidget() {
     search: searchParams,
   });
   const hideMobileRoomTrigger = normalizedPath.startsWith("/rooms/");
+
+  useEffect(() => {
+    if (activated) return;
+    const cleanups: (() => void)[] = [];
+    if (mobileLauncherRef.current && !hideMobileRoomTrigger) {
+      cleanups.push(
+        registerGuestBottomControl("chat-launcher-mobile", mobileLauncherRef.current, {
+          fallbackPx: 88,
+          checkHorizontalOverlap: true,
+        }),
+      );
+    }
+    if (desktopLauncherRef.current) {
+      cleanups.push(
+        registerGuestBottomControl("chat-launcher-desktop", desktopLauncherRef.current, {
+          fallbackPx: 88,
+          checkHorizontalOverlap: true,
+        }),
+      );
+    }
+    return () => {
+      for (const cleanup of cleanups) cleanup();
+    };
+  }, [activated, hideMobileRoomTrigger]);
 
   function open() {
     setActivated(true);
@@ -78,28 +107,35 @@ function IntentionalChatWidget() {
     <>
       {/* Mobile: a plain link to the dedicated chat page — works with no JS, before the widget loads.
           Hidden on room pages (which have their own in-page trigger) but still carries context. */}
-      <Link
-        href={chatHref}
-        data-testid="chat-launcher-link"
+      <div
+        ref={mobileLauncherRef}
         className={[
-          "fixed bottom-5 right-5 z-50 h-14 w-14 items-center justify-center rounded-full bg-gold text-navy shadow-2xl shadow-black/20 transition hover:scale-105",
+          "fixed bottom-[calc(1.25rem+env(safe-area-inset-bottom,0px))] right-5 z-50",
           hideMobileRoomTrigger ? "hidden" : "flex md:hidden",
         ].join(" ")}
-        aria-label={t("open")}
       >
-        <MessageCircle className="h-6 w-6" />
-      </Link>
+        <Link
+          href={chatHref}
+          data-testid="chat-launcher-link"
+          className="flex h-14 w-14 items-center justify-center rounded-full bg-gold text-navy shadow-2xl shadow-black/20 transition hover:scale-105"
+          aria-label={t("open")}
+        >
+          <MessageCircle className="h-6 w-6" />
+        </Link>
+      </div>
       {/* Desktop: a real button that loads + opens the overlay on activation. */}
       <button
+        ref={desktopLauncherRef}
         type="button"
         data-testid="chat-launcher-button"
+        disabled={!hydrated}
         onClick={open}
         onPointerEnter={preloadAIChatWidget}
         onFocus={preloadAIChatWidget}
         onTouchStart={preloadAIChatWidget}
         aria-label={t("open")}
         aria-haspopup="dialog"
-        className="fixed bottom-5 right-5 z-50 hidden h-14 w-14 items-center justify-center rounded-full bg-gold text-navy shadow-2xl shadow-black/20 transition hover:scale-105 md:flex"
+        className="fixed bottom-[calc(1.25rem+env(safe-area-inset-bottom,0px))] right-5 z-50 hidden h-14 w-14 items-center justify-center rounded-full bg-gold text-navy shadow-2xl shadow-black/20 transition hover:scale-105 md:flex"
       >
         <MessageCircle className="h-6 w-6" />
       </button>
@@ -134,7 +170,7 @@ export function PublicSiteShell({ children, hasReviews }: { children: ReactNode;
   if (normalizedPath === "/chat") {
     return (
       <div className="min-h-[100dvh] overflow-hidden bg-background text-foreground">
-        <main className="min-h-[100dvh]">{children}</main>
+        <main tabIndex={-1} className="min-h-[100dvh]">{children}</main>
       </div>
     );
   }
@@ -143,7 +179,7 @@ export function PublicSiteShell({ children, hasReviews }: { children: ReactNode;
     <div className="flex min-h-screen flex-col bg-background text-foreground">
       <SiteHeader hasReviews={hasReviews} />
       <ChatContextProvider>
-        <main className="flex-1">{children}</main>
+        <main tabIndex={-1} className="flex-1">{children}</main>
         <SiteFooter />
         <IntentionalChatWidget />
       </ChatContextProvider>

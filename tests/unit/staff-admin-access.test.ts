@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { adminAccessRedirect, adminNavFor, adminNoAccess, adminPageAllowed, adminTabBarFor, adminTillOnly } from "@/components/admin/admin-access";
-import { ADMIN_NAV, activeAdminSubLink, adminNavItem, adminRedirectPath, adminSettingsTab, searchAdminNav } from "@/components/admin/admin-routes";
-import { staffAccessFor, type ShellRole } from "./admin-shell-convex";
+import { ADMIN_NAV, activeAdminSubLink, adminSectionRecovery, adminNavItem, adminRedirectPath, adminSettingsTab, searchAdminNav } from "@/components/admin/admin-routes";
+import { PHUKET, KOH_SAMUI, staffAccessFor, type ShellRole } from "./admin-shell-convex";
 
 const nav = (role: ShellRole, patch: Partial<ReturnType<typeof staffAccessFor>["capabilities"]> = {}) => {
   const access = staffAccessFor(role);
@@ -14,6 +14,15 @@ describe("navigation by staff role", () => {
   it("gives owners, and fixtures without access data, the whole navigation", () => {
     expect(nav("owner")).toEqual([...ADMIN_NAV]);
     expect(adminNavFor(undefined)).toEqual([...ADMIN_NAV]);
+  });
+
+  it("only lists resort desks for staff with resort access, regardless of branch order", () => {
+    const limited = staffAccessFor("manager", "limited@example.com", [PHUKET]);
+    const eligible = { ...limited, branches: [PHUKET, KOH_SAMUI] };
+    for (const href of ["/admin/chats", "/admin/hotel"]) {
+      expect(hrefs(adminNavFor(limited))).not.toContain(href);
+      expect(hrefs(adminNavFor(eligible))).toContain(href);
+    }
   });
 
   it("never gives a person without a role the owner's navigation", () => {
@@ -85,9 +94,9 @@ describe("redirects by staff role", () => {
     (path) => expect(adminAccessRedirect(path, null, cashier)).toBe("/admin/checkout"),
   );
 
-  it("opens the till for a cashier on /admin, and keeps a manager's landing on Chats", () => {
+  it("opens the till for a cashier on /admin, and lands a manager on Today (D01)", () => {
     const landing = adminRedirectPath("/admin")!;
-    expect(landing).toBe("/admin/chats");
+    expect(landing).toBe("/admin/today");
     expect(adminAccessRedirect(landing, null, cashier)).toBe("/admin/checkout");
     expect(adminAccessRedirect(landing, null, manager)).toBeNull();
   });
@@ -128,5 +137,24 @@ describe("Settings › Team address", () => {
     expect(adminSettingsTab("nope")).toBe("business");
     const settings = adminNavItem("/admin/settings")!;
     expect(activeAdminSubLink(settings, "/admin/settings", "admins")).toBe("/admin/settings?tab=team");
+  });
+});
+
+describe("stale admin bookmark recovery (N06)", () => {
+  it("offers the Staff bookings pages a manager may open for an unknown staff sub-page", () => {
+    const recovery = adminSectionRecovery("/admin/staff/old-tab", adminNavFor(staffAccessFor("manager")));
+    expect(recovery?.label).toBe("Staff bookings");
+    expect(recovery?.links.map((link) => link.label)).toEqual(["Calendar", "Roster", "Therapists", "Services"]);
+  });
+
+  it("offers Marketing pages only with marketing access", () => {
+    const marketer = { ...staffAccessFor(null), capabilities: { ...staffAccessFor(null).capabilities, marketing: true } };
+    expect(adminSectionRecovery("/admin/marketing/retired", adminNavFor(marketer))?.links.map((link) => link.href)).toContain("/admin/marketing/dashboard");
+    expect(adminSectionRecovery("/admin/marketing/retired", adminNavFor(staffAccessFor("cashier")))).toBeNull();
+    expect(adminSectionRecovery("/admin/staff/old-tab", adminNavFor(staffAccessFor("cashier")))).toBeNull();
+  });
+
+  it("has nothing to offer for a section without sub-pages", () => {
+    expect(adminSectionRecovery("/admin/leads/whatever", adminNavFor(undefined))).toBeNull();
   });
 });

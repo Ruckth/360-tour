@@ -7,8 +7,8 @@ import { paginationOptsValidator, paginationResultValidator } from 'convex/serve
 import { v } from 'convex/values';
 import { staffMutation, staffQuery } from '../auth/model';
 import {
-  getOrder, getOrderRevision, getReceipt, getRequest, listHistory, listHolds, listOrderReceipts, listOrderRevisions,
-  listOrders, listReceiptAdjustments, listRequests, listSuppliers, previewCorrection, readIncomingFor,
+  findPurchaseReference, getOrder, getOrderRevision, getReceipt, getRequest, listHistory, listHolds, listOrderReceipts, listOrderRevisions,
+  listOrders, listReceiptAdjustments, listReceipts, listRequests, listSuppliers, previewCorrection, readIncomingFor, resolveQueueFilter,
 } from './private/purchasingReads';
 import { amendOrder, closeOrderRemainder, deleteOrderDraft, issueOrder, saveOrderDraft } from './private/purchasingOrders';
 import {
@@ -58,6 +58,23 @@ export const historyRowValidator = v.object({
   ...system('purchaseEvents'), entity: purchasingEntity, entityId: v.string(), branchId: v.optional(v.id('branches')),
   action: v.string(), reason: v.optional(v.string()), changes: v.optional(v.array(historyChange)),
   relatedId: v.optional(v.string()), actorLabel: v.string(), createdAt: v.number(),
+});
+
+export const queueFilter = staffQuery({
+  capability: 'checkout', scope: 'selectedBranch',
+  args: { branchId: v.id('branches'), variant: v.optional(v.string()), supplier: v.optional(v.string()) },
+  returns: v.object({
+    variantId: v.union(v.id('productVariants'), v.null()),
+    supplier: v.union(v.object({ id: v.id('suppliers'), name: v.string() }), v.null()),
+  }),
+  handler: (ctx, args) => resolveQueueFilter(ctx, ctx.staff, args),
+});
+
+export const purchaseReference = staffQuery({
+  capability: 'checkout', scope: 'selectedBranch',
+  args: { branchId: v.id('branches'), reference: v.string() },
+  returns: v.object({ request: v.union(requestRowValidator, v.null()), order: v.union(orderRowValidator, v.null()) }),
+  handler: (ctx, { branchId, reference }) => findPurchaseReference(ctx, ctx.staff, branchId, reference),
 });
 
 // ---------- Requests ----------
@@ -142,6 +159,7 @@ const orderView = v.union(
   v.object({ kind: v.literal('status'), status: orderStatus }),
   v.object({ kind: v.literal('supplier'), supplierId: v.id('suppliers') }),
   v.object({ kind: v.literal('item'), variantId: v.id('productVariants'), openOnly: v.boolean() }),
+  v.object({ kind: v.literal('openSearch'), search: v.string() }),
 );
 
 export const orders = staffQuery({
@@ -183,6 +201,17 @@ export const orderRevision = staffQuery({
   args: { orderId: v.id('purchaseOrders'), revision: v.number() },
   returns: v.object({ ...system('purchaseOrderRevisions'), ...revisionPublic, branchName: v.string() }),
   handler: (ctx, { orderId, revision }) => getOrderRevision(ctx, ctx.staff, orderId, revision),
+});
+
+export const receipts = staffQuery({
+  capability: 'checkout', scope: 'selectedBranch',
+  args: {
+    branchId: v.id('branches'),
+    match: v.optional(v.object({ kind: v.union(v.literal('receipt'), v.literal('delivery')), reference: v.string() })),
+    ...paged,
+  },
+  returns: paginationResultValidator(receiptRowValidator),
+  handler: (ctx, args) => listReceipts(ctx, ctx.staff, args),
 });
 
 export const orderReceipts = staffQuery({

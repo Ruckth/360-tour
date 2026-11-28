@@ -3,11 +3,11 @@ import { api } from 'convex/_generated/api';
 
 import { Mail, X } from "lucide-react";
 import { useTranslations } from "@/platform/intl";
-import { useState } from "react";
+import { useId, useRef, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useConvex } from 'convex/react';
-
 
 export function LeadCapture({
   propertySlug,
@@ -19,25 +19,39 @@ export function LeadCapture({
   const tourT = useTranslations("Tour");
   const a11y = useTranslations("A11y");
   const convex = useConvex();
+  const emailId = useId();
+  const errorId = useId();
   const [email, setEmail] = useState("");
+  const [pending, setPending] = useState(false);
+  const submittingRef = useRef(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState("");
 
-  async function submit() {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (submittingRef.current || pending) return;
+
     setError("");
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    const trimmed = email.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
       setError(tourT("invalidEmail"));
       return;
     }
+
+    submittingRef.current = true;
+    setPending(true);
     try {
-        await convex.mutation(api.messaging.leads.save, {
-          propertySlug,
-          email,
-          source: "tour_completion",
-        });
+      await convex.mutation(api.messaging.leads.save, {
+        propertySlug,
+        email: trimmed,
+        source: "tour_completion",
+      });
       setSubmitted(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : tourT("saveError"));
+    } finally {
+      submittingRef.current = false;
+      setPending(false);
     }
   }
 
@@ -61,25 +75,40 @@ export function LeadCapture({
           {tourT("leadTitle")}
         </h2>
         {submitted ? (
-          <p className="mt-3 text-sm leading-relaxed text-white/70">
+          <p className="mt-3 text-sm leading-relaxed text-white/70" role="status">
             {tourT("leadSaved")}
           </p>
         ) : (
-          <>
+          <form onSubmit={(event) => void handleSubmit(event)} noValidate>
             <p className="mt-3 text-sm leading-relaxed text-white/70">
               {tourT("leadBody")}
             </p>
-            <Input
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              placeholder={tourT("leadEmailPlaceholder")}
-              className="mt-5 h-12 rounded-xl border-white/15 bg-white/10 text-white placeholder:text-white/35 focus-visible:ring-gold/40"
-            />
-            {error ? <p className="mt-2 text-sm text-red-300">{error}</p> : null}
-            <Button variant="gold" className="mt-4 w-full" onClick={submit}>
-              {tourT("save")}
+            <div className="mt-5 space-y-2">
+              <Label htmlFor={emailId} className="text-sm font-medium text-white/85">
+                {tourT("emailLabel")}
+              </Label>
+              <Input
+                id={emailId}
+                type="email"
+                autoComplete="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder={tourT("leadEmailPlaceholder")}
+                aria-invalid={Boolean(error)}
+                aria-describedby={error ? errorId : undefined}
+                disabled={pending}
+                className="h-12 rounded-xl border-white/15 bg-white/10 text-white placeholder:text-white/35 focus-visible:ring-gold/40"
+              />
+            </div>
+            {error ? (
+              <p id={errorId} role="alert" className="mt-2 text-sm text-red-300">
+                {error}
+              </p>
+            ) : null}
+            <Button type="submit" variant="gold" disabled={pending} className="mt-4 w-full">
+              {pending ? tourT("saving") : tourT("save")}
             </Button>
-          </>
+          </form>
         )}
       </div>
     </div>

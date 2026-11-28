@@ -64,3 +64,58 @@ test("mobile villa chat trigger targets the property chat page", async ({ page }
   });
   await expect(page.getByRole("button", { name: /Restart chat - Tideglass Pool Residence concierge/i })).toBeVisible();
 });
+
+
+for (const width of [390, 1280]) {
+  test(`room tour keeps one gallery action and restores focus at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto("/rooms/pool-villa");
+
+    const opener = page.getByRole("button", { name: /^Explore (in )?360$/ });
+    await expect(opener).toHaveCount(1);
+    await opener.evaluate((element) => element.addEventListener("mousedown", (event) => event.preventDefault()));
+    await opener.click();
+
+    const dialog = page.getByRole("dialog", { name: "Tideglass Pool Residence 360 tour" });
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toHaveAttribute("aria-modal", "true");
+    await expect(dialog.getByRole("button", { name: "Close tour" })).toBeVisible({ timeout: 20_000 });
+    for (const key of ["Tab", "Shift+Tab"]) {
+      await page.keyboard.press(key);
+      await expect(dialog.locator(":focus")).toHaveCount(1);
+    }
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+    await expect(opener).toBeFocused();
+  });
+}
+
+test("a direct tour keeps Escape available without an opener", async ({ page }) => {
+  await page.goto("/rooms/pool-villa?tour=1");
+  const dialog = page.getByRole("dialog", { name: "Tideglass Pool Residence 360 tour" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator(":focus")).toHaveCount(1);
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(page).toHaveURL(/\/rooms\/pool-villa$/);
+});
+
+
+test("an unavailable tour keeps keyboard focus inside its recovery dialog", async ({ page }) => {
+  await page.route(/\/assets\/TourViewer-[^/]+\.js$/, (route) => route.abort());
+  await page.goto("/rooms/pool-villa?tour=1");
+
+  const dialog = page.getByRole("dialog", { name: "Tideglass Pool Residence 360 tour" });
+  const retry = dialog.getByRole("button", { name: "Try again" });
+  const close = dialog.getByRole("button", { name: "Close" });
+  await expect(dialog.getByRole("alert")).toHaveText("This room could not be loaded.");
+  await expect(retry).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(close).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(retry).toBeFocused();
+
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(page).toHaveURL(/\/rooms\/pool-villa$/);
+});

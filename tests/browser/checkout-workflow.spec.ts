@@ -74,8 +74,11 @@ test('restore reviews competing sources and removes only explicitly selected con
   const dialog = page.getByRole('dialog');
   await dialog.getByRole('radio', { name: 'Discarded', exact: true }).click();
   await dialog.getByRole('button', { name: /^Restore Order/ }).click();
-  await expect(dialog.getByRole('textbox', { name: 'Order number' })).toHaveCount(0);
+  await expect(dialog.getByRole('textbox', { name: 'Order or receipt number' })).toHaveCount(0);
   await expect(dialog.getByText(/Thai massage 90 is now on Order/)).toBeVisible();
+  const review = dialog.getByRole('region', { name: 'Restore order' });
+  await expect(review.getByRole('heading', { name: 'Keep', exact: true }).locator('..')).toContainText('Retained tea');
+  await expect(review.getByRole('heading', { name: 'Remove', exact: true }).locator('..')).toContainText('Thai massage 90');
   await dialog.getByRole('button', { name: 'Restore without 1 conflicting row' }).click();
   await dialog.getByRole('button', { name: 'Open restored order' }).click();
   const order = page.getByRole('complementary', { name: 'Order', exact: true });

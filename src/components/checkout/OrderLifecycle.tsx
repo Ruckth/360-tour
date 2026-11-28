@@ -72,9 +72,13 @@ export function OrderLifecycle({ orderId, onDone, onPending, onOpen }: {
   const [removed, setRemoved] = useState<string[]>([]);
   const [done, setDone] = useState(false);
   async function submit(removeConflictingRows = false) {
-    if (sending.current || !view) return;
-    const input = attempt ?? { orderId, expectedRevision: review!.revision, idempotencyKey: newAttemptKey(), removeConflictingRows };
-    if (!attempt) setWarnings(review!.conflicts.filter(c => !c.blocking).map(c => c.message));
+    if (sending.current || !view || !review) return;
+    if (!attempt && (view.order.revision !== review.revision || !review.discarded || review.rowsLeft === 0)) return;
+    const input = attempt ?? {
+      orderId, expectedRevision: view.order.revision, idempotencyKey: newAttemptKey(), removeConflictingRows,
+      reviewedConflictLineIds: review.conflicts.flatMap(c => c.blocking && c.lineId ? [c.lineId] : []),
+    };
+    if (!attempt) setWarnings(review.conflicts.filter(c => !c.blocking).map(c => c.message));
     setAttempt(input);
     sending.current = true; setPending(true); onPending(true); setError("");
     try {
@@ -94,18 +98,22 @@ export function OrderLifecycle({ orderId, onDone, onPending, onOpen }: {
     <Button onClick={() => onOpen(orderId)}>Open restored order</Button>
     <Button variant="outline" onClick={onDone}>Back to orders</Button>
   </div>;
+  const removing = new Set(review.conflicts.filter(conflict => conflict.blocking).map(conflict => conflict.lineId));
   return <section aria-label="Restore order" className="grid gap-3">
     <h3 className="font-semibold">Restore {view.order.title}</h3>
     <p className="text-sm">Contents, customer and booking links are retained. Bookings and appointments are not cancelled.</p>
     {view.discarded ? <p className="text-xs text-muted-foreground">Discarded {historyTime(view.discarded.at)} by {view.discarded.by ?? "Unknown"}{view.discarded.reason ? ` · ${view.discarded.reason}` : ""}</p> : null}
     <>
-      <p className="text-sm">{view.lines.length} retained rows. Its charges were released while discarded, so another order may now hold some of them. Changed or settled sources must be updated or removed before payment.</p>
+      {view.order.revision === review.revision ? [false, true].map(remove => {
+        const rows = view.lines.filter(line => removing.has(line._id) === remove);
+        return <div key={String(remove)}><h4 className="font-medium">{remove ? "Remove" : "Keep"}</h4>{rows.length ? <ul className="list-disc pl-5 text-sm">{rows.map(line => <li key={line._id}>{line.name} × {line.qty}</li>)}</ul> : <p className="text-sm text-muted-foreground">No items</p>}</div>;
+      }) : <p role="status">Refreshing the order review…</p>}
       <ul className="grid gap-2 text-sm">{review.conflicts.toSorted((a, b) => Number(b.blocking) - Number(a.blocking)).map((conflict, i) => <li key={`${conflict.lineId}:${i}`}>
         <p className={conflict.blocking ? "text-destructive" : "text-muted-foreground"}>{conflict.message}</p>
         {conflict.order ? <Button variant="link" disabled={pending} onClick={() => onOpen(conflict.order!._id)}>Open {conflict.order.title}</Button> : null}
       </li>)}</ul>
       {review.blocking && review.rowsLeft === 0 ? <p role="alert" className="text-sm">Every row conflicts. Leave this order discarded or resolve the competing order first.</p> : null}
-      {!attempt ? <Button disabled={pending || !review.discarded || review.rowsLeft === 0} onClick={() => void submit(review.blocking > 0)}>{review.blocking ? `Restore without ${review.blocking} conflicting ${review.blocking === 1 ? "row" : "rows"}` : "Restore order"}</Button> : null}
+      {!attempt ? <Button disabled={pending || view.order.revision !== review.revision || !review.discarded || review.rowsLeft === 0} onClick={() => void submit(review.blocking > 0)}>{review.blocking ? `Restore without ${review.blocking} conflicting ${review.blocking === 1 ? "row" : "rows"}` : "Restore order"}</Button> : null}
     </>
     {pending ? <Spinner label="Restoring order" /> : null}
     {error ? <div role="alert" className="grid gap-2 text-sm"><p className="text-destructive">{error}</p><p>A response may have been lost. Retry uses the same reviewed revision and attempt.</p><Button disabled={pending} onClick={() => void submit()}>Retry restore</Button></div> : null}

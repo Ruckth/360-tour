@@ -16,13 +16,13 @@ vi.mock("@/components/admin/ConfirmDialog", () => ({ useConfirm: () => mocks.con
 const initial: AdminSession = {
   _id: "session-a" as AdminSession["_id"], channel: "web", createdAt: 1, isActive: false,
   adminStatus: "open", needsReply: true, aiPaused: true, keepWithStaff: true,
-  latestGuestMessageId: "message-a" as AdminSession["latestGuestMessageId"], staffTask: "Check housekeeping",
+  latestGuestMessageId: "message-a" as AdminSession["latestGuestMessageId"], staffTask: "Check housekeeping", staffTaskRevision: 7,
 };
 let root: Root;
 const deleted = vi.fn(), statusChanged = vi.fn();
 async function render(session = initial) {
   const props: ComponentProps<typeof AdminSessionActions> = {
-    session, onDeleted: deleted, onStatusChanged: statusChanged,
+    session, now: 100, onDeleted: deleted, onStatusChanged: statusChanged,
     children: ({ actions, followUp, actionError, replyAction }) => createElement(AdminSessionDetail, {
       selectedSession: session, actions, followUp, actionError, replyAction, messages: [], now: 100, canLoadOlderMessages: false,
       loadOlderMessages: vi.fn(), loadingTranscript: false, loadingOlderMessages: false,
@@ -51,10 +51,11 @@ async function menu(label: string) {
   await press(item!);
 }
 const input = () => document.getElementById("follow-up-session-a") as HTMLInputElement;
-async function type(value: string) {
+const dueInput = () => document.getElementById("follow-up-due-session-a") as HTMLInputElement;
+async function type(value: string, field = input()) {
   await act(async () => {
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input(), value);
-    input().dispatchEvent(new Event("input", { bubbles: true }));
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(field, value);
+    field.dispatchEvent(new Event("input", { bubbles: true }));
   });
 }
 const submit = () => act(async () => document.querySelector("[role=dialog] form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
@@ -71,6 +72,7 @@ it("shares direct and menu editing, initializes from the current task and cancel
   const direct = byLabel("Edit follow-up");
   await click(direct);
   expect(input().value).toBe("Check housekeeping");
+  expect(dueInput().value).toBe("");
   await type("Unsaved draft");
   await click(button("Cancel"));
   await settleFocus();
@@ -78,13 +80,14 @@ it("shares direct and menu editing, initializes from the current task and cancel
   expect(document.body.textContent).toContain("Check housekeeping");
   expect(document.activeElement).toBe(direct);
 
-  await render({ ...initial, staffTask: "Call the guest" });
+  await render({ ...initial, staffTask: "Call the guest", staffTaskDueAt: Date.parse("2026-11-28T17:30:00Z"), staffTaskRevision: 8 });
   await menu("Edit follow-up");
   expect(input().value).toBe("Call the guest");
+  expect(dueInput().value).toBe("2026-11-29T00:30");
   await type("  Ask about checkout  ");
   await submit();
   await settleFocus();
-  expect(mocks.mutation).toHaveBeenCalledExactlyOnceWith("messaging/adminChat:setStaffTask", { sessionId: "session-a", task: "Ask about checkout" });
+  expect(mocks.mutation).toHaveBeenCalledExactlyOnceWith("messaging/adminChat:setStaffTask", { sessionId: "session-a", task: "Ask about checkout", dueAt: Date.parse("2026-11-28T17:30:00Z"), expectedRevision: 8 });
   expect(document.querySelector('[role="dialog"]')).toBeNull();
   expect(document.querySelector("textarea")?.value).toBe("Draft stays here");
   expect(statusChanged).not.toHaveBeenCalled();
@@ -105,7 +108,7 @@ it("guards blank saves independently of the disabled button and leaves the curre
 
 it("completes independently and starts Add empty after the current task is removed", async () => {
   await render(); await click(byLabel("Complete follow-up"));
-  expect(mocks.mutation).toHaveBeenCalledExactlyOnceWith("messaging/adminChat:setStaffTask", { sessionId: "session-a", task: null });
+  expect(mocks.mutation).toHaveBeenCalledExactlyOnceWith("messaging/adminChat:setStaffTask", { sessionId: "session-a", task: null, expectedRevision: 7 });
   await render({ ...initial, staffTask: undefined });
   await settleFocus();
   expect(document.activeElement).toBe(byLabel("More chat actions"));
@@ -120,37 +123,43 @@ it("retains a failed edit for retry, blocks closing and double submission while 
   let reject!: (reason: Error) => void;
   mocks.mutation.mockImplementationOnce(() => new Promise((_, fail) => { reject = fail; }));
   await render(); await click(byLabel("Edit follow-up")); await type("Check the late checkout");
+  await type("2026-11-29T00:15", dueInput());
   await act(async () => {
     const form = document.querySelector("[role=dialog] form")!;
     for (let i = 0; i < 2; i++) form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
   });
   expect(mocks.mutation).toHaveBeenCalledTimes(1);
-  expect(input().disabled).toBe(true); expect(button("Cancel").disabled).toBe(true);
+  expect(input().disabled).toBe(true); expect(dueInput().disabled).toBe(true); expect(button("Cancel").disabled).toBe(true);
   await act(async () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
   expect(input()).not.toBeNull();
   await act(async () => reject(new Error("Could not save follow-up")));
   expect(document.querySelector('[role="alert"]')?.textContent).toBe("Could not save follow-up");
   expect(input().value).toBe("Check the late checkout");
+  expect(dueInput().value).toBe("2026-11-29T00:15");
   await submit();
-  expect(mocks.mutation).toHaveBeenLastCalledWith("messaging/adminChat:setStaffTask", { sessionId: "session-a", task: "Check the late checkout" });
+  const update = { sessionId: "session-a", task: "Check the late checkout", dueAt: Date.parse("2026-11-28T17:15:00Z"), expectedRevision: 7 };
+  expect(mocks.mutation.mock.calls).toEqual([
+    ["messaging/adminChat:setStaffTask", update],
+    ["messaging/adminChat:setStaffTask", update],
+  ]);
   expect(document.querySelector('[role="dialog"]')).toBeNull();
 });
 
 it("shows No reply needed in the header, rare actions in ⋯, and retains the exact latest guest-message guard", async () => {
   await render(); await press(byLabel("More chat actions"));
   expect(menuItems().map(el => el.textContent)).toEqual([
-    "Edit follow-up", "Complete follow-up", "Resume AI", "Let AI handle the next issue", "Archive chat",
+    "Edit follow-up", "Complete follow-up", "Resume AI", "Let AI handle the next issue", "Assign teammate", "Archive chat",
   ]);
   await act(async () => document.activeElement?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
   await click(button("No reply needed"));
   expect(mocks.mutation).toHaveBeenLastCalledWith("messaging/adminChat:setSessionStatus", { sessionId: "session-a", status: "resolved", expectedGuestMessageId: "message-a" });
   expect(statusChanged).toHaveBeenCalledWith("resolved");
   await menu("Resume AI");
-  expect(mocks.mutation).toHaveBeenLastCalledWith("messaging/adminChat:setAiPaused", { sessionId: "session-a", paused: false });
+  expect(mocks.mutation).toHaveBeenLastCalledWith("messaging/adminChat:setAiPaused", { sessionId: "session-a", paused: false, expectedPaused: true });
   await menu("Let AI handle the next issue");
   expect(mocks.mutation).toHaveBeenLastCalledWith("messaging/adminChat:setKeepWithStaff", { sessionId: "session-a", keep: false });
   await menu("Complete follow-up");
-  expect(mocks.mutation).toHaveBeenLastCalledWith("messaging/adminChat:setStaffTask", { sessionId: "session-a", task: null });
+  expect(mocks.mutation).toHaveBeenLastCalledWith("messaging/adminChat:setStaffTask", { sessionId: "session-a", task: null, expectedRevision: 7 });
 });
 
 it("keeps failed actions visible without firing success callbacks and preserves reopen/delete", async () => {

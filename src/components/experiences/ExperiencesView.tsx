@@ -59,7 +59,7 @@ export function ExperiencesView({
                 <ArrowRight className="h-4 w-4" />
               </ButtonLink>
               <ButtonLink
-                href={localizeHref("/#contact", locale)}
+                href={localizeHref("/chat", locale)}
                 variant="glass"
                 size="lg"
                 className="w-full sm:w-auto"
@@ -193,7 +193,7 @@ export function ExperiencesView({
               {messages.primaryCta}
             </ButtonLink>
             <ButtonLink
-              href={localizeHref("/#contact", locale)}
+              href={localizeHref("/chat", locale)}
               variant="outline"
               size="lg"
               className="w-full sm:w-auto"

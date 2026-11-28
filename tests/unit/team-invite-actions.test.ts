@@ -383,3 +383,67 @@ it("signs desk invites in at /admin and Marketing-only invites at /admin/marketi
   expect(staffSignInLink("https://desk.example")).toBe("https://desk.example/admin");
   expect(marketingSignInLink("https://desk.example")).toBe("https://desk.example/admin/marketing");
 });
+
+it("asks before a desk role change that reduces access, and Cancel keeps Manager (D26)", async () => {
+  await render();
+  const niran = row(dual.email);
+  await change(niran);
+  mocks.confirm.mockResolvedValueOnce(false);
+  const cashierPick = async () => {
+    await act(async () => { select(niran, "Desk role").dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); });
+    const option = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find((el) => el.textContent === "Cashier")!;
+    await act(async () => { option.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); });
+  };
+  await cashierPick();
+  expect(mocks.confirm).toHaveBeenCalledWith(expect.objectContaining({
+    title: "Make Niran a Cashier?",
+    confirmLabel: "Change to Cashier",
+    cancelLabel: "Keep Manager",
+  }));
+  expect(mocks.confirm.mock.calls[0][0].description).toContain("loses approving cashier requests, Hotel, Spa, Chats, Leads and Business facts now");
+  expect(mocks.calls.filter(([name]) => name === "auth/staffAccess:setGrant")).toEqual([]);
+  expect(select(niran, "Desk role").textContent).toBe("Manager");
+  await cashierPick();
+  expect(mocks.calls.at(-1)).toEqual(["auth/staffAccess:setGrant", { expectedGrant: { id: "grant-niran", revision: 7 }, email: dual.email, role: "cashier", branchIds: [samuiId, phuketId] }]);
+});
+
+it("promotes a cashier to Manager without a reduction prompt (D26)", async () => {
+  await render();
+  const mint = row(active.email);
+  await change(mint);
+  await pick(select(mint, "Desk role"), "manager");
+  expect(mocks.confirm).not.toHaveBeenCalled();
+  expect(mocks.calls.at(-1)?.[1]).toMatchObject({ role: "manager" });
+});
+
+it("names the person and branch before removing one, and Cancel changes nothing (D27)", async () => {
+  await render();
+  const niran = row(dual.email);
+  await change(niran);
+  mocks.confirm.mockResolvedValueOnce(false);
+  await act(async () => chipIn(niran, "Phuket")!.click());
+  expect(mocks.confirm).toHaveBeenCalledWith(expect.objectContaining({ title: "Remove Niran from Phuket?", confirmLabel: "Remove branch" }));
+  expect(mocks.calls).toEqual([]);
+  await act(async () => chipIn(niran, "Phuket")!.click());
+  expect(mocks.calls.at(-1)).toEqual(["auth/staffAccess:setGrant", { expectedGrant: { id: "grant-niran", revision: 7 }, email: dual.email, role: "manager", branchIds: [samuiId] }]);
+});
+
+it("filters people by pending invite, branch, role and search, with counts (D28)", async () => {
+  await render();
+  await act(async () => host.querySelector<HTMLButtonElement>('button[aria-label="Search and filter people"]')!.click());
+  const chipLabels = () => [...host.querySelectorAll<HTMLButtonElement>('[role="group"][aria-label="Filter people"] button')].map((button) => button.textContent);
+  expect(chipLabels()).toEqual(["All (7)", "Pending invites (2)", "Koh Samui (3)", "Phuket (2)", "Owner (2)", "Manager (1)", "Cashier (3)", "Marketing (1)"]);
+  const chip = (label: string) => [...host.querySelectorAll<HTMLButtonElement>('[role="group"][aria-label="Filter people"] button')].find((button) => button.textContent?.startsWith(label))!;
+  await act(async () => chip("Pending invites").click());
+  expect([...host.querySelectorAll<HTMLElement>('[data-testid="team-person"]:not([hidden])')].map((li) => li.dataset.personEmail)).toEqual([pending.email, expired.email]);
+  expect(chip("Pending invites").getAttribute("aria-pressed")).toBe("true");
+  await act(async () => chip("Phuket").click());
+  expect([...host.querySelectorAll<HTMLElement>('[data-testid="team-person"]:not([hidden])')].map((li) => li.dataset.personEmail)).toEqual([pending.email, dual.email]);
+  const search = host.querySelector<HTMLInputElement>('input[aria-label="Search people"]')!;
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(search, "niran");
+    search.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  expect([...host.querySelectorAll<HTMLElement>('[data-testid="team-person"]:not([hidden])')].map((li) => li.dataset.personEmail)).toEqual([dual.email]);
+  expect(chip("All").textContent).toBe("All (1)");
+});

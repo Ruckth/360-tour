@@ -32,6 +32,7 @@ export function shellConvex(state: { role: ShellRole; pending?: number }) {
       if (name === 'pos/staffApprovals:pending') return { count: state.pending ?? 0, list: [] };
       return { businessName: 'Audit resort' };
     },
+    useQueries: () => ({}),
     useMutation: () => async () => null,
     usePaginatedQuery: () => ({ results: [], status: 'Exhausted', loadMore: () => undefined }),
   };

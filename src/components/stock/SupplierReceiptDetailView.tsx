@@ -97,7 +97,7 @@ export function SupplierReceiptDetailView({ receiptId }: { receiptId: string }) 
                 Switch to {targetBranch.name}
               </Button>
             ) : null}
-            <ButtonLink href={returnTo ?? "/admin/stock/purchasing?tab=orders"} variant={targetBranch ? "outline" : "default"} size="sm">
+            <ButtonLink href={returnTo ?? "/admin/stock/purchasing?tab=receipts"} variant={targetBranch ? "outline" : "default"} size="sm">
               Back to {stockReturnLabel(returnTo, "Purchasing")}
             </ButtonLink>
           </div>
@@ -112,8 +112,8 @@ export function SupplierReceiptDetailView({ receiptId }: { receiptId: string }) 
   const returningLine = returningLineId ? lines.find((l) => l._id === returningLineId) ?? null : null;
   const defaultBackHref = receipt.orderId
     ? `/admin/stock/purchasing/orders/${receipt.orderId}`
-    : "/admin/stock/purchasing?tab=orders";
-  const defaultBackLabel = receipt.orderReference ? `Order ${receipt.orderReference}` : "Orders";
+    : "/admin/stock/purchasing?tab=receipts";
+  const defaultBackLabel = receipt.orderId ? (receipt.orderReference ? `Order ${receipt.orderReference}` : "Order") : "Receipts";
   const currentReceiptHref = `/admin/stock/purchasing/receipts/${receipt._id}`;
 
   return (

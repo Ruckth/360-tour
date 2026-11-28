@@ -147,22 +147,48 @@ function ReviewForm({
   const save = useSaver();
   const fileInput = useRef<HTMLInputElement>(null);
   const [photos, setPhotos] = useState(review?.photos ?? []);
-  const [verified, setVerified] = useState(review?.verified ?? true);
+  const [verified, setVerified] = useState(review?.verified ?? false);
   const [uploadError, setUploadError] = useState("");
+  const [uploadBatch, setUploadBatch] = useState<{
+    total: number;
+    uploadedNames: string[];
+    failedName: string;
+    remainingFiles: File[];
+  } | null>(null);
 
-  async function addPhotos(files: File[]) {
+  async function runPhotoBatch(queue: File[], priorUploadedNames: string[], total: number) {
+    if (!queue.length) return;
     setUploading(true);
     setUploadError("");
+    const uploadedNames = [...priorUploadedNames];
     try {
-      for (const file of files) {
-        const url = await upload(file, "photo");
-        setPhotos((current) => [...current, url]);
+      for (let index = 0; index < queue.length; index++) {
+        const file = queue[index];
+        try {
+          const url = await upload(file, "photo");
+          setPhotos((current) => [...current, url]);
+          uploadedNames.push(file.name);
+        } catch (err) {
+          setUploadBatch({
+            total,
+            uploadedNames,
+            failedName: file.name,
+            remainingFiles: queue.slice(index),
+          });
+          setUploadError(errorText(err, `Could not upload ${file.name}.`));
+          return;
+        }
       }
-    } catch (err) {
-      setUploadError(errorText(err, "Could not upload the photo."));
+      setUploadBatch(null);
     } finally {
       setUploading(false);
     }
+  }
+
+  function addPhotos(files: File[]) {
+    if (!files.length) return;
+    setUploadBatch(null);
+    void runPhotoBatch(files, [], files.length);
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -209,10 +235,21 @@ function ReviewForm({
         <Field label="Date of stay or review" htmlFor="rv-date">
           <DatePicker id="rv-date" name="date" clearable defaultValue={review?.date ?? format(new Date(), "yyyy-MM-dd")} required />
         </Field>
-        <label className="flex items-center gap-2 self-end pb-2.5 text-sm">
-          <input type="checkbox" checked={verified} onChange={(event) => setVerified(event.target.checked)} className="size-4 accent-foreground" />
-          Verified stay
-        </label>
+        <div className="grid gap-1 self-end pb-1">
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={verified}
+              aria-describedby="rv-verified-hint"
+              onChange={(event) => setVerified(event.target.checked)}
+              className="size-4 accent-foreground"
+            />
+            Verified stay
+          </label>
+          <p id="rv-verified-hint" className="text-xs text-muted-foreground">
+            Shows a verified badge publicly. Mark this when the stay has been verified.
+          </p>
+        </div>
       </div>
       <Field label="Title (optional)" htmlFor="rv-title">
         <Input id="rv-title" name="title" defaultValue={review?.title} />
@@ -246,7 +283,7 @@ function ReviewForm({
           multiple
           hidden
           onChange={(event) => {
-            void addPhotos(Array.from(event.target.files ?? []));
+            addPhotos(Array.from(event.target.files ?? []));
             event.target.value = "";
           }}
         />
@@ -254,6 +291,41 @@ function ReviewForm({
           {uploading ? <Spinner className="text-current" /> : <Upload aria-hidden className="size-4" />}
           Upload photos
         </Button>
+        {uploadBatch ? (
+          <div className="grid gap-2 rounded-md border border-border bg-muted/40 p-3 text-xs">
+            <p role="status" className="min-w-0 break-words text-foreground [overflow-wrap:anywhere]">
+              {uploadBatch.uploadedNames.length} of {uploadBatch.total} uploaded
+              {uploadBatch.uploadedNames.length ? ` (${uploadBatch.uploadedNames.join(", ")})` : ""}.{" "}
+              <span className="font-medium text-destructive">{uploadBatch.failedName} failed.</span>
+              {uploadBatch.remainingFiles.length > 1
+                ? ` Waiting: ${uploadBatch.remainingFiles.slice(1).map((file) => file.name).join(", ")}.`
+                : ""}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={uploading}
+                onClick={() => void runPhotoBatch(uploadBatch.remainingFiles, uploadBatch.uploadedNames, uploadBatch.total)}
+              >
+                Retry remaining {uploadBatch.remainingFiles.length} {uploadBatch.remainingFiles.length === 1 ? "photo" : "photos"}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                disabled={uploading}
+                onClick={() => {
+                  setUploadBatch(null);
+                  setUploadError("");
+                }}
+              >
+                Dismiss
+              </Button>
+            </div>
+          </div>
+        ) : null}
         {uploadError ? <p role="alert" className="text-sm text-destructive">{uploadError}</p> : null}
       </div>
       <SaveBar save={save} disabled={uploading} label={review ? "Save review" : "Add review"}>

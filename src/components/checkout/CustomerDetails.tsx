@@ -10,22 +10,22 @@ import { Spinner } from "@/components/ui/spinner";
 import { formatMoney } from "@/components/admin/labels";
 import { errorText } from "@/lib/staff-bookings";
 import { customerPhoneError } from "convex/shared/phone";
-import { newAttemptKey, useCheckoutBackend, type CheckoutActions, type CustomerDetail, type CustomerId, type CustomerPage, type NewCustomer } from "./backend";
+import { newAttemptKey, useCheckoutBackend, type CheckoutActions, type CustomerDetail, type CustomerId, type CustomerPage, type OrderId, type NewCustomer } from "./backend";
 import { historyTime } from "./OrderHistory";
 import { InlineErrorBoundary } from "./ErrorBoundary";
 
-export function CustomerDetails({ customerId, onBack, onOpen, onPending }: {
-  customerId: CustomerId; onBack: () => void; onOpen: (id: CustomerId) => void; onPending: (pending: boolean) => void;
+export function CustomerDetails({ customerId, onBack, onOpen, onOpenOrder, onPending }: {
+  customerId: CustomerId; onBack: () => void; onOpen: (id: CustomerId) => void; onOpenOrder?: (id: OrderId) => void; onPending: (pending: boolean) => void;
 }) {
   const profile = useCheckoutBackend().useCustomer(customerId);
   return <>
     <DialogHeader><DialogTitle>Customer details</DialogTitle><DialogDescription>Correct this profile without creating a duplicate. Issued receipts keep their original details.</DialogDescription></DialogHeader>
-    {profile === undefined ? <Spinner label="Loading customer" /> : profile === null ? <p role="alert">Customer not found.</p> : <Profile key={customerId} profile={profile} onBack={onBack} onOpen={onOpen} onPending={onPending} />}
+    {profile === undefined ? <Spinner label="Loading customer" /> : profile === null ? <p role="alert">Customer not found.</p> : <Profile key={customerId} profile={profile} onBack={onBack} onOpen={onOpen} onOpenOrder={onOpenOrder} onPending={onPending} />}
     {!profile ? <Button variant="outline" onClick={onBack}>Back to customers</Button> : null}
   </>;
 }
 
-function Profile({ profile, onBack, onOpen, onPending }: { profile: CustomerDetail; onBack: () => void; onOpen: (id: CustomerId) => void; onPending: (pending: boolean) => void }) {
+function Profile({ profile, onBack, onOpen, onOpenOrder, onPending }: { profile: CustomerDetail; onBack: () => void; onOpen: (id: CustomerId) => void; onOpenOrder?: (id: OrderId) => void; onPending: (pending: boolean) => void }) {
   const actions = useCheckoutBackend().useActions();
   const [mode, setMode] = useState<"view" | "edit" | "merge">("view");
   const [pending, setPending] = useState(false);
@@ -59,7 +59,7 @@ function Profile({ profile, onBack, onOpen, onPending }: { profile: CustomerDeta
         <Button variant="outline" disabled={pending} onClick={() => void write(() => actions.setCustomerArchived({ customerId: profile._id, expectedRevision: profile.revision, archived: !profile.archivedAt }), profile.archivedAt ? "Customer restored." : "Customer archived.")}>{profile.archivedAt ? "Restore customer" : "Archive customer"}</Button>
         <Button variant="ghost" disabled={pending} onClick={() => setMode("merge")}>Merge duplicate…</Button>
       </div> : null}
-      <InlineErrorBoundary resetKey={profile._id} message="Couldn't load customer orders. Retry to continue."><CustomerOrders customerId={profile._id} /></InlineErrorBoundary>
+      <InlineErrorBoundary resetKey={profile._id} message="Couldn't load customer orders. Retry to continue."><CustomerOrders customerId={profile._id} onOpenOrder={onOpenOrder} /></InlineErrorBoundary>
       <InlineErrorBoundary resetKey={profile._id} message="Couldn't load customer history. Retry to continue."><CustomerHistory customerId={profile._id} /></InlineErrorBoundary>
     </>}
   </div>;
@@ -91,12 +91,12 @@ function More({ page, label }: { page: CustomerPage<unknown>; label: string }) {
   return <Button variant="outline" disabled={page.status === "LoadingMore"} onClick={() => page.loadMore(20)}>{page.status === "LoadingMore" ? "Loading…" : label}</Button>;
 }
 
-function CustomerOrders({ customerId }: { customerId: CustomerId }) {
+function CustomerOrders({ customerId, onOpenOrder }: { customerId: CustomerId; onOpenOrder?: (id: OrderId) => void }) {
   const page = useCheckoutBackend().useCustomerOrders(customerId);
   return <section aria-label="Customer orders" className="grid gap-2"><h3 className="font-semibold">Orders</h3>
     {page.status === "LoadingFirstPage" ? <Spinner label="Loading customer orders" /> : null}
     {page.results.length === 0 && page.status === "Exhausted" ? <p className="text-sm text-muted-foreground">No orders linked to this profile.</p> : null}
-    <ul className="divide-y divide-border">{page.results.map(order => <li key={order._id} className="flex justify-between gap-3 py-2 text-sm"><span>{order.title} · {order.state}</span><span className="tabular-nums">{formatMoney(order.total, order.currency)}</span></li>)}</ul><More page={page} label="Load more customer orders" />
+    <ul className="divide-y divide-border">{page.results.map(order => <li key={order._id} className="flex justify-between gap-3 py-2 text-sm">{onOpenOrder && order.canOpen ? <Button variant="link" className="h-auto p-0" onClick={() => onOpenOrder(order._id)}>{order.title} · {order.state}</Button> : <span>{order.title} · {order.state}</span>}<span className="tabular-nums">{formatMoney(order.total, order.currency)}</span></li>)}</ul><More page={page} label="Load more customer orders" />
   </section>;
 }
 
@@ -165,6 +165,7 @@ function ReviewedMerge({ source, destination, pending, onMerge }: { source: Cust
   }
   return <form className="grid gap-3" onSubmit={e => void submit(e)}>
     <div className="grid gap-2 text-sm [overflow-wrap:anywhere]"><p><strong>Keep:</strong> {reviewed.destination.name} · {reviewed.destination.phone || "No phone"} · {reviewed.destination.email || "No email"}</p><p><strong>Archive as duplicate:</strong> {reviewed.source.name} · {reviewed.source.phone || "No phone"} · {reviewed.source.email || "No email"}</p></div>
+    <dl className="grid gap-1 text-sm"><dt className="font-medium">Notes on the kept profile</dt><dd className="whitespace-pre-wrap">{reviewed.destination.notes || "No notes"}</dd><dt className="font-medium">Notes on the archived duplicate</dt><dd className="whitespace-pre-wrap">{reviewed.source.notes || "No notes"}</dd></dl>
     <p className="text-sm">All source order references move to the kept profile. Both identities and histories remain. The kept profile’s contact details and notes stay as shown; issued receipts stay unchanged. This cannot be undone here. Large histories move in resumable batches. The source is frozen immediately; progress is shown on its retained profile.</p>
     {changed && !attempted ? <p role="alert" className="text-sm text-destructive">A profile changed. Cancel and review both profiles again before merging.</p> : null}
     <Label htmlFor="customer-merge-reason">Why are these the same customer?</Label><Textarea id="customer-merge-reason" required maxLength={1000} value={reason} onChange={e => setReason(e.target.value)} disabled={pending || attempted} />

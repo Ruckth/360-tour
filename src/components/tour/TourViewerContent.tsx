@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import type { Property } from "@/lib/data/properties";
 import { usePublicMessages } from "@/lib/i18n/use-public-messages";
 import { useBodyScrollLock } from "@/lib/interaction/use-body-scroll-lock";
+import { useModalFocusTrap } from "@/lib/interaction/use-modal-focus";
 import { markTourBench } from "@/lib/tour/bench";
 import { resolveTourRooms } from "@/lib/tour/rooms";
 import type { TourRenderer } from "@/lib/tour/renderer";
@@ -58,6 +59,7 @@ function LiveTourViewer({ property, onClose, onFirstSceneDrawn, onReady, standar
   const [phase, setPhase] = useState<Phase>("intro");
   const [fallback, setFallback] = useState<"loading" | "failed" | { Canvas: ComponentType<CanvasProps> } | null>(null);
   const reportedReady = useRef(false);
+  const dialogRef = useRef<HTMLDivElement>(null);
   const renderer: TourRenderer = loadFallbackCanvas && fallback === null ? "pannellum" : "three";
   const ActiveCanvas = fallback === null ? Canvas : typeof fallback === "object" ? fallback.Canvas : null;
   // An explicit choice made by navigating; null follows the first room in the current tour order.
@@ -79,6 +81,9 @@ function LiveTourViewer({ property, onClose, onFirstSceneDrawn, onReady, standar
   if (selectedRoomId && liveRooms !== undefined && !activeRoomIds.has(selectedRoomId)) setSelectedRoomId(null);
 
   useBodyScrollLock(true);
+  const emptyState = roomsReady && !activeRooms.length;
+  const failed = loadFailed || fallback === "failed";
+  useModalFocusTrap(dialogRef, true, emptyState ? "empty" : failed ? "failed" : phase);
 
   useEffect(() => {
     markTourBench("viewer_mounted");
@@ -150,7 +155,6 @@ function LiveTourViewer({ property, onClose, onFirstSceneDrawn, onReady, standar
   }, []);
 
   // Locked while a room is loading, crossfading or failed, and until the live rooms are confirmed.
-  const failed = loadFailed || fallback === "failed";
   const navigationLocked = transitioning || failed || sceneStatus !== "ready" || !fresh;
   // Neighbors may prefetch only after the intro clears and the confirmed scene accepts input.
   const prefetchNeighborsAllowed = phase === "tour" && !navigationLocked && shownRoomId === currentRoomId;
@@ -193,14 +197,17 @@ function LiveTourViewer({ property, onClose, onFirstSceneDrawn, onReady, standar
 
   // A villa without tour rooms still gets a visible, closable screen: the scroll lock above
   // must never outlive what the guest can see and dismiss.
-  if (roomsReady && !activeRooms.length) {
+  if (emptyState) {
     return createPortal(
       <div
+        ref={dialogRef}
+        tabIndex={-1}
         data-testid="tour-viewer"
         data-scene-status="empty"
         role="dialog"
-        aria-label={property.name}
-        className="fixed inset-0 z-[70] flex flex-col items-center justify-center gap-4 bg-gradient-to-b from-slate-900 to-black px-6 text-center"
+        aria-modal="true"
+        aria-label={tourT("viewerLabel", { propertyName: property.name })}
+        className="fixed inset-0 z-[70] flex flex-col items-center justify-center gap-4 bg-gradient-to-b from-slate-900 to-black px-6 text-center focus:outline-none"
       >
         <p className="font-serif text-3xl font-semibold text-white md:text-4xl">{property.name}</p>
         <p className="max-w-sm text-sm text-white/60">{tourT("unavailable")}</p>
@@ -241,7 +248,12 @@ function LiveTourViewer({ property, onClose, onFirstSceneDrawn, onReady, standar
 
   const viewer = (
     <div
+      ref={dialogRef}
+      tabIndex={-1}
       data-testid="tour-viewer"
+      role="dialog"
+      aria-modal="true"
+      aria-label={tourT("viewerLabel", { propertyName: property.name })}
       // Observable scene state (requested vs. on-screen room) for assistive tech and browser tests.
       data-scene-status={fallback === "failed" ? "failed" : sceneStatus}
       data-tour-renderer={renderer}
@@ -249,12 +261,13 @@ function LiveTourViewer({ property, onClose, onFirstSceneDrawn, onReady, standar
       data-shown-room={shownRoomId ?? ""}
       data-live={fresh ? "confirmed" : "unconfirmed"}
       aria-busy={navigationLocked}
-      className="fixed inset-0 z-[70] bg-black"
+      className="fixed inset-0 z-[70] bg-black focus:outline-none"
       style={{ touchAction: "none" }}
     >
       {/* Keeps the villa identity available to assistive tech once the intro gives way to the tour. */}
       <h2 className="sr-only">{property.name}</h2>
       <div
+        inert={phase !== "tour" || failed}
         className={cn(
           "absolute inset-0 transition-[filter] duration-700",
           phase === "intro" && "pointer-events-none",
@@ -264,7 +277,7 @@ function LiveTourViewer({ property, onClose, onFirstSceneDrawn, onReady, standar
         {canvas}
       </div>
 
-      {phase === "intro" ? (
+      {!failed && phase === "intro" ? (
         <TourIntro
           name={property.name}
           closeLabel={a11y("close")}
@@ -301,7 +314,7 @@ function LiveTourViewer({ property, onClose, onFirstSceneDrawn, onReady, standar
         </div>
       ) : null}
 
-      {phase === "tour" ? (
+      {!failed && phase === "tour" ? (
         <>
           <button
             type="button"
@@ -374,7 +387,7 @@ function LiveTourViewer({ property, onClose, onFirstSceneDrawn, onReady, standar
         </>
       ) : null}
 
-      {phase === "conclusion" ? (
+      {!failed && phase === "conclusion" ? (
         <TourConclusion
           property={property}
           onClose={() => setPhase("tour")}
@@ -382,7 +395,7 @@ function LiveTourViewer({ property, onClose, onFirstSceneDrawn, onReady, standar
         />
       ) : null}
 
-      {phase === "leadCapture" ? (
+      {!failed && phase === "leadCapture" ? (
         <LeadCapture propertySlug={property.id} onClose={() => setPhase("conclusion")} />
       ) : null}
     </div>

@@ -51,6 +51,26 @@ describe('OTA reference rates', () => {
 		expect(rates.find((rate) => rate.platform === 'agoda')).toMatchObject({ nightlyRate: 980040, url: 'https://www.agoda.com/villa' });
 	});
 
+	it('F01: price-only saves keep the latest stored link in the rate and history', async () => {
+		const { t, admin, propertyId } = await setup();
+		await admin.mutation(api.catalog.properties.upsertOtaRate, { propertyId, platform: 'booking_com', nightlyRate: 499000, url: 'https://www.booking.com/a' });
+		// A teammate replaces the link after this form opened; the price-only save must keep theirs.
+		await admin.mutation(api.catalog.properties.upsertOtaRate, { propertyId, platform: 'booking_com', nightlyRate: 499000, url: 'https://www.booking.com/b' });
+		await admin.mutation(api.catalog.properties.upsertOtaRate, { propertyId, platform: 'booking_com', nightlyRate: 529000, urlChange: { kind: 'preserve' } });
+		let [rate] = await admin.query(api.catalog.properties.listOtaRates, { propertyId });
+		expect(rate).toMatchObject({ nightlyRate: 529000, url: 'https://www.booking.com/b' });
+		const history = await t.run((ctx) => ctx.db.query('recordChanges')
+			.withIndex('by_entityType_and_entityId_and_recordedAt', (q) => q.eq('entityType', 'property').eq('entityId', propertyId))
+			.collect());
+		expect(history).toContainEqual(expect.objectContaining({
+			kind: 'ota_rate_updated', after: { platform: 'booking_com', nightlyRate: 529000, url: 'https://www.booking.com/b' }
+		}));
+		await expect(admin.mutation(api.catalog.properties.upsertOtaRate, { propertyId, platform: 'booking_com', nightlyRate: 529000, url: 'https://x.com', urlChange: { kind: 'clear' } })).rejects.toThrow('either');
+		await admin.mutation(api.catalog.properties.upsertOtaRate, { propertyId, platform: 'booking_com', nightlyRate: 529000, urlChange: { kind: 'clear' } });
+		[rate] = await admin.query(api.catalog.properties.listOtaRates, { propertyId });
+		expect(rate.url).toBeUndefined();
+	});
+
 	it('rejects invalid rates and non-HTTPS links', async () => {
 		const { admin, propertyId } = await setup();
 		await expect(admin.mutation(api.catalog.properties.upsertOtaRate, { propertyId, platform: 'expedia', nightlyRate: 0 })).rejects.toThrow('positive');

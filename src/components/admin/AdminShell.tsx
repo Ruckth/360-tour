@@ -13,7 +13,7 @@ import { AdminSidebar } from "@/components/admin/AdminSidebar";
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
 import { adminAccessRedirect, adminNoAccess, adminTillOnly, type StaffAccessView } from "@/components/admin/admin-access";
 import { AdminBranchProvider, useAdminBranch } from "@/components/admin/branch/branch-context";
-import { BranchChooser, BranchRevokedBanner, GateCard, NoAccessCard } from "@/components/admin/branch/BranchScreens";
+import { BranchChooser, BranchReturnBanner, BranchRevokedBanner, GateCard, NoAccessCard } from "@/components/admin/branch/BranchScreens";
 import { HeaderBranchPill } from "@/components/admin/branch/BranchSwitcher";
 import { adminNavItem } from "@/components/admin/admin-routes";
 import { ROLE_LABELS, StaffAccessProvider, useStaffAccess } from "@/components/admin/staff-access";
@@ -262,6 +262,7 @@ function AdminFrameBody({ userEmail, checkoutBackend = convexCheckoutBackend, ch
           ) : null}
         </header>
         <BranchRevokedBanner />
+        <BranchReturnBanner />
         {access.marketingInvitation ? (
           <div className="flex items-center gap-2 px-4 py-2 text-sm">
             <span>You have a Marketing invitation.</span>

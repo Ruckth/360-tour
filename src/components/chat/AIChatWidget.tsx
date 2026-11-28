@@ -128,6 +128,7 @@ function ChatExperienceBody(props: ChatExperienceProps) {
     openChat,
     closeChat,
     restartChat,
+    hasConversation,
     browserGateVisible,
     browserGateUrl,
     browserGateCopyStatus,
@@ -215,6 +216,7 @@ function ChatExperienceBody(props: ChatExperienceProps) {
       onOpen={openChat}
       onClose={closeChat}
       onRestart={restartChat}
+      hasConversation={hasConversation}
     >
       <ChatMessages
         ref={chatMessagesRef}

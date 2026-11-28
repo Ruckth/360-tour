@@ -1,10 +1,12 @@
 "use client";
 
-import { useQuery } from "convex/react";
-import { useRouter, useSelectedLayoutSegment } from "@/platform/navigation";
+import { StaffCalendarFilter } from "./StaffCalendarFilter";
+import { useMutation, useQuery } from "convex/react";
+import { useRouter, useSearchParams, useSelectedLayoutSegment } from "@/platform/navigation";
 import { api } from "convex/_generated/api";
 import type { Doc, Id } from "convex/_generated/dataModel";
-import { canEditTurnaround, canCorrectAppointmentTime, turnaroundMinutes } from "convex/shared/appointmentWindow";
+import { AllDatesResults, NextAppointmentJump, type SearchResult } from "./StaffCalendarLookup";
+import { appointmentRevision, canEditTurnaround, canCorrectAppointmentTime, turnaroundMinutes } from "convex/shared/appointmentWindow";
 import { Ban, CalendarDays, Check, CircleDollarSign, Clock, Coffee, Filter, Play, PlusIcon, Timer, UserCheck, UserX, Users } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { EventCalendar, useEventCalendar } from "@/components/reui/event-calendar/event-calendar";
@@ -31,9 +33,7 @@ import { TurnaroundDialog } from "@/components/admin/TurnaroundDialog";
 import { CALENDAR_TONE_COLORS } from "@/components/admin/status-tones";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button, ButtonLink } from "@/components/ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Spinner } from "@/components/ui/spinner";
 import {
   breakFromDrag,
@@ -45,6 +45,7 @@ import {
 } from "@/lib/schedule-changes";
 import {
   appointmentGuestLabel,
+  errorText,
   APPOINTMENT_STATUSES,
   DAY_MS,
   RESORT_ZONE,
@@ -53,15 +54,18 @@ import {
   displayStatus,
   resortIsoDate,
   resortMidnight,
+  isOpenAppointmentStartingIn,
   useNow,
   type AppointmentStatus,
 } from "@/lib/staff-bookings";
-import { STAFF_CALENDAR_FORMATS, staffTime } from "@/lib/staff-time";
+import { STAFF_CALENDAR_FORMATS, staffDate, staffTime } from "@/lib/staff-time";
 import { UNSAVED_CHANGES_MESSAGE, hasUnsavedChanges } from "@/lib/react/use-unsaved-changes";
 import { appointmentServiceLabel } from "@/lib/service-options";
 import { useAdminBranch } from "@/components/admin/branch/branch-context";
 import { useStoredState } from "@/lib/use-stored-state";
 import { cn } from "@/lib/utils";
+import { parseStaffCalendarLink, staffRosterHref } from "@/lib/staff-links";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 type Appointment = Doc<"appointments">;
 type EventData =
@@ -69,7 +73,7 @@ type EventData =
   /** The appointment's turnaround; it moves with the appointment and only its end resizes. */
   | { kind: "turnaround"; appointment: Appointment }
   | { kind: "block"; block: ScheduleData["blocks"][number] }
-  | { kind: "off" };
+  | { kind: "off"; staffId: Id<"staff">; start: number; end: number };
 /** The one change waiting for confirmation; `ghostId` is the calendar event drawn at the proposed place. */
 type Proposal = { ghostId: string; ghost?: Ghost } & (
   | { kind: "reschedule"; appointment: Appointment; start: number; staffId: Id<"staff"> }
@@ -108,6 +112,11 @@ function useStoredSet(key: string): [Set<string>, (next: Set<string>) => void] {
   return [value, update];
 }
 
+/** The staff filter trigger, e.g. "4 of 5 staff · 3 hidden appts": hiding people never hides their bookings silently. */
+export function staffFilterLabel(visible: number, total: number, hiddenAppointments: number) {
+  return `${visible} of ${total} staff${hiddenAppointments ? ` · ${hiddenAppointments} hidden ${hiddenAppointments === 1 ? "appt" : "appts"}` : ""}`;
+}
+
 const TABS = ADMIN_STAFF_TABS.map((tab) => [tab, ADMIN_STAFF_TAB_LABELS[tab]] as const);
 
 /**
@@ -125,21 +134,29 @@ export function AdminStaffTabs({ children }: { children: ReactNode }) {
     const target = (index + TABS.length) % TABS.length;
     const key = TABS[target][0];
     if (key === tab) return;
-    if (
-      hasUnsavedChanges() &&
-      !(await confirm({ title: UNSAVED_CHANGES_MESSAGE, confirmLabel: "Discard", cancelLabel: "Keep editing", destructive: true }))
-    ) {
-      return;
+    if (hasUnsavedChanges()) {
+      const discard = await confirm({
+        title: UNSAVED_CHANGES_MESSAGE,
+        confirmLabel: "Discard",
+        cancelLabel: "Keep editing",
+        destructive: true,
+        // The programmatic dialog has no trigger. Restore focus after its trap closes.
+        returnFocusTo: () => document.getElementById(`staff-tab-${key}`),
+      });
+      if (!discard) return;
+    } else {
+      tabRefs.current[target]?.focus();
     }
-    tabRefs.current[target]?.focus();
     router.push(adminStaffTabPath(key));
   }
 
+  // Manual activation: arrows, Home and End only move focus; Enter or Space (the button's click) opens the
+  // focused route through openTab, which keeps the unsaved-draft confirmation.
   function onTabKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number) {
     const moves: Record<string, number> = { ArrowRight: index + 1, ArrowLeft: index - 1, Home: 0, End: TABS.length - 1 };
     if (!(event.key in moves)) return;
     event.preventDefault();
-    void openTab(moves[event.key]);
+    tabRefs.current[(moves[event.key] + TABS.length) % TABS.length]?.focus();
   }
 
   return (
@@ -194,15 +211,22 @@ export function AdminStaffBookingsView({ tab }: { tab: AdminStaffTab }) {
 }
 
 function StaffCalendar() {
+  const router = useRouter();
   const branchId = useAdminBranch().current?.id;
-  const [range, setRange] = useState(todayRange);
+  // A deep link (?date=&staff=&appointment=) opens that day, shows that person and the appointment once on arrival.
+  const searchParams = useSearchParams();
+  const link = parseStaffCalendarLink(searchParams);
+  const [range, setRange] = useState(() => link.date ? { from: resortMidnight(link.date), to: resortMidnight(link.date) + DAY_MS } : todayRange());
+  const [dismissedScope, setDismissedScope] = useState<string>();
+  const scopedDay = link.openOnly && link.date !== dismissedScope ? link.date : undefined;
+  const openDayStart = scopedDay ? resortMidnight(scopedDay) : undefined;
   const [search, setSearch] = useState("");
   // This device remembers the view and filters (rule 5); the date always starts today.
   const [storedView, setView] = useStoredState("admin.staff.view", "auto");
   const phone = useIsMobile(640);
-  const view: CalendarView = (STAFF_VIEWS as readonly string[]).includes(storedView) ? (storedView as CalendarView) : phone ? "agenda" : "resource";
-  const [date, setDate] = useState(() => new Date());
-  const [hiddenStaff, setHiddenStaff] = useStoredSet(branchId ? `admin.staff.hiddenStaff:${branchId}` : "admin.staff.hiddenStaff");
+  const view: CalendarView = scopedDay ? "agenda" : (STAFF_VIEWS as readonly string[]).includes(storedView) ? (storedView as CalendarView) : phone ? "agenda" : "resource";
+  const [date, setDate] = useState(() => (link.date ? new Date(resortMidnight(link.date)) : new Date()));
+  const [savedHiddenStaff, setHiddenStaff] = useStoredSet(branchId ? `admin.staff.hiddenStaff:${branchId}` : "admin.staff.hiddenStaff");
   const [hiddenServices, setHiddenServices] = useStoredSet(branchId ? `admin.staff.hiddenServices:${branchId}` : "admin.staff.hiddenServices");
   const [hiddenStatuses, setHiddenStatuses] = useStoredSet("admin.staff.hiddenStatuses");
   // Cancelled appointments are kept but stay out of the working grid unless asked for.
@@ -211,12 +235,48 @@ function StaffCalendar() {
   const setShowCancelled = (next: boolean) => setStoredCancelled(next ? "yes" : "no");
   const [proposal, setProposal] = useState<Proposal | null>(null);
   const [selectedId, setSelectedId] = useState<Id<"appointments"> | null>(null);
+  // D14: an appointment opened from "Search all dates" stays visible through the current filters and search until its sheet closes.
+  const [revealed, setRevealed] = useState<SearchResult | null>(null);
+  const [allDatesQuery, setAllDatesQuery] = useState<string | null>(null);
+  const [offShift, setOffShift] = useState<{ staffId: Id<"staff">; start: number; end: number } | null>(null);
   const [draft, setDraft] = useState<AppointmentDraft | null>(null);
   const [editingTimeOff, setEditingTimeOff] = useState<Doc<"staffTimeOff"> | null>(null);
   const [error, setError] = useState("");
   const now = useNow();
 
-  const data = useQuery(api.services.admin.listSchedule, range);
+  const [dismissedLink, setDismissedLink] = useState<string | undefined>();
+  const linked = useQuery(api.services.admin.resolveCalendarAppointment,
+    link.appointmentId && link.appointmentId !== dismissedLink ? { appointmentId: link.appointmentId } : "skip");
+  const linkedStaffId = linked?.staffId ?? link.staffId;
+  const hiddenStaff = useMemo(() => {
+    const visible = new Set(savedHiddenStaff);
+    if (scopedDay) visible.clear();
+    if (linkedStaffId) visible.delete(linkedStaffId);
+    if (revealed) visible.delete(revealed.staffId);
+    return visible;
+  }, [savedHiddenStaff, linkedStaffId, revealed, scopedDay]);
+  const targetDay = linked ? resortIsoDate(linked.start) : link.date;
+  const linkKey = searchParams.toString();
+  const lastLink = useRef(linkKey);
+  const appliedDay = useRef(link.date);
+  useEffect(() => {
+    if (lastLink.current !== linkKey) {
+      lastLink.current = linkKey;
+      appliedDay.current = undefined;
+      setDismissedLink(undefined);
+      setDismissedScope(undefined);
+      setEditingTimeOff(null);
+      setSelectedId(null);
+    }
+    if (targetDay && appliedDay.current !== targetDay) {
+      appliedDay.current = targetDay;
+      const from = resortMidnight(targetDay);
+      setDate(new Date(from));
+      setRange({ from, to: from + DAY_MS });
+    }
+  }, [linkKey, targetDay]);
+
+  const data = useQuery(api.services.admin.listSchedule, openDayStart === undefined ? range : { from: openDayStart, to: openDayStart + DAY_MS });
 
   const staffById = useMemo(() => new Map((data?.staff ?? []).map((s) => [s._id as string, s])), [data?.staff]);
   const serviceById = useMemo(() => new Map((data?.services ?? []).map((s) => [s._id as string, s])), [data?.services]);
@@ -227,21 +287,37 @@ function StaffCalendar() {
     [data?.staff, hiddenStaff],
   );
 
+  function closeAppointment() {
+    setSelectedId(null);
+    setRevealed(null);
+    if (!link.appointmentId) return;
+    setDismissedLink(link.appointmentId);
+    const remaining = new URLSearchParams(searchParams);
+    remaining.delete("appointment");
+    remaining.delete("date");
+    remaining.delete("staff");
+    const query = remaining.toString();
+    router.replace(query ? `/admin/staff/calendar?${query}` : "/admin/staff/calendar", { scroll: false });
+  }
+
   const appointments = useMemo(
     () =>
       (data?.appointments ?? []).filter(
-        (a) =>
-          !hiddenStaff.has(a.staffId) &&
-          (!search.trim() || `${appointmentGuestLabel(a)} ${serviceById.get(a.serviceId)?.name ?? ""} ${staffById.get(a.staffId)?.name ?? ""}`.toLowerCase().includes(search.trim().toLowerCase())) &&
-          !hiddenServices.has(a.serviceId) &&
-          !hiddenStatuses.has(a.status) &&
-          (showCancelled || a.status !== "cancelled"),
+        (a) => {
+          if (openDayStart !== undefined) return isOpenAppointmentStartingIn(a, openDayStart, openDayStart + DAY_MS);
+          if (a._id === revealed?._id) return true;
+          return !hiddenStaff.has(a.staffId) &&
+            (!search.trim() || `${appointmentGuestLabel(a)} ${serviceById.get(a.serviceId)?.name ?? ""} ${staffById.get(a.staffId)?.name ?? ""}`.toLowerCase().includes(search.trim().toLowerCase())) &&
+            !hiddenServices.has(a.serviceId) &&
+            !hiddenStatuses.has(a.status) &&
+            (showCancelled || a.status !== "cancelled");
+        },
       ),
-    [data?.appointments, hiddenStaff, hiddenServices, hiddenStatuses, showCancelled, search, serviceById, staffById],
+    [data?.appointments, openDayStart, revealed, hiddenStaff, hiddenServices, hiddenStatuses, showCancelled, search, serviceById, staffById],
   );
 
   const appointmentsInRange = appointments.filter(a => a.start < range.to && a.end > range.from);
-  const noSearchMatches = data !== undefined && search.trim() !== "" && appointmentsInRange.length === 0;
+  const noSearchMatches = !scopedDay && data !== undefined && search.trim() !== "" && appointmentsInRange.length === 0;
   const visibleStarts = appointmentsInRange.filter(a => a.status !== "cancelled").map(a => Number(staffTime(a.start).split(":")[0]));
   const firstAppointmentHour = visibleStarts.length ? Math.min(...visibleStarts) : 8;
   // Scroll to the earliest appointment once per range, when data first arrives — never again while staff
@@ -254,10 +330,19 @@ function StaffCalendar() {
   const countByStaff = useMemo(() => {
     const counts = new Map<string, number>();
     for (const a of appointments) {
-      if (a.status !== "cancelled") counts.set(a.staffId, (counts.get(a.staffId) ?? 0) + 1);
+      if (a.status !== "cancelled" && a.status !== "no_show") counts.set(a.staffId, (counts.get(a.staffId) ?? 0) + 1);
     }
     return counts;
   }, [appointments]);
+  // Appointment coverage per person in the loaded range, independent of the staff filter, so hiding someone never hides their bookings silently.
+  const allCountByStaff = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const a of data?.appointments ?? []) {
+      if (a.status !== "cancelled" && a.status !== "no_show" && a.start < range.to && a.end > range.from) counts.set(a.staffId, (counts.get(a.staffId) ?? 0) + 1);
+    }
+    return counts;
+  }, [data?.appointments, range]);
+  const hiddenAppointmentCount = [...hiddenStaff].reduce((sum, id) => sum + (allCountByStaff.get(id) ?? 0), 0);
 
   const resources = useMemo<EventCalendarResource[]>(
     () => visibleStaff.map((s) => ({ id: s._id, title: s.name, color: s.color })),
@@ -285,6 +370,7 @@ function StaffCalendar() {
         data: { kind: "appointment", appointment },
       };
     });
+    if (scopedDay) return appointmentEvents;
     // Every staff member's daily breaks side by side are noise in the week view.
     const blockEvents = data.blocks
       .filter((block) => !hiddenStaff.has(block.staffId) && (view === "resource" || block.kind === "time_off"))
@@ -321,7 +407,7 @@ function StaffCalendar() {
             resourceId: person._id,
             color: BLOCK_COLOR,
             readOnly: true,
-            data: { kind: "off" },
+            data: { kind: "off", staffId: person._id, start: gap.start, end: gap.end },
           }));
         })
       : [];
@@ -351,7 +437,7 @@ function StaffCalendar() {
           })
       : [];
     return [...offEvents, ...blockEvents, ...turnaroundEvents, ...appointmentEvents];
-  }, [data, appointments, proposal, serviceById, staffById, hiddenStaff, now, view, visibleStaff, range]);
+  }, [data, appointments, proposal, serviceById, staffById, hiddenStaff, now, view, visibleStaff, range, scopedDay]);
 
   const renderEvent = useCallback(
     ({ occurrence, view: currentView }: { occurrence: { event: CalendarEvent<EventData> }; view: CalendarView }) => {
@@ -393,7 +479,7 @@ function StaffCalendar() {
             {!appointment.guestName ? <span className="font-mono text-xs text-muted-foreground">Ref {appointment.confirmationCode.slice(-6)}</span> : null}
             <span className="text-xs text-muted-foreground">{staffTime(occurrence.event.start.getTime())}–{staffTime(occurrence.event.end.getTime())} · {appointmentServiceLabel(service, appointment)}{staffName ? ` · ${staffName}` : ""}</span>
           </span>
-          <span className="grid shrink-0 justify-items-end gap-1"><StatusBadge {...appointmentStatus(status)} /></span>
+          <span className="grid shrink-0 justify-items-end gap-1"><StatusBadge {...appointmentStatus(status)} /><InlineNextStatus appointment={appointment} /></span>
         </span>
       );
       return (
@@ -410,6 +496,7 @@ function StaffCalendar() {
             {staffTime(occurrence.event.start.getTime())} · {appointmentServiceLabel(service, appointment)}
             {staffName ? ` · ${staffName}` : ""}
           </span>
+          {occurrence.event.end.getTime() - occurrence.event.start.getTime() >= 60 * 60_000 ? <InlineNextStatus appointment={appointment} className="mt-auto self-start" /> : null}
         </span>
       );
     },
@@ -469,7 +556,7 @@ function StaffCalendar() {
     setProposal(null);
   }
 
-  const selected = data?.appointments.find((a) => a._id === selectedId) ?? null;
+  const selected = data?.appointments.find((a) => a._id === (selectedId ?? linked?.id)) ?? null;
   const filterCount = hiddenServices.size + hiddenStatuses.size;
   const proposedAppointment = proposal && proposal.kind !== "break"
     ? proposal.appointment
@@ -477,16 +564,28 @@ function StaffCalendar() {
 
   return (
     <>
+      {link.appointmentId && linked === null && (
+        <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 text-sm">
+          <p role="status">This linked appointment is no longer available. You can continue in the calendar or return to Therapists.</p>
+          <Button size="sm" variant="outline" onClick={closeAppointment}>Dismiss appointment link</Button>
+        </div>
+      )}
+      {scopedDay && (
+        <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 text-sm">
+          <p role="status">Open appointments · {staffDate(resortMidnight(scopedDay))}{data ? ` · ${appointments.length}` : ""}</p>
+          <Button size="sm" variant="outline" onClick={() => setDismissedScope(scopedDay)}>Show full calendar</Button>
+        </div>
+      )}
       <Card className="flex min-h-0 flex-1 flex-col gap-0 overflow-hidden py-0 [&_*]:border-border">
         <EventCalendar<EventData>
           events={events}
           view={view}
-          onViewChange={setView}
+          onViewChange={(next) => { setDismissedScope(scopedDay); setView(next); }}
           date={date}
-          onDateChange={setDate}
+          onDateChange={(next) => { if (scopedDay && resortIsoDate(next.getTime()) !== scopedDay) setDismissedScope(scopedDay); setDate(next); }}
           views={[...STAFF_VIEWS]}
           // listSchedule serves at most 14 days; the list defaults to 30.
-          agendaDayCount={7}
+          agendaDayCount={scopedDay ? 1 : 7}
           resources={resources}
           timeZone={RESORT_ZONE}
           dayStartHour={6}
@@ -500,11 +599,12 @@ function StaffCalendar() {
           renderEvent={renderEvent}
           renderAgendaEvent={renderEvent}
           renderResourceHeader={renderResourceHeader}
-          renderNoEvents={() => <div className="grid justify-items-center gap-3"><p className="text-sm text-muted-foreground">No appointments.</p><Button disabled={!data || activeServices.length === 0} onClick={() => setDraft({ date: resortIsoDate(range.from) })}>New appointment</Button></div>}
+          renderNoEvents={() => <div className="grid justify-items-center gap-3"><p className="text-sm text-muted-foreground">No appointments.</p>{data && !scopedDay && !search.trim() ? <NextAppointmentJump key={`${view}:${date.getTime()}`} from={range.to} filters={{ hiddenStaffIds: [...hiddenStaff] as Id<"staff">[], hiddenServiceIds: [...hiddenServices] as Id<"services">[], hiddenStatuses: [...hiddenStatuses], includeCancelled: showCancelled }} filtered={hiddenStaff.size + filterCount > 0} onOpen={(start) => setDate(new Date(start))} /> : null}<Button disabled={!data || activeServices.length === 0} onClick={() => setDraft({ date: resortIsoDate(range.from) })}>New appointment</Button></div>}
           canDropEvent={canDropEvent}
           onEventClick={(occurrence) => {
             const eventData = occurrence.event.data;
             if (eventData?.kind === "appointment") setSelectedId(eventData.appointment._id);
+            if (eventData?.kind === "off") setOffShift({ staffId: eventData.staffId, start: eventData.start, end: eventData.end });
             if (eventData?.kind === "turnaround" && canEditTurnaround(eventData.appointment)) {
               setProposal({ kind: "turnaround", appointment: eventData.appointment, ghostId: occurrence.event.id });
             }
@@ -564,7 +664,7 @@ function StaffCalendar() {
           scrollMode={view === "agenda" && phone ? "page" : "contained"}
           className={view === "agenda" && phone ? "w-full" : "h-[calc(100dvh-10rem)] min-h-96 w-full md:h-auto md:min-h-0 md:flex-1"}
         >
-          <AdminCalendarHeader search={<AdminCalendarSearch inline label="Search appointments" placeholder="Guest, service or staff" value={search} onChange={setSearch} />} primaryAction={<DisabledReason reason={data && activeServices.length === 0 && "Add a service first: appointments are for a service."}>
+          <AdminCalendarHeader search={scopedDay ? undefined : <AdminCalendarSearch inline label="Search appointments" placeholder="Guest, service or staff" value={search} onChange={setSearch} />} primaryAction={<DisabledReason reason={data && activeServices.length === 0 && "Add a service first: appointments are for a service."}>
                 <Button
                   size="sm"
                   aria-label="New appointment"
@@ -579,43 +679,77 @@ function StaffCalendar() {
               <CalendarDays aria-hidden className="size-3.5" />
               {bookedCount} {bookedCount === 1 ? "appointment" : "appointments"}
             </span>
-            <CheckList
-              icon={<Users aria-hidden className="size-4" />}
-              label={`${visibleStaff.length} of ${data?.staff.length ?? 0} staff`}
-              groups={[
-                {
-                  title: "Staff",
-                  items: (data?.staff ?? []).map((s) => ({ id: s._id, label: s.name, detail: s.role })),
-                  hidden: hiddenStaff,
-                  onChange: setHiddenStaff,
-                },
-              ]}
-            />
-            <CheckList
-              icon={<Filter aria-hidden className="size-4" />}
-              label="Filters"
-              count={filterCount}
-              extra={<label className="flex min-h-11 items-center gap-2 border-t border-border px-4 text-sm"><input type="checkbox" checked={showCancelled} onChange={e => setShowCancelled(e.target.checked)} className="size-4 accent-foreground" />Show cancelled</label>}
-              groups={[
-                {
-                  title: "Services",
-                  items: (data?.services ?? []).map((s) => ({ id: s._id, label: s.name })),
-                  hidden: hiddenServices,
-                  onChange: setHiddenServices,
-                },
-                {
-                  title: "Status",
-                  items: STATUS_FILTERS.map((status) => ({ id: status, label: appointmentStatus(status).label })),
-                  hidden: hiddenStatuses,
-                  onChange: setHiddenStatuses,
-                },
-              ]}
-            />
+            {!scopedDay && (
+              <>
+                <StaffCalendarFilter
+                  icon={<Users aria-hidden className="size-4" />}
+                  label={staffFilterLabel(visibleStaff.length, data?.staff.length ?? 0, hiddenAppointmentCount)}
+                  groups={[
+                    {
+                      title: "Staff",
+                      items: (data?.staff ?? []).map((s) => ({ id: s._id, label: `${s.name} · ${allCountByStaff.get(s._id) ?? 0}`, detail: s.role })),
+                      hidden: savedHiddenStaff,
+                      onChange: setHiddenStaff,
+                    },
+                  ]}
+                />
+                <StaffCalendarFilter
+                  icon={<Filter aria-hidden className="size-4" />}
+                  label="Filters"
+                  count={filterCount}
+                  extra={<label className="flex min-h-11 items-center gap-2 border-t border-border px-4 text-sm"><input type="checkbox" checked={showCancelled} onChange={e => setShowCancelled(e.target.checked)} className="size-4 accent-foreground" />Show cancelled</label>}
+                  groups={[
+                    {
+                      title: "Services",
+                      items: (data?.services ?? []).map((s) => ({ id: s._id, label: s.name })),
+                      hidden: hiddenServices,
+                      onChange: setHiddenServices,
+                    },
+                    {
+                      title: "Status",
+                      items: STATUS_FILTERS.map((status) => ({ id: status, label: appointmentStatus(status).label })),
+                      hidden: hiddenStatuses,
+                      onChange: setHiddenStatuses,
+                    },
+                  ]}
+                />
+              </>
+            )}
             {data === undefined ? <Spinner label="Loading appointments" /> : null}
           </AdminCalendarHeader>
           <p role="status" className="border-b border-border px-4 py-2 text-sm text-muted-foreground empty:sr-only">
-            {noSearchMatches ? "No matching appointments in this date range." : null}
+            {!scopedDay && search.trim() ? (
+              <>
+                {noSearchMatches ? "No matching appointments" : "Searching"} in {scopeLabel(range)}.{" "}
+                {search.trim().length >= 2 ? (
+                  <button type="button" className="font-medium text-foreground underline underline-offset-2" onClick={() => setAllDatesQuery(search.trim())}>
+                    Search all dates
+                  </button>
+                ) : null}
+              </>
+            ) : null}
           </p>
+          {revealed && data && revealed.start < range.to && revealed.end > range.from ? (
+            <p role="status" className="border-b border-border px-4 py-2 text-sm">
+              {data.appointments.some((a) => a._id === revealed._id)
+                ? "Showing this appointment even though your filters or search would hide it."
+                : "That appointment is no longer on the calendar. It may have been moved or removed; search again."}
+            </p>
+          ) : null}
+          {allDatesQuery ? (
+            <AllDatesResults
+              query={allDatesQuery}
+              staffById={staffById}
+              serviceById={serviceById}
+              onOpen={(result) => {
+                setAllDatesQuery(null);
+                setRevealed(result);
+                setDate(new Date(result.start));
+                setSelectedId(result._id);
+              }}
+              onClose={() => setAllDatesQuery(null)}
+            />
+          ) : null}
           {data && (data.staff.length === 0 || activeServices.length === 0) ? (
             <div className="flex flex-wrap items-center gap-3 border-b border-border bg-muted/40 px-4 py-3 text-sm">
               <p className="min-w-0 flex-1 text-muted-foreground">
@@ -655,6 +789,7 @@ function StaffCalendar() {
         </div>
       </Card>
 
+      {linked === null ? <p role="alert" className="text-sm text-destructive">This appointment is unavailable.</p> : null}
       <AppointmentSheet
         key={selected?._id ?? "closed"}
         appointment={selected}
@@ -663,10 +798,10 @@ function StaffCalendar() {
         serviceById={serviceById}
         onBookAgain={(appointment) => {
           if (activeServices.length === 0) return;
-          setSelectedId(null);
+          closeAppointment();
           setDraft({ date: resortIsoDate(Math.max(appointment.start, Date.now())), staffId: appointment.staffId, rebook: appointment });
         }}
-        onClose={() => setSelectedId(null)}
+        onClose={closeAppointment}
       />
       {proposal?.kind === "reschedule" && proposedAppointment ? (
         <RescheduleDialog
@@ -694,6 +829,22 @@ function StaffCalendar() {
           onClose={dismissProposal}
         />
       ) : null}
+      {offShift ? (
+        <Dialog open onOpenChange={(open) => !open && setOffShift(null)}>
+          <DialogContent className="sm:max-w-sm">
+            <DialogHeader>
+              <DialogTitle>{staffById.get(offShift.staffId)?.name ?? "Staff"} is not working</DialogTitle>
+              <DialogDescription>
+                {staffDate(offShift.start, { weekday: true })} · {staffTime(offShift.start)}–{offShift.end - offShift.start >= DAY_MS ? "end of day" : staffTime(offShift.end)} is outside their rostered shift, so it can&apos;t be booked here.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="gap-2">
+              <Button variant="outline" onClick={() => setOffShift(null)}>Close</Button>
+              <ButtonLink href={staffRosterHref({ date: resortIsoDate(offShift.start), staffId: offShift.staffId })}>Open roster week</ButtonLink>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      ) : null}
       {editingTimeOff ? (
         <TimeOffDialog
           key={editingTimeOff._id}
@@ -717,6 +868,57 @@ function StaffCalendar() {
         />
       ) : null}
     </>
+  );
+}
+
+function scopeLabel(range: { from: number; to: number }) {
+  const last = range.to - 1;
+  return resortIsoDate(range.from) === resortIsoDate(last)
+    ? staffDate(range.from, { weekday: true })
+    : `${staffDate(range.from, { weekday: true })} – ${staffDate(last, { weekday: true })}`;
+}
+
+/** The first forward step the details sheet would offer, when it is an operational one; completion stays in the sheet with its payment cues. */
+export function inlineNextStatus(appointment: Pick<Appointment, "status">): "arrived" | "in_service" | null {
+  return appointment.status === "booked" ? "arrived" : appointment.status === "arrived" ? "in_service" : null;
+}
+const INLINE_LABELS = { arrived: "Mark arrived", in_service: "Start service" } as const;
+
+/** D16: one genuine next-status action on the calendar chip, through the same mutation and revision check as the sheet. */
+export function InlineNextStatus({ appointment, className }: { appointment: Appointment; className?: string }) {
+  const updateStatus = useMutation(api.services.commands.updateAppointmentStatus.updateAppointmentStatus);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState("");
+  const next = inlineNextStatus(appointment);
+  if (!next) return null;
+  // Chips open the sheet on click and start drags on pointer down; this control does neither.
+  const stop = (event: { stopPropagation: () => void }) => event.stopPropagation();
+  return (
+    <span className={cn("inline-flex items-center gap-1", className)} onPointerDown={stop} onClick={stop} onKeyDown={stop}>
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        className="h-7 px-2 text-xs"
+        disabled={pending}
+        aria-label={`${INLINE_LABELS[next]}: ${appointmentGuestLabel(appointment)}`}
+        onClick={async () => {
+          setPending(true);
+          setError("");
+          try {
+            await updateStatus({ appointmentId: appointment._id, status: next, expectedRevision: appointmentRevision(appointment) });
+          } catch (err) {
+            setError(errorText(err, "Could not update the appointment."));
+          } finally {
+            setPending(false);
+          }
+        }}
+      >
+        {pending ? <Spinner className="text-current" /> : null}
+        {INLINE_LABELS[next]}
+      </Button>
+      {error ? <span role="alert" className="text-xs text-destructive">{error}</span> : null}
+    </span>
   );
 }
 
@@ -748,65 +950,4 @@ function OffscreenAppointmentCue({ resourceId, appointments }: { resourceId: str
   }, [resourceId, appointments]);
   const calendar = useEventCalendar();
   return <span ref={anchor} className="absolute right-0 top-1/2 -translate-y-1/2">{cue ? <Button size="sm" variant="ghost" className="min-h-11 px-2 text-[13px] pointer-coarse:text-sm" aria-label={`Show appointment at ${staffTime(cue.start)}`} onClick={() => calendar.api.scrollToTime(new Date(cue.start))}>{cue.direction === "↓" ? "Next" : "Earlier"} {staffTime(cue.start)} {cue.direction}</Button> : null}</span>;
-}
-
-type CheckGroup = {
-  title: string;
-  items: Array<{ id: string; label: string; detail?: string }>;
-  hidden: Set<string>;
-  onChange: (next: Set<string>) => void;
-};
-
-function CheckList({ icon, label, count, groups, extra }: { icon: ReactNode; label: string; count?: number; groups: CheckGroup[]; extra?: ReactNode }) {
-  return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <Button size="sm" variant="outline">
-          {icon}
-          {label}
-          {count ? (
-            <Badge variant="secondary" className="ms-0.5 h-5 min-w-5 justify-center rounded-full px-1.5">
-              {count}
-            </Badge>
-          ) : null}
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent align="end" className="w-64 p-0">
-        {extra}
-        {groups.map((group) => (
-          <div key={group.title} role="group" aria-label={group.title} className="border-b border-border p-2 last:border-b-0">
-            <div className="flex items-center justify-between px-2 pb-1">
-              <span aria-hidden className="admin-eyebrow">
-                {group.title}
-              </span>
-              <button
-                type="button"
-                className="min-h-11 rounded-sm px-2 text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                onClick={() => group.onChange(new Set())}
-              >
-                Show all
-              </button>
-            </div>
-            {group.items.map((item) => (
-              <label key={item.id} className="flex min-h-11 cursor-pointer items-center gap-2 rounded-md focus-within:ring-2 focus-within:ring-ring px-2 py-1.5 text-sm hover:bg-muted">
-                <input
-                  type="checkbox"
-                  className="size-4 accent-foreground"
-                  checked={!group.hidden.has(item.id)}
-                  onChange={(event) => {
-                    const next = new Set(group.hidden);
-                    if (event.target.checked) next.delete(item.id);
-                    else next.add(item.id);
-                    group.onChange(next);
-                  }}
-                />
-                <span className="min-w-0 flex-1 truncate">{item.label}</span>
-                {item.detail ? <span className="truncate text-xs text-muted-foreground">{item.detail}</span> : null}
-              </label>
-            ))}
-          </div>
-        ))}
-      </PopoverContent>
-    </Popover>
-  );
 }

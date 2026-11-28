@@ -4,12 +4,12 @@ import type { Id } from 'convex/_generated/dataModel';
 import { getStoredGuestToken } from '@/components/chat/session/credentials';
 import { useLocale, useTranslations } from '@/platform/intl';
 import { usePathname, useRouter, useSearchParams } from '@/platform/navigation';
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type SetStateAction } from 'react';
 import { useConvex } from 'convex/react';
 import { captureForBooking } from '@/lib/marketing/capture';
 import { api } from 'convex/_generated/api';
 import { useChatPageContext } from './ChatContext';
-import type { ContactForm } from './ChatComposer';
+import { emptyContactForm, selectedContactHandle, type ContactForm } from './ChatComposer';
 import type { ChatSuggestion } from './chat-types';
 
 import { getChatActionCard, resolveChatActionHint } from '@/lib/chat/action-card';
@@ -51,8 +51,12 @@ export function useChatSession(props: ChatExperienceProps) {
   const [input, setInput] = useState(initialDraft), [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [villas, setVillas] = useState<ChatVillaRef[]>();
-  const [contactForm, setContactForm] = useState<ContactForm>({ email: '', preferredApp: 'whatsapp', contactHandle: '' });
+  const [contactForm, setContactFormState] = useState<ContactForm>(emptyContactForm);
   const [contactStatus, setContactStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  // Editing after a save or failure clears the stale status; an in-flight save keeps its own.
+  const setContactForm = useCallback((update: SetStateAction<ContactForm>) => {
+    setContactFormState(update); setContactStatus(status => status === 'saving' ? status : 'idle');
+  }, []);
   const pending = useRef<Draft | null>(null);
   const activeSubmission = useRef<AbortController | null>(null);
   const currentPath = getPathWithSearch(pathname, searchParams.toString());
@@ -130,11 +134,12 @@ export function useChatSession(props: ChatExperienceProps) {
   }, [messages, isTranscriptNearEnd, scrollTranscriptToEnd]);
   async function saveContact(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!contactForm.email.trim() && !contactForm.contactHandle.trim()) return;
+    const contactHandle = selectedContactHandle(contactForm).trim();
+    if (!contactForm.email.trim() && !contactHandle) return;
     setContactStatus('saving');
     try {
       const credentials = await guest.ensureSession(); if (!credentials) throw new Error('No session');
-      await convex.mutation(api.messaging.chat.identifyVisitor, { sessionId: credentials.sessionId, email: contactForm.email || undefined, phone: contactForm.preferredApp === 'whatsapp' ? contactForm.contactHandle || undefined : undefined, contactApp: contactForm.preferredApp, contactHandle: contactForm.contactHandle || undefined, guestToken: getStoredGuestToken(credentials.sessionId)! });
+      await convex.mutation(api.messaging.chat.identifyVisitor, { sessionId: credentials.sessionId, email: contactForm.email || undefined, phone: contactForm.preferredApp === 'whatsapp' ? contactHandle || undefined : undefined, contactApp: contactForm.preferredApp, contactHandle: contactHandle || undefined, guestToken: getStoredGuestToken(credentials.sessionId)! });
       if (activeSession.current === credentials.sessionId) setContactStatus('saved');
     } catch { setContactStatus('error'); }
   }
@@ -169,6 +174,8 @@ export function useChatSession(props: ChatExperienceProps) {
   return { ...props, ...viewport, ...handoff, mode, open, hydrated, mounted, title: activePropertyName ? t('propertyTitle', { propertyName: activePropertyName }) : t('defaultTitle'),
     chatHref: buildChatHref({ locale, pathname, propertySlug: activePropertySlug, search: searchParams.toString() }),
     hideFloatingTriggerOnMobileRoom: stripLocalePrefix(pathname).startsWith('/rooms/'), openChat, closeChat, restartChat,
+    // Restart asks first whenever it would discard a transcript, a pending reply or an unsent draft.
+    hasConversation: messages.length > 0 || isTyping || input.trim().length > 0,
     messages, messageActionCards, latestAssistantIndex, canShowMessageSuggestions: !isTyping && latestAssistantIndex >= 0 && latestAssistantIndex === messages.length - 1,
     visibleSuggestions, sendMessage, chatInputDisabled, isTyping, hasLatestActionCard: !!latestActionCard && latestActionCard.type !== 'none',
     contactForm, setContactForm, contactStatus, saveContact, input, setInput, sendError,

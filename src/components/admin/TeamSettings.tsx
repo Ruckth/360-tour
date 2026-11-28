@@ -34,6 +34,7 @@ import { NumberField } from "./marketing/MarketingBits";
 import { useAdminBranch } from "./branch/branch-context";
 import { BranchMultiSelect, type SelectableBranch } from "./branch/BranchMultiSelect";
 import { BranchPill } from "./branch/branch-pills";
+import { countPeople, deskRoleReduction, matchesPeopleFilter, type PeopleFilter, type PeopleRole } from "./team-people";
 
 type Person = FunctionReturnType<typeof api.auth.staffAccess.listPeople>[number];
 function grantVersion<T extends "staffGrants" | "marketingGrants">(grant: { id: Id<T>; revision: number } | null) {
@@ -232,6 +233,7 @@ function PeoplePanel({
   const setMarketingGrant = useMutation(api.marketing.access.setGrant);
   const renewMarketingInvitation = useMutation(api.marketing.access.renewInvitation);
   const confirm = useConfirm();
+  const [marketingRetries, setMarketingRetries] = useState<Record<string, MarketingRole | undefined>>({});
   const [inviting, setInviting] = useState(false);
   const peopleList = useRef<HTMLUListElement>(null);
   const inviteButton = useRef<HTMLButtonElement>(null);
@@ -247,9 +249,28 @@ function PeoplePanel({
   }
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<{ text: string; error?: boolean; email: string } | null>(null);
+  const filtersId = useId();
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [peopleSearch, setPeopleSearch] = useState("");
+  const [peopleFilter, setPeopleFilter] = useState<PeopleFilter>({ kind: "all" });
+  const labelOf = (person: { email: string }) => personLabel(person.email);
+  const chips: { key: string; label: string; filter: PeopleFilter }[] = [
+    { key: "all", label: "All", filter: { kind: "all" } },
+    { key: "pending", label: "Pending invites", filter: { kind: "pending" } },
+    ...assignableBranches.map((branch) => ({ key: `branch:${branch.id}`, label: branch.name, filter: { kind: "branch", id: branch.id } as PeopleFilter })),
+    ...(["owner", "manager", "cashier", "marketing"] as PeopleRole[]).map((role) => ({
+      key: `role:${role}`,
+      label: role === "marketing" ? "Marketing" : ROLE_LABELS[role],
+      filter: { kind: "role", role } as PeopleFilter,
+    })),
+  ];
+  const filterKey = (filter: PeopleFilter) => filter.kind === "branch" ? `branch:${filter.id}` : filter.kind === "role" ? `role:${filter.role}` : filter.kind;
+  const visiblePeople = new Set(people?.filter((person) => matchesPeopleFilter(person, peopleFilter, peopleSearch, labelOf(person))).map((person) => person.email));
 
+  const saveInProgress = useRef(false);
   async function save(email: string, task: () => Promise<unknown>, done: string) {
-    if (busy) return false;
+    if (saveInProgress.current) return false;
+    saveInProgress.current = true;
     setBusy(email);
     setMessage(null);
     try {
@@ -260,6 +281,7 @@ function PeoplePanel({
       setMessage({ text: errorText(err, "Couldn’t save. Try again."), error: true, email });
       return false;
     } finally {
+      saveInProgress.current = false;
       setBusy(null);
     }
   }
@@ -288,6 +310,13 @@ function PeoplePanel({
       setMessage({ text: "Select at least one branch.", error: true, email: person.email });
       return false;
     }
+    // A change that takes access away waits for an explicit confirmation; the server still decides.
+    const current = person.staffGrant?.role;
+    const lost = current && current !== role ? deskRoleReduction(current, role) : [];
+    if (lost.length > 0 && current) {
+      const description = `${name} changes from ${ROLE_LABELS[current]} to ${ROLE_LABELS[role]} and loses ${lost.join(", ")} now, on every device. Checkout stays.`;
+      if (!(await confirm({ title: `Make ${name} a ${ROLE_LABELS[role]}?`, description, confirmLabel: `Change to ${ROLE_LABELS[role]}`, cancelLabel: `Keep ${ROLE_LABELS[current]}`, destructive: true }))) return false;
+    }
     const baseDone = person.staffGrant ? `${name} is now ${ROLE_LABELS[role]}.` : `Invited ${name} to the desk as ${ROLE_LABELS[role]}.`;
     const done = `${baseDone}${person.staffGrant ? inviteExpirySuffix(person) : ""}`;
     return save(person.email, () => setStaffGrant({ expectedGrant: grantVersion(person.staffGrant), email: person.email, role, branchIds }), done);
@@ -302,6 +331,12 @@ function PeoplePanel({
       return false;
     }
     const name = personLabel(person.email);
+    const removed = liveBranchIds(person.branchIds, branchById).filter((id) => !unique.includes(id));
+    if (removed.length > 0) {
+      const lostPlaces = branchNamesFor(removed);
+      const description = `${name} loses ${ROLE_LABELS[role]} access at ${lostPlaces} now, on every device. Other branches stay.`;
+      if (!(await confirm({ title: `Remove ${name} from ${lostPlaces}?`, description, confirmLabel: "Remove branch", cancelLabel: "Keep branch", destructive: true }))) return false;
+    }
     const places = branchNamesFor(unique);
     const done = `${name}’s branches are now ${places || "updated"}.${inviteExpirySuffix(person)}`;
     return save(person.email, () => setStaffGrant({ expectedGrant: grantVersion(person.staffGrant), email: person.email, role, branchIds: unique }), done);
@@ -329,9 +364,24 @@ function PeoplePanel({
       label="People"
       tip={ROLES_TIP}
       action={
-        <Button ref={inviteButton} size="sm" disabled={busy !== null} aria-expanded={inviting} onClick={() => { void (async () => { if (!inviting || !inviteDirty || await confirmDiscard()) setInviting(!inviting); })(); }}>
-          <UserPlus aria-hidden className="size-4" /> Invite
-        </Button>
+        <>
+          {people ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              aria-expanded={filtersOpen}
+              aria-controls={filtersId}
+              aria-label="Search and filter people"
+              onClick={() => setFiltersOpen(!filtersOpen)}
+            >
+              Filters
+            </Button>
+          ) : null}
+          <Button ref={inviteButton} size="sm" disabled={busy !== null} aria-expanded={inviting} onClick={() => { void (async () => { if (!inviting || !inviteDirty || await confirmDiscard()) setInviting(!inviting); })(); }}>
+            <UserPlus aria-hidden className="size-4" /> Invite
+          </Button>
+        </>
       }
     >
       {inviting ? (
@@ -351,6 +401,7 @@ function PeoplePanel({
                     await setMarketingGrant({ expectedGrant: null, email, role: marketing });
                   } catch (err) {
                     if (!desk) throw err;
+                    setMarketingRetries((current) => ({ ...current, [email]: marketing }));
                     setInviting(false);
                     throw new Error(`Desk invitation saved. Review Marketing access in Team. ${errorText(err, "Couldn’t save the Marketing role.")}`);
                   }
@@ -369,11 +420,47 @@ function PeoplePanel({
       {people === undefined ? (
         <div className="grid place-items-center py-8"><Spinner label="Loading people" /></div>
       ) : (
+        <>
+        {/* Filters narrow rows already loaded for this owner; they never change anyone's access. */}
+        <div id={filtersId} hidden={!filtersOpen} className="mb-3 grid min-w-0 gap-2">
+          <Input
+            type="search"
+            value={peopleSearch}
+            onChange={(event) => setPeopleSearch(event.target.value)}
+            placeholder="Search people"
+            aria-label="Search people"
+            className="h-9 max-w-72"
+          />
+          <div role="group" aria-label="Filter people" className="flex min-w-0 flex-wrap gap-1.5">
+            {chips.map((chip) => {
+              const count = countPeople(people, chip.filter, peopleSearch, labelOf);
+              const active = filterKey(peopleFilter) === chip.key;
+              if (chip.key !== "all" && count === 0 && !active) return null;
+              return (
+                <Button
+                  key={chip.key}
+                  type="button"
+                  size="sm"
+                  variant={active ? "default" : "outline"}
+                  aria-pressed={active}
+                  className="h-8 rounded-full pointer-coarse:min-h-11"
+                  onClick={() => setPeopleFilter(chip.filter)}
+                >
+                  {chip.label} ({count})
+                </Button>
+              );
+            })}
+          </div>
+        </div>
+        {visiblePeople.size === 0 ? (
+          <p role="status" className="py-4 text-sm text-muted-foreground">No people match. <button type="button" className="underline underline-offset-2" onClick={() => { setPeopleSearch(""); setPeopleFilter({ kind: "all" }); }}>Show everyone</button></p>
+        ) : null}
         <ul ref={peopleList} className="min-w-0 divide-y divide-border" aria-label="People with access">
           {people.map((person) => (
             <PersonRow
               key={person.email}
               person={person}
+              hidden={!visiblePeople.has(person.email)}
               assignableBranches={assignableBranches}
               branchById={branchById}
               defaultBranchIds={defaultBranchIds}
@@ -383,7 +470,12 @@ function PeoplePanel({
               onDesk={(role, branchIds) => setDesk(person, role, branchIds)}
               onBranches={(branchIds) => setBranches(person, branchIds)}
               onRoleSaved={() => restoreRoleFocus(person.email)}
-              onMarketing={(role) => setMarketing(person, role)}
+              retryMarketing={person.marketingGrant ? undefined : marketingRetries[person.email]}
+              onMarketing={async (role) => {
+                const ok = await setMarketing(person, role);
+                if (ok) setMarketingRetries((current) => ({ ...current, [person.email]: undefined }));
+                return ok;
+              }}
               onRenew={() => {
                 const staff = person.staffGrant && !person.staffGrant.claimed ? person.staffGrant : null;
                 const marketing = person.marketingGrant && !person.marketingGrant.claimed ? person.marketingGrant : null;
@@ -415,6 +507,7 @@ function PeoplePanel({
             />
           ))}
         </ul>
+        </>
       )}
     </Section>
   );
@@ -532,6 +625,7 @@ function rolesText(person: Person) {
 
 function PersonRow({
   person,
+  hidden,
   assignableBranches,
   branchById,
   defaultBranchIds,
@@ -541,11 +635,13 @@ function PersonRow({
   onDesk,
   onBranches,
   onMarketing,
+  retryMarketing,
   onRoleSaved,
   onRenew,
   onCopyLink,
 }: {
   person: Person;
+  hidden: boolean;
   assignableBranches: readonly SelectableBranch[];
   branchById: ReadonlyMap<Id<"branches">, SelectableBranch>;
   defaultBranchIds: readonly Id<"branches">[];
@@ -554,6 +650,7 @@ function PersonRow({
   message: { text: string; error?: boolean } | null;
   onDesk: (role: StaffRole | null, branchIds?: readonly Id<"branches">[]) => Promise<boolean>;
   onBranches: (branchIds: Id<"branches">[]) => Promise<boolean>;
+  retryMarketing?: MarketingRole;
   onMarketing: (role: MarketingRole | null) => Promise<boolean>;
   onRoleSaved: () => void;
   onRenew: () => void;
@@ -566,6 +663,7 @@ function PersonRow({
       onRoleSaved();
     }
   }
+  const [recoveringMarketing, setRecoveringMarketing] = useState(false);
   const [changing, setChanging] = useState(false);
   const [branchError, setBranchError] = useState("");
   // A first desk role waits for its branches: the chips show before anything is saved.
@@ -596,7 +694,7 @@ function PersonRow({
   }
 
   return (
-    <li className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2 py-0.5 first:pt-0 last:pb-0" data-testid="team-person" data-person-email={person.email}>
+    <li hidden={hidden} className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2 py-0.5 first:pt-0 last:pb-0" data-testid="team-person" data-person-email={person.email}>
       <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] items-center gap-x-3 gap-y-0 sm:grid-cols-[minmax(0,1fr)_auto]">
         <div className="min-w-0">
           {/* Who, then where: the branch pills sit on the name's line, so rows keep their height. */}
@@ -658,6 +756,12 @@ function PersonRow({
 
       </div>
       {message ? <p role={message.error ? "alert" : "status"} className={cn("min-w-0 break-words text-[13px] [overflow-wrap:anywhere]", message.error ? "text-destructive" : "text-muted-foreground")}>{message.text}</p> : null}
+      {retryMarketing && canChangeRoles && !recoveringMarketing && (
+        <Button size="sm" variant="outline" disabled={busy} onClick={() => {
+          setRecoveringMarketing(true);
+          setChanging(true);
+        }}>Recover Marketing invitation</Button>
+      )}
       {changing && canChangeRoles ? (
         <div id={`${id}-roles`} className="flex min-w-0 flex-wrap gap-3 rounded-lg bg-muted/40 p-3">
           <p className="w-full min-w-0 break-words text-[13px] text-muted-foreground">{separateMarketing ? "Changes apply immediately to the separate Marketing account." : "Role and branch changes apply immediately."}</p>
@@ -725,7 +829,17 @@ function PersonRow({
           ) : null}
           <div className="grid min-w-0 max-w-full flex-1 basis-40 gap-1 sm:flex-none">
             <Label htmlFor={`${id}-marketing`} className="text-xs font-normal text-muted-foreground">Marketing</Label>
-            <RoleSelect id={`${id}-marketing`} label={separateMarketing ? `Marketing role for the separate account at ${person.email}` : `Marketing role for ${name}`} value={(marketing?.role ?? "") as MarketingRole | ""} disabled={busy} onChange={(value) => void changeRole(() => onMarketing(value || null))} options={MARKETING_OPTIONS} empty="None" />
+            {recoveringMarketing && retryMarketing ? (
+              <>
+                <p className="text-sm">{MARKETING_ROLE_LABELS[retryMarketing]}</p>
+                <Button size="sm" disabled={busy} onClick={() => void changeRole(async () => {
+                  const ok = await onMarketing(retryMarketing);
+                  if (ok) setRecoveringMarketing(false);
+                  return ok;
+                })}>Retry Marketing invitation</Button>
+                <Button size="sm" variant="ghost" onClick={() => setRecoveringMarketing(false)}>Cancel retry</Button>
+              </>
+            ) : <RoleSelect id={`${id}-marketing`} label={separateMarketing ? `Marketing role for the separate account at ${person.email}` : `Marketing role for ${name}`} value={(marketing?.role ?? "") as MarketingRole | ""} disabled={busy} onChange={(value) => void changeRole(() => onMarketing(value || null))} options={MARKETING_OPTIONS} empty="None" />}
           </div>
         </div>
       ) : null}

@@ -39,6 +39,25 @@ async function fixture() {
   return { t, owner, cashier, manager, branchId, otherBranchId, productId, managerId, cashierId, variantId: product!.variants[0]._id };
 }
 
+it('looks up staff beyond the first grant page without returning another branch’s cashier', async () => {
+  const { owner, branchId, otherBranchId, cashier } = await fixture();
+  const first = { numItems: 1, cursor: null };
+  expect((await owner.query(stock.listGrants, { branchId, paginationOpts: first })).page.map(row => row.email))
+    .not.toContain('cashier@example.com');
+  const lookup = (branch: typeof branchId, email: string) => owner.query(stock.listGrants, {
+    branchId: branch, email, paginationOpts: first,
+  });
+  const match = await lookup(branchId, ' CASHIER@EXAMPLE.COM ');
+  expect(match.page.map(row => row.email)).toEqual(['cashier@example.com']);
+  expect(match).toMatchObject({ isDone: true, continueCursor: '' });
+  const unavailable = { page: [], isDone: true, continueCursor: '' };
+  expect(await lookup(otherBranchId, 'cashier@example.com')).toEqual(unavailable);
+  expect(await lookup(branchId, 'cashier@')).toEqual(unavailable);
+  expect(await lookup(branchId, 'unknown@example.com')).toEqual(unavailable);
+  await expect(lookup(branchId, 'a'.repeat(255))).rejects.toMatchObject({ data: { code: 'INVALID_EMAIL' } });
+  await expect(cashier.query(stock.listGrants, { branchId, email: 'manager@example.com', paginationOpts: first })).rejects.toThrow();
+});
+
 it('keeps branch roles and direct permissions off until an owner grants them', async () => {
   const { owner, manager, cashier, cashierId, branchId, otherBranchId } = await fixture();
   await expect(cashier.query(stock.listBalances, { branchId, paginationOpts })).rejects.toMatchObject({ data: { code: 'STOCK_FORBIDDEN' } });

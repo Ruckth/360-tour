@@ -2,7 +2,7 @@
 
 import Image from "@/platform/image";
 import Link from "@/platform/link";
-import { ArrowDown, ArrowRight } from "lucide-react";
+import { ArrowDown, ArrowRight, Pause, Play } from "lucide-react";
 import { useLocale, useTranslations } from "@/platform/intl";
 import { useEffect, useRef, useState } from "react";
 import { preload } from "react-dom";
@@ -59,6 +59,7 @@ export function HomeHero() {
   // (it limits data, not motion), while reduced motion holds the first poster still.
   const [videoAllowed, setVideoAllowed] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
+  const [userPaused, setUserPaused] = useState(false);
   const [onscreen, setOnscreen] = useState(true);
   const sectionRef = useRef<HTMLElement>(null);
   const video0 = useRef<HTMLVideoElement>(null);
@@ -66,6 +67,8 @@ export function HomeHero() {
 
   // The first poster is visible on the server-rendered page, before the video can play.
   preload(desktopImages.left, { as: "image", fetchPriority: "high" });
+
+  const motionPaused = reducedMotion || userPaused;
 
   // The active video only gets a real source; the inactive one stays at preload="none".
   const playVideo = videoAllowed && videosEnabled;
@@ -120,29 +123,27 @@ export function HomeHero() {
     if (playVideo) {
       const active = desktopStep === 0 ? video0.current : desktopStep === 2 ? video1.current : null;
       if (active) {
-        if (onscreen) active.play().catch(() => {});
+        if (onscreen && !motionPaused) active.play().catch(() => {});
         else active.pause();
       }
     }
 
-    if (!onscreen) return;
+    if (!onscreen || motionPaused) return;
     if (playVideo && desktopStep !== 1) return;
-    // Reduced motion: keep the first poster still instead of cycling cross-fades.
-    if (reducedMotion) return;
 
     // Timed advance: step 1 (image Ken Burns) always; steps 0/2 only in poster-only mode.
     const nextStep = desktopStep === 0 ? 1 : desktopStep === 1 ? 2 : 0;
     const delay = desktopStep === 1 ? 6000 : 7000;
     const timer = window.setTimeout(() => setDesktopStep(nextStep), delay);
     return () => window.clearTimeout(timer);
-  }, [desktopStep, playVideo, onscreen, reducedMotion]);
+  }, [desktopStep, playVideo, onscreen, motionPaused]);
 
   return (
     <section
       ref={sectionRef}
       data-testid="home-hero"
       data-hero-step={desktopStep}
-      data-hero-motion={reducedMotion ? "reduced" : "full"}
+      data-hero-motion={reducedMotion ? "reduced" : userPaused ? "paused" : "full"}
       className="relative h-[100svh] overflow-hidden md:h-screen md:min-h-[520px]"
     >
       <div className="absolute inset-0">
@@ -153,7 +154,7 @@ export function HomeHero() {
             playsInline
             preload={video0Active ? "metadata" : "none"}
             poster={desktopImages.left}
-            onEnded={() => setDesktopStep(1)}
+            onEnded={() => { if (!motionPaused) setDesktopStep(1); }}
             className="h-full w-full object-cover"
           >
             {video0Active ? <source src="/videos/hero-left-v2.mp4" type="video/mp4" /> : null}
@@ -167,7 +168,7 @@ export function HomeHero() {
                 alt=""
                 fill
                 sizes="(min-width: 768px) 50vw, 100vw"
-                className={cn("object-cover", desktopStep === 1 && !reducedMotion && "hero-ken-burns")}
+                className={cn("object-cover", desktopStep === 1 && !motionPaused && "hero-ken-burns")}
               />
             </div>
             <div className="relative h-1/2 w-full overflow-hidden md:h-full md:w-1/2">
@@ -176,7 +177,7 @@ export function HomeHero() {
                 alt=""
                 fill
                 sizes="(min-width: 768px) 50vw, 100vw"
-                className={cn("object-cover", desktopStep === 1 && !reducedMotion && "hero-ken-burns")}
+                className={cn("object-cover", desktopStep === 1 && !motionPaused && "hero-ken-burns")}
               />
             </div>
           </div>
@@ -188,7 +189,7 @@ export function HomeHero() {
             playsInline
             preload={video1Active ? "metadata" : "none"}
             poster={desktopImages.right}
-            onEnded={() => setDesktopStep(0)}
+            onEnded={() => { if (!motionPaused) setDesktopStep(0); }}
             className="h-full w-full object-cover"
           >
             {video1Active ? <source src="/videos/hero-right-v2.mp4" type="video/mp4" /> : null}
@@ -222,12 +223,30 @@ export function HomeHero() {
         </Link>
       </div>
 
+      {!reducedMotion ? (
+        <button
+          type="button"
+          data-testid="hero-motion-toggle"
+          aria-pressed={userPaused}
+          aria-label={a11y(userPaused ? "playHero" : "pauseHero")}
+          onClick={() => setUserPaused((current) => !current)}
+          className="absolute bottom-6 left-5 z-10 inline-flex min-h-11 items-center gap-2 rounded-full border border-white/20 bg-black/45 px-3.5 py-2 text-xs font-medium text-white backdrop-blur-md transition hover:bg-black/65 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-white/60 md:bottom-8 md:left-8"
+        >
+          {userPaused ? (
+            <Play className="h-3.5 w-3.5 fill-current" aria-hidden="true" />
+          ) : (
+            <Pause className="h-3.5 w-3.5 fill-current" aria-hidden="true" />
+          )}
+          <span>{a11y(userPaused ? "playHero" : "pauseHero")}</span>
+        </button>
+      ) : null}
+
       <Link
         href="#about"
         aria-label={a11y("scrollDown")}
         className="absolute bottom-6 left-1/2 z-10 hidden -translate-x-1/2 flex-col items-center gap-1.5 md:bottom-8 md:flex"
       >
-        <ArrowDown className="h-5 w-5 text-white/50 motion-safe:animate-bounce md:h-6 md:w-6" />
+        <ArrowDown className={cn("h-5 w-5 text-white/50 md:h-6 md:w-6", !motionPaused && "motion-safe:animate-bounce")} />
       </Link>
     </section>
   );

@@ -182,7 +182,7 @@ export function HandOver({ attempt, disabled }: { attempt: PaymentAttemptView; d
         <div className="grid gap-2">
           {tills.tills.map((till) => (
             <Button key={till.tillId} variant="outline" className="h-12 bg-transparent" disabled={busy || disabled} onClick={() => void handOver(till.tillId)}>
-              {busy ? <Spinner className="text-current" /> : null}{t("pay.handOverTo", { till: till.label })}
+              {busy ? <Spinner className="text-current" /> : null}{t("pay.handOverTo", { till: tills.tills.some((other) => other.tillId !== till.tillId && other.label === till.label) ? `${till.label} · ${till.tillId.slice(-8)}` : till.label })}
             </Button>
           ))}
         </div>
@@ -222,7 +222,7 @@ export function InProgressElsewhere({ attempt, compact, onTakenOver }: { attempt
   if (handed?.here) {
     return (
       <div className={cn("grid gap-2", compact && "text-sm")} data-testid="payment-handed-here">
-        <Notice tone="info" title={t("pay.handedOverHere")}><p>{t("pay.acceptHint")}</p></Notice>
+        <Notice tone="info" title={t("pay.handedOverHere")}>{handed.label ? <p className="font-medium">{handed.label}</p> : null}<p>{t("pay.acceptHint")}</p></Notice>
         <DeskButton busy={busy} onClick={() => void takeOver()}>{t("pay.acceptHandover")}</DeskButton>
         <ConnectionNotice lost={problem !== null && "lost" in problem} busy={busy} onRetry={() => void takeOver()} />
         <ProblemNotice problem={problem} />
@@ -295,7 +295,8 @@ function DirectPanelElsewhere({ orderId, tillKey, openedAt, tillId, panelKey, on
   }
   return (
     <div className="grid gap-2" data-testid="payment-elsewhere">
-      <Notice title={t("pay.inProgressOn", { till: tillKey || t("pay.anotherTill"), staff: openedAt ? payCopy.time(openedAt) : "" }).replace(/ · $/, "")}>
+      <Notice title={t("pay.inProgressOn", { till: tillKey || t("pay.anotherTill"), staff: "" }).replace(/ · $/, "")}>
+        {openedAt !== undefined ? <p className="text-sm">Opened at {payCopy.time(openedAt)}</p> : null}
         {manager ? null : <p>{t("pay.managerTakesOver")}</p>}
       </Notice>
       {manager ? (

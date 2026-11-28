@@ -243,6 +243,7 @@ export const purchasingTables = {
 
   purchaseRequests: defineTable(requestFields)
     .index('by_reference', ['reference'])
+    .index('by_branchId_and_reference', ['branchId', 'reference'])
     .index('by_branchId_and_updatedAt', ['branchId', 'updatedAt'])
     .index('by_branchId_and_status_and_updatedAt', ['branchId', 'status', 'updatedAt'])
     .index('by_branchId_and_requesterKey_and_updatedAt', ['branchId', 'requesterKey', 'updatedAt']),
@@ -255,6 +256,9 @@ export const purchasingTables = {
 
   purchaseOrders: defineTable(orderFields)
     .index('by_reference', ['reference'])
+    .index('by_branchId_and_reference', ['branchId', 'reference'])
+    .index('by_branchId_and_phase_and_reference', ['branchId', 'phase', 'reference'])
+    .searchIndex('search_supplier_name', { searchField: 'supplier.name', filterFields: ['branchId', 'phase'] })
     .index('by_branchId_and_updatedAt', ['branchId', 'updatedAt'])
     .index('by_branchId_and_status_and_updatedAt', ['branchId', 'status', 'updatedAt'])
     .index('by_branchId_and_phase_and_updatedAt', ['branchId', 'phase', 'updatedAt'])
@@ -273,6 +277,8 @@ export const purchasingTables = {
 
   supplierReceipts: defineTable(receiptFields)
     .index('by_reference', ['reference'])
+    .index('by_branchId_and_reference', ['branchId', 'reference'])
+    .index('by_branchId_and_deliveryKey_and_createdAt', ['branchId', 'deliveryKey', 'createdAt'])
     .index('by_orderId', ['orderId'])
     .index('by_branchId_and_supplierId_and_deliveryKey', ['branchId', 'supplierId', 'deliveryKey'])
     .index('by_branchId_and_createdAt', ['branchId', 'createdAt']),

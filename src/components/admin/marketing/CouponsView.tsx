@@ -38,13 +38,13 @@ export function CouponsView({ coupons, campaigns, properties, today, couponHref,
   const stateOf = (coupon: CouponRow) => couponState(coupon, today);
   const villaName = (slug: string) => properties?.find((property) => property.slug === slug)?.name ?? slug;
   const q = query.trim().toLowerCase().replace(/\s+/g, "");
-  const shown = all
-    .filter((coupon) => (tab === "all" ? coupon.status !== "archived" : stateOf(coupon) === tab))
+  const matching = all
     .filter((coupon) => campaign === ALL || (campaign === NONE ? !coupon.campaignId : coupon.campaignId === campaign))
     .filter((coupon) => !q || [coupon.code, coupon.campaignName ?? "", benefitLabel(coupon.rules.benefit)].join("").toLowerCase().replace(/\s+/g, "").includes(q));
+  const shown = matching.filter((coupon) => tab === "all" ? coupon.status !== "archived" : stateOf(coupon) === tab);
   const tabs: { value: Tab; label: string; n: number }[] = [
-    { value: "all", label: "All", n: all.filter((coupon) => coupon.status !== "archived").length },
-    ...TAB_ORDER.map((state) => ({ value: state, label: COUPON_STATE[state].label, n: all.filter((coupon) => stateOf(coupon) === state).length })).filter(
+    { value: "all", label: "All", n: matching.filter((coupon) => coupon.status !== "archived").length },
+    ...TAB_ORDER.map((state) => ({ value: state, label: COUPON_STATE[state].label, n: matching.filter((coupon) => stateOf(coupon) === state).length })).filter(
       (item) => item.n > 0 || item.value === "active" || item.value === tab,
     ),
   ];

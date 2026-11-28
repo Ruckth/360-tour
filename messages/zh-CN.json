@@ -6,7 +6,8 @@
     "reviews": "评价",
     "contact": "联系",
     "book": "预订",
-    "language": "语言"
+    "language": "语言",
+    "services": "服务"
   },
   "Home": {
     "welcome": "欢迎",
@@ -26,7 +27,9 @@
     "readyTitle": "准备体验 {resortName} 吗？",
     "readyCopy": "直接预订相比在线旅行平台节省 15%。包含免费机场接送和欢迎礼遇。",
     "contactUs": "联系我们",
-    "viewVillas": "查看别墅"
+    "viewVillas": "查看别墅",
+    "openInMaps": "在 Google 地图中打开",
+    "showInteractiveMap": "显示交互式地图"
   },
   "Experiences": {
     "eyebrow": "体验",
@@ -126,7 +129,14 @@
     "directBenefits": "直接预订礼遇",
     "verifiedVillas": "已验证别墅",
     "secureCheckout": "安全演示结账",
-    "hostSupport": "房东直接支持"
+    "hostSupport": "房东直接支持",
+    "unavailableTitle": "暂时无法加载别墅详情",
+    "unavailableDetail": "目前无法连接别墅目录，请稍后重试。",
+    "loadErrorTitle": "出现问题",
+    "loadErrorDetail": "目前无法加载此别墅，请重试。",
+    "tryAgain": "重试",
+    "pageUnavailableTitle": "页面暂时不可用",
+    "pageUnavailableDetail": "请重试。"
   },
   "Booking": {
     "confirmAndPay": "确认并付款",
@@ -184,7 +194,7 @@
     "emailExample": "maya@example.com",
     "emailError": "请输入有效的电子邮箱地址。",
     "phoneExample": "+66 81 234 5678",
-    "phoneError": "请输入至少 6 位数字的电话或 WhatsApp 号码。",
+    "phoneError": "请输入所选国家的有效电话或 WhatsApp 号码，或加上 + 和国家代码。",
     "reviewPay": "确认并付款",
     "livePaymentNote": "付款前将再次检查您的预订。",
     "demoPaymentNote": "演示付款不会创建真实预订。",
@@ -233,7 +243,29 @@
     "notConfirmedCopy": "我们无法通过此链接验证已付款预订。",
     "reference": "参考：{reference}",
     "returnHome": "返回首页",
-    "exploreMoreVillas": "探索更多别墅"
+    "exploreMoreVillas": "探索更多别墅",
+    "stepCompleted": "已完成：",
+    "minStayHint": "最少入住：{count} 晚",
+    "calendarKey": "日历图例",
+    "legendAvailable": "可预订",
+    "legendBooked": "已订满",
+    "legendNotSelectable": "已过日期或不符合入住规则",
+    "editGuestDetails": "编辑住客信息",
+    "phoneHint": "请选择国家，或以 + 和国家代码开头。",
+    "staySummary": "您的住宿",
+    "villaFallback": "您的别墅",
+    "verifyingCopy": "正在等待付款确认…",
+    "paymentPendingTitle": "付款仍在处理中",
+    "paymentPendingCopy": "我们尚未收到付款确认。再次检查不会重复扣款。",
+    "checkAgain": "再次检查",
+    "paySettled": "此预订已付款，无需再次付款。",
+    "payHoldExpired": "这些日期的保留已结束。请重新预订。",
+    "payClosed": "此预订已无法在线付款。如需帮助，请联系我们。",
+    "viewConfirmation": "查看确认信息",
+    "amountDueNow": "当前应付金额：{amount}",
+    "proposalHoldExpired": "这些日期的保留已结束。请在聊天中索取新的摘要。",
+    "proposalSettled": "此预订已付款，无需再次付款。",
+    "proposalUnavailable": "此付款链接不可用。请打开您收到的最新链接，或重新预订。"
   },
   "Coupon": {
     "haveCode": "有优惠码吗？",
@@ -369,10 +401,16 @@
     "suggestionCancellation": "取消政策是什么？",
     "suggestionAirport": "可以安排机场接送吗？",
     "suggestionAmenitiesIncluded": "别墅包含哪些设施？",
-    "suggestionLocation": "离海滩和餐厅有多近？"
+    "suggestionLocation": "离海滩和餐厅有多近？",
+    "restartConfirmTitle": "要重新开始这段对话吗？",
+    "restartConfirmBody": "您的消息和未发送的文字将被清除。",
+    "restartKeep": "继续聊天",
+    "restartConfirm": "开始新聊天"
   },
   "Footer": {
-    "bookDirect": "直接预订"
+    "bookDirect": "直接预订",
+    "enquirySubject": "住宿咨询 — {resortName}",
+    "enquiryBody": "您好，我想咨询入住 {resortName} 的相关事宜。"
   },
   "DemoDisclaimer": {
     "title": "仅为演示网站",
@@ -405,7 +443,15 @@
     "close": "关闭",
     "closeTour": "关闭导览",
     "toggleTheme": "切换主题",
-    "toggleMenu": "切换菜单"
+    "toggleMenu": "切换菜单",
+    "appearance": "外观",
+    "themeSystem": "跟随系统",
+    "themeLight": "浅色",
+    "themeDark": "深色",
+    "pauseHero": "暂停动画",
+    "playHero": "播放动画",
+    "ratingOutOfFive": "{rating} / 5 星",
+    "galleryThumbnails": "房间照片"
   },
   "Resort": {
     "tagline": "海洋与宁静相遇之处",
@@ -531,7 +577,10 @@
     "leadEmailPlaceholder": "you@example.com",
     "invalidEmail": "请输入有效的电子邮箱。",
     "saveError": "无法保存此邮箱。",
-    "save": "保存"
+    "save": "保存",
+    "viewerLabel": "{propertyName} 360° 全景导览",
+    "emailLabel": "电子邮箱",
+    "saving": "正在保存..."
   },
   "TourConclusions": {
     "pool-villa": {
@@ -710,11 +759,13 @@
     "ask": "咨询此服务",
     "minutes": "分钟",
     "fromPrice": "{price}起",
+    "defaultDuration": "默认：{duration}",
     "chooseDuration": "选择时长",
     "next": "下一页服务",
     "first": "返回首页",
     "moreCategories": "更多类别",
-    "draft": "我对{name}感兴趣，请帮我选择日期和时间。"
+    "draft": "我对{name}感兴趣，请帮我选择日期和时间。",
+    "showAll": "显示全部服务"
   },
   "Consent": {
     "label": "统计选项",

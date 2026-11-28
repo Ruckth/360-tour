@@ -88,7 +88,10 @@ function groups(status: string, search?: string): AdminUnknownGroup[] {
       const sorted = [...items].sort((a, b) => b.createdAt - a.createdAt);
       const counts = { new: 0, resolved: 0, ignored: 0 };
       for (const item of items) counts[item.status] += 1;
-      return { normalizedQuestion, count: items.length, counts, latestAt: sorted[0].createdAt, channels: ["web" as const], latest: sorted[0] };
+      const byProperty = new Map<string | undefined, number>();
+      for (const item of items) if (item.status === "new") byProperty.set(item.propertyId, (byProperty.get(item.propertyId) ?? 0) + 1);
+      const newByProperty = [...byProperty].map(([propertyId, count]) => ({ propertyId: propertyId as AdminUnknownQuestion["propertyId"], count }));
+      return { normalizedQuestion, count: items.length, counts, latestAt: sorted[0].createdAt, channels: ["web" as const], newByProperty, latest: sorted[0] };
     })
     .filter((group) => status === "all" || group.counts[status as keyof typeof group.counts] > 0)
     .filter((group) => !search || group.normalizedQuestion.includes(search.toLowerCase()))

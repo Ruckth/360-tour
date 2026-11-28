@@ -31,6 +31,12 @@ export function PropertyPhotosEditor({ property }: { property: Doc<"properties">
     void saveImages(next);
   }
 
+  function makeCover(index: number) {
+    if (index <= 0 || index >= images.length) return;
+    const next = [images[index], ...images.slice(0, index), ...images.slice(index + 1)];
+    void saveImages(next);
+  }
+
   async function remove(index: number) {
     if (!(await confirm({ title: "Remove this photo?", confirmLabel: "Remove", destructive: true }))) return;
     void saveImages(images.filter((_, i) => i !== index));
@@ -91,10 +97,23 @@ export function PropertyPhotosEditor({ property }: { property: Doc<"properties">
                   <Thumb src={image} className="aspect-[3/2] w-full rounded-none" />
                   {index === 0 ? <Badge variant="gold" className="absolute left-2 top-2">Cover</Badge> : null}
                 </div>
-                <div className="flex items-center gap-1 p-2">
+                <div className="flex flex-wrap items-center gap-1 p-2">
                   <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground" title={image}>
                     {index + 1}. {image.split("/").pop()}
                   </p>
+                  {index > 0 ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-8 px-2 text-xs"
+                      disabled={save.saving}
+                      onClick={() => makeCover(index)}
+                      aria-label={`Make photo ${index + 1} cover`}
+                    >
+                      Make cover
+                    </Button>
+                  ) : null}
                   <Button size="icon" variant="ghost" className="size-9" disabled={save.saving || index === 0} onClick={() => move(index, -1)} aria-label={`Move photo ${index + 1} earlier`}>
                     <ArrowUp aria-hidden className="size-4" />
                   </Button>

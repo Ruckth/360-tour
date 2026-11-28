@@ -8,7 +8,7 @@ import { NewAppointmentDialog } from "@/components/admin/NewAppointmentDialog";
 import { VillaPicker } from "@/components/admin/VillaPicker";
 import { createRoot } from "react-dom/client";
 import { IntlProvider } from "@/platform/intl";
-import { dateToIso } from "@/lib/booking/dates";
+import { addDaysIso, dateToIso } from "@/lib/booking/dates";
 import en from "../../messages/en.json";
 import th from "../../messages/th.json";
 import { NewBookingDialog } from "@/components/admin/NewBookingDialog";
@@ -61,6 +61,17 @@ const services: Doc<"services">[] = Array.from({ length: 30 }, (_, index) => ({
   status: "active",
   imageUrl: index === 0 ? photo : undefined,
 }));
+
+if (params.get("mode") === "service") registerFixtureFunctions({
+  queries: {
+    "services/admin:findOpenSlots": () => [],
+    "services/admin:findNextOpenSlot": ({ afterDate }: { afterDate: string }) => ({
+      slot: null,
+      from: addDaysIso(afterDate, 1),
+      through: addDaysIso(afterDate, 14),
+    }),
+  },
+});
 
 // Static server answers; the real hotel calendar owns selection and resort-day policy.
 const hotelData = { properties, bookings: [], dateBlocks: [], blocks: [], complete: true };

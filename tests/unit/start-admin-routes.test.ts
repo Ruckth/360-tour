@@ -167,15 +167,15 @@ describe("start admin route helpers and server logic", () => {
   });
 
   it.each([
-    ["/admin", { to: "/admin/chats", replace: true, statusCode: 307 }],
-    ["/admin/", { to: "/admin/chats", replace: true, statusCode: 307 }],
+    ["/admin", { to: "/admin/today", replace: true, statusCode: 307 }],
+    ["/admin/", { to: "/admin/today", replace: true, statusCode: 307 }],
     ["/admin/chat", { to: "/admin/chats", replace: true, statusCode: 307 }],
     ["/admin/unknown", { to: "/admin/chats", replace: true, statusCode: 307 }],
     ["/admin/staff", { to: "/admin/staff/$tab", params: { tab: "calendar" }, replace: true, statusCode: 307 }],
-    ["/admin/staff/unknown", { to: "/admin/chats", replace: true, statusCode: 307 }],
+    ["/admin/staff/unknown", null],
     ["/admin/marketing", { to: "/admin/marketing/dashboard", replace: true, statusCode: 307 }],
     ["/admin/marketing/", { to: "/admin/marketing/dashboard", replace: true, statusCode: 307 }],
-    ["/admin/marketing/unknown", { to: "/admin/chats", replace: true, statusCode: 307 }],
+    ["/admin/marketing/unknown", null],
     ["/admin/receipt", { to: "/admin/chats", replace: true, statusCode: 307 }],
     ["/admin/chats", null],
     ["/admin/checkout", null],
@@ -421,12 +421,8 @@ describe("start admin route lifecycle with mocked TanStack Start runtime", () =>
     } catch (thrown) {
       caughtBadTab = thrown;
     }
-    expect(caughtBadTab).toEqual({
-      __redirect: true,
-      to: "/admin/chats",
-      replace: true,
-      statusCode: 307,
-    });
+    // N06: a stale staff sub-page stays in Staff bookings; its not-found screen offers the section's pages.
+    expect(caughtBadTab).toEqual({ __notFound: true });
 
     const splatMod = await import("@/start-app/routes/admin.$");
     const splatRoute = splatMod.Route as unknown as {

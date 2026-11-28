@@ -2,6 +2,7 @@
 
 import Image from "@/platform/image";
 import { Mail } from "lucide-react";
+import { useHydrated } from "@/platform/hydration";
 import { useLocale, useTranslations } from "@/platform/intl";
 import { ContactAppBrandIcon } from "@/components/chat/ContactAppBrandIcon";
 import {
@@ -31,10 +32,14 @@ export function MessagingButtons({
   lineQrImage?: string;
   quiet?: boolean;
 }) {
+  const hydrated = useHydrated();
   const locale = useLocale();
   const t = useTranslations("Chat");
-  const whatsappHref = buildWhatsAppHref(whatsappNumber);
-  const emailHref = buildEmailHref(contactEmail);
+  const footer = useTranslations("Footer");
+  const enquirySubject = footer("enquirySubject", { resortName: "Auralis Cove Retreat" });
+  const enquiryBody = footer("enquiryBody", { resortName: "Auralis Cove Retreat" });
+  const whatsappHref = buildWhatsAppHref(whatsappNumber, enquiryBody);
+  const emailHref = buildEmailHref(contactEmail, enquiryBody, enquirySubject);
   const fallbackLineHref = localizeHref("/#contact", locale);
   const lineHref = buildLineHref({ fallbackHref: fallbackLineHref, lineId, lineUrl });
   const hasLineContact = Boolean(lineUrl?.trim() || lineId?.trim());
@@ -68,6 +73,7 @@ export function MessagingButtons({
           <DialogTrigger asChild>
             <button
               type="button"
+              disabled={!hydrated}
               aria-label="Open LINE chat"
               title="LINE"
               className={cn(linkClassName, "hidden md:inline-flex")}

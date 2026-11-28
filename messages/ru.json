@@ -6,7 +6,8 @@
     "reviews": "Отзывы",
     "contact": "Контакты",
     "book": "Забронировать",
-    "language": "Язык"
+    "language": "Язык",
+    "services": "Услуги"
   },
   "Home": {
     "welcome": "Добро пожаловать",
@@ -26,7 +27,9 @@
     "readyTitle": "Готовы открыть для себя {resortName}?",
     "readyCopy": "Бронируйте напрямую и экономьте 15% по сравнению с онлайн-агентствами. Включены бесплатный трансфер из аэропорта и приветственные удобства.",
     "contactUs": "Связаться с нами",
-    "viewVillas": "Смотреть виллы"
+    "viewVillas": "Смотреть виллы",
+    "openInMaps": "Открыть в Google Картах",
+    "showInteractiveMap": "Показать интерактивную карту"
   },
   "Experiences": {
     "eyebrow": "Впечатления",
@@ -126,7 +129,14 @@
     "directBenefits": "Преимущества прямого бронирования",
     "verifiedVillas": "Проверенные виллы",
     "secureCheckout": "Безопасная демо-оплата",
-    "hostSupport": "Прямая поддержка хозяина"
+    "hostSupport": "Прямая поддержка хозяина",
+    "unavailableTitle": "Сведения о вилле временно недоступны",
+    "unavailableDetail": "Сейчас не удалось связаться с каталогом вилл. Пожалуйста, попробуйте чуть позже.",
+    "loadErrorTitle": "Что-то пошло не так",
+    "loadErrorDetail": "Сейчас не удалось загрузить эту виллу. Пожалуйста, попробуйте снова.",
+    "tryAgain": "Попробовать снова",
+    "pageUnavailableTitle": "Страница временно недоступна",
+    "pageUnavailableDetail": "Пожалуйста, попробуйте снова."
   },
   "Booking": {
     "confirmAndPay": "Подтвердить и оплатить",
@@ -184,7 +194,7 @@
     "emailExample": "maya@example.com",
     "emailError": "Введите действительный email.",
     "phoneExample": "+66 81 234 5678",
-    "phoneError": "Введите телефон или WhatsApp минимум из 6 цифр.",
+    "phoneError": "Введите действительный номер телефона или WhatsApp для выбранной страны или укажите код страны с +.",
     "reviewPay": "Проверить и оплатить",
     "livePaymentNote": "Перед оплатой бронирование будет проверено еще раз.",
     "demoPaymentNote": "Демо-оплата не создает реальное бронирование.",
@@ -233,7 +243,29 @@
     "notConfirmedCopy": "Мы не смогли подтвердить оплаченное бронирование по этой ссылке.",
     "reference": "Референс: {reference}",
     "returnHome": "На главную",
-    "exploreMoreVillas": "Смотреть другие виллы"
+    "exploreMoreVillas": "Смотреть другие виллы",
+    "stepCompleted": "Готово:",
+    "minStayHint": "Минимальный срок проживания (ночей): {count}",
+    "calendarKey": "Обозначения календаря",
+    "legendAvailable": "Свободно",
+    "legendBooked": "Занято",
+    "legendNotSelectable": "Прошедшие или вне правил проживания",
+    "editGuestDetails": "Изменить данные гостя",
+    "phoneHint": "Выберите страну или начните с + и кода страны.",
+    "staySummary": "Ваше проживание",
+    "villaFallback": "Ваша вилла",
+    "verifyingCopy": "Ожидаем подтверждение оплаты…",
+    "paymentPendingTitle": "Оплата ещё обрабатывается",
+    "paymentPendingCopy": "Подтверждение оплаты ещё не поступило. Повторная проверка не приведёт к новому списанию.",
+    "checkAgain": "Проверить снова",
+    "paySettled": "Это бронирование уже оплачено. Дополнительная оплата не нужна.",
+    "payHoldExpired": "Удержание этих дат закончилось. Пожалуйста, создайте новое бронирование.",
+    "payClosed": "Это бронирование больше нельзя оплатить онлайн. Свяжитесь с нами, если нужна помощь.",
+    "viewConfirmation": "Посмотреть подтверждение",
+    "amountDueNow": "К оплате сейчас: {amount}",
+    "proposalHoldExpired": "Удержание этих дат закончилось. Попросите в чате новую сводку.",
+    "proposalSettled": "Это бронирование уже оплачено. Дополнительная оплата не нужна.",
+    "proposalUnavailable": "Эта ссылка на оплату недоступна. Откройте последнюю полученную ссылку или начните новое бронирование."
   },
   "Coupon": {
     "haveCode": "Есть промокод?",
@@ -369,10 +401,16 @@
     "suggestionCancellation": "Какие условия отмены?",
     "suggestionAirport": "Можно организовать встречу в аэропорту?",
     "suggestionAmenitiesIncluded": "Что включено в виллу?",
-    "suggestionLocation": "Насколько близко пляж и рестораны?"
+    "suggestionLocation": "Насколько близко пляж и рестораны?",
+    "restartConfirmTitle": "Начать разговор заново?",
+    "restartConfirmBody": "Ваши сообщения и неотправленный текст будут удалены.",
+    "restartKeep": "Продолжить чат",
+    "restartConfirm": "Начать новый чат"
   },
   "Footer": {
-    "bookDirect": "Бронировать напрямую"
+    "bookDirect": "Бронировать напрямую",
+    "enquirySubject": "Запрос о проживании — {resortName}",
+    "enquiryBody": "Здравствуйте! У меня есть вопрос о проживании в {resortName}."
   },
   "DemoDisclaimer": {
     "title": "Только демо-сайт",
@@ -405,7 +443,15 @@
     "close": "Закрыть",
     "closeTour": "Закрыть тур",
     "toggleTheme": "Переключить тему",
-    "toggleMenu": "Открыть или закрыть меню"
+    "toggleMenu": "Открыть или закрыть меню",
+    "appearance": "Оформление",
+    "themeSystem": "Системная",
+    "themeLight": "Светлая",
+    "themeDark": "Тёмная",
+    "pauseHero": "Приостановить анимацию",
+    "playHero": "Воспроизвести анимацию",
+    "ratingOutOfFive": "{rating} из 5 звёзд",
+    "galleryThumbnails": "Фотографии виллы"
   },
   "Resort": {
     "tagline": "Где океан встречает спокойствие",
@@ -531,7 +577,10 @@
     "leadEmailPlaceholder": "you@example.com",
     "invalidEmail": "Введите действительный email.",
     "saveError": "Не удалось сохранить этот email.",
-    "save": "Сохранить"
+    "save": "Сохранить",
+    "viewerLabel": "360°-тур по {propertyName}",
+    "emailLabel": "Эл. почта",
+    "saving": "Сохранение..."
   },
   "TourConclusions": {
     "pool-villa": {
@@ -710,11 +759,13 @@
     "ask": "Узнать об услуге",
     "minutes": "мин",
     "fromPrice": "от {price}",
+    "defaultDuration": "По умолчанию: {duration}",
     "chooseDuration": "Выберите длительность",
     "next": "Следующие услуги",
     "first": "На первую страницу",
     "moreCategories": "Другие категории",
-    "draft": "Меня интересует {name}. Помогите выбрать дату и время."
+    "draft": "Меня интересует {name}. Помогите выбрать дату и время.",
+    "showAll": "Показать все услуги"
   },
   "Consent": {
     "label": "Настройки статистики",

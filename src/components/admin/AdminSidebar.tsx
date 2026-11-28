@@ -11,6 +11,8 @@ import { OPEN_ADMIN_SEARCH, RailTiles } from "@/components/admin/AdminNav";
 import { SidebarBranchSwitcher } from "@/components/admin/branch/BranchSwitcher";
 import { activeAdminSubLink, adminNavItem, searchAdminNav } from "@/components/admin/admin-routes";
 import { useAdminNav } from "@/components/admin/staff-access";
+import { useWaitingChatsBadge } from "@/components/admin/waiting-chats";
+import { AdminRecordSearch } from "@/components/admin/AdminRecordSearch";
 import {
   Sidebar,
   SidebarContent,
@@ -68,6 +70,7 @@ export function AdminSidebar({ userEmail }: { userEmail?: string }) {
   const searching = query.trim() !== "";
   const nav = useAdminNav();
   const results = searchAdminNav(query, nav);
+  const waiting = useWaitingChatsBadge();
   const firstHit = results[0]?.children?.[0]?.href ?? results[0]?.href;
 
   const close = () => {
@@ -176,6 +179,12 @@ export function AdminSidebar({ userEmail }: { userEmail?: string }) {
                       <Link href={href} aria-current={highlighted ? "page" : undefined} onClick={close}>
                         <Icon aria-hidden="true" />
                         <span>{label}</span>
+                        {href === "/admin/chats" && waiting ? (
+                          <span className="ml-auto rounded-full bg-destructive px-1.5 text-[11px] font-semibold leading-5 text-white">
+                            <span aria-hidden="true">{waiting.text}</span>
+                            <span className="sr-only">{waiting.label}</span>
+                          </span>
+                        ) : null}
                       </Link>
                     </SidebarMenuButton>
                     {children?.length && !searching ? (
@@ -216,6 +225,7 @@ export function AdminSidebar({ userEmail }: { userEmail?: string }) {
             </p>
           </SidebarGroupContent>
         </SidebarGroup>
+        {searching ? <AdminRecordSearch query={query} onOpen={close} /> : null}
       </SidebarContent>
 
       <SidebarFooter className="p-2">

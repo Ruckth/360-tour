@@ -32,14 +32,15 @@ for (const width of [390, 1180, 1440]) {
           expect(box.textHeight).toBeLessThan(25);
         }
       }
-      const submit = form.getByRole("button", { name: "Pick a reason", exact: true });
+      const submit = form.getByRole("button", { name: "Choose an amount", exact: true });
       expect((await submit.boundingBox())!.height).toBeGreaterThanOrEqual(48);
       await form.getByRole("radio", { name: "Wrong charge", exact: true }).click();
-      await expect(form.getByRole("button", { name: "Record refund ฿600", exact: true })).toBeEnabled();
-      // Re-selecting All after typing the full amount restores its live remaining-amount default.
-      await form.getByLabel("Amount (฿)", { exact: true }).fill("600");
       await form.getByRole("radio", { name: "All", exact: true }).click();
+      await expect(form.getByRole("button", { name: "Record refund ฿600", exact: true })).toBeEnabled();
+      // The amount remains on screen when another till updates the cap.
       await page.evaluate(async () => { await window.fixture.refundFromAnotherTill("Foot spa 45", 10_000); await window.fixture.setRole("manager"); });
+      await expect(form.getByLabel("Amount (฿)", { exact: true })).toHaveValue("600");
+      await form.getByRole("button", { name: "Use remaining amount" }).click();
       await expect(form.getByLabel("Amount (฿)", { exact: true })).toHaveValue("500");
       await expect(form.getByRole("button", { name: "Record refund ฿500", exact: true })).toBeEnabled();
     });
@@ -51,6 +52,8 @@ for (const width of [390, 1180, 1440]) {
       const form = page.getByRole("form", { name: "Refund", exact: true });
       await expect(form.getByRole("radio", { name: "Half", exact: true })).toHaveCount(0);
       const all = form.getByRole("radio", { name: "All", exact: true });
+      await expect(all).not.toBeChecked();
+      await all.click();
       await expect(all).toBeChecked();
       const amount = form.getByLabel("Amount (฿)", { exact: true });
       await expect(amount).toHaveValue("0.01");
@@ -64,7 +67,7 @@ for (const width of [390, 1180, 1440]) {
       // A saved order may predate recorded changes; offer a compact lazy disclosure.
       await open(page, "?role=cashier");
       await page.getByRole("button", { name: "Orders", exact: true }).click();
-      const description = page.getByText("Open orders on every till. Look up today's receipts by order number.", { exact: true });
+      const description = page.getByText("Open orders on every till. Look up today's receipts by order or receipt number.", { exact: true });
       const lastLineWords = await description.evaluate((element) => {
         const node = element.firstChild!;
         const words = [...node.textContent!.matchAll(/\S+/g)].map((word) => {

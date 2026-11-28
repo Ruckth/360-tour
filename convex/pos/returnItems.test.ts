@@ -91,6 +91,57 @@ it('binds approval to the cashier and serializes four competing tills', async ()
   expect(await cashier.query(api.pos.staffApprovals.myStatus, { requestId: request.requestId })).toMatchObject({ status: 'applied' });
 });
 
+it.each([['**** 4321', '•••• 4321'], ['4111111111114321', undefined]])(
+  'persists only a qualifying card destination in the cashier pending summary (%s)',
+  async (reference, destinationMask) => {
+    const { t, cashier, other } = await setup();
+    const { args } = await t.run(async ctx => {
+      const sale = await soldProduct(ctx);
+      await ctx.db.insert('paymentAttempts', {
+        orderId: sale.orderId, key: `pay:${sale.orderId}`, fingerprint: 'fingerprint',
+        reviewedRequest: { revision: 0, due: 100, customers: [], vouchers: [], businessDate: resortTodayIso(now), settingsRevision: 0 },
+        legs: [{ key: 'card', method: 'card', amount: 100, state: 'taken', reference }],
+        status: 'settled', owner: 'cashier', tillId: 'desk-a', ownerRevision: 0, createdAt: now, updatedAt: now,
+      });
+      return sale;
+    });
+    const request = await cashier.mutation(command.askManager, args);
+    expect(await cashier.mutation(command.askManager, args)).toEqual(request);
+    const summary = await cashier.query(api.pos.staffApprovals.myStatus, { requestId: request.requestId });
+    expect(summary?.summary?.payouts).toEqual([{ label: 'card', amount: 100, ...(destinationMask ? { destinationMask } : {}) }]);
+    expect(await other.query(api.pos.staffApprovals.myStatus, { requestId: request.requestId })).toBeNull();
+  },
+);
+
+it('keeps equal replacement payouts distinguishable on a matching request retry', async () => {
+  const { t, cashier } = await setup();
+  const args = await t.run(async ctx => {
+    const retail = await catalog(ctx);
+    const orderId = await receipt(ctx, 100);
+    const goods = await product(ctx, retail, orderId, 100);
+    const tenderCells = [];
+    for (const [code, mask] of [['GV-7KQ2-Q9XD', 'GV-••••-Q9XD'], ['GV-3HW5-R8TB', 'GV-••••-R8TB']]) {
+      const voucherId = await voucher(ctx, { kind: 'sale', orderId, lineId: goods.lineId }, retail.branchId, 0, {
+        faceValue: 50, effectiveExpiresAt: now - 1,
+      });
+      const activeCodeId = await ctx.db.insert('voucherCodes', { voucherId, code, mask, status: 'active' });
+      await ctx.db.patch(voucherId, { activeCodeId });
+      await payment(ctx, orderId, { method: 'voucher', amount: 50, voucherId });
+      tenderCells.push({ kind: 'voucher' as const, amount: 50, voucherId });
+    }
+    const sold = (await ctx.db.get(goods.lineId))!;
+    await ctx.db.patch(goods.lineId, { saleSnapshot: { ...sold.saleSnapshot!, tenderCells } });
+    return selection(orderId, [{ kind: 'line', lineId: goods.lineId, units: 1, disposition: 'sellable' }]);
+  });
+  const request = await cashier.mutation(command.askManager, args);
+  await expect(cashier.mutation(command.askManager, { ...args, clientKey: 'new-request-key' }))
+    .rejects.toMatchObject({ data: { code: 'RETURN_APPROVAL_PENDING', requestId: request.requestId } });
+  expect((await cashier.query(api.pos.staffApprovals.myStatus, { requestId: request.requestId }))?.summary?.payouts).toEqual([
+    { label: 'Replacement voucher', amount: 50, destinationMask: 'GV-••••-Q9XD' },
+    { label: 'Replacement voucher', amount: 50, destinationMask: 'GV-••••-R8TB' },
+  ]);
+});
+
 it('cannot authorize a cashier return after their last assigned branch is archived', async () => {
   const { t, cashier, owner } = await setup();
   const { args } = await t.run(ctx => soldProduct(ctx));

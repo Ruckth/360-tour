@@ -6,7 +6,8 @@
     "reviews": "समीक्षाएँ",
     "contact": "संपर्क",
     "book": "बुक करें",
-    "language": "भाषा"
+    "language": "भाषा",
+    "services": "सेवाएँ"
   },
   "Home": {
     "welcome": "स्वागत है",
@@ -26,7 +27,9 @@
     "readyTitle": "{resortName} का अनुभव करने के लिए तैयार हैं?",
     "readyCopy": "सीधे बुक करें और ऑनलाइन ट्रैवल एजेंसियों की तुलना में 15% बचाएँ। निःशुल्क एयरपोर्ट ट्रांसफर और स्वागत सुविधाएँ शामिल हैं।",
     "contactUs": "संपर्क करें",
-    "viewVillas": "विला देखें"
+    "viewVillas": "विला देखें",
+    "openInMaps": "Google मैप्स में खोलें",
+    "showInteractiveMap": "इंटरैक्टिव मानचित्र दिखाएँ"
   },
   "Experiences": {
     "eyebrow": "अनुभव",
@@ -126,7 +129,14 @@
     "directBenefits": "सीधी बुकिंग के लाभ",
     "verifiedVillas": "सत्यापित विला",
     "secureCheckout": "सुरक्षित डेमो चेकआउट",
-    "hostSupport": "होस्ट से सीधा सपोर्ट"
+    "hostSupport": "होस्ट से सीधा सपोर्ट",
+    "unavailableTitle": "विला का विवरण अस्थायी रूप से उपलब्ध नहीं है",
+    "unavailableDetail": "हम अभी विला सूची से जुड़ नहीं सके। कृपया कुछ क्षण बाद पुनः प्रयास करें।",
+    "loadErrorTitle": "कुछ गलत हो गया",
+    "loadErrorDetail": "हम अभी यह विला लोड नहीं कर सके। कृपया पुनः प्रयास करें।",
+    "tryAgain": "पुनः प्रयास करें",
+    "pageUnavailableTitle": "पेज अस्थायी रूप से उपलब्ध नहीं है",
+    "pageUnavailableDetail": "कृपया पुनः प्रयास करें।"
   },
   "Booking": {
     "confirmAndPay": "पुष्टि करें और भुगतान करें",
@@ -184,7 +194,7 @@
     "emailExample": "maya@example.com",
     "emailError": "एक मान्य ईमेल पता दर्ज करें।",
     "phoneExample": "+66 81 234 5678",
-    "phoneError": "कम से कम 6 अंकों वाला फोन या WhatsApp नंबर दर्ज करें।",
+    "phoneError": "चुने गए देश के लिए मान्य फ़ोन या WhatsApp नंबर दर्ज करें, या + के साथ देश कोड जोड़ें।",
     "reviewPay": "समीक्षा और भुगतान",
     "livePaymentNote": "भुगतान से पहले आपकी बुकिंग एक बार फिर जाँची जाएगी।",
     "demoPaymentNote": "डेमो भुगतान वास्तविक बुकिंग नहीं बनाएगा।",
@@ -233,7 +243,29 @@
     "notConfirmedCopy": "हम इस लिंक से भुगतान की गई बुकिंग सत्यापित नहीं कर सके।",
     "reference": "संदर्भ: {reference}",
     "returnHome": "होम पर लौटें",
-    "exploreMoreVillas": "और विला देखें"
+    "exploreMoreVillas": "और विला देखें",
+    "stepCompleted": "पूर्ण:",
+    "minStayHint": "न्यूनतम ठहराव: {count} रातें",
+    "calendarKey": "कैलेंडर संकेत",
+    "legendAvailable": "उपलब्ध",
+    "legendBooked": "बुक है",
+    "legendNotSelectable": "बीती तारीख या ठहराव नियमों से बाहर",
+    "editGuestDetails": "मेहमान का विवरण बदलें",
+    "phoneHint": "अपना देश चुनें, या + और देश कोड से शुरू करें।",
+    "staySummary": "आपका ठहराव",
+    "villaFallback": "आपका विला",
+    "verifyingCopy": "भुगतान की पुष्टि की प्रतीक्षा है…",
+    "paymentPendingTitle": "भुगतान अभी प्रोसेस हो रहा है",
+    "paymentPendingCopy": "हमें अभी भुगतान की पुष्टि नहीं मिली है। दोबारा जाँचने से फिर से शुल्क नहीं लगेगा।",
+    "checkAgain": "फिर से जाँचें",
+    "paySettled": "इस बुकिंग का भुगतान पहले ही हो चुका है। आगे कोई भुगतान ज़रूरी नहीं है।",
+    "payHoldExpired": "इन तारीखों का होल्ड समाप्त हो गया है। कृपया नई बुकिंग करें।",
+    "payClosed": "इस बुकिंग का अब ऑनलाइन भुगतान नहीं किया जा सकता। मदद चाहिए तो हमसे संपर्क करें।",
+    "viewConfirmation": "पुष्टि देखें",
+    "amountDueNow": "अभी देय राशि: {amount}",
+    "proposalHoldExpired": "इन तारीखों का होल्ड समाप्त हो गया है। नए सारांश के लिए चैट में पूछें।",
+    "proposalSettled": "इस बुकिंग का भुगतान पहले ही हो चुका है। आगे कोई भुगतान ज़रूरी नहीं है।",
+    "proposalUnavailable": "यह भुगतान लिंक उपलब्ध नहीं है। आपको मिला नवीनतम लिंक खोलें, या नई बुकिंग शुरू करें।"
   },
   "Coupon": {
     "haveCode": "क्या आपके पास कोड है?",
@@ -369,10 +401,16 @@
     "suggestionCancellation": "कैंसलेशन पॉलिसी क्या है?",
     "suggestionAirport": "क्या एयरपोर्ट पिकअप में मदद मिलेगी?",
     "suggestionAmenitiesIncluded": "विला में क्या-क्या शामिल है?",
-    "suggestionLocation": "बीच और रेस्टोरेंट कितने पास हैं?"
+    "suggestionLocation": "बीच और रेस्टोरेंट कितने पास हैं?",
+    "restartConfirmTitle": "क्या यह बातचीत फिर से शुरू करें?",
+    "restartConfirmBody": "आपके संदेश और बिना भेजा गया टेक्स्ट हटा दिया जाएगा।",
+    "restartKeep": "चैट जारी रखें",
+    "restartConfirm": "नई चैट शुरू करें"
   },
   "Footer": {
-    "bookDirect": "सीधे बुक करें"
+    "bookDirect": "सीधे बुक करें",
+    "enquirySubject": "प्रवास पूछताछ — {resortName}",
+    "enquiryBody": "नमस्ते, मुझे {resortName} में ठहरने के बारे में एक प्रश्न है।"
   },
   "DemoDisclaimer": {
     "title": "केवल डेमो वेबसाइट",
@@ -405,7 +443,15 @@
     "close": "बंद करें",
     "closeTour": "टूर बंद करें",
     "toggleTheme": "थीम बदलें",
-    "toggleMenu": "मेनू खोलें या बंद करें"
+    "toggleMenu": "मेनू खोलें या बंद करें",
+    "appearance": "दिखावट",
+    "themeSystem": "सिस्टम",
+    "themeLight": "हल्का",
+    "themeDark": "गहरा",
+    "pauseHero": "एनीमेशन रोकें",
+    "playHero": "एनीमेशन चलाएँ",
+    "ratingOutOfFive": "5 में से {rating} स्टार",
+    "galleryThumbnails": "कमरे की तस्वीरें"
   },
   "Resort": {
     "tagline": "जहाँ समुद्र शांति से मिलता है",
@@ -531,7 +577,10 @@
     "leadEmailPlaceholder": "you@example.com",
     "invalidEmail": "मान्य ईमेल दर्ज करें।",
     "saveError": "यह ईमेल सहेजा नहीं जा सका।",
-    "save": "सहेजें"
+    "save": "सहेजें",
+    "viewerLabel": "{propertyName} 360° टूर",
+    "emailLabel": "ईमेल",
+    "saving": "सहेजा जा रहा है..."
   },
   "TourConclusions": {
     "pool-villa": {
@@ -710,11 +759,13 @@
     "ask": "इस सेवा के बारे में पूछें",
     "minutes": "मिनट",
     "fromPrice": "{price} से शुरू",
+    "defaultDuration": "डिफ़ॉल्ट: {duration}",
     "chooseDuration": "अवधि चुनें",
     "next": "अगली सेवाएँ",
     "first": "पहले पृष्ठ पर जाएँ",
     "moreCategories": "और श्रेणियाँ",
-    "draft": "मुझे {name} में रुचि है। कृपया तारीख और समय चुनने में मदद करें।"
+    "draft": "मुझे {name} में रुचि है। कृपया तारीख और समय चुनने में मदद करें।",
+    "showAll": "सभी सेवाएँ दिखाएँ"
   },
   "Consent": {
     "label": "मापन का विकल्प",

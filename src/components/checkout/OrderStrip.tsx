@@ -41,6 +41,7 @@ export function OrderStrip({
   onOrderChange,
   canStartNew = false,
   displayControl,
+  ordersFilterScope,
 }: {
   view: OrderView | null | undefined;
   title: string;
@@ -50,11 +51,19 @@ export function OrderStrip({
   canStartNew?: boolean;
   /** Rendered beside Orders, e.g. the customer display button (not in the dev preview). */
   displayControl?: ReactNode;
+  ordersFilterScope?: string;
 }) {
   const actions = useCheckoutBackend().useActions();
   // Cashiers get the open orders and today's receipts by number, not the full order lists (an operations area).
   const cashier = useStaffAccess().role === "cashier";
   const [panel, setPanel] = useState<Panel>(null);
+  const [ordersFilter, setOrdersFilter] = useState<OrderFilter>("unpaid");
+  const filterKey = ordersFilterScope ? `checkout:orders-filter:${ordersFilterScope}` : null;
+  function changeOrdersFilter(filter: OrderFilter) {
+    setOrdersFilter(filter);
+    if (!filterKey) return;
+    try { sessionStorage.setItem(filterKey, filter); } catch { /* Browser storage can be disabled. */ }
+  }
   const [ordersPending, setOrdersPending] = useState(false);
   const [customerPending, setCustomerPending] = useState(false);
   const order = view?.order;
@@ -64,6 +73,12 @@ export function OrderStrip({
   const customer = view?.customer ?? null;
   const dialogSession = useRef(0);
   const changePanel = (next: Panel) => {
+    if (next === "orders" && !cashier && filterKey) {
+      try {
+        const stored = sessionStorage.getItem(filterKey);
+        setOrdersFilter(FILTERS.find(filter => filter.value === stored)?.value ?? "unpaid");
+      } catch { /* The in-memory filter still works. */ }
+    }
     dialogSession.current += 1;
     setPanel(next);
   };
@@ -157,7 +172,7 @@ export function OrderStrip({
           </Button>
         </DialogTrigger>
         <CheckoutDialogContent className="max-h-[calc(100dvh-2rem)] max-w-md overflow-y-auto">
-          {panel === "customer" ? <CustomerPicker view={view ?? null} onLink={link} onCreate={create} onUnlink={unlink} onPending={setCustomerPending} /> : null}
+          {panel === "customer" ? <CustomerPicker onOpenOrder={(id) => { close(); onOrderChange(id); }} view={view ?? null} onLink={link} onCreate={create} onUnlink={unlink} onPending={setCustomerPending} /> : null}
         </CheckoutDialogContent>
       </Dialog>
 
@@ -192,9 +207,9 @@ export function OrderStrip({
           <CheckoutDialogContent onEscapeKeyDown={(e) => { if (ordersPending) e.preventDefault(); }} onPointerDownOutside={(e) => { if (ordersPending) e.preventDefault(); }} panel className="max-h-[calc(100dvh-2rem)] max-w-lg overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Orders</DialogTitle>
-              <DialogDescription className="text-pretty">{cashier ? "Open orders on every till. Look up today's receipts by order number." : "Find an order by number or browse by status."}</DialogDescription>
+              <DialogDescription className="text-pretty">{cashier ? "Open orders on every till. Look up today's receipts by order or receipt number." : "Find an order by order or receipt number, or browse by status."}</DialogDescription>
             </DialogHeader>
-            {panel === "orders" ? (cashier ? <OpenOrders currentId={order?._id} onOpen={(id) => { close(); onOrderChange(id); }} /> : <OrdersBrowser onPending={setOrdersPending} currentId={order?._id} onOpen={(id) => { close(); onOrderChange(id); }} />) : null}
+            {panel === "orders" ? (cashier ? <OpenOrders currentId={order?._id} onOpen={(id) => { close(); onOrderChange(id); }} /> : <OrdersBrowser filter={ordersFilter} onFilterChange={changeOrdersFilter} onPending={setOrdersPending} currentId={order?._id} onOpen={(id) => { close(); onOrderChange(id); }} />) : null}
           </CheckoutDialogContent>
         </Dialog>
         {phone ? (
@@ -234,12 +249,14 @@ function CustomerPicker({
   onLink,
   onCreate,
   onUnlink,
+  onOpenOrder,
   onPending,
 }: {
   view: OrderView | null;
   onLink: LinkFn;
   onCreate: CreateFn;
   onUnlink: () => void;
+  onOpenOrder: (id: OrderId) => void;
   onPending: (pending: boolean) => void;
 }) {
   const [query, setQuery] = useState("");
@@ -268,7 +285,7 @@ function CustomerPicker({
   }
 
   if (form) return <CustomerForm initial={form} onCancel={() => setForm(null)} onLink={onLink} onCreate={onCreate} onSaved={setSaved} />;
-  if (profileId) return <InlineErrorBoundary resetKey={profileId} message="Couldn't load this customer. Check your connection and retry."><CustomerDetails key={profileId} customerId={profileId} onBack={() => setProfileId(null)} onOpen={setProfileId} onPending={onPending} /></InlineErrorBoundary>;
+  if (profileId) return <InlineErrorBoundary resetKey={profileId} message="Couldn't load this customer. Check your connection and retry."><CustomerDetails key={profileId} customerId={profileId} onBack={() => setProfileId(null)} onOpen={setProfileId} onOpenOrder={onOpenOrder} onPending={onPending} /></InlineErrorBoundary>;
 
   const fromQuery = (): NewCustomer => {
     if (/^[+\d\s()-]+$/.test(typed)) return { ...EMPTY_FORM, phone: typed };
@@ -322,12 +339,13 @@ function CustomerPicker({
 }
 
 /**
- * Active customers; tapping one links them. When nothing active matches, managers also see archived
- * matches, which open the profile to restore (so nobody adds the same guest twice).
+ * Active customers link to the sale. Managers can search archived customers
+ * matches on request, which open the profile to restore.
  */
 function CustomerResults({ query, currentId, disabled, onPick, onOpenArchived }: { query: string; currentId: CustomerId | undefined; disabled: boolean; onPick: (id: CustomerId) => void; onOpenArchived?: (id: CustomerId) => void }) {
   const { results, status, loadMore } = useCheckoutBackend().useCustomerPage(query, false);
   const typed = query.trim();
+  const [showArchived, setShowArchived] = useState(false);
   return (
     <><ul className="grid max-h-72 gap-1 overflow-y-auto" aria-label="Customers">
       {status === "LoadingFirstPage" ? <li className="px-3 py-2"><Spinner label="Searching" /></li> : null}
@@ -346,7 +364,10 @@ function CustomerResults({ query, currentId, disabled, onPick, onOpenArchived }:
       {status === "Exhausted" && results.length === 0 ? <li className="px-3 py-2 text-sm text-muted-foreground">{typed.length >= 2 ? `No customer matches “${typed}”.` : "Type a name, phone or email."}</li> : null}
     </ul>
     {status === "CanLoadMore" || status === "LoadingMore" ? <Button variant="outline" disabled={status === "LoadingMore"} onClick={() => loadMore(20)}>Load more customers</Button> : null}
-    {onOpenArchived && status === "Exhausted" && results.length === 0 && typed.length >= 2 ? <ArchivedMatches query={query} disabled={disabled} onOpen={onOpenArchived} /> : null}</>
+    {onOpenArchived && typed.length >= 2 ? <>
+      <Button variant="outline" aria-expanded={showArchived} onClick={() => setShowArchived(!showArchived)}>Search archived</Button>
+      {showArchived ? <ArchivedMatches query={query} disabled={disabled} onOpen={onOpenArchived} /> : null}
+    </> : null}</>
   );
 }
 
@@ -522,16 +543,27 @@ function AttachResults({ orderId, query, run, onDone }: { orderId: OrderId | nul
   const searching = query.trim().length >= 2;
 
   // Stays open while there is more to add, so a stay and its appointment take one visit.
-  // A failed add closes the list so the page's error banner isn't hidden behind it.
+  const [attachError, setAttachError] = useState("");
   async function attach(row: Attachable) {
     const target = row.kind === "booking" ? { bookingId: row.id as Id<"bookings"> } : { appointmentId: row.id as Id<"appointments"> };
     const more = rows?.some((other) => other.id !== row.id && other.onOrder === null && !other.unavailableReason);
-    const ok = await run((current) => actions.attach({ orderId: current, ...target }));
-    if (!ok || !more) onDone();
+    setAttachError("");
+    let reason = "Couldn’t attach this booking or appointment. Try again or choose another result.";
+    const ok = await run(async (current) => {
+      try {
+        return await actions.attach({ orderId: current, ...target });
+      } catch (err) {
+        reason = errorText(err, reason);
+        throw err;
+      }
+    });
+    if (!ok) setAttachError(reason);
+    else if (!more) onDone();
   }
 
   return (
     <>
+      {attachError ? <p role="alert" className="text-sm text-destructive">{attachError}</p> : null}
       {lookup?.complete === false ? (
         <p className="rounded-lg border border-amber-300 bg-amber-50 p-2 text-xs dark:border-amber-400/40 dark:bg-amber-400/10">
           {lookup.bookingsIncomplete
@@ -603,7 +635,7 @@ function OpenOrdersList({ currentId, onOpen }: { currentId: OrderId | undefined;
               type="button"
               onClick={() => onOpen(row._id)}
               aria-current={row._id === currentId ? "true" : undefined}
-              aria-label={`${row.title}, ${row.customerName ?? "No customer"}, ${row.itemCount} ${row.itemCount === 1 ? "item" : "items"}, ${formatMoney(row.due, row.currency)} due${row._id === currentId ? ", current order" : ""}`}
+              aria-label={`${row.title}, ${row.customerName ?? "No customer"}${row.bookingReference ? `, ${row.bookingReference}` : ""}, updated ${orderTime(row.updatedAt)}, ${row.itemCount} ${row.itemCount === 1 ? "item" : "items"}, ${formatMoney(row.due, row.currency)} due${row._id === currentId ? ", current order" : ""}`}
               className="flex min-h-14 w-full items-center justify-between gap-3 px-1 py-3 text-left hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring"
             >
               <span className="min-w-0">
@@ -611,11 +643,12 @@ function OpenOrdersList({ currentId, onOpen }: { currentId: OrderId | undefined;
                   {row.title}
                   {row._id === currentId ? <Badge variant="secondary" className="ml-2 font-medium">Current</Badge> : null}
                 </span>
-                <span className="block truncate text-xs text-muted-foreground">
-                  {row.customerName ?? (row.bookingReference ? (row.otherBookings ? `${row.bookingReference} +${row.otherBookings}` : row.bookingReference) : "No customer")}
-                  {" · "}
-                  {row.itemCount} {row.itemCount === 1 ? "item" : "items"}
+                <span className="flex min-w-0 flex-wrap gap-x-1 text-xs text-muted-foreground">
+                  <span className="min-w-0 truncate">{row.customerName ?? "No customer"}</span>
+                  {row.bookingReference && <span className="break-all">{row.bookingReference}{row.otherBookings ? ` +${row.otherBookings}` : ""}</span>}
+                  <span>{row.itemCount} {row.itemCount === 1 ? "item" : "items"}</span>
                 </span>
+                <span className="block text-xs text-muted-foreground">Updated {orderTime(row.updatedAt)}</span>
               </span>
               <span className="flex shrink-0 items-center gap-2">
                 <span className="text-right">
@@ -644,14 +677,7 @@ function OrderNumberLookup({ cashier = false, onOpen }: { cashier?: boolean; onO
   function submit(event: FormEvent) {
     event.preventDefault();
     const raw = text.trim();
-    if (/^r\s*-?\s*\d/i.test(raw)) {
-      // R-000042 is the receipt number, not order #42.
-      setError("That's the receipt number. Enter the order number, shown as Order #.");
-      setNumber(null);
-      return;
-    }
-    // Accept the number as the app shows it: "1043", "#1043" or "Order #1043".
-    const digits = raw.replace(/^(order\s*)?#?\s*/i, "");
+    const digits = raw.replace(/^r\s*-?\s*/i, "").replace(/^(order\s*)?#?\s*/i, "");
     const value = Number(digits);
     if (!/^\d+$/.test(digits) || !Number.isSafeInteger(value) || value <= 0) {
       setError("Enter a positive whole order number.");
@@ -663,20 +689,20 @@ function OrderNumberLookup({ cashier = false, onOpen }: { cashier?: boolean; onO
   }
   return (
     <form onSubmit={submit} className={cn("grid gap-2", cashier && "border-t border-border pt-3")}>
-      <Label htmlFor="order-lookup" className="text-xs text-muted-foreground">Order number</Label>
+      <Label htmlFor="order-lookup" className="text-xs text-muted-foreground">Order or receipt number</Label>
       <div className="flex gap-2">
-        <Input id="order-lookup" inputMode="numeric" value={text} aria-invalid={Boolean(error)} aria-describedby={error ? "order-lookup-error" : undefined} onChange={(e) => { setText(e.target.value); setError(""); setNumber(null); }} placeholder="e.g. 1043" />
+        <Input id="order-lookup" value={text} aria-invalid={Boolean(error)} aria-describedby={error ? "order-lookup-error" : undefined} onChange={(e) => { setText(e.target.value); setError(""); setNumber(null); }} placeholder="e.g. 1043 or R-000042" />
         <Button type="submit" className="disabled:opacity-100 disabled:bg-muted disabled:text-muted-foreground" disabled={!text.trim()}>Go</Button>
       </div>
       {error ? <p id="order-lookup-error" role="alert" className="text-sm text-destructive">{error}</p> : null}
-      {number !== null ? <InlineErrorBoundary resetKey={String(number)} retryLabel="Retry" message="Couldn’t find this order. Try again."><OrderLookupResult number={number} cashier={cashier} onOpen={onOpen} /></InlineErrorBoundary> : null}
+      {number !== null ? <InlineErrorBoundary resetKey={String(number)} retryLabel="Retry" message="Couldn’t find this order. Try again."><OrderLookupResult number={number} receipt={/^r/i.test(text.trim())} cashier={cashier} onOpen={onOpen} /></InlineErrorBoundary> : null}
     </form>
   );
 }
 
 /** Query failures stay inside the result, preserving the number typed in the form. */
-function OrderLookupResult({ number, cashier, onOpen }: { number: number; cashier: boolean; onOpen: (id: OrderId) => void }) {
-  const found = useCheckoutBackend().useFindOrder(number);
+function OrderLookupResult({ number, receipt, cashier, onOpen }: { number: number; receipt: boolean; cashier: boolean; onOpen: (id: OrderId) => void }) {
+  const found = useCheckoutBackend().useFindOrder(number, receipt);
   const opened = useRef<number | null>(null);
   useEffect(() => {
     if (!found || opened.current === number) return;
@@ -695,8 +721,10 @@ const FILTERS: Array<{ value: OrderFilter; label: string; empty: string }> = [
   { value: "void", label: "Voided", empty: "No voided orders." },
 ];
 
-export function OrdersBrowser({ currentId, onOpen, onPending = () => {} }: { currentId: OrderId | undefined; onOpen: (orderId: OrderId) => void; onPending?: (pending: boolean) => void }) {
-  const [filter, setFilter] = useState<OrderFilter>("unpaid");
+export function OrdersBrowser({ currentId, onOpen, onPending = () => {}, filter: sessionFilter, onFilterChange }: { currentId: OrderId | undefined; onOpen: (orderId: OrderId) => void; onPending?: (pending: boolean) => void; filter?: OrderFilter; onFilterChange?: (filter: OrderFilter) => void }) {
+  const [localFilter, setLocalFilter] = useState<OrderFilter>("unpaid");
+  const filter = sessionFilter ?? localFilter;
+  const setFilter = onFilterChange ?? setLocalFilter;
   const [restoring, setRestoring] = useState<OrderId | null>(null);
   return (
     <div className="grid gap-3">
@@ -737,13 +765,12 @@ function OrdersList({ filter, currentId, onOpen, onRestore }: { filter: OrderFil
                   {row.title}
                   {row._id === currentId ? <Badge variant="secondary" className="ml-2 font-medium">Current</Badge> : null}
                 </span>
-                <span className="block truncate text-xs text-muted-foreground">
-                  {[row.customerName ?? "No customer", row.bookingReference && (row.otherBookings ? `${row.bookingReference} +${row.otherBookings}` : row.bookingReference)]
-                    .filter(Boolean)
-                    .join(" · ")}
+                <span className="flex min-w-0 flex-wrap gap-x-1 text-xs text-muted-foreground">
+                  <span className="min-w-0 truncate">{row.customerName ?? "No customer"}</span>
+                  {row.bookingReference && <span className="break-all">{row.bookingReference}{row.otherBookings ? ` +${row.otherBookings}` : ""}</span>}
                 </span>
                 <span className="block text-xs text-muted-foreground">
-                  {row.itemCount} {row.itemCount === 1 ? "item" : "items"} · {orderTime(row.updatedAt)}
+                  {row.itemCount} {row.itemCount === 1 ? "item" : "items"} · {filter === "paid" ? (row.paidAt ? `Paid ${orderTime(row.paidAt)}` : "Payment time unavailable") : `Updated ${orderTime(row.updatedAt)}`}{filter === "paid" && row.paidAt && row.updatedAt > row.paidAt ? ` · Updated ${orderTime(row.updatedAt)}` : ""}
                   {row.receiptNumber !== undefined ? ` · ${formatReceiptNumber(row.receiptNumber)}` : ""}
                 </span>
                 {row.discarded ? <span className="block text-xs text-muted-foreground">Discarded {orderTime(row.discarded.at)} · {row.discarded.by ?? "Unknown"}{row.discarded.reason ? ` · ${row.discarded.reason}` : ""}</span> : null}

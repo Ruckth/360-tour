@@ -178,14 +178,25 @@ it("lists unpaid orders without a Discard button and offers Restore… beside ea
 
   // Restore… opens the review; leaving it restores nothing.
   await press(action("Restore"));
-  expect(document.body.textContent).toContain("Its charges were released while discarded");
+  const review = document.querySelector<HTMLElement>('section[aria-label="Restore order"]')!;
+  expect(review.querySelector("h3")?.textContent).toBe(`Restore ${title}`);
+  const groups = [...review.querySelectorAll("h4")];
+  expect(groups.map(heading => heading.textContent)).toEqual(["Keep", "Remove"]);
+  expect(groups[0].parentElement?.querySelector("ul")?.textContent).toContain("Foot spa 45");
+  expect(groups[1].parentElement?.querySelector("p")?.textContent).toBe("No items");
   await press(within(document, "Back to orders"));
   expect(restore).not.toHaveBeenCalled();
 
   await press(action("Restore"));
   await press(within(document, "Restore order")); await tick();
-  expect(restore).toHaveBeenCalledOnce();
-  expect(document.body.textContent).toContain("restored. Review retained rows");
+  expect(restore).toHaveBeenCalledExactlyOnceWith({
+    orderId: saved,
+    expectedRevision: 3,
+    idempotencyKey: expect.any(String),
+    removeConflictingRows: false,
+    reviewedConflictLineIds: [],
+  });
+  expect(document.querySelector('[role="status"]')?.textContent).toContain(`${title} restored. Review retained rows`);
 });
 
 it('hides History on an untouched empty order and subscribes only when its first recorded change is expanded', async () => {

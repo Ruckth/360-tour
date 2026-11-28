@@ -13,10 +13,18 @@ import {
 const state = vi.hoisted(() => ({
   loaderData: { clerkConfigured: true, locale: "en", commerce: { Commerce: { ok: "OK" } } } as Record<string, unknown>,
   params: { id: "prop-123", orderId: "order-789" } as Record<string, string>,
+  search: {} as Record<string, unknown>,
   routeContext: { tab: "services" } as Record<string, unknown>,
   push: vi.fn(),
   sessionId: null as string | null,
   fetchCommerce: vi.fn(async () => ({ Commerce: { ok: "OK" } })),
+}));
+
+// Boundary components read the path to name the section; route wiring tests below replace this.
+const boundaryPath = vi.hoisted(() => ({ value: "/admin/nowhere" }));
+vi.mock("@/platform/navigation", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/platform/navigation")>()),
+  usePathname: () => boundaryPath.value,
 }));
 
 vi.mock("@/platform/link", () => ({
@@ -83,6 +91,15 @@ describe("Start admin boundary components", () => {
     expect(html).toContain('href="/admin/chats"');
     expect(html).toContain("Back to Chats");
   });
+
+  it("keeps a stale Staff bookings link in its section with that section's pages (N06)", () => {
+    boundaryPath.value = "/admin/staff/old-tab";
+    const html = renderToStaticMarkup(React.createElement(StartAdminNotFound));
+    boundaryPath.value = "/admin/nowhere";
+    expect(html).toContain("This Staff bookings page doesn’t exist");
+    for (const href of ["/admin/staff/calendar", "/admin/staff/roster", "/admin/staff/staff", "/admin/staff/services"]) expect(html).toContain(`href="${href}"`);
+    expect(html).not.toContain("Back to Chats");
+  });
 });
 
 describe("Start admin route components wiring", () => {
@@ -91,6 +108,7 @@ describe("Start admin route components wiring", () => {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     state.push.mockReset();
     state.sessionId = null;
+    state.search = {};
     state.fetchCommerce.mockClear();
     vi.doMock("@/platform/auth", () => ({
       useAuth: () => ({ isLoaded: true, isSignedIn: Boolean(state.sessionId), sessionId: state.sessionId }),
@@ -102,6 +120,7 @@ describe("Start admin route components wiring", () => {
         options,
         useLoaderData: () => state.loaderData,
         useParams: () => state.params,
+        useSearch: () => (options.validateSearch as ((search: Record<string, unknown>) => unknown) | undefined)?.(state.search) ?? state.search,
         useRouteContext: () => state.routeContext,
       }),
       Outlet: () => React.createElement("div", { "data-testid": "admin-outlet" }, "outlet-child"),
@@ -129,8 +148,8 @@ describe("Start admin route components wiring", () => {
     }));
 
     vi.doMock("@/components/admin/AdminPropertyEditor", () => ({
-      AdminPropertyEditor: ({ propertyId }: { propertyId: string }) =>
-        React.createElement("div", { "data-property-id": propertyId }),
+      AdminPropertyEditor: ({ propertyId, tab }: { propertyId: string; tab?: string }) =>
+        React.createElement("div", { "data-property-id": propertyId, "data-property-tab": tab ?? "details" }),
     }));
 
     vi.doMock("@/components/admin/marketing/MarketingScreens", () => ({
@@ -246,7 +265,12 @@ describe("Start admin route components wiring", () => {
     const propertyMod = await import("@/start-app/routes/admin.properties.$id");
     const Property = (propertyMod.Route as unknown as { options: { component: React.ComponentType } }).options.component;
     state.params = { id: "villa-42" };
-    expect(renderToStaticMarkup(React.createElement(Property))).toContain('data-property-id="villa-42"');
+    state.search = { tab: "reviews" };
+    const propertyHtml = renderToStaticMarkup(React.createElement(Property));
+    expect(propertyHtml).toContain('data-property-id="villa-42"');
+    expect(propertyHtml).toContain('data-property-tab="reviews"');
+    state.search = { tab: ["reviews", "calendar"] };
+    expect(renderToStaticMarkup(React.createElement(Property))).toContain('data-property-tab="details"');
 
     const couponMod = await import("@/start-app/routes/admin.marketing.coupons.$id");
     const Coupon = (couponMod.Route as unknown as { options: { component: React.ComponentType } }).options.component;

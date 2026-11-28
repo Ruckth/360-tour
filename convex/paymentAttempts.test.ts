@@ -934,7 +934,7 @@ it('lists the other admitted tills for Hand over and refuses handing a payment t
   const { t, owner, request, deskA, deskB } = await fixture();
   const handover = api.pos.commands.handoverPaymentAttempt;
   const tills = await owner.query(handover.handoverTills, { tillId: deskA });
-  expect(tills).toEqual({ thisTill: `Till ${deskA.slice(-6).toUpperCase()}`, tills: [{ tillId: deskB, label: `Till ${deskB.slice(-6).toUpperCase()}` }] });
+  expect(tills).toEqual({ thisTill: `Till ${deskA.slice(-8).toUpperCase()}`, tills: [{ tillId: deskB, label: `Till ${deskB.slice(-8).toUpperCase()}` }] });
   // A till that hasn't acknowledged this cutover can't receive a payment, so it isn't offered.
   await t.run(ctx => ctx.db.patch(deskB, { paymentRollout: undefined }));
   expect((await owner.query(handover.handoverTills, { tillId: deskA })).tills).toEqual([]);

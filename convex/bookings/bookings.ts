@@ -1,5 +1,5 @@
-import { bookingsCreateResult, bookingsGetByIdResult, bookingsGetConfirmProposalResult, bookingsConfirmProposalResult } from './validators';
-import { v } from 'convex/values';
+import { bookingsCreateResult, bookingsGetByIdResult, bookingsGetConfirmProposalResult, bookingsGetConfirmProposalStatusResult, bookingsConfirmProposalResult } from './validators';
+import { ConvexError, v } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { internalMutation, internalQuery, publicMutation, publicQuery, requireAdmin } from '../auth/model';
@@ -22,14 +22,30 @@ import { getEffectiveSettings } from '../settings/model';
 import { assertValidEmail } from '../shared/validation';
 import { currentClaim, durableToolValidator, durableTurnValidator, startDurablePreparation, withDurableTool } from '../messaging/model';
 import { queueCancellationEmail } from './private/stays';
+import { checkoutBalance, isPayable } from './payments/stripe';
 
 function assertBookingAccess(
 	booking: Doc<'bookings'>,
 	accessToken: string | undefined
 ): void {
 	if (!booking.accessToken || accessToken !== booking.accessToken) {
-		throw new Error('Booking access denied');
+		// ConvexError keeps this refusal (same message) distinguishable from outages in production.
+		throw new ConvexError('Booking access denied');
 	}
+}
+
+/** The hold lapsed: still pending past its deadline, or already released by expiry maintenance. */
+function holdExpired(booking: Doc<'bookings'>, now: number) {
+	if (booking.status === 'cancelled') return booking.cancelledBy === 'system:expiry';
+	return booking.status === 'pending' && booking.source !== 'admin' && now >= bookingHoldExpiresAt(booking);
+}
+
+/** What online payment can do for this stay, mirroring `beginCheckout`'s own checks. */
+function guestPayState(booking: Doc<'bookings'>, now: number): 'payable' | 'settled' | 'expired' | 'closed' {
+	if (holdExpired(booking, now)) return 'expired';
+	if (isPayable(booking)) return 'payable';
+	if (booking.status !== 'cancelled' && booking.paymentStatus === 'paid' && checkoutBalance(booking) <= 0) return 'settled';
+	return 'closed';
 }
 
 function toPublicBooking(booking: Doc<'bookings'>) {
@@ -110,16 +126,18 @@ export const getLifecycleEmailDetails = internalQuery({
 export const getById = publicQuery({
   returns: bookingsGetByIdResult,
   reason: "Booking capability token or operations identity; handler checks the specific booking.",
-	args: { id: v.id('bookings'), accessToken: v.optional(v.string()) },
+	// A string, so a malformed link id is a plain "not found" instead of a validator error.
+	args: { id: v.string(), accessToken: v.optional(v.string()) },
 	handler: async (ctx, args) => {
-		const booking = await ctx.db.get(args.id);
+		const id = ctx.db.normalizeId('bookings', args.id);
+		const booking = id ? await ctx.db.get(id) : null;
 		if (!booking) return null;
-		if (args.accessToken) {
-			assertBookingAccess(booking, args.accessToken);
-			return toPublicBooking(booking);
-		}
-		await requireAdmin(ctx);
-		return toPublicBooking(booking);
+		if (args.accessToken) assertBookingAccess(booking, args.accessToken);
+		else await requireAdmin(ctx);
+		// Read only after access is established, so an unauthorized link learns nothing about the stay.
+		const property = await ctx.db.get(booking.propertyId);
+		const payState = guestPayState(booking, Date.now());
+		return { ...toPublicBooking(booking), propertyName: property?.name, payState, amountDue: checkoutBalance(booking) };
 	}
 });
 
@@ -361,25 +379,29 @@ async function confirmPreparedBooking(
 	};
 }
 
-/** Validate a capability without writing; GETs and messaging-app previews never reserve dates. */
-async function loadConfirmProposal(ctx: QueryCtx | MutationCtx, token: string) {
+/** Never a real proposal secret: verified against when nothing matches, so every refusal costs one HMAC. */
+const UNMATCHED_PROPOSAL_SECRET = 'unmatched-proposal';
+
+/** The signed proposal this token names, if it is still the chat's current one (expired or not). */
+async function authenticProposal(ctx: QueryCtx | MutationCtx, token: string) {
 	const parts = token.split('.');
 	if (parts.length !== 4) return null;
 	const [sessionKey, proposalId, expiry, signature] = parts;
 	const sessionId = ctx.db.normalizeId('conversations', sessionKey);
-	if (!sessionId) return null;
-	const session = await ctx.db.get(sessionId);
+	const session = sessionId ? await ctx.db.get(sessionId) : null;
 	const pending = session?.pendingBookingQuote;
-	if (
-		!session ||
-		!pending?.confirmSecret ||
-		pending.proposalId !== proposalId ||
-		String(pending.expiresAt) !== expiry ||
-		// Once confirmed, the link keeps leading to that booking's payment while its hold lasts.
-		(!pending.bookingId && Date.now() >= Number(expiry))
-	)
-		return null;
-	if (!(await verifyProposal(parts.slice(0, 3).join('.'), signature, pending.confirmSecret))) return null;
+	const current = !!session && !!pending?.confirmSecret && pending.proposalId === proposalId && String(pending.expiresAt) === expiry;
+	const verified = await verifyProposal(parts.slice(0, 3).join('.'), signature, current ? pending.confirmSecret! : UNMATCHED_PROPOSAL_SECRET);
+	return current && verified ? { session, pending, expiresAt: Number(expiry) } : null;
+}
+
+/** Validate a capability without writing; GETs and messaging-app previews never reserve dates. */
+async function loadConfirmProposal(ctx: QueryCtx | MutationCtx, token: string) {
+	const proposal = await authenticProposal(ctx, token);
+	if (!proposal) return null;
+	const { session, pending } = proposal;
+	// Once confirmed, the link keeps leading to that booking's payment while its hold lasts.
+	if (!pending.bookingId && Date.now() >= proposal.expiresAt) return null;
 	const booking = pending.bookingId ? await ctx.db.get(pending.bookingId) : null;
 	if (pending.bookingId && (!booking
 		|| (booking.status !== 'pending' && booking.status !== 'confirmed')
@@ -419,6 +441,28 @@ export const getConfirmProposal = publicQuery({
 	}
 });
 
+/**
+ * Why `getConfirmProposal` returned null. Only a verified signature on the chat's current proposal
+ * earns a specific answer; forged, altered, replaced and unknown links are all `unavailable`.
+ */
+export const getConfirmProposalStatus = publicQuery({
+  returns: bookingsGetConfirmProposalStatusResult,
+  reason: "Signed proposal link; handler verifies the signature before naming expiry or settlement.",
+	args: { token: v.string() },
+	handler: async (ctx, args) => {
+		const proposal = await authenticProposal(ctx, args.token);
+		if (!proposal) return 'unavailable' as const;
+		const now = Date.now();
+		const { pending } = proposal;
+		if (!pending.bookingId) return now >= proposal.expiresAt ? 'summary_expired' as const : 'unavailable' as const;
+		const booking = await ctx.db.get(pending.bookingId);
+		if (!booking) return 'unavailable' as const;
+		if (holdExpired(booking, now)) return 'hold_expired' as const;
+		if (booking.status !== 'cancelled' && stayMoney(booking).net >= booking.total) return 'settled' as const;
+		return 'unavailable' as const;
+	}
+});
+
 export const confirmProposal = publicMutation({
   returns: bookingsConfirmProposalResult,
   reason: "Signed, expiring proposal link; handler revalidates quote and proposal before confirmation.",
@@ -429,7 +473,7 @@ export const confirmProposal = publicMutation({
 	},
 	handler: async (ctx, args) => {
 		const result = await loadConfirmProposal(ctx, args.token);
-		if (!result) throw new Error('This summary has expired. Ask in the chat for a new one.');
+		if (!result) throw new ConvexError({ code: 'PROPOSAL_UNAVAILABLE', message: 'This summary has expired. Ask in the chat for a new one.' });
 		return await confirmPreparedBooking(ctx, { sessionId: result.session._id, byGuest: true, marketing: args.marketing });
 	}
 });

@@ -1,4 +1,4 @@
-import { asTestOwner } from './testing/staff.test-support';
+import { asTestOwner, seedTestBranch } from './testing/staff.test-support';
 import { insertFixture } from './testing/completeFixture.test-support';
 // @vitest-environment edge-runtime
 
@@ -585,6 +585,34 @@ describe('source changes', () => {
 		await expect(admin.mutation(api.bookings.commands.deleteBooking.deleteBooking, { bookingId: pending })).rejects.toThrow('has an order');
 		expect(await admin.mutation(api.bookings.commands.deleteBookings.deleteBookings, { bookingIds: [pending] })).toMatchObject({ deleted: 0, skipped: [{ reason: expect.stringContaining('has an order') }] });
 	});
+
+	it('D19: attaching a stay to a Spa appointment is checked in the write and charges nothing by itself', async () => {
+		const { t, admin, serviceId, order } = await setup();
+		const bookingId = await admin.mutation(api.bookings.commands.createBooking.createBooking, {
+			propertySlug: 'villa', guestName: 'Mia', guestPhone: '0811111111', checkIn: '2026-12-01', checkOut: '2026-12-03', guests: 2
+		});
+		const inStay = new Date('2026-12-02T03:00:00.000Z').getTime();
+		const outside = new Date('2026-12-05T03:00:00.000Z').getTime();
+		await expect(admin.mutation(api.services.commands.createAppointment.createAppointment, { serviceId, start: outside, guestName: 'Mia', guestPhone: '0811111111', bookingId })).rejects.toThrow('must fall within it');
+		// A manager of another branch cannot look the resort stay up or attach it by ID; booking without it still works.
+		const otherBranch = { email: 'other-branch@example.com', emailVerified: true, tokenIdentifier: 'other-branch' };
+		await t.run(async (ctx) => ctx.db.insert('staffGrants', {
+			role: 'manager', email: otherBranch.email, tokenIdentifier: otherBranch.tokenIdentifier, branchIds: [await seedTestBranch(ctx, 'other-branch')],
+			createdAt: 0, updatedAt: 0, updatedByEmail: 'admin@example.com'
+		}));
+		const outsider = t.withIdentity(otherBranch);
+		expect(await outsider.query(api.bookings.admin.searchBookings, { query: 'Mia' })).toEqual([]);
+		await expect(outsider.mutation(api.services.commands.createAppointment.createAppointment, { serviceId, start: inStay, guestName: 'Mia', guestPhone: '0811111111', bookingId })).rejects.toThrow('no longer exists');
+		const standalone = await outsider.mutation(api.services.commands.createAppointment.createAppointment, { serviceId, start: inStay + 3_600_000 * 4, guestName: 'Mia', guestPhone: '0811111111' });
+		const standaloneOrder = (await admin.query(api.pos.orders.ordersForBooking, { appointmentId: standalone.appointmentId }))!.activeOrder!;
+		expect((await order(standaloneOrder._id)).order.bookingId).toBeUndefined();
+		const { appointmentId } = await admin.mutation(api.services.commands.createAppointment.createAppointment, { serviceId, start: inStay, guestName: 'Ann', guestPhone: '0899999999', bookingId });
+		const linked = await admin.query(api.pos.orders.ordersForBooking, { appointmentId });
+		// The stay's order stays empty: selecting a stay is not a charge.
+		expect((await order(linked!.activeOrder!._id)).order).toMatchObject({ bookingId, hasItems: false, due: 0 });
+		await admin.mutation(api.bookings.commands.cancelStay.cancelStay, { bookingId, expectedRevision: (await admin.query(api.bookings.admin.getForAdmin, { bookingId }))!.revision, effectiveAt: Date.now(), notifyGuest: false });
+		await expect(admin.mutation(api.services.commands.createAppointment.createAppointment, { serviceId, start: inStay + 7_200_000, guestName: 'Mia', guestPhone: '0811111111', bookingId })).rejects.toThrow('cancelled');
+	}, 30_000);
 
 	it('creates every new stay and appointment with its order, which a test booking can still be deleted with', async () => {
 		const { t, admin, serviceId, order } = await setup();

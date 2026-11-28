@@ -123,8 +123,11 @@ it('allocates one approval across competing orders and releases cancelled units 
   const draft = () => ann.mutation(p.saveOrder, { branchId, supplierId, requestId, lines: [{ variantId, quantity: 6, requestLineId }], operationKey: key() });
   const [first, second] = [await draft(), await draft()];
   await ann.mutation(p.issuePurchaseOrder, { orderId: first.id as Id<'purchaseOrders'>, expectedRevision: first.revision!, operationKey: key() });
-  expect(await code(ann.mutation(p.issuePurchaseOrder, { orderId: second.id as Id<'purchaseOrders'>, expectedRevision: second.revision!, operationKey: key() })))
-    .toBe('ALLOCATION_CHANGED');
+  const secondOrderId = second.id as Id<'purchaseOrders'>;
+  const secondOrder = await ann.query(p.order, { orderId: secondOrderId });
+  await expect(ann.mutation(p.issuePurchaseOrder, { orderId: secondOrderId, expectedRevision: second.revision!, operationKey: key() }))
+    .rejects.toMatchObject({ data: { code: 'ALLOCATION_CHANGED', lines: [{ orderLineId: secondOrder.lines[0]._id, available: 4 }] } });
+  expect((await ann.query(p.order, { orderId: secondOrderId })).order.status).toBe('draft');
   const orderId = first.id as Id<'purchaseOrders'>;
   await receive(orderId, 4);
   const order = await ann.query(p.order, { orderId });
@@ -931,4 +934,83 @@ it('normalizes Unicode delivery references and persists duplicate confirmations 
   row = (await ann.query(p.receipt, { receiptId: secondId })).receipt;
   expect(row.duplicateOfReceiptId).toBeUndefined();
   expect(row.duplicateReason).toBeUndefined();
+});
+
+it('finds an older request and order by reference with branch and requester visibility', async () => {
+  const { t, ann, cat, branchId, otherBranchId, directOrder, approvedRequest } = await setup();
+  const requestId = await approvedRequest(4);
+  const orderId = await directOrder(4);
+  const { request } = await ann.query(p.request, { requestId });
+  const { order } = await ann.query(p.order, { orderId });
+  await t.run(async ctx => {
+    const requestRow = omit((await ctx.db.get(requestId))!, ['_id', '_creationTime']);
+    const orderRow = omit((await ctx.db.get(orderId))!, ['_id', '_creationTime']);
+    for (let i = 0; i < 26; i++) {
+      await ctx.db.insert('purchaseRequests', { ...requestRow, reference: `PR-NEW-${i}`, updatedAt: request.updatedAt + i + 1 });
+      await ctx.db.insert('purchaseOrders', { ...orderRow, reference: `PO-NEW-${i}`, updatedAt: order.updatedAt + i + 1 });
+    }
+    await ctx.db.insert('purchaseOrders', { ...orderRow, branchId: otherBranchId, reference: 'PO-HIDDEN' });
+  });
+  const firstRequests = await ann.query(p.requests, { branchId, view: { kind: 'all' }, ...page });
+  expect(firstRequests.page.map(row => row._id)).not.toContain(requestId);
+  const firstOrders = await ann.query(p.orders, { branchId, view: { kind: 'phase', phase: 'open' }, ...page });
+  expect(firstOrders.page.map(row => row._id)).not.toContain(orderId);
+
+  expect(await ann.query(p.purchaseReference, { branchId, reference: ` ${request.reference.toLowerCase()} ` }))
+    .toMatchObject({ request: { _id: requestId }, order: null });
+  expect(await ann.query(p.purchaseReference, { branchId, reference: order.reference }))
+    .toMatchObject({ request: null, order: { _id: orderId } });
+  expect(await cat.query(p.purchaseReference, { branchId, reference: request.reference })).toEqual({ request: null, order: null });
+  expect(await ann.query(p.purchaseReference, { branchId, reference: 'PO-HIDDEN' })).toEqual({ request: null, order: null });
+  expect(await code(ann.query(p.purchaseReference, { branchId: otherBranchId, reference: 'PO-HIDDEN' }))).toBe('STOCK_FORBIDDEN');
+
+  const searchOrders = (search: string) => ann.query(p.orders, { branchId, view: { kind: 'openSearch', search }, ...page });
+  expect((await searchOrders(order.reference.toLowerCase())).page.map(row => row._id)).toEqual([orderId]);
+  expect((await searchOrders('PO-HIDDEN')).page).toEqual([]);
+  await t.run(ctx => ctx.db.patch(orderId, { phase: 'closed', status: 'closed_short' }));
+  expect((await searchOrders(order.reference)).page).toEqual([]);
+  await t.run(ctx => ctx.db.patch(orderId, { phase: 'open', status: 'ordered', supplier: { name: 'Uncommon Supplier' } }));
+  expect((await searchOrders('Uncommon')).page.map(row => row._id)).toEqual([orderId]);
+  await t.run(ctx => ctx.db.patch(orderId, { supplier: { name: 'PO-Supplies ภูเก็ต' } }));
+  expect((await searchOrders('PO-Supplies')).page.map(row => row._id)).toEqual([orderId]);
+  expect((await searchOrders('ภูเก็ต')).page.map(row => row._id)).toEqual([orderId]);
+});
+
+it('pages posted direct receipts and finds them by receipt or normalized delivery reference within the branch', async () => {
+  const { t, ann, cat, branchId, otherBranchId, supplierId, variantId } = await setup();
+  const receipt = await ann.mutation(p.receiveWithoutOrder, {
+    branchId, supplierId, deliveryReference: 'Inv-42', reason: 'Sample',
+    lines: [{ variantId, accepted: 1 }], operationKey: key(),
+  });
+  const receiptId = receipt.id as Id<'supplierReceipts'>;
+  await t.run(async ctx => {
+    const original = omit((await ctx.db.get(receiptId))!, ['_id', '_creationTime']);
+    for (let i = 0; i < 26; i++) {
+      await ctx.db.insert('supplierReceipts', { ...original, reference: `GR-NEW-${i}`, createdAt: original.createdAt + i + 1 });
+    }
+    await ctx.db.insert('supplierReceipts', { ...original, branchId: otherBranchId, reference: 'GR-HIDDEN' });
+  });
+  for (const match of [undefined, { kind: 'delivery', reference: 'ＩＮＶ４２' } as const]) {
+    const first = await cat.query(p.receipts, { branchId, match, ...page });
+    expect(first.page).toHaveLength(25);
+    expect(first.page.map(row => row._id)).not.toContain(receiptId);
+    const second = await cat.query(p.receipts, { branchId, match, paginationOpts: { numItems: 25, cursor: first.continueCursor } });
+    expect(second.page).toHaveLength(2);
+    expect(second.page[1]).toMatchObject({ _id: receiptId, kind: 'direct', supplier: { name: 'Coastal Supply' } });
+    expect(second.page[1].orderId).toBeUndefined();
+    expect(second.page[1].supplier?.phone).toBeUndefined();
+  }
+  const match = { kind: 'receipt', reference: receipt.reference.toLowerCase() } as const;
+  expect((await ann.query(p.receipts, { branchId, match, ...page })).page.map(row => row._id)).toEqual([receiptId]);
+  expect((await ann.query(p.receipts, { branchId, match: { kind: 'receipt', reference: 'GR-HIDDEN' }, ...page })).page).toEqual([]);
+  expect(await code(ann.query(p.receipts, { branchId: otherBranchId, match, ...page }))).toBe('STOCK_FORBIDDEN');
+});
+
+it('normalizes URL filter IDs and resolves the supplier name independently of orders', async () => {
+  const { ann, branchId, otherBranchId, variantId, supplierId } = await setup();
+  const resolve = (variant: string, supplier: string) => ann.query(p.queueFilter, { branchId, variant, supplier });
+  expect(await resolve('nope', 'wrong')).toEqual({ variantId: null, supplier: null });
+  expect(await resolve(supplierId, variantId)).toEqual({ variantId: null, supplier: null });
+  expect(await resolve(variantId, supplierId)).toEqual({ variantId, supplier: { id: supplierId, name: 'Coastal Supply' } });
+  expect(await code(ann.query(p.queueFilter, { branchId: otherBranchId, supplier: supplierId }))).toBe('STOCK_FORBIDDEN');
 });

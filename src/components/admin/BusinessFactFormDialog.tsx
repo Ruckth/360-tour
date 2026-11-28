@@ -222,6 +222,15 @@ function FactForm({
         </div>
 
         <div className="grid gap-2">
+          {/* The guest's full question stays readable beside the answer; the title is an editable copy. */}
+          {fromUnknown ? (
+            <figure className="grid gap-1 rounded-lg border border-border bg-muted/40 px-3 py-2">
+              <figcaption id="fact-guest-question-label" className="text-xs font-medium text-muted-foreground">Guest asked</figcaption>
+              <blockquote aria-labelledby="fact-guest-question-label" className="whitespace-pre-wrap break-words text-sm text-foreground" data-sentence-budget="ignore">
+                {fromUnknown.question}
+              </blockquote>
+            </figure>
+          ) : null}
           <Label htmlFor="fact-body">Fact</Label>
           <Textarea
             id="fact-body"
@@ -284,7 +293,7 @@ function FactForm({
 
         {fromUnknown ? (
           <p className="text-xs text-muted-foreground">
-            Saving this fact approves it and resolves the missing-information report for &quot;{fromUnknown.question}&quot;.
+            Saving approves this fact and resolves the guest’s missing-information report.
           </p>
         ) : null}
 

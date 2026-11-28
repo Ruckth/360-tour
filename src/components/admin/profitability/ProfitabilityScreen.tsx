@@ -16,7 +16,7 @@ import { staffDateTime } from '@/lib/staff-time';
 import { Button } from '@/components/ui/button';
 import { useMarketingAccess } from '../marketing/MarketingAccess';
 import { thb, marketingErrorText } from '../marketing/marketing-format';
-import { FinanceInputs } from './FinanceInputs';
+import { FinanceInputs, type FinanceInputsHandle } from './FinanceInputs';
 import { inputStyle, readGroup, RuleEditor, ruleLabel } from './report-controls';
 
 declare module '@tanstack/react-router' {
@@ -32,6 +32,12 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
   const today = resortTodayIso(),
     from = params.get('from') || today.slice(0, 8) + '01',
     to = params.get('to') || today;
+  const [dateDraft, setDateDraft] = useState({ from, to, start: from, end: to });
+  const dates = dateDraft.from === from && dateDraft.to === to ? dateDraft : { from, to, start: from, end: to };
+  if (dates !== dateDraft) setDateDraft(dates);
+  const draftDays = reportDayCount(dates.start, dates.end);
+  const draftInvalid = draftDays === null || draftDays > MAX_REPORT_DAYS;
+  const pendingRefresh = useRef<string | null>(null);
   const chosen = params.get('metric'),
     metric = profitMetrics.find((m) => m === chosen) ?? 'revenue';
   const overview = useMemo(() => readGroup(params.get('rules')), [params]),
@@ -46,6 +52,7 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
   const page = Math.max(0, Math.floor(Number(params.get('page')) || 0));
   const descending = params.get('sort') !== 'asc';
   const [financeEntry, setFinanceEntry] = useState<{ mode: 'cost' | 'month'; date: string } | null>(null);
+  const financeInputs = useRef<FinanceInputsHandle>(null);
   const financeHeading = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     if (financeEntry) financeHeading.current?.focus();
@@ -90,13 +97,21 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
     [viewId, from, to, overview, additional, submitted, category, page, descending, detailPage, metric],
   );
   const key = JSON.stringify([request, revision]);
-  const [state, setState] = useState<{ key: string; data?: Report; error?: string } | null>(null);
+  const refreshKey = JSON.stringify([params.toString(), detailPage, submitted, access.email, revision]);
+  const stampScope = JSON.stringify([access.email, access.role, from, to, detailPage]);
+  const [state, setState] = useState<{
+    key: string; refreshed?: boolean; data?: Report; error?: string; lastSuccess?: { scope: string; asOf: number };
+  } | null>(null);
   useEffect(() => {
     if (!valid || !viewId) return;
     let active = true;
     convex.query(api.marketing.profitability.report, request).then(
       (data) => {
-        if (active) setState({ key, data });
+        if (active) {
+          const refreshed = pendingRefresh.current === refreshKey;
+          pendingRefresh.current = null;
+          setState({ key, data, refreshed, lastSuccess: { scope: stampScope, asOf: data.asOf } });
+        }
       },
       (err) => {
         if (!active) return;
@@ -104,13 +119,13 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
         if (message.includes('view expired') && expiredView.current !== viewId) {
           expiredView.current = viewId;
           setRevision((n) => n + 1);
-        } else setState({ key, error: message });
+        } else setState((previous) => ({ key, error: message, lastSuccess: previous?.lastSuccess }));
       },
     );
     return () => {
       active = false;
     };
-  }, [convex, key, request, valid, viewId]);
+  }, [refreshKey, convex, key, request, stampScope, valid, viewId]);
   const href: Href = (detail, updates) => {
     const next = new URLSearchParams();
     for (const k of ['rules', 'metric', 'additional', 'page', 'sort', 'lookup', 'category']) {
@@ -139,6 +154,7 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
   const report = valid && state?.key === key ? state.data : undefined;
   const options = state?.data ?? { services: [], sources: [] };
   const loading = valid && state?.key !== key && !(view?.key === viewKey && view.error);
+  const lastStamp = state?.lastSuccess?.scope === stampScope ? staffDateTime(state.lastSuccess.asOf) : null;
   const group = detailPage ? additional : overview;
   return (
     <section
@@ -161,12 +177,14 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <span role="status" className="text-xs text-muted-foreground">
+            {report && state?.refreshed ? `Report refreshed ${lastStamp}` : lastStamp ? `Report updated ${lastStamp}` : ''}
+          </span>
           {report && (
             <Button
               size="sm"
               variant="ghost"
-              onClick={() => setRevision((n) => n + 1)}
-              title={'Report opened ' + staffDateTime(report.asOf)}
+              onClick={() => { pendingRefresh.current = JSON.stringify([params.toString(), detailPage, submitted, access.email, revision + 1]); setRevision(revision + 1); }}
             >
               Refresh report
             </Button>
@@ -175,7 +193,10 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
             <Button
               variant="outline"
               aria-expanded={Boolean(financeEntry)}
-              onClick={() => setFinanceEntry(financeEntry ? null : { mode: 'cost', date: to })}
+              onClick={() => {
+                if (financeEntry) void financeInputs.current?.changeContext(() => setFinanceEntry(null));
+                else setFinanceEntry({ mode: 'cost', date: to });
+              }}
             >
               <SlidersHorizontal size={16} />
               Finance inputs
@@ -189,6 +210,9 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
             Service finance inputs
           </h2>
           <FinanceInputs
+            ref={financeInputs}
+            key={financeEntry.mode + financeEntry.date}
+            onClose={() => setFinanceEntry(null)}
             initialDate={financeEntry.date}
             initialMode={financeEntry.mode}
             onSave={() => setRevision((v) => v + 1)}
@@ -214,8 +238,8 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
               <input
                 type="date"
                 className={inputStyle + ' w-full'}
-                value={from}
-                onChange={(e) => update({ from: e.target.value })}
+                value={dates.start}
+                onChange={(e) => setDateDraft({ ...dates, start: e.target.value })}
               />
             </label>
             <label className="grid gap-1 text-xs">
@@ -223,14 +247,23 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
               <input
                 type="date"
                 className={inputStyle + ' w-full'}
-                value={to}
-                onChange={(e) => update({ to: e.target.value })}
+                value={dates.end}
+                onChange={(e) => setDateDraft({ ...dates, end: e.target.value })}
               />
             </label>
+            <Button size="sm" disabled={draftInvalid || (dates.start === from && dates.end === to)} onClick={() => {
+              if (!draftInvalid) {
+                pendingRefresh.current = null;
+                update({ from: dates.start, to: dates.end });
+              }
+            }}>Apply dates</Button>
+            {draftInvalid && <p role="status" className="text-xs text-destructive">Choose a valid range of up to {MAX_REPORT_DAYS} days.</p>}
             <Button
               size="sm"
               variant="outline"
               onClick={() => {
+                setDateDraft({ from, to, start: from, end: to });
+                pendingRefresh.current = null;
                 const { startDate, endDate } = monthBounds(shiftMonth(monthOf(today), -1));
                 update({ from: startDate, to: endDate });
               }}
@@ -240,7 +273,7 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
             <Button
               size="sm"
               variant="outline"
-              onClick={() => update({ from: monthOf(today) + '-01', to: today })}
+              onClick={() => { setDateDraft({ from, to, start: from, end: to }); pendingRefresh.current = null; update({ from: monthOf(today) + '-01', to: today }); }}
             >
               Month to date
             </Button>
@@ -310,7 +343,11 @@ function ReportScreen({ detailPage }: { detailPage: boolean }) {
                         <button
                           type="button"
                           className="inline-flex min-h-11 items-center text-primary underline"
-                          onClick={() => setFinanceEntry({ mode: 'month', date: month + '-01' })}
+                          onClick={() => {
+                            const open = () => setFinanceEntry({ mode: 'month', date: month + '-01' });
+                            if (financeInputs.current) void financeInputs.current.changeContext(open);
+                            else open();
+                          }}
                           aria-label={'Review monthly accounts for ' + month}
                         >
                           {month}

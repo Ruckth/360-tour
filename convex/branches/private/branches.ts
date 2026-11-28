@@ -1,3 +1,4 @@
+import { RESORT_BRANCH_KEY } from '../../shared/resortBranch';
 import { ConvexError } from 'convex/values';
 import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
@@ -9,7 +10,7 @@ export const BRANCH_LIST_LIMIT = 500;
 const BRANCH_LIST_LIMIT_MESSAGE = 'There are more than 500 branches to list. Contact support.';
 
 export const PRIMARY_BRANCH = {
-  key: 'koh-samui',
+  key: RESORT_BRANCH_KEY,
   slug: 'koh-samui',
   name: 'Koh Samui',
   state: 'active',

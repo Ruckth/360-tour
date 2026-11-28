@@ -4,7 +4,7 @@ import { staffDateTime } from "@/lib/staff-time";
 import { useAction, useMutation, useQuery } from 'convex/react';
 import { api } from 'convex/_generated/api';
 import type { Doc, Id } from 'convex/_generated/dataModel';
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -63,6 +63,8 @@ export function IcalSourcesPanel({ propertyId }: { propertyId: Id<'properties'> 
   const [icalUrl, setIcalUrl] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [copyState, setCopyState] = useState<'' | 'copied' | 'failed'>('');
+  const exportInputRef = useRef<HTMLInputElement>(null);
   const confirm = useConfirm();
   const sources = useQuery(api.bookings.calendar.ical.listSources, { propertyId });
   const token = useQuery(api.bookings.calendar.ical.getExportToken, { propertyId });
@@ -70,6 +72,37 @@ export function IcalSourcesPanel({ propertyId }: { propertyId: Id<'properties'> 
   const rotateToken = useMutation(api.bookings.calendar.ical.rotateExportToken);
   const site = process.env.NEXT_PUBLIC_CONVEX_SITE_URL || process.env.NEXT_PUBLIC_CONVEX_URL?.replace(/\.convex\.cloud$/, '.convex.site');
   const exportUrl = token && site ? `${site}/ical/export?token=${encodeURIComponent(token)}` : '';
+
+  useEffect(() => {
+    if (copyState !== 'copied') return;
+    const timer = window.setTimeout(() => setCopyState(''), 3000);
+    return () => window.clearTimeout(timer);
+  }, [copyState]);
+
+  async function copyExportUrl() {
+    if (!exportUrl) return;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(exportUrl);
+        setCopyState('copied');
+        return;
+      }
+      exportInputRef.current?.focus();
+      exportInputRef.current?.select();
+      const ok = typeof document.execCommand === 'function' && document.execCommand('copy');
+      setCopyState(ok ? 'copied' : 'failed');
+    } catch {
+      exportInputRef.current?.focus();
+      exportInputRef.current?.select();
+      setCopyState('failed');
+    }
+  }
+
+  async function rotateExportUrl() {
+    if (token && !(await confirm({ title: 'Rotate the export URL?', description: 'Existing OTA subscriptions will stop updating.', confirmLabel: 'Rotate URL', destructive: true }))) return;
+    setBusy(true); setError(''); setCopyState('');
+    try { await rotateToken({ propertyId }); } catch (err) { setError(errorText(err, 'Could not generate export URL.')); } finally { setBusy(false); }
+  }
 
   async function add(event: FormEvent) {
     event.preventDefault();
@@ -97,12 +130,44 @@ export function IcalSourcesPanel({ propertyId }: { propertyId: Id<'properties'> 
     </div>
     <div className="grid gap-2 border-t border-border pt-4">
       <h3 className="text-sm font-semibold">Export to OTAs</h3>
-      {exportUrl ? <Input readOnly aria-label="iCal export URL" value={exportUrl} onFocus={event => event.currentTarget.select()} /> : <p className="text-muted-foreground">Generate a private feed URL for this villa.</p>}
-      <Button variant="outline" className="justify-self-start" disabled={busy} onClick={async () => {
-        if (token && !(await confirm({ title: 'Rotate the export URL?', description: 'Existing OTA subscriptions will stop updating.', confirmLabel: 'Rotate URL', destructive: true }))) return;
-        setBusy(true); setError('');
-        try { await rotateToken({ propertyId }); } catch (err) { setError(errorText(err, 'Could not generate export URL.')); } finally { setBusy(false); }
-      }}>{token ? 'Rotate export URL' : 'Generate export URL'}</Button>
+      {exportUrl ? (
+        <>
+          <Label htmlFor="ical-export-url">Private iCal export URL</Label>
+          <Input
+            id="ical-export-url"
+            ref={exportInputRef}
+            readOnly
+            aria-label="Private iCal export URL"
+            value={exportUrl}
+            onFocus={event => event.currentTarget.select()}
+          />
+          <div className="flex flex-wrap items-center gap-3">
+            <Button type="button" size="sm" disabled={busy} onClick={() => void copyExportUrl()}>
+              Copy feed URL
+            </Button>
+            {copyState === 'copied' ? <span role="status" className="text-xs font-medium text-foreground">Copied</span> : null}
+            {copyState === 'failed' ? <span role="alert" className="text-xs text-destructive">Could not copy automatically. Copy the selected URL above.</span> : null}
+          </div>
+          <details className="mt-1 rounded-md border border-border px-3 py-2 text-xs">
+            <summary className="cursor-pointer font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              Manage feed URL
+            </summary>
+            <p className="mt-2 text-muted-foreground">
+              Rotating replaces this URL and stops existing OTA subscriptions from updating until you paste the new link.
+            </p>
+            <Button type="button" variant="outline" size="sm" className="mt-2" disabled={busy} onClick={() => void rotateExportUrl()}>
+              Rotate export URL
+            </Button>
+          </details>
+        </>
+      ) : (
+        <>
+          <p className="text-muted-foreground">Generate a private feed URL for this villa.</p>
+          <Button type="button" variant="outline" className="justify-self-start" disabled={busy} onClick={() => void rotateExportUrl()}>
+            {token ? 'Rotate export URL' : 'Generate export URL'}
+          </Button>
+        </>
+      )}
     </div>
     {error ? <p role="alert" className="text-destructive">{error}</p> : null}
   </div>;

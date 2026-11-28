@@ -7,10 +7,12 @@ import { IntlProvider } from "@/platform/intl";
 import messages from "../../messages/en.json";
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
 import { NewBookingDialog } from "@/components/admin/NewBookingDialog";
+import { todayGroups, TodayStrip } from "@/components/admin/TodayStrip";
+import { serverTodayIso } from "@/components/admin/admin-bookings-shared";
 import { MoveBookingDialog, type Move } from "@/components/admin/AdminBookingsView";
 
-const mutations = vi.hoisted(() => ({ createBooking: vi.fn(), editBooking: vi.fn() }));
-const queries = vi.hoisted(() => ({ getForAdmin: vi.fn(), findGuests: vi.fn(), quoteBookingEdit: vi.fn() }));
+const mutations = vi.hoisted(() => ({ createBooking: vi.fn(), editBooking: vi.fn(), openStayCheckout: vi.fn() }));
+const queries = vi.hoisted(() => ({ getForAdmin: vi.fn(), findGuests: vi.fn(), quoteBookingEdit: vi.fn(), listForAdmin: vi.fn(), stayAppointments: vi.fn() }));
 // Availability months: loaded, nothing blocked. One stable client, like ConvexProvider's.
 const client = vi.hoisted(() => ({ watchQuery: () => ({ localQueryResult: () => [], onUpdate: () => () => undefined }) }));
 vi.mock("convex/react", () => ({
@@ -34,7 +36,10 @@ vi.mock("convex/react", () => ({
     }),
   ),
 }));
-vi.mock("@/platform/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+vi.mock("@/platform/navigation", () => ({
+  useRouter: () => ({ push: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(),
+}));
 // The real phone widget is a country combobox; a plain input keeps these tests about the booking rules.
 vi.mock("@/components/reui/phone-input", () => ({
   PhoneInput: ({ id, value, onChange }: { id: string; value: string; onChange: (value: string) => void }) =>
@@ -283,11 +288,29 @@ describe("moving a booking on the calendar", () => {
     expect(onOpenBooking).toHaveBeenCalledWith("b1");
   });
 
-  it("refuses to move a booking that changed since the calendar showed it", async () => {
-    queries.getForAdmin.mockReturnValue(detail({ revision: 5 }));
-    await render(createElement(MoveBookingDialog, props()));
-    expect(alertText()).toContain("changed since the calendar showed it");
-    expect(button("Move booking")?.disabled).toBe(true);
+  it("keeps the target through a stale review and requires another review after a second conflict", async () => {
+    const view = props();
+    queries.getForAdmin.mockReturnValue(detail({ revision: 5, checkIn: "2026-11-19" }));
+    await render(createElement(MoveBookingDialog, view));
+    expect(alertText()).toContain("Current dates");
+    expect(button("Move booking")).toBeUndefined();
+    await click(button("Review latest booking"));
+    expect(mutations.editBooking).not.toHaveBeenCalled();
+    mutations.editBooking.mockRejectedValueOnce(new Error("This booking changed since you opened it."));
+    await click(button("Move booking"));
+    expect(mutations.editBooking).toHaveBeenCalledWith(expect.objectContaining({
+      expectedRevision: 5, checkIn: move.checkIn, checkOut: move.checkOut,
+    }));
+    expect(button("Try again")?.disabled).toBe(true);
+
+    queries.getForAdmin.mockReturnValue(detail({ revision: 6 }));
+    await render(createElement(MoveBookingDialog, view));
+    await click(button("Review latest booking"));
+    expect(mutations.editBooking).toHaveBeenCalledTimes(1);
+    await click(button("Move booking"));
+    expect(mutations.editBooking).toHaveBeenLastCalledWith(expect.objectContaining({
+      expectedRevision: 6, checkIn: move.checkIn, checkOut: move.checkOut,
+    }));
   });
 
   it("waits for the booking to load before it can move", async () => {
@@ -303,7 +326,7 @@ describe("moving a booking on the calendar", () => {
     expect(text()).toContain("New total ฿24,000");
     await click(button("Move booking"));
     expect(mutations.editBooking).toHaveBeenCalledWith(expect.objectContaining({ expectedPrice: { total: 2400000, currency: "THB" } }));
-    expect(queries.quoteBookingEdit).toHaveBeenCalledWith({ bookingId: "b1", propertySlug: "pool-villa", checkIn: "2026-11-21", checkOut: "2026-11-24", guests: 2 });
+    expect(queries.quoteBookingEdit).toHaveBeenCalledWith({ bookingId: "b1", propertySlug: "pool-villa", checkIn: "2026-11-21", checkOut: "2026-11-24", guests: 2, revision: 4 });
   });
 
   it("cannot move until the quote is ready, including a refused quote", async () => {
@@ -318,6 +341,26 @@ describe("moving a booking on the calendar", () => {
     expect(mutations.editBooking).not.toHaveBeenCalled();
   });
 
+  it.each(["The price changed since you reviewed it.", "These dates are no longer available."])(
+    "requires a fresh quote and confirmation after a same-revision refusal (%s)", async (refusal) => {
+    const oldQuote = { subtotal: 2400000, discountAmount: 0, total: 2400000, currency: "THB", promotion: null, couponRemoved: false, repriced: true };
+    queries.getForAdmin.mockReturnValue(detail());
+    queries.quoteBookingEdit.mockImplementation(({ refreshKey }) => refreshKey ? undefined : oldQuote);
+    mutations.editBooking.mockRejectedValueOnce(new Error(refusal));
+    await render(createElement(MoveBookingDialog, props()));
+    await click(button("Move booking"));
+    expect(button("Move booking")).toBeUndefined();
+    await click(button("Refresh quote"));
+    expect(button("Move booking")?.disabled).toBe(true);
+    expect(mutations.editBooking).toHaveBeenCalledTimes(1);
+    queries.quoteBookingEdit.mockReturnValue({ ...oldQuote, subtotal: 2700000, total: 2700000 });
+    await render(createElement(MoveBookingDialog, props()));
+    await click(button("Move booking"));
+    expect(mutations.editBooking).toHaveBeenLastCalledWith(expect.objectContaining({
+      expectedRevision: detail().revision, checkIn: "2026-11-21", checkOut: "2026-11-24", expectedPrice: { total: 2700000, currency: "THB" },
+    }));
+  });
+
   it("shows the quoted currency and sends it for the server to check", async () => {
     queries.getForAdmin.mockReturnValue(detail());
     queries.quoteBookingEdit.mockReturnValue({ subtotal: 30000, discountAmount: 0, total: 30000, currency: "USD", promotion: null, couponRemoved: false, repriced: true });
@@ -326,4 +369,52 @@ describe("moving a booking on the calendar", () => {
     await click(button("Move booking"));
     expect(mutations.editBooking).toHaveBeenCalledWith(expect.objectContaining({ expectedPrice: { total: 30000, currency: "USD" } }));
   });
+});
+
+describe("Today's balances", () => {
+  it("names each currency and opens the authorized checkout from the balance list", async () => {
+    const today = serverTodayIso();
+    const thb = { _id: "b1", guestName: "Mia", propertyId: "p1", checkIn: today, checkOut: today,
+      status: "confirmed", paymentStatus: "pending", owed: 20000, currency: "THB" };
+    const usd = { ...thb, _id: "b2", guestName: "Ben", owed: 1200, currency: "USD" };
+    queries.listForAdmin.mockReturnValue({ bookings: [thb, usd], complete: true });
+    queries.getForAdmin.mockImplementation(({ bookingId }) => ({
+      ...(bookingId === thb._id ? thb : usd), money: { owed: 1200 }, checkoutLive: bookingId === thb._id,
+    }));
+    queries.stayAppointments.mockReturnValue({ appointments: [], complete: true });
+    mutations.openStayCheckout.mockResolvedValue({ orderId: "order1", skipped: [] });
+    const onOpen = vi.fn();
+    await render(createElement(TodayStrip, { villaName: () => "Pool Villa", onOpen }));
+    const tile = document.querySelector('button[aria-label^="Balance due"]');
+    expect(tile?.getAttribute("aria-label")).toBe("Balance due ฿200 THB, $12 USD");
+    await click(tile);
+    const [ben, mia] = [...document.querySelectorAll("#today-list > li")];
+    expect((mia.lastElementChild?.querySelector("button") as HTMLButtonElement).disabled).toBe(true);
+    await click(ben.lastElementChild?.querySelector("button"));
+    expect(mutations.openStayCheckout).toHaveBeenCalledExactlyOnceWith({ bookingId: "b2" });
+    await click(ben.firstElementChild);
+    expect(onOpen).toHaveBeenCalledWith(usd, ben.firstElementChild);
+  });
+});
+
+it("groups recorded and legacy attendance independently of payments at today's boundaries", () => {
+  const today = "2026-11-21";
+  const base: Move["booking"] = {
+    _id: "b1" as Move["booking"]["_id"], propertyId: villa._id, guestName: "", guestPhone: "",
+    checkIn: today, checkOut: today, status: "confirmed", paymentStatus: "pending", total: 200,
+    owed: 0, currency: "THB", guests: 2, nights: 1, source: "admin", createdAt: 0, revision: 0,
+    guestEmail: undefined, promotion: undefined, paymentMethod: undefined, amountPaid: 0,
+    amountRefunded: 0, chatSessionId: undefined, confirmationCode: undefined,
+  };
+  const groups = todayGroups([
+    { ...base, guestName: "Arrival", checkIn: today, checkOut: "2026-11-23", owed: 0 },
+    { ...base, guestName: "Due", checkIn: "2026-11-19", checkOut: today, stayStatus: "checked_in", owed: 200 },
+    { ...base, guestName: "Overdue", checkIn: "2026-11-19", checkOut: "2026-11-20", stayStatus: "checked_in", paymentStatus: "paid", amountPaid: 200, owed: 0 },
+    { ...base, guestName: "Early", checkIn: "2026-11-23", checkOut: "2026-11-24", stayStatus: "checked_in", owed: 200 },
+    { ...base, guestName: "Departed", checkIn: "2026-11-19", checkOut: today, stayStatus: "checked_out", owed: 200 },
+    { ...base, guestName: "Legacy", checkIn: "2026-11-19", checkOut: "2026-11-23", owed: 0 },
+  ], today);
+  expect(groups.arriving.map((row) => row.guestName)).toEqual(["Arrival"]);
+  expect(groups.leaving.map((row) => row.guestName)).toEqual(["Departed", "Due", "Overdue"]);
+  expect(groups.inHouse.map((row) => row.guestName)).toEqual(["Due", "Early", "Legacy", "Overdue"]);
 });

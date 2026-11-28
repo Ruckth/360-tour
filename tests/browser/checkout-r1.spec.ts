@@ -35,7 +35,7 @@ test("invalid order numbers never open a different order", async ({ page }) => {
   await open(page);
   await page.getByRole("button", { name: "Orders", exact: true }).click();
   const dialog = page.getByRole("dialog");
-  const lookup = dialog.getByLabel("Order number");
+  const lookup = dialog.getByLabel("Order or receipt number");
   for (const invalid of ["0", "-1042", "1042.5", "1042abc", "9007199254740992"]) {
     await lookup.fill(invalid);
     await dialog.getByRole("button", { name: "Go", exact: true }).click();
@@ -45,14 +45,14 @@ test("invalid order numbers never open a different order", async ({ page }) => {
   }
   await lookup.fill("R-001042");
   await dialog.getByRole("button", { name: "Go", exact: true }).click();
-  await expect(dialog.getByRole("alert")).toHaveText("That's the receipt number. Enter the order number, shown as Order #.");
+  await expect(dialog.getByText("Not available. Check the number or pick an open order above.")).toBeVisible();
   await lookup.fill("Order #1042");
   await dialog.getByRole("button", { name: "Go", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   await expect(page.getByTestId("order-panel-title")).toHaveText("Order #1042");
 });
 
-test("an approval past its local expiry names its item and leaves the decision to the server", async ({ page }) => {
+test("an open approval becomes read-only at expiry and stays visible in the queue", async ({ page }) => {
   await page.clock.install();
   await open(page, "?role=manager&scenario=pending");
   await page.getByTestId("approvals-button").click();
@@ -60,10 +60,11 @@ test("an approval past its local expiry names its item and leaves the decision t
   const request = page.locator('[data-testid="approval-request"][data-approval-selected="true"]');
   await expect(request).toContainText("Thai massage 60");
   await page.clock.fastForward(5 * 60_000);
-  // A fast device clock must not block a decision the server would still accept.
-  await expect(request).toContainText("Expiring now");
-  await expect(request.getByRole("button", { name: "Approve", exact: true })).toBeEnabled();
-  await expect(request.getByRole("button", { name: "Decline", exact: true })).toBeEnabled();
+  await expect(request).toHaveCount(0);
+  const expired = page.getByRole("listitem").filter({ hasText: "฿100 discount" });
+  await expect(expired).toContainText("Expired at");
+  await expect(expired.getByRole("button")).toHaveCount(0);
+  await expect(page.getByRole("dialog").getByRole("button", { name: /^(Approve|Decline)$/ })).toHaveCount(0);
 });
 
 test.describe("phone payment layouts", () => {
@@ -103,10 +104,11 @@ test.describe("phone payment layouts", () => {
     const form = items.getByRole("form", { name: "Refund", exact: true });
     await expect(form.getByRole("textbox", { name: "Reason", exact: true })).toBeVisible();
 
-    await expect(form.getByRole("button", { name: "Pick a reason", exact: true })).toBeDisabled();
+    await expect(form.getByRole("button", { name: "Choose an amount", exact: true })).toBeDisabled();
     await expect(items.getByRole("button", { name: "Refund Thai massage 60", exact: true })).toHaveCount(0);
     await expect(form.getByRole("radio", { name: "PromptPay", exact: true })).toHaveAccessibleName("PromptPay");
     await form.getByRole("radio", { name: "Cut short", exact: true }).click();
+    await form.getByRole("radio", { name: "All", exact: true }).click();
     await expect(form.getByRole("button", { name: "Record refund ฿600", exact: true })).toBeEnabled();
     await form.getByRole("button", { name: "Cancel", exact: true }).click();
     await page.getByRole("alertdialog").getByRole("button", { name: "Discard", exact: true }).click();

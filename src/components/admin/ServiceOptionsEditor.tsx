@@ -63,7 +63,8 @@ const savedDefault = (rows: readonly Row[], service?: Saved) => rows.find((row) 
 /** The editor's rows and default; `payload` is null (and errors show) until every row is valid. */
 export function useServiceOptions(service?: Saved) {
   const [rows, setRows] = useState<Row[]>(() => savedRows(service));
-  const [defaultKey, setDefaultKey] = useState(() => savedDefault(rows, service));
+  // null after the default length is removed while several remain: staff pick the replacement deliberately.
+  const [defaultKey, setDefaultKey] = useState<number | null>(() => savedDefault(rows, service));
   const [checked, setChecked] = useState(false);
   return {
     rows, defaultKey, setDefaultKey, checked,
@@ -98,14 +99,14 @@ export function useServiceOptions(service?: Saved) {
       const next = rows.filter((row) => row.key !== key);
       flushSync(() => {
         setRows(next);
-        if (key === defaultKey) setDefaultKey(next[0].key);
+        if (key === defaultKey) setDefaultKey(next.length === 1 ? next[0].key : null);
       });
       return next;
     },
     /** Validated options and default for the save, or null after showing the problems. */
     payload(bufferMin: number) {
       flushSync(() => setChecked(true));
-      if (optionProblems(rows, bufferMin).size) return null;
+      if (optionProblems(rows, bufferMin).size || defaultKey === null) return null;
       const options = rows.map(rowOption).sort((a, b) => a.durationMin - b.durationMin);
       return { options, defaultDurationMin: Number(rows.find((row) => row.key === defaultKey)!.duration) };
     },
@@ -137,11 +138,12 @@ export function ServiceOptionsEditor({
   const full = rows.length >= MAX_OPTIONS;
   const upcoming = (row: Row) => usage?.find((entry) => entry.durationMin === row.savedDuration)?.count ?? 0;
   const field = (key: number, name: "duration" | "price") => list.current?.querySelector<HTMLInputElement>(`[data-row="${key}"][data-field="${name}"]`);
+  const defaultDuration = Number(rows.find((row) => row.key === defaultKey)?.duration);
   const guestsSee = rows
     .map(rowOption)
     .filter((option) => option.durationMin > 0 && option.price >= 0)
     .sort((a, b) => a.durationMin - b.durationMin)
-    .map((option) => `${option.durationMin} min ${formatMoney(option.price, currency)}`);
+    .map((option) => `${option.durationMin} min ${formatMoney(option.price, currency)}${option.durationMin === defaultDuration ? " (default)" : ""}`);
 
   function add(durationMin?: number) {
     const minutes = durationMin ?? (() => {
@@ -159,10 +161,12 @@ export function ServiceOptionsEditor({
   function remove(row: Row, index: number) {
     const next = state.remove(row.key);
     const count = upcoming(row);
-    const newDefault = row.key === defaultKey ? next[0] : undefined;
+    const removedDefault = row.key === defaultKey;
+    const newDefault = removedDefault && next.length === 1 ? next[0] : undefined;
     setAnnouncement([
       `Removed ${row.duration} min.`,
-      newDefault ? `${newDefault.duration.trim() ? `${newDefault.duration} min` : "The first length"} is now the default.` : "",
+      newDefault ? `${newDefault.duration.trim() ? `${newDefault.duration} min` : "The remaining length"} is now the default.` : "",
+      removedDefault && !newDefault ? "Choose a new default length." : "",
       count ? `${plural(count, "upcoming booking keeps its", "upcoming bookings keep their")} time and price.` : "",
     ].filter(Boolean).join(" "));
     const neighbour = next[Math.max(0, index - 1)];
@@ -241,6 +245,7 @@ export function ServiceOptionsEditor({
                     name="sv-default"
                     className="size-4 accent-foreground"
                     checked={row.key === defaultKey}
+                    aria-invalid={defaultKey === null || undefined}
                     onChange={() => setDefaultKey(row.key)}
                     aria-label={`Default length: ${label}`}
                   />
@@ -268,6 +273,9 @@ export function ServiceOptionsEditor({
           );
         })}
       </div>
+      {defaultKey === null ? (
+        <p role="alert" className="text-xs text-destructive">You removed the default length. Choose which remaining length guests get by default.</p>
+      ) : null}
       <div role="group" aria-label="Add a length" className="flex flex-wrap gap-1.5 pt-1">
         {full ? (
           <p className="text-xs text-muted-foreground">Maximum of {MAX_OPTIONS} lengths</p>

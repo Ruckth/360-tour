@@ -4,8 +4,10 @@ import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
+import { MAX_TRANSFER_LINES } from "convex/shared/commerce/caps";
+import { flushSync } from "react-dom";
 import { ArrowRightLeft, Layers, Plus, Send, ShieldAlert } from "lucide-react";
-import { useMemo, useState, type FormEvent } from "react";
+import { useMemo, useRef, useState, type FormEvent } from "react";
 import { EmptyState, SkeletonRows, STACKED_TABLE } from "@/components/admin/admin-bulk";
 import { useAdminBranch } from "@/components/admin/branch/branch-context";
 import { useConfirm } from "@/components/admin/ConfirmDialog";
@@ -453,6 +455,7 @@ function CreateTransferSheet({
             lineErrors={lineErrors}
             onAddClick={() => setPickerOpen(true)}
             addLabel="Add item"
+            maxLines={MAX_TRANSFER_LINES}
             idPrefix="transfer-line"
           />
 
@@ -473,18 +476,19 @@ function CreateTransferSheet({
         onOpenChange={setPickerOpen}
         branchId={originId}
         selectedIds={lines.map((line) => line.variantId)}
-        title="Add item to transfer"
-        onSelect={(item) => {
+        maxLines={MAX_TRANSFER_LINES}
+        title="Add items to transfer"
+        onSelectMany={(items) => {
           setLines((current) => [
             ...current,
-            {
+            ...items.map((item) => ({
               variantId: item.variantId,
               productName: item.productName,
               variantLabel: item.label,
               sku: item.sku,
               onHand: item.onHand,
               quantityText: "1",
-            },
+            })),
           ]);
         }}
       />
@@ -516,6 +520,8 @@ function TransferDetailSheet({
   const cancelTransfer = useMutation(api.commerce.stockExpansion.cancelTransfer);
 
   const [receiveInputs, setReceiveInputs] = useState<Record<string, string>>({});
+  const pendingReceipt = useRef<{ payload: string; requestId: string } | null>(null);
+  const [showLineErrors, setShowLineErrors] = useState(false);
   const [shortReason, setShortReason] = useState("");
   const [showShortForm, setShowShortForm] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -566,12 +572,11 @@ function TransferDetailSheet({
     const lines: { lineId: Id<"stockTransferLines">; quantity: number }[] = [];
     for (const line of detail.lines) {
       const remaining = line.quantity - line.received;
-      if (remaining <= 0) continue;
       const raw = (receiveInputs[line._id] ?? "").trim();
       if (!raw) continue;
       const parsed = parseWholeQuantity(raw, { allowZero: false, max: remaining });
       if (!parsed.ok || !parsed.value) {
-        setError(parsed.ok ? "Enter a valid quantity to receive." : parsed.error);
+        flushSync(() => setShowLineErrors(true));
         document.getElementById(`tr-recv-${line._id}`)?.focus();
         return;
       }
@@ -583,12 +588,14 @@ function TransferDetailSheet({
     }
     setBusy(true);
     try {
-      await receiveTransfer({
-        transferId,
-        requestId: createOperationKey("transfer-recv"),
-        lines,
-      });
+      const payload = JSON.stringify([transferId, lines]);
+      if (pendingReceipt.current?.payload !== payload) {
+        pendingReceipt.current = { payload, requestId: createOperationKey("transfer-recv") };
+      }
+      await receiveTransfer({ transferId, requestId: pendingReceipt.current.requestId, lines });
+      pendingReceipt.current = null;
       setReceiveInputs({});
+      setShowLineErrors(false);
       onSuccess("Transfer receipt posted.");
     } catch (cause) {
       setError(parseStockError(cause, "Could not receive transfer.").message);
@@ -703,10 +710,22 @@ function TransferDetailSheet({
             ) : null}
 
             <form onSubmit={handleReceive} className="grid gap-3">
-              <h3 className="text-sm font-semibold text-foreground">Transfer lines</h3>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-sm font-semibold text-foreground">Transfer lines</h3>
+                {detail.transfer.state === "inTransit" && detail.permissions.receive && (
+                  <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => {
+                    const remaining = detail.lines.filter(line => line.quantity > line.received);
+                    setReceiveInputs(Object.fromEntries(remaining.map(line => [line._id, String(line.quantity - line.received)])));
+                    setError("");
+                    setShowLineErrors(false);
+                  }}>Fill all remaining</Button>
+                )}
+              </div>
               <ul className="grid gap-2.5">
                 {detail.lines.map((line) => {
                   const remaining = line.quantity - line.received;
+                  const raw = receiveInputs[line._id]?.trim();
+                  const invalid = showLineErrors && !!raw && !parseWholeQuantity(raw, { allowZero: false, max: remaining }).ok;
                   return (
                     <li key={line._id} className="grid gap-2 rounded-lg border border-border p-3">
                       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -721,17 +740,22 @@ function TransferDetailSheet({
                           <strong className="text-foreground">{remaining}</strong>
                         </span>
                       </div>
-                      {detail.transfer.state === "inTransit" && detail.permissions.receive && remaining > 0 ? (
+                      {detail.transfer.state === "inTransit" && detail.permissions.receive && (remaining > 0 || raw) ? (
                         <div className="grid gap-1.5 sm:max-w-xs">
                           <Label htmlFor={`tr-recv-${line._id}`}>Receive now (max {remaining})</Label>
                           <NumberField
                             id={`tr-recv-${line._id}`}
                             value={receiveInputs[line._id] ?? ""}
                             placeholder={String(remaining)}
+                            aria-invalid={invalid || undefined}
+                            aria-describedby={invalid ? `tr-error-${line._id}` : undefined}
                             onChange={(event) =>
                               setReceiveInputs((current) => ({ ...current, [line._id]: event.target.value }))
                             }
                           />
+                          {invalid && <p role="alert" id={`tr-error-${line._id}`} className="text-xs text-destructive">
+                            {line.productName} {line.label} · {remaining > 0 ? `Enter a whole quantity between 1 and ${remaining}.` : "Already fully received. Clear this line or fill the latest remaining quantities."}
+                          </p>}
                         </div>
                       ) : null}
                     </li>

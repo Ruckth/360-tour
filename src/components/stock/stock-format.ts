@@ -36,9 +36,11 @@ export function sanitizeStockReturnTo(raw: string | null): string | null {
   if (!raw) return null;
   const trimmed = raw.trim();
   if (!trimmed.startsWith("/admin/stock")) return null;
-  if (trimmed.startsWith("//") || /[\r\n]/.test(trimmed)) return null;
+  if (/[\\\r\n\t]/.test(trimmed)) return null;
   const nextChar = trimmed["/admin/stock".length];
   if (nextChar !== undefined && nextChar !== "/" && nextChar !== "?") return null;
+  const url = new URL(trimmed, "https://stock.local");
+  if (url.pathname !== "/admin/stock" && !url.pathname.startsWith("/admin/stock/")) return null;
   return trimmed;
 }
 
@@ -52,10 +54,14 @@ export function stockReturnLabel(returnTo: string | null, fallback: string): str
   if (returnTo.startsWith("/admin/stock/purchasing/orders/")) return "Order";
   if (returnTo.startsWith("/admin/stock/purchasing/requests/")) return "Request";
   if (returnTo.startsWith("/admin/stock/purchasing/receipts/")) return "Receipt";
-  if (returnTo.includes("tab=requests")) return "Requests";
-  if (returnTo.includes("tab=holds")) return "Held goods";
-  if (returnTo.includes("tab=suppliers")) return "Suppliers";
-  if (returnTo.startsWith("/admin/stock/purchasing")) return "Orders";
+  if (returnTo.startsWith("/admin/stock/purchasing")) {
+    const tab = new URL(returnTo, "https://stock.local").searchParams.get("tab");
+    if (tab === "requests") return "Requests";
+    if (tab === "receipts") return "Receipts";
+    if (tab === "holds") return "Held goods";
+    if (tab === "suppliers") return "Suppliers";
+    return "Orders";
+  }
   return fallback;
 }
 

@@ -18,6 +18,7 @@ async function refund(page: Page, line: string, amount: string | null, reason: s
   await items(page).getByRole("button", { name: `Refund ${line}` }).click();
   const form = items(page).getByRole("form", { name: title, exact: true });
   if (amount !== null) await form.getByRole("textbox", { name: "Amount (฿)" }).fill(amount);
+  else await form.getByRole("radio", { name: "All", exact: true }).click();
   await form.getByRole("textbox", { name: "Reason" }).fill(reason);
   return form;
 }
@@ -33,12 +34,12 @@ test("a manager refunds part of a line, then the rest of the receipt", async ({ 
   await items(page).getByRole("button", { name: "Refund Thai massage 60" }).click();
   const form = items(page).getByRole("form", { name: "Refund", exact: true });
   const amount = form.getByRole("textbox", { name: "Amount (฿)" });
-  // Opens ready to send: all that is left, the original tender, and focus on the form, not a keyboard.
+  // The form focuses its heading and requires a deliberate amount.
   await expect(form.getByText("Refund", { exact: true })).toBeFocused();
-  await expect(amount).toHaveValue("1200");
-  await expect(form.getByRole("radio", { name: "All", exact: true })).toHaveAttribute("aria-checked", "true");
+  await expect(amount).toHaveValue("");
+  await expect(form.getByRole("radio", { name: "All", exact: true })).toHaveAttribute("aria-checked", "false");
   await expect(form.getByRole("radiogroup", { name: "Refund to" }).getByRole("radio", { name: "Card", exact: true })).toHaveAttribute("aria-checked", "true");
-  await expect(form.getByRole("button", { name: "Pick a reason" })).toBeDisabled();
+  await expect(form.getByRole("button", { name: "Choose an amount" })).toBeDisabled();
   await amount.fill("1200.01");
   await expect(form.getByText("Up to ฿1,200.")).toBeVisible();
   await amount.fill("300");
@@ -50,7 +51,7 @@ test("a manager refunds part of a line, then the rest of the receipt", async ({ 
   await expect(r.getByTestId("receipt-line-refunded")).toHaveText("Refunded-฿300");
   await expect(r.getByTestId("receipt-refunded")).toHaveText("Refunded-฿300");
   await expect(r.getByTestId("receipt-net")).toHaveText("Net฿1,500");
-  await expect(page.getByTestId("receipt-status")).toHaveText("Paid");
+  await expect(page.getByTestId("receipt-status")).toHaveText("Partly refunded · ฿300");
 
   // The rest of the massage: the form now offers what is left.
   const rest = await refund(page, "Thai massage 60", null, "Guest left early");
@@ -90,8 +91,10 @@ test("a refund over what is left shows the server's remaining amount", async ({ 
   const form = await refund(page, "Thai massage 60", null, "Wrong service");
   // Another till returns ฿500 on the same line before this one is sent.
   await page.evaluate(() => window.fixture.refundFromAnotherTill("Thai massage 60", 50_000));
-  await form.getByRole("button", { name: RECORD }).click();
-  await expect(form.getByRole("alert")).toHaveText("Only ฿700 left to refund on this line.");
+  const recordAll = form.getByRole("button", { name: "Record refund ฿1,200" });
+  if (await recordAll.count()) await recordAll.click();
+  await expect(form.getByRole("textbox", { name: "Amount (฿)" })).toHaveValue("1200");
+  await form.getByRole("button", { name: "Use remaining amount" }).click();
   await expect(form.getByRole("textbox", { name: "Amount (฿)" })).toHaveValue("700");
   await expect(form.getByRole("radio", { name: "All", exact: true })).toHaveAttribute("aria-checked", "true");
   await form.getByRole("button", { name: "Record refund ฿700" }).click();

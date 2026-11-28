@@ -1,4 +1,4 @@
-import { BedDouble, Boxes, Building2, CalendarClock, HelpCircle, Mail, Megaphone, MessageCircle, Settings, ShoppingBag, type LucideIcon } from "lucide-react";
+import { BedDouble, Boxes, Building2, CalendarClock, HelpCircle, House, Mail, Megaphone, MessageCircle, Settings, ShoppingBag, type LucideIcon } from "lucide-react";
 
 /** `keywords` are extra words the sidebar search matches, e.g. the channels a page covers. */
 export type AdminNavLink = { href: string; label: string; keywords?: readonly string[] };
@@ -11,14 +11,15 @@ export type AdminStaffTab = (typeof ADMIN_STAFF_TABS)[number];
 export const ADMIN_STAFF_TAB_LABELS: Record<AdminStaffTab, string> = {
   calendar: "Calendar",
   roster: "Roster",
-  staff: "Staff",
+  // Therapist profiles (who performs services); staff logins and access live in Settings → Team.
+  staff: "Therapists",
   services: "Services",
 };
 
 const STAFF_TAB_KEYWORDS: Record<AdminStaffTab, readonly string[]> = {
   calendar: ["appointments", "bookings"],
   roster: ["shifts", "schedule", "time off"],
-  staff: ["people", "team", "therapists"],
+  staff: ["staff", "people", "profiles"],
   services: ["treatments", "activities"],
 };
 
@@ -47,6 +48,25 @@ export function adminSettingsTabPath(tab: AdminSettingsTab): string {
 export function adminSettingsTab(value: string | null): AdminSettingsTab {
   const id = value === "admins" ? "team" : value;
   return ADMIN_SETTINGS_TABS.find((tab) => tab.id === id)?.id ?? "business";
+}
+
+/** Villa editor sections; `details` is the default and omits `?tab=`. */
+export const ADMIN_PROPERTY_TABS = [
+  ["details", "Details"],
+  ["photos", "Photos"],
+  ["tourScenes", "360 rooms"],
+  ["pricing", "Pricing & OTA"],
+  ["reviews", "Reviews"],
+  ["calendar", "Calendar sync"],
+] as const;
+export type AdminPropertyTab = (typeof ADMIN_PROPERTY_TABS)[number][0];
+
+export function adminPropertyTab(value: string | null | undefined): AdminPropertyTab {
+  return ADMIN_PROPERTY_TABS.find(([id]) => id === value)?.[0] ?? "details";
+}
+
+export function adminPropertyTabPath(propertyId: string, tab: AdminPropertyTab): string {
+  return tab === "details" ? `/admin/properties/${propertyId}` : `/admin/properties/${propertyId}?tab=${tab}`;
 }
 
 /** Stock sub-pages, in sidebar order. `/admin/stock` opens Balances. */
@@ -91,6 +111,7 @@ export function adminMarketingPath(page: AdminMarketingPage): string {
 
 /** Sidebar sections, in order. Add a route `src/start-app/routes/admin.<section>.tsx` and list it here. */
 export const ADMIN_NAV: readonly AdminNavItem[] = [
+  { href: "/admin/today", label: "Today", icon: House, keywords: ["home", "summary", "arrivals", "departures", "dashboard"] },
   { href: "/admin/chats", label: "Chats", icon: MessageCircle, keywords: ["inbox", "messages", "conversations"] },
   { href: "/admin/hotel", label: "Hotel bookings", shortLabel: "Hotel", icon: BedDouble, keywords: ["reservations", "tourScenes"] },
   {
@@ -145,6 +166,14 @@ export function adminNavItem(pathname: string): AdminNavItem | undefined {
   return ADMIN_NAV.find((item) => adminSection(item.href) === section);
 }
 
+/** Hotel panels a link may open directly: `/admin/hotel?panel=ota-calendars` opens OTA calendars. */
+export const HOTEL_PANELS = ["ota-calendars"] as const;
+export type HotelPanel = (typeof HOTEL_PANELS)[number];
+
+export function hotelPanel(value: string | null): HotelPanel | null {
+  return HOTEL_PANELS.find((panel) => panel === value) ?? null;
+}
+
 export function isAdminStaffTab(value: string): value is AdminStaffTab {
   return (ADMIN_STAFF_TABS as readonly string[]).includes(value);
 }
@@ -153,28 +182,42 @@ export function adminStaffTabPath(tab: AdminStaffTab): string {
   return `/admin/staff/${tab}`;
 }
 
+/** Where unknown admin URLs land. `/admin` itself opens Today (people it doesn't open are sent on to their own landing). */
 const ADMIN_HOME = "/admin/chats";
+export const ADMIN_LANDING = "/admin/today";
 
 /**
  * Used by the request middleware (site-redirect.server.ts): where to send an `/admin` URL whose section doesn't exist
- * (`/admin`, the old `/admin/chat`, typos), or null to render the page.
+ * (`/admin`, the old `/admin/chat`, typos), or null to render the page. An unknown Staff bookings or
+ * Marketing sub-page renders (as not found) inside its own section, which offers that section's
+ * permitted pages instead of dropping the person in Chats (see adminSectionRecovery).
  */
 export function adminRedirectPath(pathname: string): string | null {
   const [, , section, subpage] = pathname.split("/");
+  if (!section) return ADMIN_LANDING;
   if (section === "receipt") return subpage ? null : ADMIN_HOME;
   if (section === "staff") {
-    if (!subpage) return adminStaffTabPath("calendar");
-    return isAdminStaffTab(subpage) ? null : ADMIN_HOME;
+    return subpage ? null : adminStaffTabPath("calendar");
   }
   if (section === "stock") {
     if (!subpage) return adminStockPath(ADMIN_STOCK_DEFAULT);
     return isAdminStockPage(subpage) ? null : ADMIN_HOME;
   }
   if (section === "marketing") {
-    if (!subpage) return adminMarketingPath(ADMIN_MARKETING_DEFAULT);
-    return isAdminMarketingPage(subpage) ? null : ADMIN_HOME;
+    return subpage ? null : adminMarketingPath(ADMIN_MARKETING_DEFAULT);
   }
   return adminNavItem(pathname) ? null : ADMIN_HOME;
+}
+
+/**
+ * For a not-found admin URL: the section it was meant for and the pages there this person may open
+ * (pass their filtered navigation), or null when the section isn't theirs or has no sub-pages.
+ */
+export function adminSectionRecovery(pathname: string, nav: readonly AdminNavItem[]): { label: string; links: readonly AdminNavLink[] } | null {
+  const section = adminNavItem(pathname);
+  const allowed = section && nav.find((item) => item.href === section.href);
+  if (!allowed?.children?.length) return null;
+  return { label: allowed.label, links: allowed.children };
 }
 
 function navMatchRank(link: AdminNavLink, query: string) {

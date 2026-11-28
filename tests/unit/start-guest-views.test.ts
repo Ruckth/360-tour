@@ -22,7 +22,10 @@ describe("shared guest views", () => {
     expect(html).toContain(th.Experiences.title);
     expect(html).toContain('href="/th/booking"');
     expect(html).toContain('href="/th/services"');
-    expect(html).toContain('href="/th#contact"');
+    // G21: both Contact Concierge actions open localized chat directly, not the Home contact anchor.
+    expect(html).not.toContain("#contact");
+    const chatLinks = [...html.matchAll(/<a[^>]*href="\/th\/chat"[^>]*>([^<]*)</g)].map((match) => match[1]);
+    expect(chatLinks).toEqual([th.Experiences.secondaryCta, th.Experiences.secondaryCta]);
     expect(html).toContain(th.ServiceCatalog.all);
   });
 

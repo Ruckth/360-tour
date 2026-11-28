@@ -27,9 +27,10 @@ export function buildWhatsAppHref(
 export function buildEmailHref(
   email: string,
   message = CONTACT_PREFILL_MESSAGE,
+  subject = CONTACT_EMAIL_SUBJECT,
 ) {
   const params = buildMailtoQuery({
-    subject: CONTACT_EMAIL_SUBJECT,
+    subject,
     body: message,
   });
   return `mailto:${email.trim()}?${params}`;
@@ -53,4 +54,12 @@ export function buildLineHref({
   }
 
   return fallbackHref;
+}
+
+/** A single recipient, with reserved URI characters encoded and no prefilled message. */
+export function buildContactEmailDraftHref(value?: string) {
+  const email = value?.trim();
+  if (!email || !/^[a-z0-9.!#$%&'*+/=^_`{|}~-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+$/i.test(email)) return null;
+  const [local, domain] = email.split("@");
+  return `mailto:${encodeURIComponent(local)}@${domain}`;
 }

@@ -1,9 +1,11 @@
+import { paginationOptsValidator, paginationResultValidator } from 'convex/server';
 import { marketingTables } from './tables';
 import { ConvexError, v } from 'convex/values';
 import type { Doc } from '../_generated/dataModel';
 import { marketingQuery } from '../auth/model';
 import { readBudget, ReadBudgetExceeded } from '../lib/readBudget';
 import { canReadMarketingPersonalData } from '../shared/marketingPrivacy';
+import { activeServiceById, serviceQuery } from '../services/model';
 import { type OfferResult } from '../shared/offers';
 import { formatReceiptNumber, orderTitle } from '../shared/orderMath';
 import { CAMPAIGN_PAGE_SIZE, type CampaignRow, type CouponDetail, type CouponRow, type LinkRow, type RedemptionRow, type SlugCheck } from '../shared/marketingTypes';
@@ -170,12 +172,37 @@ export const checkSlug = marketingQuery({
 	}
 });
 
+export const listQuoteServices = marketingQuery({
+	permission: 'view',
+	args: { paginationOpts: paginationOptsValidator },
+	returns: paginationResultValidator(v.object({ id: v.id('services'), name: v.string(), category: v.string(), durationMin: v.number() })),
+	handler: async (ctx, { paginationOpts }) => {
+		const result = await serviceQuery(ctx, {}).paginate({
+			...paginationOpts,
+			numItems: Math.max(1, Math.min(20, paginationOpts.numItems)),
+		});
+		return {
+			...result,
+			page: result.page.map(({ _id, name, category, durationMin }) => ({ id: _id, name, category, durationMin })),
+		};
+	},
+});
+
 /** Admin "test a quote": same engine as the guest, ignores draft/paused status so drafts can be tested. */
 export const testQuote = marketingQuery({
   permission: 'view',
-	args: quoteArgs,
-	handler: async (ctx, args): Promise<OfferResult> => {
-		return quote(ctx, args, true);
+	args: { ...quoteArgs, services: v.optional(v.array(v.object({ serviceId: v.id('services'), amount: v.number() }))) },
+	handler: async (ctx, { services, ...args }): Promise<OfferResult> => {
+		if ((services?.length ?? 0) > 50) throw new ConvexError({ code: 'too_many_services', message: 'Use at most 50 services in a quote.' });
+		const catalog = new Map(await Promise.all([...new Set(services?.map(({ serviceId }) => serviceId))].map(
+			async (id) => [id, await activeServiceById(ctx, id)] as const,
+		)));
+		const lines = services?.map(({ serviceId, amount }) => {
+			const service = catalog.get(serviceId);
+			if (!service) throw new ConvexError({ code: 'service_unavailable', message: 'A selected service is no longer available. Choose another service.' });
+			return { label: service.name, amount };
+		});
+		return quote(ctx, { ...args, services: lines }, true);
 	}
 });
 

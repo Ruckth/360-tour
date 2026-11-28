@@ -6,7 +6,8 @@
     "reviews": "Avis",
     "contact": "Contact",
     "book": "Réserver",
-    "language": "Langue"
+    "language": "Langue",
+    "services": "Services"
   },
   "Home": {
     "welcome": "Bienvenue",
@@ -26,7 +27,9 @@
     "readyTitle": "Prêt à découvrir {resortName} ?",
     "readyCopy": "Réservez en direct et économisez 15% par rapport aux agences de voyage en ligne. Transfert aéroport offert et attentions de bienvenue inclus.",
     "contactUs": "Nous contacter",
-    "viewVillas": "Voir les villas"
+    "viewVillas": "Voir les villas",
+    "openInMaps": "Ouvrir dans Google Maps",
+    "showInteractiveMap": "Afficher la carte interactive"
   },
   "Experiences": {
     "eyebrow": "Expériences",
@@ -126,7 +129,14 @@
     "directBenefits": "Avantages de la réservation directe",
     "verifiedVillas": "Villas vérifiées",
     "secureCheckout": "Paiement démo sécurisé",
-    "hostSupport": "Assistance directe de l’hôte"
+    "hostSupport": "Assistance directe de l’hôte",
+    "unavailableTitle": "Les détails de la villa sont temporairement indisponibles",
+    "unavailableDetail": "Nous ne parvenons pas à joindre le catalogue des villas pour le moment. Veuillez réessayer dans un instant.",
+    "loadErrorTitle": "Une erreur est survenue",
+    "loadErrorDetail": "Impossible de charger cette villa pour le moment. Veuillez réessayer.",
+    "tryAgain": "Réessayer",
+    "pageUnavailableTitle": "Page temporairement indisponible",
+    "pageUnavailableDetail": "Veuillez réessayer."
   },
   "Booking": {
     "confirmAndPay": "Confirmer et payer",
@@ -184,7 +194,7 @@
     "emailExample": "maya@example.com",
     "emailError": "Saisissez une adresse e-mail valide.",
     "phoneExample": "+66 81 234 5678",
-    "phoneError": "Saisissez un téléphone ou WhatsApp avec au moins 6 chiffres.",
+    "phoneError": "Saisissez un numéro de téléphone ou WhatsApp valide pour le pays choisi, ou ajoutez son indicatif avec +.",
     "reviewPay": "Vérifier et payer",
     "livePaymentNote": "Votre réservation sera vérifiée une dernière fois avant le paiement.",
     "demoPaymentNote": "Le paiement démo ne créera pas de vraie réservation.",
@@ -233,7 +243,29 @@
     "notConfirmedCopy": "Nous n’avons pas pu vérifier une réservation payée depuis ce lien.",
     "reference": "Référence : {reference}",
     "returnHome": "Retour à l’accueil",
-    "exploreMoreVillas": "Explorer plus de villas"
+    "exploreMoreVillas": "Explorer plus de villas",
+    "stepCompleted": "Terminé :",
+    "minStayHint": "Séjour minimum : {count} nuits",
+    "calendarKey": "Légende du calendrier",
+    "legendAvailable": "Disponible",
+    "legendBooked": "Réservé",
+    "legendNotSelectable": "Passé ou hors règles de séjour",
+    "editGuestDetails": "Modifier les coordonnées",
+    "phoneHint": "Choisissez votre pays ou commencez par + et l’indicatif du pays.",
+    "staySummary": "Votre séjour",
+    "villaFallback": "Votre villa",
+    "verifyingCopy": "En attente de la confirmation du paiement…",
+    "paymentPendingTitle": "Paiement toujours en cours de traitement",
+    "paymentPendingCopy": "Nous n’avons pas encore reçu la confirmation du paiement. Vérifier à nouveau n’entraîne aucun nouveau débit.",
+    "checkAgain": "Vérifier à nouveau",
+    "paySettled": "Cette réservation est déjà payée. Aucun autre paiement n’est nécessaire.",
+    "payHoldExpired": "Le blocage de ces dates a pris fin. Veuillez créer une nouvelle réservation.",
+    "payClosed": "Cette réservation ne peut plus être payée en ligne. Contactez-nous si vous avez besoin d’aide.",
+    "viewConfirmation": "Voir la confirmation",
+    "amountDueNow": "Montant dû maintenant : {amount}",
+    "proposalHoldExpired": "Le blocage de ces dates a pris fin. Demandez un nouveau récapitulatif dans le chat.",
+    "proposalSettled": "Cette réservation est déjà payée. Aucun autre paiement n’est nécessaire.",
+    "proposalUnavailable": "Ce lien de paiement n’est pas disponible. Ouvrez le dernier lien reçu ou commencez une nouvelle réservation."
   },
   "Coupon": {
     "haveCode": "Vous avez un code ?",
@@ -369,10 +401,16 @@
     "suggestionCancellation": "Quelle est la politique d’annulation ?",
     "suggestionAirport": "Pouvez-vous aider pour le transfert aéroport ?",
     "suggestionAmenitiesIncluded": "Qu’est-ce qui est inclus avec la villa ?",
-    "suggestionLocation": "À quelle distance sont la plage et les restaurants ?"
+    "suggestionLocation": "À quelle distance sont la plage et les restaurants ?",
+    "restartConfirmTitle": "Recommencer cette conversation ?",
+    "restartConfirmBody": "Vos messages et tout texte non envoyé seront effacés.",
+    "restartKeep": "Continuer la conversation",
+    "restartConfirm": "Démarrer une nouvelle conversation"
   },
   "Footer": {
-    "bookDirect": "Réserver en direct"
+    "bookDirect": "Réserver en direct",
+    "enquirySubject": "Demande de séjour — {resortName}",
+    "enquiryBody": "Bonjour, j’ai une question concernant un séjour à {resortName}."
   },
   "DemoDisclaimer": {
     "title": "Site de démonstration uniquement",
@@ -405,7 +443,15 @@
     "close": "Fermer",
     "closeTour": "Fermer la visite",
     "toggleTheme": "Changer le thème",
-    "toggleMenu": "Ouvrir ou fermer le menu"
+    "toggleMenu": "Ouvrir ou fermer le menu",
+    "appearance": "Apparence",
+    "themeSystem": "Système",
+    "themeLight": "Clair",
+    "themeDark": "Sombre",
+    "pauseHero": "Mettre l’animation en pause",
+    "playHero": "Lire l’animation",
+    "ratingOutOfFive": "{rating} sur 5 étoiles",
+    "galleryThumbnails": "Photos de la villa"
   },
   "Resort": {
     "tagline": "Là où l’océan rencontre la sérénité",
@@ -531,7 +577,10 @@
     "leadEmailPlaceholder": "you@example.com",
     "invalidEmail": "Saisissez une adresse e-mail valide.",
     "saveError": "Impossible d’enregistrer cet e-mail.",
-    "save": "Sauvegarder"
+    "save": "Sauvegarder",
+    "viewerLabel": "Visite 360° de {propertyName}",
+    "emailLabel": "E-mail",
+    "saving": "Enregistrement..."
   },
   "TourConclusions": {
     "pool-villa": {
@@ -710,11 +759,13 @@
     "ask": "Se renseigner",
     "minutes": "min",
     "fromPrice": "à partir de {price}",
+    "defaultDuration": "Par défaut : {duration}",
     "chooseDuration": "Choisissez la durée",
     "next": "Services suivants",
     "first": "Première page",
     "moreCategories": "Autres catégories",
-    "draft": "Le service {name} m’intéresse. Aidez-moi à choisir une date et un horaire."
+    "draft": "Le service {name} m’intéresse. Aidez-moi à choisir une date et un horaire.",
+    "showAll": "Afficher tous les services"
   },
   "Consent": {
     "label": "Choix de mesure",

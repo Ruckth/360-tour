@@ -5,10 +5,12 @@ import { adminQuery } from '../auth/model';
 import { appointmentHistoryPage } from './private/appointmentChanges';
 import { appointmentFinancials } from './private/appointmentFinance';
 import { findServiceOption } from './private/serviceCatalog';
-import { APPOINTMENT_LOOKBACK, TIME_OFF_LOOKBACK, assertAppointmentStart, boundedIntegrityRows, historicalWarnings, activeServiceStaff, serviceDayAvailability, scheduleDays, staffBusyRanges } from './private/serviceSlots';
+import { APPOINTMENT_LOOKBACK, TIME_OFF_LOOKBACK, assertAppointmentStart, boundedIntegrityRows, historicalWarnings, activeServiceStaff, serviceDayAvailability, scheduleDays, staffBusyRanges, firstStaffBlocker } from './private/serviceSlots';
+import { TURNAROUND_STEP_MIN, canEditTurnaround, turnaroundMinutes, turnaroundProblem, withTurnaround } from '../shared/appointmentWindow';
 import { blocksTime, localDateTimeUtc, localDayRange, planWorking } from '../shared/schedule';
 import { serviceOptions } from '../shared/serviceOptions';
 import { resortLocalParts } from '../shared/time';
+import { addDays } from '../shared/dates';
 import { DAY, MINUTE, SELECTED_STAFF_READ_LIMIT, ScheduleBlock, adminStarts, assertPageSize, boundedStaff, countUpcoming, loadAppointment } from './private/administration';
 
 export const listStaff = adminQuery({
@@ -29,6 +31,118 @@ export const countUpcomingAppointments = adminQuery({
 		if (args.staffId) return await countUpcoming(ctx, { staffId: args.staffId });
 		if (args.serviceId) return await countUpcoming(ctx, { serviceId: args.serviceId });
 		throw new Error('Choose a staff member or service');
+	}
+});
+
+/** The earliest appointment still blocking this person's time (the one that blocks archiving), or null. */
+export const firstUpcomingAppointment = adminQuery({
+	args: { staffId: v.id('staff') },
+	handler: async (ctx, { staffId }) => {
+		const now = Date.now();
+		const rows = ctx.db.query('appointments').withIndex('by_staff_start', (q) => q.eq('staffId', staffId).gte('start', now - APPOINTMENT_LOOKBACK));
+		for await (const appointment of boundedIntegrityRows(rows)) {
+			if (appointment.blockedUntil > now && blocksTime(appointment)) return { appointmentId: appointment._id, start: appointment.start };
+		}
+		return null;
+	}
+});
+
+const SEARCH_RESULT_LIMIT = 20;
+/** Name matches read before the date window is applied; reaching it is reported, never hidden. */
+const SEARCH_CANDIDATE_LIMIT = 256;
+const SEARCH_WINDOW_DAYS = 365;
+const NEXT_WINDOW_DAYS = 30;
+
+/**
+ * Cross-date lookup for the calendar search: guest-name matches (word prefix) and an exact reference,
+ * within a year either side of today, at most 20, upcoming nearest first and then the most recent past.
+ */
+export const searchAppointments = adminQuery({
+	args: { query: v.string(), cursor: v.optional(v.union(v.string(), v.null())) },
+	handler: async (ctx, args) => {
+		const text = args.query.trim();
+		if (text.length < 2 || text.length > 100) return { results: [], windowDays: SEARCH_WINDOW_DAYS, sampled: false, continueCursor: null };
+		const now = Date.now();
+		const found = new Map<string, Doc<'appointments'>>();
+		if (args.cursor == null) {
+			const byCode = await ctx.db.query('appointments').withIndex('by_confirmationCode', (q) => q.eq('confirmationCode', text.toUpperCase())).take(5);
+			for (const row of byCode) found.set(row._id, row);
+		}
+		const names = ctx.db.query('appointments').withSearchIndex('search_guestName', (q) => q.search('guestName', text));
+		const page = args.cursor === undefined ? null : await names.paginate({
+			cursor: args.cursor, numItems: SEARCH_RESULT_LIMIT - found.size,
+		});
+		const byName = page ? page.page : await names.take(SEARCH_CANDIDATE_LIMIT);
+		for (const row of byName) found.set(row._id, row);
+		const sampled = page ? !page.isDone : byName.length === SEARCH_CANDIDATE_LIMIT;
+		const inWindow = [...found.values()].filter((row) => Math.abs(row.start - now) <= SEARCH_WINDOW_DAYS * DAY);
+		const upcoming = inWindow.filter((row) => row.end >= now).sort((a, b) => a.start - b.start);
+		const past = inWindow.filter((row) => row.end < now).sort((a, b) => b.start - a.start);
+		const openable: Doc<'appointments'>[] = [];
+		const staffExists = new Map<Id<'staff'>, boolean>();
+		for (const row of [...upcoming, ...past]) {
+			let exists = staffExists.get(row.staffId);
+			if (exists === undefined) {
+				exists = Boolean(await ctx.db.get(row.staffId));
+				staffExists.set(row.staffId, exists);
+			}
+			// The calendar link resolver requires this staff record, including archived staff.
+			if (exists) openable.push(row);
+			if (openable.length === SEARCH_RESULT_LIMIT) break;
+		}
+		return {
+			windowDays: SEARCH_WINDOW_DAYS,
+			sampled,
+			continueCursor: page && !page.isDone ? page.continueCursor : null,
+			results: openable.map((row) => ({
+				_id: row._id, start: row.start, end: row.end, staffId: row.staffId, serviceId: row.serviceId,
+				guestName: row.guestName, confirmationCode: row.confirmationCode, status: row.status,
+			})),
+		};
+	}
+});
+
+/**
+ * The first appointment starting in [from, until) (30 days) that the calendar's current filters would show; null when none.
+ * Cancelled ones count only when `includeCancelled`.
+ */
+export const nextAppointment = adminQuery({
+	args: {
+		from: v.number(),
+		hiddenStaffIds: v.optional(v.array(v.id('staff'))),
+		hiddenServiceIds: v.optional(v.array(v.id('services'))),
+		hiddenStatuses: v.optional(v.array(v.string())),
+		includeCancelled: v.optional(v.boolean()),
+		// A fresh activation uses a distinct client query key.
+		requestedAt: v.optional(v.number()),
+		verify: v.optional(v.object({ appointmentId: v.id('appointments'), start: v.number() })),
+	},
+	handler: async (ctx, args) => {
+		const { from } = args;
+		if (!Number.isSafeInteger(from)) throw new Error('Invalid start');
+		if ((args.hiddenStaffIds?.length ?? 0) > 200 || (args.hiddenServiceIds?.length ?? 0) > 200 || (args.hiddenStatuses?.length ?? 0) > 20) throw new Error('Too many filters');
+		const until = from + NEXT_WINDOW_DAYS * DAY;
+		const hiddenStaff = new Set<string>(args.hiddenStaffIds);
+		const hiddenServices = new Set<string>(args.hiddenServiceIds);
+		const hiddenStatuses = new Set(args.hiddenStatuses);
+		const visible = (row: Doc<'appointments'>) =>
+			(row.status !== 'cancelled' || args.includeCancelled) &&
+			!hiddenStaff.has(row.staffId) && !hiddenServices.has(row.serviceId) && !hiddenStatuses.has(row.status);
+		const result = (row: Doc<'appointments'>) => ({ appointment: { _id: row._id, start: row.start, staffId: row.staffId }, until });
+		if (args.verify) {
+			const row = await ctx.db.get(args.verify.appointmentId);
+			if (row && row.start === args.verify.start && row.start >= from && row.start < until &&
+				visible(row) && await ctx.db.get(row.staffId)) return result(row);
+			return { appointment: null, until };
+		}
+		const rows = ctx.db.query('appointments').withIndex('by_start', (q) => q.gte('start', from).lt('start', until));
+		const missingStaff = new Set<Id<'staff'>>();
+		for await (const row of boundedIntegrityRows(rows)) {
+			if (!visible(row) || missingStaff.has(row.staffId)) continue;
+			if (await ctx.db.get(row.staffId)) return result(row);
+			missingStaff.add(row.staffId);
+		}
+		return { appointment: null, until };
 	}
 });
 
@@ -155,6 +269,43 @@ export const findOpenSlots = adminQuery({
 	}
 });
 
+const NEXT_SLOT_DAYS = 14;
+
+/**
+ * The first future open start after `afterDate` for the same service, length and (optional) staff choice
+ * as findOpenSlots, searching at most 14 days; `through` names the last date searched.
+ */
+export const findNextOpenSlot = adminQuery({
+	args: { serviceId: v.id('services'), durationMin: v.optional(v.number()), afterDate: v.string(), staffId: v.optional(v.id('staff')) },
+	handler: async (ctx, args) => {
+		const today = resortLocalParts(Date.now()).date;
+		const first = addDays(args.afterDate < today ? today : args.afterDate, args.afterDate < today ? 0 : 1);
+		const through = addDays(first, NEXT_SLOT_DAYS - 1);
+		const service = await ctx.db.get(args.serviceId);
+		const option = service ? findServiceOption(service, args.durationMin) : null;
+		if (!service || !option || service.status !== 'active') return { slot: null, from: first, through };
+		const staff = await activeServiceStaff(ctx, service, args.staffId);
+		if (!staff.length) return { slot: null, from: first, through };
+		const occupyMs = (option.durationMin + service.bufferMin) * MINUTE;
+		for (let date = first; date <= through; date = addDays(date, 1)) {
+			const { slots } = await serviceDayAvailability(ctx, staff, localDayRange(date), occupyMs);
+			if (slots.length) return { slot: { date, start: slots[0].start }, from: first, through };
+		}
+		return { slot: null, from: first, through };
+	}
+});
+
+/** Resolve a calendar link using the same operations access as the schedule. */
+export const resolveCalendarAppointment = adminQuery({
+	args: { appointmentId: v.string() },
+	handler: async (ctx, { appointmentId }) => {
+		const id = ctx.db.normalizeId('appointments', appointmentId);
+		const appointment = id ? await ctx.db.get(id) : null;
+		if (!appointment || !await ctx.db.get(appointment.staffId)) return null;
+		return { id: appointment._id, staffId: appointment.staffId, start: appointment.start };
+	}
+});
+
 /** The original booking reference for rebooked appointments, including ones outside the visible calendar dates. */
 export const getAppointmentReference = adminQuery({
 	args: { appointmentId: v.id('appointments') },
@@ -187,6 +338,29 @@ export const previewAppointmentTime = adminQuery({
 			return { warnings: [], needsReason: false, problem };
 		}
 		return { ...await historicalWarnings(ctx, person, service, args.start, args.start + occupied, appointment?._id), problem: null };
+	}
+});
+
+/**
+ * Read-only preview of updateAppointmentTurnaround: the same checks, plus the first blocker inside the added
+ * interval and the longest turnaround that still fits. The mutation re-checks at write time.
+ */
+export const previewAppointmentTurnaround = adminQuery({
+	args: { appointmentId: v.id('appointments'), turnaroundMin: v.number() },
+	handler: async (ctx, args) => {
+		const appointment = await loadAppointment(ctx, args.appointmentId);
+		const none = { blocker: null, maxMin: null };
+		if (!canEditTurnaround(appointment)) return { ...none, problem: 'Turnaround can only change while the appointment is booked, arrived or in service' };
+		const problem = turnaroundProblem(args.turnaroundMin, (appointment.end - appointment.start) / MINUTE);
+		if (problem) return { ...none, problem };
+		const window = withTurnaround(appointment, args.turnaroundMin);
+		if (window.blockedUntil <= appointment.blockedUntil) return { ...none, problem: null };
+		const staff = await ctx.db.get(appointment.staffId);
+		if (!staff) return { ...none, problem: 'Staff member not found' };
+		const blocker = await firstStaffBlocker(ctx, staff, appointment.blockedUntil, window.blockedUntil, appointment._id);
+		if (!blocker) return { ...none, problem: null };
+		const extraMin = Math.floor((blocker.start - appointment.blockedUntil) / MINUTE / TURNAROUND_STEP_MIN) * TURNAROUND_STEP_MIN;
+		return { problem: null, blocker, maxMin: turnaroundMinutes(appointment) + extraMin };
 	}
 });
 

@@ -50,7 +50,8 @@ it("opens 20 return requests with one order, one detail and one quote: the selec
   // The other 19 are compact rows from their stored summary, each opening on a tap.
   const queued = [...document.querySelectorAll<HTMLElement>("[data-return-queued]")];
   expect(queued).toHaveLength(19);
-  expect(queued[0].textContent).toBe("Return itemsMint asks to return 2 parts · ฿500Expires in 10 min");
+  expect(queued[0].textContent).toContain("Mint asks to return 2 parts · ฿500");
+  expect(queued[0].textContent).toMatch(/Action required · Expires in \d+ min/);
   await act(async () => queued[0].querySelector("button")!.click());
   expect(onSelect).toHaveBeenCalledWith("request1");
 
@@ -59,6 +60,7 @@ it("opens 20 return requests with one order, one detail and one quote: the selec
   for (let n = 0; n < 50 && seen.previews.length < 2; n++) await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
   expect(new Set(seen.orders)).toEqual(new Set(["order0", "order1"]));
   expect(new Set(seen.details)).toEqual(new Set(["request0", "request1"]));
+  expect(seen.previews).toEqual(["approval:request0", "approval:request1"]);
   expect(document.querySelectorAll("[data-return-request]")).toHaveLength(1);
   await act(async () => root.unmount());
 });

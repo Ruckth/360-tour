@@ -20,6 +20,7 @@ import { dateToIso, isDateInIsoList, rangeIntersectsDates } from '@/lib/booking/
 import { resortTodayIso as todayIsoResort } from 'convex/shared/time';
 import { useVillaBlockedMonths } from "@/lib/booking/use-blocked-dates";
 import { calculateDirectQuote } from "convex/shared/pricing";
+import { satangToBaht } from "convex/shared/money";
 import type { ChatBookingContext } from "@/lib/chat/booking-intent";
 import {
   getChatVillaBackground,
@@ -90,15 +91,8 @@ export function ChatBookingCard({ context }: { context: ChatBookingContext }) {
     setError("");
   }
 
-  const moneyFormatter = useMemo(
-    () =>
-      new Intl.NumberFormat(locale, {
-        style: "currency",
-        currency: resort.currency,
-        maximumFractionDigits: 0,
-      }),
-    [locale],
-  );
+  const formatAmount = (satang: number, currency: string) =>
+    new Intl.NumberFormat(locale, { style: "currency", currency, maximumFractionDigits: 0 }).format(satangToBaht(satang));
   const bookingHref = useMemo(() => {
     const params = new URLSearchParams();
     if (checkIn) params.set("checkin", checkIn);
@@ -226,7 +220,8 @@ export function ChatBookingCard({ context }: { context: ChatBookingContext }) {
         >
           {properties.map((item) => {
             const isSelected = item.slug === selectedPropertySlug || item.id === selectedPropertySlug;
-            const oneNightQuote = calculateDirectQuote({ pricePerNight: item.pricePerNight, directDiscountPercent: 1500, currency: resort.currency }, 1);
+            // The same one-night direct quote as booking: each villa's own configured discount and currency.
+            const oneNightQuote = calculateDirectQuote({ pricePerNight: item.pricePerNight, directDiscountPercent: item.directDiscountPercent, currency: item.currency }, 1);
 
             return (
               <button
@@ -297,7 +292,7 @@ export function ChatBookingCard({ context }: { context: ChatBookingContext }) {
                         data-testid={`chat-villa-price-${item.id}`}
                         className="whitespace-nowrap text-[11px] font-bold text-gold"
                       >
-                        {moneyFormatter.format(oneNightQuote.directTotal / 100)}
+                        {formatAmount(oneNightQuote.directTotal, oneNightQuote.currency)}
                         <span className="font-medium text-white/70"> {villaT("perNightWords")}</span>
                       </span>
                     </div>
@@ -347,7 +342,7 @@ export function ChatBookingCard({ context }: { context: ChatBookingContext }) {
           <p className="font-semibold">{context.couponCode}</p>
           <p>{couponMessage}</p>
           {coupon.kind === "applied" ? <p>{couponT("appliedBody")}</p> : null}
-          {couponPreview.status === "ready" ? <p className="mt-1 font-semibold">{bookingT("total")}: {moneyFormatter.format(couponPreview.result.total / 100)}</p> : null}
+          {couponPreview.status === "ready" ? <p className="mt-1 font-semibold">{bookingT("total")}: {formatAmount(couponPreview.result.total, selectedProperty?.currency ?? resort.currency)}</p> : null}
         </div>
       ) : null}
 

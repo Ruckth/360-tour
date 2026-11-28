@@ -83,3 +83,35 @@ it("clears a saved departure if a new arrival would make the stay too short", as
     checkOut: "",
   });
 });
+it("G28: explains the minimum stay and keys available, booked and unselectable days inside the picker", async () => {
+  await render();
+  const key = document.querySelector('[data-testid="booking-calendar-key"]')!;
+  expect(key.querySelector('[data-testid="booking-min-stay"]')?.textContent).toBe("Minimum stay: 3 nights");
+  expect([...key.querySelectorAll("li")].map((item) => item.textContent)).toEqual([
+    en.Booking.legendAvailable,
+    en.Booking.legendBooked,
+    en.Booking.legendNotSelectable,
+  ]);
+  expect(key.querySelector("ul")?.getAttribute("aria-label")).toBe(en.Booking.calendarKey);
+  // The rule that disables a next-day checkout is the one displayed.
+  await act(async () => document.querySelector<HTMLButtonElement>('[data-testid="booking-check-out"]')!.click());
+  expect(state.calendar.disabled(date(15))).toBe(true);
+});
+it("G28: hides the minimum-stay hint for one-night rules and keeps key ids unique per picker", async () => {
+  state.query.mockResolvedValue({ bookingRules: { ...BOOKING_RULE_DEFAULTS, minNights: 1, maxAdvanceDays: 10 } });
+  await act(async () =>
+    root.render(
+      // eslint-disable-next-line react/no-children-prop -- use-intl requires children in createElement props.
+      createElement(IntlProvider, {
+        locale: "en",
+        messages: en,
+        children: [0, 1].map((index) => createElement(BookingDatePicker, { key: index, checkIn: "", checkOut: "", onChange: vi.fn(), isDateDisabled: () => false })),
+      }),
+    ),
+  );
+  const keys = [...document.querySelectorAll('[data-testid="booking-calendar-key"]')];
+  expect(keys).toHaveLength(2);
+  expect(new Set(keys.map((item) => item.id)).size).toBe(2);
+  expect(document.querySelector('[data-testid="booking-min-stay"]')).toBeNull();
+  expect(new Set([...document.querySelectorAll('[data-testid="booking-check-in"]')].map((item) => item.id)).size).toBe(2);
+});

@@ -70,7 +70,8 @@ export function chosenParts(parts: DeskPart[], choices: Choices, lotOptions?: Ma
     const choice = choices[part.partKey];
     if (!choice || coveredByWhole(part, choices)) continue;
     if (part.kind === "goods" && !choice.condition) return null;
-    const units = Math.min(Math.max(1, Math.round(choice.units)), part.maxUnits);
+    const { units } = choice;
+    if (!Number.isSafeInteger(units) || units < 1 || units > part.maxUnits) return null;
     const disposition = choice.condition === "sellable" || choice.condition === "damaged" ? choice.condition : undefined;
     const options = disposition === "sellable" ? lotOptions?.get(part.partKey) : undefined;
     if (disposition === "sellable" && (lotOptions === null || options?.unavailable)) return null;

@@ -206,8 +206,13 @@ for (const width of [390, 1180]) {
     if (width < 640) {
       expect((await page.getByRole("button", { name: /^Dates:/ }).boundingBox())!.width).toBeGreaterThan(140);
       expect((await page.getByRole("combobox", { name: "Property", exact: true }).boundingBox())!.width).toBeGreaterThan(140);
-      // Dates, property, Marketing, Finance, View options, ⋯.
-      expect(before).toBe(5);
+      // Dates, property, Marketing, Finance, attribution shortcut, ⋯.
+      expect(before).toBe(6);
+      const attribution = page.getByRole("button", { name: "Last touch", exact: true });
+      await expect(attribution).toBeVisible();
+      await attribution.click();
+      await expect(page.getByRole("radiogroup", { name: "Attribution" })).toBeVisible();
+      await page.keyboard.press("Escape");
       expect(before).toBeLessThan(BEFORE_PHONE_CONTROLS_BEFORE_FIGURES);
       await expect(page.getByRole("button", { name: "Export CSV" })).toBeHidden();
       await expect(page.getByRole("button", { name: "Definitions" })).toBeHidden();

@@ -226,7 +226,7 @@ describe("this browser and this tab", () => {
     desk.forget();
     root = createRoot(document.body.appendChild(document.createElement("div")));
     await mount(desk, orderId, "card", true);
-    expect(text()).toMatch(/Payment in progress on Till [A-Z0-9]{6} · Ploy/);
+    expect(text()).toMatch(/Payment in progress on Till [A-Z0-9]{8} · Ploy/);
     expect(text()).not.toContain("on the terminal");
     expect(text()).not.toContain("Check previous payment");
     expect(button("Taken")).toBeUndefined();
@@ -338,7 +338,7 @@ describe("pay desk on attempts", () => {
     if (started.status !== "ready") throw new Error(JSON.stringify(started));
     await other.mutation(api.pos.commands.armPaymentLeg.armPaymentLeg, { attemptId: started.attempt.attemptId, ownerRevision: 0, ...till2, legKey: "card-1" });
     const { onPaid } = await mount(desk, orderId, "card", true);
-    expect(text()).toMatch(/Payment in progress on Till [A-Z0-9]{6} · Nok/);
+    expect(text()).toMatch(/Payment in progress on Till [A-Z0-9]{8} · Nok/);
     expect(button("Take over")?.disabled).toBe(true);
     await act(async () => document.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click());
     await tap("Take over");
@@ -742,7 +742,7 @@ describe("Hand over to another till", () => {
   it("cashier A hands a card payment to Till B mid-charge; cashier B accepts it, checks the terminal and finishes", async () => {
     const desk = await createPayDeskBackend({ role: "manager", email: "mali@example.com" });
     const tillB = await desk.otherAcknowledgedTill();
-    const labelB = `Till ${tillB.tillId.slice(-6).toUpperCase()}`;
+    const labelB = `Till ${tillB.tillId.slice(-8).toUpperCase()}`;
     const orderId = await desk.order([{ name: "Tea", price: 120000 }]);
     await desk.setStaff({ role: "cashier", email: "ploy@example.com" });
     taps.push("Card");
@@ -750,7 +750,7 @@ describe("Hand over to another till", () => {
     expect(text()).toContain("Charge ฿1,200 on the terminal");
     const [armed] = await desk.attempts();
     await tap("Hand over");
-    expect(text()).toMatch(/This till is Till [A-Z0-9]{6}\./);
+    expect(text()).toMatch(/This till is Till [A-Z0-9]{8}\./);
     await tap(`Hand over to ${labelB}`);
     expect(text()).toContain(`Handed over to ${labelB}`);
     expect(button("Accept the payment")).toBeUndefined();
@@ -825,7 +825,7 @@ describe("Hand back and the booking email choice", () => {
     const { onPaid } = await mount(desk, orderId, "card");
     expect(text()).toContain("Charge ฿650 on the terminal");
     await tap("Hand over");
-    await tap(`Hand over to Till ${tillB.tillId.slice(-6).toUpperCase()}`);
+    await tap(`Hand over to Till ${tillB.tillId.slice(-8).toUpperCase()}`);
     await handBack(desk, orderId, tillB, localStorage.getItem("checkout.tillId")!);
     expect(text()).toContain("Handed over to this till");
     await tap("Accept the payment");
@@ -865,7 +865,7 @@ describe("Hand back and the booking email choice", () => {
     await act(async () => emailBox()!.click());
     await settle();
     await tap("Hand over");
-    await tap(`Hand over to Till ${tillB.tillId.slice(-6).toUpperCase()}`);
+    await tap(`Hand over to Till ${tillB.tillId.slice(-8).toUpperCase()}`);
     // Till B accepts it: the choice is on the attempt, so B sees it checked and settles with it.
     const [attempt] = await desk.attempts();
     expect(attempt).toMatchObject({ notifyGuest: true });

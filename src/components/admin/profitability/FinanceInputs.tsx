@@ -1,4 +1,5 @@
-import { useState, type FormEvent } from 'react';
+import { useConfirm } from '../ConfirmDialog';
+import { useImperativeHandle, useRef, useState, type FormEvent, type Ref } from 'react';
 import { useMutation, useQuery } from 'convex/react';
 import type { FunctionReturnType } from 'convex/server';
 import { api } from 'convex/_generated/api';
@@ -39,15 +40,20 @@ function FinanceForm({
   serviceId,
   date,
   saved,
+  onDirty,
+  onBusy,
 }: {
   data: Inputs;
   mode: 'cost' | 'month';
   serviceId: Id<'services'> | null;
   date: string;
   saved: () => void;
+  onDirty: (dirty: boolean) => void;
+  onBusy: (busy: boolean) => void;
 }) {
   const recordCosts = useMutation(api.marketing.profitability.recordCosts);
   const recordMonth = useMutation(api.marketing.profitability.recordMonth);
+  const baseline = useRef<string | null>(null);
   const [initial] = useState(data);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState('');
@@ -56,6 +62,7 @@ function FinanceForm({
     if (busy) return;
     const fields = new FormData(e.currentTarget);
     setBusy(true);
+    onBusy(true);
     setError('');
     try {
       if (mode === 'cost' && serviceId)
@@ -86,10 +93,15 @@ function FinanceForm({
       setError(marketingErrorText(err, 'Could not save the finance entry.'));
     } finally {
       setBusy(false);
+      onBusy(false);
     }
   }
   return (
     <form
+      ref={(form) => {
+        if (form && baseline.current === null) baseline.current = JSON.stringify([...new FormData(form)]);
+      }}
+      onChange={(event) => onDirty(JSON.stringify([...new FormData(event.currentTarget)]) !== baseline.current)}
       className="grid gap-4"
       onSubmit={(e) => {
         void submit(e);
@@ -165,7 +177,7 @@ function FinanceForm({
             </div>
           </fieldset>
           <label className="flex items-start gap-2 text-sm">
-            <input type="checkbox" required className="mt-1" />I have included all service expenses, other income
+            <input type="checkbox" name="confirmedStatement" required className="mt-1" />I have included all service expenses, other income
             and acquisition spend for this month.
           </label>
         </>
@@ -197,15 +209,44 @@ function FinanceForm({
   );
 }
 
+export type FinanceInputsHandle = { changeContext: (change: () => void) => Promise<void> };
+
 export function FinanceInputs({
+  ref,
   initialDate,
   initialMode,
   onSave,
+  onClose,
 }: {
+  ref?: Ref<FinanceInputsHandle>;
   initialDate: string;
   initialMode: 'cost' | 'month';
   onSave: () => void;
+  onClose?: () => void;
 }) {
+  const confirm = useConfirm();
+  const [dirty, setDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const confirming = useRef(false);
+  async function changeContext(change: () => void) {
+    if (saving || confirming.current) return;
+    confirming.current = true;
+    try {
+      if (dirty && !(await confirm({
+        title: "Discard unsaved finance inputs?",
+        description: "Your edits to this entry will be lost.",
+        cancelLabel: "Keep editing",
+        confirmLabel: "Discard changes",
+        destructive: true,
+      }))) return;
+      setDirty(false);
+      setMessage('');
+      change();
+    } finally {
+      confirming.current = false;
+    }
+  }
+  useImperativeHandle(ref, () => ({ changeContext }));
   const [mode, setMode] = useState(initialMode);
   const [date, setDate] = useState(initialDate);
   const [id, setId] = useState<Id<'services'> | null>(null);
@@ -225,8 +266,9 @@ export function FinanceInputs({
             className={inputStyle}
             value={mode}
             onChange={(e) => {
-              setMode(e.target.value === 'month' ? 'month' : 'cost');
-              setMessage('');
+              const next = e.target.value === "month" ? "month" : "cost";
+              e.target.value = mode;
+              void changeContext(() => setMode(next));
             }}
           >
             <option value="cost">Service cost schedule</option>
@@ -240,8 +282,9 @@ export function FinanceInputs({
             type={mode === 'cost' ? 'date' : 'month'}
             value={mode === 'cost' ? date : date.slice(0, 7)}
             onChange={(e) => {
-              setDate(mode === 'cost' ? e.target.value : e.target.value + '-01');
-              setMessage('');
+              const next = mode === 'cost' ? e.target.value : e.target.value + '-01';
+              e.target.value = mode === 'cost' ? date : date.slice(0, 7);
+              void changeContext(() => setDate(next));
             }}
           />
         </label>
@@ -252,8 +295,9 @@ export function FinanceInputs({
               className={inputStyle}
               value={id ?? ''}
               onChange={(e) => {
-                setId((e.target.value as Id<'services'>) || null);
-                setMessage('');
+                const next = (e.target.value as Id<'services'>) || null;
+                e.target.value = id ?? '';
+                void changeContext(() => setId(next));
               }}
             >
               <option value="">Choose a service</option>
@@ -266,6 +310,7 @@ export function FinanceInputs({
           </label>
         )}
       </div>
+      {onClose && <Button type="button" variant="outline" className="w-fit" disabled={saving} onClick={() => void changeContext(onClose)}>Close finance inputs</Button>}
       {message && (
         <p role="status" className="text-sm font-medium">
           {message}
@@ -283,7 +328,10 @@ export function FinanceInputs({
             mode={mode}
             serviceId={id}
             date={date}
+            onDirty={setDirty}
+            onBusy={setSaving}
             saved={() => {
+              setDirty(false);
               setMessage('Finance entry saved.');
               setRevision((v) => v + 1);
               onSave();

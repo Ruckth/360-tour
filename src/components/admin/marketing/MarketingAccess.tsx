@@ -77,7 +77,7 @@ function AccessGate({ children }: { children: ReactNode }) {
   if (!auth.isAuthenticated || !access?.email) return <AccessState title="Sign in to Marketing"><p>Use the account invited to Marketing.</p><SignInButton mode="modal"><Button>Sign in</Button></SignInButton></AccessState>;
   if (access.capabilities.view) return <MarketingAccessProvider value={access}>{children}</MarketingAccessProvider>;
   if (access.pendingInvitation) return <MarketingInvitation email={access.email} role={access.pendingInvitation.role} />;
-  return <AccessState title="Marketing access required"><p>{access.email} does not have Marketing access. Ask a system administrator to invite this account.</p></AccessState>;
+  return <AccessState title="Marketing access required"><p>{access.email} does not have Marketing access. Ask a system administrator to invite this account.</p><SignOutButton redirectUrl="/admin"><Button variant="outline">Sign out to switch accounts</Button></SignOutButton></AccessState>;
 }
 
 /** No page queries mount until Convex authentication and the Marketing grant are both ready. */

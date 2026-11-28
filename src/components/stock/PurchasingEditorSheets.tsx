@@ -300,11 +300,11 @@ export function RequestEditorSheet({
         onOpenChange={setPickerOpen}
         branchId={branchId}
         selectedIds={lines.map((line) => line.variantId)}
-        title="Add item to purchase request"
-        onSelect={(item) => {
+        title="Add items to purchase request"
+        onSelectMany={(items) => {
           setLines((curr) => [
             ...curr,
-            {
+            ...items.map((item) => ({
               variantId: item.variantId,
               productName: item.productName,
               variantLabel: item.label,
@@ -312,7 +312,7 @@ export function RequestEditorSheet({
               onHand: item.onHand,
               onOrder: item.onOrder,
               quantityText: "1",
-            },
+            })),
           ]);
           setSaveOpKey(createOperationKey("pr-save"));
         }}
@@ -327,6 +327,7 @@ export function OrderEditorSheet({
   canAddSupplier,
   existing,
   liveRevision,
+  focusQuantityVariantId,
   fromRequest,
   forHold,
   replacesReturnId,
@@ -350,6 +351,7 @@ export function OrderEditorSheet({
     lines: StockLineDraft[];
   };
   liveRevision?: number;
+  focusQuantityVariantId?: Id<"productVariants">;
   fromRequest?: {
     requestId: Id<"purchaseRequests">;
     reference: string;
@@ -499,6 +501,13 @@ export function OrderEditorSheet({
       <EditorSheet
         open
         wide
+        onOpenAutoFocus={(event) => {
+          if (!focusQuantityVariantId) return;
+          const input = document.getElementById(`po-line-qty-${focusQuantityVariantId}`);
+          if (!input) return;
+          event.preventDefault();
+          input.focus();
+        }}
         onClose={requestClose}
         header={
           <>
@@ -613,11 +622,11 @@ export function OrderEditorSheet({
         onOpenChange={setPickerOpen}
         branchId={branchId}
         selectedIds={lines.map((line) => line.variantId)}
-        title="Add item to purchase order"
-        onSelect={(item) => {
+        title="Add items to purchase order"
+        onSelectMany={(items) => {
           setLines((curr) => [
             ...curr,
-            {
+            ...items.map((item) => ({
               variantId: item.variantId,
               productName: item.productName,
               variantLabel: item.label,
@@ -626,7 +635,7 @@ export function OrderEditorSheet({
               onOrder: item.onOrder,
               quantityText: "1",
               unitCostText: "",
-            },
+            })),
           ]);
           setOpKey(createOperationKey("po-save"));
         }}

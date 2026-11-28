@@ -31,7 +31,15 @@ function placeholders(value: string) {
   return [...value.matchAll(/\{([^}]+)\}/g)].map((match) => match[1]).sort();
 }
 
-function isAllowedSameAsEnglish(key: string) {
+// Valid local spellings that happen to match English.
+const sameSpellingByLocale: Record<string, readonly string[]> = {
+  de: ["Nav.services", "A11y.themeSystem"],
+  fr: ["Nav.services"],
+  it: ["Tour.emailLabel"],
+};
+
+function isAllowedSameAsEnglish(key: string, locale: string) {
+  if (sameSpellingByLocale[locale]?.includes(key)) return true;
   return [
     /^Booking\.(fullNameExample|emailExample|phoneExample|details|email|total)$/,
     /^Chat\.(name|email|whatsapp|line|whatsappPlaceholder)$/,
@@ -103,7 +111,7 @@ describe("message files", () => {
       const messages = readMessages(locale);
       const unexpected = englishKeys.filter((key) => {
         const value = key.split(".").reduce<unknown>((current, part) => (current as Messages)[part], messages);
-        return String(value) === String(englishFlat[key]) && !isAllowedSameAsEnglish(key);
+        return String(value) === String(englishFlat[key]) && !isAllowedSameAsEnglish(key, locale);
       });
 
       expect(unexpected, locale).toEqual([]);

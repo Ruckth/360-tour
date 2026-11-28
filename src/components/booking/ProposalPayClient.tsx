@@ -6,12 +6,13 @@ import { useCouponCopy } from "./coupon-copy";
 import { captureForBooking } from "@/lib/marketing/capture";
 import { api } from "convex/_generated/api";
 import type { FunctionReturnType } from "convex/server";
+import { ConvexError } from "convex/values";
 import Link from "@/platform/link";
 import { useLocale, useTranslations } from "@/platform/intl";
 import { useEffect, useRef, useState } from "react";
 import { CreditCard } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
+import { Button, ButtonLink } from "@/components/ui/button";
 import { localizeHref } from "@/i18n/routing";
 import { formatPickerDate } from "@/lib/dates/format";
 import { useConvex } from 'convex/react';
@@ -19,19 +20,22 @@ import { useConvex } from 'convex/react';
 type Summary = NonNullable<
   FunctionReturnType<typeof api.bookings.bookings.getConfirmProposal>
 >;
+/** Why there is no summary; only a verified link earns anything more specific than `unavailable`. */
+type Closed = FunctionReturnType<typeof api.bookings.bookings.getConfirmProposalStatus>;
 
 export function ProposalPayClient({ token }: { token: string }) {
   const convex = useConvex();
   const locale = useLocale();
   const t = useTranslations("Booking");
   const couponT = useTranslations("Coupon");
+  const chatT = useTranslations("Chat");
   const [activeToken, setActiveToken] = useState(token);
   const submitting = useRef(false);
   const [summary, setSummary] = useState<Summary | null>(null);
   const couponCopy = useCouponCopy(summary?.currency ?? "THB");
   const [checking, setChecking] = useState(true);
   const [loading, setLoading] = useState(false);
-  const [expired, setExpired] = useState(false);
+  const [closed, setClosed] = useState<Closed | null>(null);
   const [error, setError] = useState("");
 
   // A different proposal link starts over from its own summary.
@@ -41,7 +45,7 @@ export function ProposalPayClient({ token }: { token: string }) {
     setActiveToken(token);
     setChecking(true);
     setSummary(null);
-    setExpired(false);
+    setClosed(null);
     setError("");
   }
 
@@ -53,9 +57,10 @@ export function ProposalPayClient({ token }: { token: string }) {
         const result = await convex.query(api.bookings.bookings.getConfirmProposal, {
           token,
         });
+        const reason = result ? null : await convex.query(api.bookings.bookings.getConfirmProposalStatus, { token });
         if (!active) return;
         setSummary(result);
-        setExpired(!result);
+        setClosed(reason);
       } catch {
         if (active) setError(t("liveVerificationUnavailable"));
       } finally {
@@ -67,6 +72,16 @@ export function ProposalPayClient({ token }: { token: string }) {
       active = false;
     };
   }, [convex, token, t]);
+
+  async function explainRefusal() {
+    try {
+      const reason = await convex.query(api.bookings.bookings.getConfirmProposalStatus, { token: activeToken });
+      setSummary(null);
+      setClosed(reason);
+    } catch {
+      setError(t("liveVerificationUnavailable"));
+    }
+  }
 
   async function confirmAndPay() {
     if (submitting.current) return;
@@ -96,7 +111,8 @@ export function ProposalPayClient({ token }: { token: string }) {
       window.location.assign(checkout.url);
     } catch (err) {
       const message = err instanceof Error ? err.message : "";
-      if (message.includes("summary has expired")) setExpired(true);
+      // The mutation refuses every unusable link alike; ask why before naming expiry.
+      if (err instanceof ConvexError && err.data?.code === "PROPOSAL_UNAVAILABLE") await explainRefusal();
       else
         setError(
           t(
@@ -122,10 +138,20 @@ export function ProposalPayClient({ token }: { token: string }) {
           <p className="mt-4" role="status">
             {t("verifying")}
           </p>
-        ) : expired ? (
-          <p className="mt-4" role="status">
-            {t("summaryExpired")}
-          </p>
+        ) : closed ? (
+          <div data-testid="proposal-closed" data-reason={closed} className="mt-4 space-y-4">
+            <p role="status">
+              {t(closed === "summary_expired" ? "summaryExpired"
+                : closed === "hold_expired" ? "proposalHoldExpired"
+                  : closed === "settled" ? "proposalSettled" : "proposalUnavailable")}
+            </p>
+            {/* Only a verified expiry hands off to chat, by its plain URL: no proposal token or booking id travels there. */}
+            {closed === "summary_expired" || closed === "hold_expired" ? (
+              <ButtonLink href={localizeHref("/chat", locale)} className="w-full">
+                {chatT("open")}
+              </ButtonLink>
+            ) : null}
+          </div>
         ) : summary ? (
           <div className="mt-5 space-y-4">
             <h2 className="text-xl font-semibold">{summary.property}</h2>

@@ -29,12 +29,17 @@ export function StartRoomError({
 }) {
   const unavailable = isStartRoomUnavailableError(error);
   const loadError = isStartRoomLoadError(error);
-  const heading = unavailable
-    ? "Villa details are temporarily unavailable"
-    : "Something went wrong";
-  const detail = unavailable
-    ? "We could not reach the villa catalog right now. Please try again in a moment."
-    : "We could not load this villa right now. Please try again.";
+  const heading =
+    (unavailable || loadError ? error.heading : undefined) ??
+    (unavailable
+      ? "Villa details are temporarily unavailable"
+      : "Something went wrong");
+  const detail =
+    (unavailable || loadError ? error.detail : undefined) ??
+    (unavailable
+      ? "We could not reach the villa catalog right now. Please try again in a moment."
+      : "We could not load this villa right now. Please try again.");
+  const retryLabel = (unavailable || loadError ? error.retryLabel : undefined) ?? "Try again";
   const homeHref = unavailable || loadError ? error.homeHref : "/";
   const backHomeLabel = unavailable || loadError ? error.backHomeLabel : "Back to Home";
 
@@ -54,7 +59,7 @@ export function StartRoomError({
               onClick={onRetry}
               className="inline-flex items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90"
             >
-              Try again
+              {retryLabel}
             </button>
           ) : null}
           <a href={homeHref} className="text-sm font-medium text-primary hover:underline">

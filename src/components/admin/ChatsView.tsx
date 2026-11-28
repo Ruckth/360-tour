@@ -1,11 +1,33 @@
 "use client";
-import { CHAT_SHORTCUT_KEYS, CHAT_SHORTCUTS, Kbd } from "./chat-shortcuts";
 
-import { CheckCheck, ChevronLeft, ChevronRight, Filter, Keyboard, Search } from "lucide-react";
+import {
+  type SessionStatus,
+  type EmptyChatFilter,
+  statusTabs,
+  statusOptions,
+  type InboxStateFilter,
+  type InboxQueue,
+  queueTabs,
+  queueParams,
+  adminStatusOptions,
+  adminStatusTabs,
+  emptyFilterOptions,
+  channelFilterOptions,
+  FILTER_DEFAULTS,
+  type FilterParam,
+  readOption,
+  dateTimeInputToMillis,
+  dateTimeBadgeLabel,
+  emptyFilterLabel,
+  channelFilterLabel,
+} from "./admin-chat-filters";
+import { CHAT_SHORTCUT_KEYS, CHAT_SHORTCUTS, Kbd } from "./chat-shortcuts";
+import { useSafeQueueCounts } from "./waiting-chats";
+import { CheckCheck, ChevronRight, Filter, Keyboard, Search } from "lucide-react";
 import { api } from "convex/_generated/api";
 import type { Id } from "convex/_generated/dataModel";
 import { isChatSessionActive } from "convex/shared/chatPresence";
-import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
+import { useMutation, usePaginatedQuery, useQueries, useQuery } from "convex/react";
 import { useRouter, useSearchParams } from "@/platform/navigation";
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, type ReactNode } from "react";
 import { RemovableBadge } from "@/components/ui/badge";
@@ -21,12 +43,11 @@ import { BusinessFactFormDialog, type FactFormTarget } from "@/components/admin/
 import { SegmentedTabs } from "@/components/admin/SegmentedTabs";
 import { EmptyState, SkeletonRows } from "@/components/admin/admin-bulk";
 import { sourceLabel } from "@/components/admin/labels";
-import { TONES, statusMeta } from "@/components/admin/status-tones";
+import { TONES } from "@/components/admin/status-tones";
 import { useAdminReplyComposer } from "@/components/admin/useAdminReplyComposer";
 import type { AdminFactProperty } from "@/components/admin/business-facts-form";
 import {
   ChannelIcon,
-  formatDateTime,
   plainText,
   relativeTime,
   truncate,
@@ -35,7 +56,6 @@ import {
 import type {
   AdminMessage,
   AdminSession,
-  AdminSessionStatus,
   SessionChannelFilter,
   SessionDetailResult,
   SessionListResult,
@@ -44,54 +64,6 @@ import type {
 import { shortcutKey } from "@/lib/keyboard";
 import { cn } from "@/lib/utils";
 
-type SessionStatus = "needs_reply" | "in_progress" | "active" | "all" | "inactive";
-type EmptyChatFilter = "non_empty" | "empty";
-
-const statusTabs = [
-  { value: "active", label: "Live" },
-  { value: "all", label: "All" },
-  { value: "inactive", label: "Inactive" },
-] satisfies { value: SessionStatus; label: string }[];
-const statusOptions: SessionStatus[] = ["needs_reply", "in_progress", "active", "all", "inactive"];
-type InboxStateFilter = AdminSessionStatus | "done";
-type InboxQueue = "waiting" | "open" | "done";
-const queueTabs = [
-  { value: "waiting", label: "Needs you" },
-  { value: "open", label: "In progress" },
-  { value: "done", label: "Done" },
-] satisfies { value: InboxQueue; label: string }[];
-function queueParams(queue: InboxQueue): { view: SessionStatus; state: InboxStateFilter } {
-  return { view: queue === "waiting" ? "needs_reply" : queue === "open" ? "in_progress" : "all", state: queue === "done" ? "done" : "open" };
-}
-const adminStatusOptions: InboxStateFilter[] = ["open", "done", "resolved", "archived"];
-const adminStatusTabs = adminStatusOptions.map((value) => ({
-  value,
-  label: value === "done" ? "All done" : statusMeta("chatSession", value).label,
-}));
-const emptyFilterOptions = ["non_empty", "empty"] satisfies EmptyChatFilter[];
-const channelFilterOptions = [
-  "all",
-  "web",
-  "line",
-  "facebook",
-  "whatsapp",
-  "instagram",
-] satisfies SessionChannelFilter[];
-// URL param defaults; a param equal to its default is left out of the URL.
-const FILTER_DEFAULTS = {
-  view: "needs_reply",
-  state: "open",
-  empty: "non_empty",
-  channel: "all",
-  q: "",
-  from: "",
-  to: "",
-} as const;
-type FilterParam = keyof typeof FILTER_DEFAULTS;
-
-function readOption<T extends string>(value: string | null, options: readonly T[], fallback: T): T {
-  return options.includes(value as T) ? (value as T) : fallback;
-}
 const PRESENCE_CLOCK_MS = 10_000;
 
 function usePresenceClock(intervalMs = PRESENCE_CLOCK_MS) {
@@ -143,27 +115,6 @@ function useLatestDefined<T>(value: T | undefined, resetKey: string) {
   const next = value !== undefined ? value : latest.resetKey === resetKey ? latest.value : undefined;
   if (latest.resetKey !== resetKey || latest.value !== next) setLatest({ resetKey, value: next });
   return next;
-}
-
-function dateTimeInputToMillis(value: string, boundary: "start" | "end" = "start") {
-  if (!value) return undefined;
-  const timestamp = new Date(value).getTime();
-  if (!Number.isFinite(timestamp)) return undefined;
-  return boundary === "end" ? timestamp + 59_999 : timestamp;
-}
-
-function dateTimeBadgeLabel(value: string) {
-  const timestamp = dateTimeInputToMillis(value);
-  return typeof timestamp === "number" ? formatDateTime(timestamp) : value;
-}
-
-function emptyFilterLabel(value: EmptyChatFilter) {
-  if (value === "empty") return "Without messages";
-  return "Not empty";
-}
-
-function channelFilterLabel(channel: SessionChannelFilter) {
-  return channel === "all" ? "All" : sourceLabel(channel);
 }
 
 export function ChatsView() {
@@ -226,8 +177,9 @@ export function ChatsView() {
   const urlSearchQuery = searchParams.get("q") ?? "";
   const [searchQuery, setSearchQuery] = useState(urlSearchQuery);
   const lastWrittenSearchQuery = useRef(urlSearchQuery);
-  const [pageIndex, setPageIndex] = useState(0);
   const [pageCursors, setPageCursors] = useState<Array<string | null>>([null]);
+  const [pageDepth, setPageDepth] = useState(1);
+  const [retryKeys, setRetryKeys] = useState<Record<number, string>>({});
   const selectedSessionId = searchParams.get("session") as Id<"conversations"> | null;
   const [incomingSessionId, setIncomingSessionId] = useState(() =>
     !searchParams.has("view") && !searchParams.has("state") ? selectedSessionId : null,
@@ -273,34 +225,78 @@ export function ChatsView() {
   const [pagedFilterKey, setPagedFilterKey] = useState(filterResetKey);
   if (pagedFilterKey !== filterResetKey) {
     setPagedFilterKey(filterResetKey);
-    setPageIndex(0);
     setPageCursors([null]);
+    setPageDepth(1);
+    setRetryKeys({});
   }
-  const currentCursor = pageCursors[pageIndex] ?? null;
-  const sessionsResetKey = `${filterResetKey}:${currentCursor ?? "first"}`;
-  const liveSessionsResult = useQuery(
-    api.messaging.adminChat.listSessions,
-    invalidMessageDateRange
-      ? "skip"
-      : {
-          paginationOpts: { numItems: 10, cursor: currentCursor },
-          status,
-          adminStatus,
-          empty: emptyFilter,
-          channel: channelFilter,
-          searchQuery: urlSearchQuery.trim() || undefined,
-          messageStartAt: parsedMessageStartAt,
-          messageEndAt: parsedMessageEndAt,
-          // Only the Live/Inactive filters need the server's clock; a coarse minute keeps the subscription stable.
-          now: status === "active" || status === "inactive" ? presenceMinute : undefined,
-        },
-  ) as SessionListResult | undefined;
-  const sessionsResult = useLatestDefined(liveSessionsResult, sessionsResetKey);
-  const sessions = useMemo(
-    () =>
-      invalidMessageDateRange ? [] : (sessionsResult?.sessions ?? []).map((session) => withLivePresence(session, now)),
-    [invalidMessageDateRange, sessionsResult, now],
-  );
+  const queueCounts = useSafeQueueCounts();
+  const queryText = urlSearchQuery.trim();
+  const listRequests = useMemo(() => Object.fromEntries(
+    (invalidMessageDateRange ? [] : pageCursors).map((cursor, index) => [String(index), {
+      query: api.messaging.adminChat.listSessions,
+      args: {
+        paginationOpts: { numItems: 10, cursor },
+        ...(retryKeys[index] ? { retryKey: retryKeys[index] } : {}),
+        status,
+        adminStatus,
+        empty: emptyFilter,
+        channel: channelFilter,
+        ...(queryText ? { searchQuery: queryText } : {}),
+        ...(parsedMessageStartAt === undefined ? {} : { messageStartAt: parsedMessageStartAt }),
+        ...(parsedMessageEndAt === undefined ? {} : { messageEndAt: parsedMessageEndAt }),
+        ...(status === "active" || status === "inactive" ? { now: presenceMinute } : {}),
+      },
+    }]),
+  ), [invalidMessageDateRange, pageCursors, retryKeys, status, adminStatus, emptyFilter, channelFilter, queryText, parsedMessageStartAt, parsedMessageEndAt, presenceMinute]);
+  const listResults = useQueries(listRequests) as Record<string, SessionListResult | Error | undefined>;
+  const firstPage = listResults["0"];
+  const { sessions, lastPage, failedPage, replacementCursors, loadingOlder } = useMemo(() => {
+    const loadedPages: SessionListResult[] = [];
+    let failedPage: number | undefined;
+    let replacementCursors: Array<string | null> | undefined;
+    // A later page is valid only while its input matches the preceding live boundary.
+    for (let index = 0; index < pageCursors.length; index++) {
+      const page = listResults[String(index)];
+      if (page instanceof Error) {
+        failedPage = index;
+        break;
+      }
+      if (!page) break;
+      loadedPages.push(page);
+      const next = page.continueCursor ?? page.nextCursor ?? null;
+      if (page.isDone || !next) {
+        if (index + 1 < pageCursors.length) replacementCursors = pageCursors.slice(0, index + 1);
+        break;
+      }
+      if (next !== pageCursors[index + 1]) {
+        if (index + 1 < pageDepth) replacementCursors = [...pageCursors.slice(0, index + 1), next];
+        break;
+      }
+    }
+    const byId = new Map<Id<"conversations">, AdminSession>();
+    for (const page of loadedPages) {
+      for (const session of page.sessions) {
+        if (!byId.has(session._id)) byId.set(session._id, withLivePresence(session, now));
+      }
+    }
+    return {
+      sessions: [...byId.values()],
+      lastPage: loadedPages.at(-1),
+      failedPage,
+      replacementCursors,
+      loadingOlder: failedPage === undefined && (
+        replacementCursors !== undefined || loadedPages.length < pageCursors.length
+      ),
+    };
+  }, [listResults, pageCursors, pageDepth, now]);
+  useEffect(() => {
+    if (!replacementCursors) return;
+    let live = true;
+    queueMicrotask(() => {
+      if (live) setPageCursors(current => current === pageCursors ? replacementCursors : current);
+    });
+    return () => { live = false; };
+  }, [pageCursors, replacementCursors]);
   const liveSessionDetail = useQuery(
     api.messaging.adminChat.getSessionDetail,
     selectedSessionId ? { sessionId: selectedSessionId } : "skip",
@@ -342,15 +338,15 @@ export function ChatsView() {
     () => chronologicalTranscriptMessages(transcriptPagination.results),
     [transcriptPagination.results],
   );
-  const loadingSessions = !invalidMessageDateRange && liveSessionsResult === undefined && sessionsResult === undefined;
+  const loadingSessions = !invalidMessageDateRange && firstPage === undefined;
   const loadingTranscript =
     Boolean(selectedSessionId) &&
     (sessionDetail === undefined || transcriptPagination.status === "LoadingFirstPage") &&
     transcriptMessages.length === 0;
   const selectedSession = useMemo(() => {
     const candidate =
-      sessions.find((session) => session._id === selectedSessionId) ??
-      (sessionDetail?.session ? withLivePresence(sessionDetail.session, now) : null);
+      (sessionDetail?.session && sessionDetail.session._id === selectedSessionId ? withLivePresence(sessionDetail.session, now) : null) ??
+      sessions.find((session) => session._id === selectedSessionId);
     if (!candidate) return null;
     if (unqualifiedDeepLink || candidate.inboxState) return candidate;
     const candidateStatus = candidate.adminStatus ?? "open";
@@ -373,14 +369,19 @@ export function ChatsView() {
     return reply.send();
   }
 
-  async function settleGuestMessage(sessionId: Id<"conversations">, messageId: Id<"messages">) {
+  async function settleGuestMessage(session: AdminSession, messageId: Id<"messages">, onSettled?: () => void) {
+    const sessionId = session._id;
+    if (session.inboxReason === "sending" || (sessionId === selectedSessionId && reply.pending)) return;
     if (settlingRef.current.has(messageId)) return;
     settlingRef.current.add(messageId);
     setSettlingMessageIds(new Set(settlingRef.current));
     setSettleError(null);
     try {
-      if (sessionId === selectedSessionId && !(await reply.confirmLeave())) return;
-      await settleGuestMessageMutation({ sessionId, messageId });
+      const discard = sessionId === selectedSessionId ? await reply.prepareDiscard() : undefined;
+      if (discard === null) return;
+      await settleGuestMessageMutation({ sessionId, messageId, expectedAssignedEmail: session.assignedAdminEmail ?? null });
+      discard?.();
+      onSettled?.();
     } catch (error) {
       setSettleError(error instanceof Error ? error.message : "Unable to mark the message as settled.");
     } finally {
@@ -390,17 +391,10 @@ export function ChatsView() {
   }
 
   function handleNextPage() {
-    const nextCursor = sessionsResult?.continueCursor ?? sessionsResult?.nextCursor ?? null;
-    if (!nextCursor || sessionsResult?.isDone) return;
-    setPageCursors((current) => [...current.slice(0, pageIndex + 1), nextCursor]);
-    setPageIndex((current) => current + 1);
-    selectSession(null);
-  }
-
-  function handlePreviousPage() {
-    if (pageIndex <= 0) return;
-    setPageIndex((current) => Math.max(0, current - 1));
-    selectSession(null);
+    const nextCursor = lastPage?.continueCursor ?? lastPage?.nextCursor ?? null;
+    if (!nextCursor || lastPage?.isDone) return;
+    setPageDepth(pageCursors.length + 1);
+    setPageCursors(current => current.includes(nextCursor) ? current : [...current, nextCursor]);
   }
 
   const detailProps = {
@@ -422,26 +416,29 @@ export function ChatsView() {
     replyError: reply.error,
     replyStatus: reply.status,
     replyWindow: sessionDetail?.replyWindow,
+    linkedStay: sessionDetail?.linkedStay,
     onAddBusinessFact: (message: AdminMessage) => setFactTarget({ fromMessage: { question: message.content, propertySlug: selectedSession?.propertySlug } }),
   };
 
   function renderDetail(compact = false) {
-    const detail = (actions?: ReactNode, followUp?: ReactNode, actionError?: ReactNode, replyAction?: ReactNode) => (
+    const detail = (actions?: ReactNode, followUp?: ReactNode, actionError?: ReactNode, replyAction?: ReactNode, handoff?: ReactNode) => (
       <AdminSessionDetail
         key={selectedSession?._id ?? "none"}
         {...detailProps}
         compact={compact}
-        emptyList={!loadingSessions && sessions.length === 0}
+        emptyList={!loadingSessions && failedPage === undefined && sessions.length === 0}
         onBack={compact ? () => selectSession(null) : undefined}
         actions={actions}
         replyAction={replyAction}
         actionError={actionError}
         followUp={followUp}
+        handoff={handoff}
       />
     );
     return selectedSession ? (
       <AdminSessionActions
         key={selectedSession._id}
+        now={now}
         session={{ ...selectedSession, latestGuestMessageId:
           selectedSession.latestGuestMessageId ?? sessionDetail?.session.latestGuestMessageId }}
         beforeLeave={reply.confirmLeave}
@@ -464,15 +461,15 @@ export function ChatsView() {
           } else selectSession(isLargeViewport ? (next?._id ?? null) : null);
         }}
       >
-        {({ actions, followUp, actionError, replyAction }) => detail(actions, followUp, actionError, replyAction)}
+        {({ actions, followUp, actionError, replyAction, handoff }) => detail(actions, followUp, actionError, replyAction, handoff)}
       </AdminSessionActions>
     ) : detail();
   }
 
   useEffect(() => {
-    if (!isLargeViewport || selectedSessionId || !sessionsResult?.sessions.length) return;
-    updateParams({ session: sessionsResult.sessions[0]._id });
-  }, [isLargeViewport, selectedSessionId, sessionsResult, updateParams]);
+    if (!isLargeViewport || selectedSessionId || !sessions.length) return;
+    updateParams({ session: sessions[0]._id });
+  }, [isLargeViewport, selectedSessionId, sessions, updateParams]);
 
   // When ?q changes from outside (back/forward, a link, clearing filters), adopt it instead of
   // writing the old text back. Our own writes are recognised by the last value we sent.
@@ -500,7 +497,7 @@ export function ChatsView() {
     messageEndAt,
   ].filter(Boolean).length;
   const emptyList: { message: string; action?: ReactNode } =
-    sessionsResult && !sessionsResult.isDone && sessions.length === 0
+    lastPage && !lastPage.isDone && sessions.length === 0
       ? {
           message: "No matching chats on this page.",
           action: (
@@ -582,10 +579,14 @@ export function ChatsView() {
       document.getElementById(isLargeViewport ? "admin-reply-desktop" : "admin-reply-mobile")?.focus();
     else if (key === "e") {
       const session = sessions[selectedIndex];
-      if (!session?.needsReply || !session.latestMessage || settlingRef.current.has(session.latestMessage._id)) return;
-      // Settled chats leave the "Needs reply" list, so move on to the next one.
-      if (status === "needs_reply") moveSelection(selectedIndex < sessions.length - 1 ? 1 : -1);
-      void settleGuestMessage(session._id, session.latestGuestMessageId ?? session.latestMessage._id);
+      if (!session?.needsReply) return;
+      const messageId = session.latestGuestMessageId ?? (session.latestMessage?.role === "user" ? session.latestMessage._id : undefined);
+      if (!messageId) return;
+      void settleGuestMessage(session, messageId, () => {
+        if (status === "needs_reply" && navigationQueryRef.current === searchParams.toString()) {
+          moveSelection(selectedIndex < sessions.length - 1 ? 1 : -1);
+        }
+      });
     }
   });
 
@@ -635,7 +636,10 @@ export function ChatsView() {
                 </Button>
               </div>
               <SegmentedTabs
-                tabs={queueTabs}
+                tabs={queueTabs.map(tab => {
+                  const count = tab.value === "waiting" ? queueCounts?.waiting : tab.value === "open" ? queueCounts?.inProgress : undefined;
+                  return { ...tab, label: count === undefined ? tab.label : `${tab.label} · ${count >= 100 ? "99+" : count}` };
+                })}
                 value={queue}
                 onValueChange={setQueue}
                 label="Chat queue"
@@ -826,13 +830,14 @@ export function ChatsView() {
                 </p>
               ) : null}
               {loadingSessions && sessions.length === 0 ? <SkeletonRows label="Loading chats" rows={6} /> : null}
-              {!invalidMessageDateRange && !loadingSessions && sessions.length === 0 ? (
+              {!invalidMessageDateRange && !loadingSessions && failedPage === undefined && !loadingOlder && sessions.length === 0 ? (
                 <EmptyState action={emptyList.action}>{emptyList.message}</EmptyState>
               ) : null}
               {sessions.map((session) => {
-                const unansweredMessageId = session.needsReply ? (session.latestGuestMessageId ?? session.latestMessage?._id) : undefined;
+                const unansweredMessageId = session.needsReply && session.inboxReason !== "sending" ? (session.latestGuestMessageId ?? (session.latestMessage?.role === "user" ? session.latestMessage._id : undefined)) : undefined;
                 const selected = selectedSessionId === session._id;
                 const preview = session.latestMessage ? plainText(session.latestMessage.content) : "No messages yet";
+                const overdue = session.staffTask && session.staffTaskDueAt !== undefined && session.staffTaskDueAt <= now;
                 const waiting = session.needsReply && (session.adminStatus ?? "open") === "open";
                 const place = session.propertyName ?? session.propertySlug;
                 return (
@@ -868,6 +873,7 @@ export function ChatsView() {
                           {preview}
                         </span>
                         {/* In the Needs-you queue every row needs you; elsewhere (search, other tabs) say so. */}
+                        {overdue ? <span className="text-xs text-destructive">Follow-up overdue</span> : null}
                         {waiting && queue !== "waiting" ? (
                           <span className={cn("shrink-0 rounded-full px-1.5 text-xs font-medium", TONES.warning.bg, TONES.warning.text)}>
                             Needs you
@@ -879,59 +885,48 @@ export function ChatsView() {
                       <Button
                         type="button"
                         variant="ghost"
-                        size="icon"
-                        onClick={() => settleGuestMessage(session._id, unansweredMessageId)}
-                        disabled={settlingMessageIds.has(unansweredMessageId)}
-                        aria-label={`Mark the message from ${visitorLabel(session)} as settled`}
+                        size="sm"
+                        onClick={() => settleGuestMessage(session, unansweredMessageId)}
+                        disabled={settlingMessageIds.has(unansweredMessageId) || (selected && reply.pending)}
+                        aria-label={`No reply needed for ${visitorLabel(session)}`}
                         title="No reply needed (e)"
                         className={cn(
-                          "mr-1 size-8 shrink-0 rounded-full opacity-0 focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:hidden",
+                          "mr-1 size-8 shrink-0 rounded-full opacity-0 pointer-coarse:h-11 pointer-coarse:w-auto focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100",
                           TONES.warning.text,
                         )}
                       >
-                        <CheckCheck className="h-4 w-4" aria-hidden="true" />
+                        <CheckCheck className="h-4 w-4 pointer-coarse:hidden" aria-hidden="true" />
+                        <span className="hidden pointer-coarse:inline">No reply needed</span>
                       </Button>
                     ) : null}
                   </div>
                 );
               })}
             </div>
-            {pageIndex > 0 || (!sessionsResult?.isDone && !loadingSessions) ? (
-              <div className="flex items-center justify-between gap-3 border-t border-border/60 p-3">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={handlePreviousPage}
-                  disabled={pageIndex === 0 || loadingSessions}
-                >
-                  <ChevronLeft aria-hidden="true" className="h-4 w-4" />
-                  Previous
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 px-4 py-3 text-xs text-muted-foreground">
+              <span>{loadingSessions ? "Loading chats…" : `${sessions.length} ${sessions.length === 1 ? "chat" : "chats"} loaded`}</span>
+              {failedPage !== undefined ? (
+                <>
+                  <span role="status">{failedPage === 0 ? "Couldn’t load chats." : "Couldn’t load older chats."}</span>
+                  <Button type="button" variant="outline" size="sm"
+                    onClick={() => {
+                      const failure = listResults[String(failedPage)];
+                      const expiredCursor = failedPage > 0 && failure instanceof Error && failure.message.includes("InvalidCursor");
+                      const retryKey = crypto.randomUUID();
+                      if (expiredCursor) setPageCursors([null]);
+                      setRetryKeys(current => expiredCursor ? { 0: retryKey } : { ...current, [failedPage]: retryKey });
+                    }}>
+                    {failedPage === 0 ? "Retry chats" : "Retry older chats"}
+                  </Button>
+                </>
+              ) : !invalidMessageDateRange && !loadingSessions && (loadingOlder || !lastPage?.isDone) ? (
+                <Button type="button" variant="outline" size="sm" onClick={handleNextPage}
+                  disabled={loadingOlder || !lastPage || !(lastPage.continueCursor ?? lastPage.nextCursor)}>
+                  {loadingOlder ? "Loading older chats…" : "Load older chats"}
+                  <ChevronRight aria-hidden="true" className="size-4" />
                 </Button>
-                <p className="text-center text-xs text-muted-foreground">Page {pageIndex + 1}</p>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={handleNextPage}
-                  disabled={
-                    loadingSessions ||
-                    !sessionsResult ||
-                    sessionsResult.isDone ||
-                    !(sessionsResult.continueCursor ?? sessionsResult.nextCursor)
-                  }
-                >
-                  Next
-                  <ChevronRight aria-hidden="true" className="h-4 w-4" />
-                </Button>
-              </div>
-            ) : (
-              <div className="border-t border-border/60 px-4 py-3 text-xs text-muted-foreground">
-                {loadingSessions
-                  ? "Loading chats…"
-                  : `${sessions.length} ${sessions.length === 1 ? "chat" : "chats"} in this view`}
-              </div>
-            )}
+              ) : null}
+            </div>
           </aside>
 
           <section aria-label="Selected chat" className="hidden min-h-0 bg-card lg:block">

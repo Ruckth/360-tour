@@ -8,6 +8,8 @@ const nav = vi.hoisted(() => ({ params: new URLSearchParams(), replace: vi.fn(),
 const openOrderFor = vi.hoisted(() => vi.fn());
 const showOnDisplay = vi.hoisted(() => vi.fn<(orderId: string | null | undefined) => { error: string | null; retry: () => void }>());
 
+vi.mock("@clerk/tanstack-react-start", () => ({ useAuth: () => ({ sessionId: "session-a", userId: "user-a" }) }));
+
 vi.mock("@/platform/navigation", () => ({
   useRouter: () => ({ replace: nav.replace, push: nav.push }),
   useSearchParams: () => nav.params,

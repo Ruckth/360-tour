@@ -1,8 +1,10 @@
 "use client";
 
+import type { MouseEventHandler } from "react";
 import { satangToBaht } from 'convex/shared/money';
 
 import Link from "@/platform/link";
+import { useHydrated } from "@/platform/hydration";
 import { Check, Globe2, ShieldCheck } from "lucide-react";
 import { useLocale, useTranslations } from "@/platform/intl";
 import { OtaRateComparison, useOtaComparison } from "@/components/pricing/OtaRateComparison";
@@ -19,9 +21,10 @@ export function PriceComparison({
   onPreload360,
 }: {
   property: Pick<PublicVilla, "id" | "pricePerNight" | "directDiscountPercent" | "currency">;
-  onOpen360?: () => void;
+  onOpen360?: MouseEventHandler<HTMLButtonElement>;
   onPreload360?: () => void;
 }) {
+  const hydrated = useHydrated();
   const locale = useLocale();
   const t = useTranslations("Villa");
   const pricingT = useTranslations("Pricing");
@@ -95,6 +98,8 @@ export function PriceComparison({
           <Button
             variant="outline"
             size="lg"
+            disabled={!hydrated}
+            aria-haspopup="dialog"
             onClick={onOpen360}
             onFocus={onPreload360}
             onPointerEnter={onPreload360}

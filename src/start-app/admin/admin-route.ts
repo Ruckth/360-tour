@@ -1,5 +1,5 @@
 import { redirect } from "@tanstack/react-router";
-import { adminRedirectPath, adminSettingsTabPath, isAdminStaffTab, type AdminStaffTab } from "@/components/admin/admin-routes";
+import { adminPropertyTab, adminRedirectPath, adminSettingsTabPath, isAdminStaffTab, type AdminPropertyTab, type AdminStaffTab } from "@/components/admin/admin-routes";
 import { isLocale, type Locale } from "@/i18n/routing";
 
 export type AdminLayoutInput = {
@@ -8,6 +8,7 @@ export type AdminLayoutInput = {
 
 export type AdminRedirectTarget =
   | { to: "/admin/chats"; replace: true; statusCode: 307 }
+  | { to: "/admin/today"; replace: true; statusCode: 307 }
   | { to: "/admin/staff/$tab"; params: { tab: AdminStaffTab }; replace: true; statusCode: 307 }
   | { to: "/admin/stock/balances"; replace: true; statusCode: 307 }
   | { to: "/admin/marketing/dashboard"; replace: true; statusCode: 307 }
@@ -35,6 +36,9 @@ export function isServerFnRpcRequest(request: Request): boolean {
 export function toAdminRedirectTarget(target: string): AdminRedirectTarget {
   if (target === "/admin/chats") {
     return { to: "/admin/chats", replace: true, statusCode: 307 };
+  }
+  if (target === "/admin/today") {
+    return { to: "/admin/today", replace: true, statusCode: 307 };
   }
   if (target === "/admin/stock/balances") {
     return { to: "/admin/stock/balances", replace: true, statusCode: 307 };
@@ -67,6 +71,8 @@ export function createAdminRedirect(target: AdminRedirectTarget) {
   switch (target.to) {
     case "/admin/chats":
       return redirect({ to: "/admin/chats", replace: true, statusCode: 307 });
+    case "/admin/today":
+      return redirect({ to: "/admin/today", replace: true, statusCode: 307 });
     case "/admin/stock/balances":
       return redirect({ to: "/admin/stock/balances", replace: true, statusCode: 307 });
     case "/admin/marketing/dashboard":
@@ -99,4 +105,13 @@ export function validateAdminSettingsSearch(search: Record<string, unknown>): Re
   return typeof search.tab === "string" && search.tab.length > 0
     ? { ...search, tab: search.tab }
     : { ...search };
+}
+
+/**
+ * Validates the villa editor `?tab=` query parameter, falling back to the default `details` section.
+ */
+export function validateAdminPropertySearch(search: Record<string, unknown>): Record<string, unknown> & { tab?: AdminPropertyTab } {
+  if (search.tab === undefined) return { ...search, tab: undefined };
+  // The router merges validated search over the raw values. Override an invalid tab explicitly.
+  return { ...search, tab: adminPropertyTab(typeof search.tab === "string" ? search.tab : null) };
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -17,6 +17,7 @@ export type ConfirmOptions = {
   confirmLabel?: string;
   cancelLabel?: string;
   destructive?: boolean;
+  returnFocusTo?: () => HTMLElement | null;
 };
 
 type Confirm = (options: ConfirmOptions) => Promise<boolean>;
@@ -36,6 +37,7 @@ export function useConfirm(): Confirm {
 
 export function ConfirmProvider({ children }: { children: ReactNode }) {
   const [pending, setPending] = useState<PendingConfirm | null>(null);
+  const returnFocusTo = useRef<ConfirmOptions["returnFocusTo"]>(undefined);
 
   const confirm = useCallback<Confirm>(
     (options) =>
@@ -49,6 +51,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
   );
 
   function settle(confirmed: boolean) {
+    returnFocusTo.current = pending?.returnFocusTo;
     pending?.resolve(confirmed);
     setPending(null);
   }
@@ -57,7 +60,19 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
     <ConfirmContext.Provider value={confirm}>
       {children}
       <Dialog open={pending !== null} onOpenChange={(open) => !open && settle(false)}>
-        <DialogContent role="alertdialog" showCloseButton={false} className="max-w-md">
+        <DialogContent
+          role="alertdialog"
+          showCloseButton={false}
+          className="max-w-md"
+          onCloseAutoFocus={(event) => {
+            const target = returnFocusTo.current?.();
+            returnFocusTo.current = undefined;
+            if (target) {
+              event.preventDefault();
+              target.focus();
+            }
+          }}
+        >
           <DialogHeader>
             <DialogTitle>{pending?.title}</DialogTitle>
             {pending?.description ? (

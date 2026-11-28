@@ -17,10 +17,11 @@ export type StockLineFieldErrors = Record<
 /**
  * Shared multi-line item + quantity (+ optional unit cost) table/card editor
  * reused across Purchase Requests, Purchase Orders, and Direct Receiving.
- * Preserves typed values on errors and caps lines at 50 per document.
+ * Preserves typed values on errors and enforces the document line limit.
  */
 export function StockLineEditor({
   lines,
+  maxLines = STOCK_MAX_LINES,
   onChange,
   showUnitCost = false,
   quantityLabel = "Quantity",
@@ -36,6 +37,7 @@ export function StockLineEditor({
   renderLineExtra,
 }: {
   lines: readonly StockLineDraft[];
+  maxLines?: number;
   onChange: (next: StockLineDraft[]) => void;
   showUnitCost?: boolean;
   quantityLabel?: string;
@@ -50,7 +52,7 @@ export function StockLineEditor({
   renderLineBadge?: (line: StockLineDraft, index: number) => ReactNode;
   renderLineExtra?: (line: StockLineDraft, index: number) => ReactNode;
 }) {
-  const atCap = lines.length >= STOCK_MAX_LINES;
+  const atCap = lines.length >= maxLines;
 
   function updateLine(index: number, patch: Partial<StockLineDraft>) {
     onChange(lines.map((line, i) => (i === index ? { ...line, ...patch } : line)));
@@ -65,10 +67,10 @@ export function StockLineEditor({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
           <h3 className="text-sm font-semibold text-foreground">
-            Items ({lines.length}/{STOCK_MAX_LINES})
+            Items ({lines.length}/{maxLines})
           </h3>
           <p className="text-xs text-muted-foreground">
-            One line per variant, up to {STOCK_MAX_LINES} lines per document.
+            One line per variant, up to {maxLines} lines per document.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

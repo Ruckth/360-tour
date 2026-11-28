@@ -2,7 +2,7 @@
 import { act, createElement, useEffect, useSyncExternalStore } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { jsx } from 'react/jsx-runtime';
-import { beforeEach, afterEach, expect, it, vi } from 'vitest';
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { getFunctionName, type FunctionReference } from 'convex/server';
 import { ConvexError } from 'convex/values';
 import { AIChatPage } from '@/components/chat/AIChatWidget';
@@ -17,7 +17,7 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock('@/platform/intl', () => { const translate = (key: string) => key; return { useLocale: () => 'en', useTranslations: () => translate }; });
 vi.mock('@/platform/navigation', () => ({ usePathname: () => '/chat', useSearchParams: () => mocks.search, useRouter: () => mocks.router }));
-vi.mock('convex/react', async (importOriginal) => ({ ...await importOriginal<typeof import('convex/react')>(), ...(() => { const client = { mutation: (ref: FunctionReference<'mutation'>, args: unknown) => getFunctionName(ref) === 'messaging/chat:touchSession' ? mocks.touch(args) : ['messaging/chat:createSession','messaging/chat:sendMessage','messaging/chat:claimBrowserHandoff'].includes(getFunctionName(ref)) ? mocks.mutation(ref,args) : Promise.resolve(null), query: async () => [] }; return { useConvex: () => client }; })(), useQuery: (ref: FunctionReference<'query'>, args: unknown) => useSyncExternalStore(
+vi.mock('convex/react', async (importOriginal) => ({ ...await importOriginal<typeof import('convex/react')>(), ...(() => { const client = { mutation: (ref: FunctionReference<'mutation'>, args: unknown) => getFunctionName(ref) === 'messaging/chat:touchSession' ? mocks.touch(args) : ['messaging/chat:createSession','messaging/chat:sendMessage','messaging/chat:claimBrowserHandoff','messaging/chat:identifyVisitor'].includes(getFunctionName(ref)) ? mocks.mutation(ref,args) : Promise.resolve(null), query: async () => [] }; return { useConvex: () => client }; })(), useQuery: (ref: FunctionReference<'query'>, args: unknown) => useSyncExternalStore(
   listener => { mocks.listeners.add(listener); return () => mocks.listeners.delete(listener); },
   () => args === 'skip' ? undefined : getFunctionName(ref) === 'messaging/chat:getMessages' ? mocks.rows : mocks.session,
 ) }));
@@ -180,4 +180,115 @@ it('keeps guest messaging actions in flow between the transcript and composer so
   expect(messages.style.paddingBottom).toBe('');
   expect(actions.compareDocumentPosition(footer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(messages.compareDocumentPosition(actions) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+});
+
+describe('G22 restart confirmation', () => {
+  const createCalls = () => mocks.mutation.mock.calls.filter(([ref]) => getFunctionName(ref) === 'messaging/chat:createSession').length;
+  const panelButton = (name: string) => [...document.querySelectorAll<HTMLButtonElement>('[data-testid="chat-panel"] button')].find(button => button.textContent === name)!;
+  const restartButton = () => document.querySelector<HTMLButtonElement>('button[aria-label^="restartChat"]')!;
+  async function openOverlayWithTranscript() {
+    await mount(undefined, 'overlay');
+    await act(async () => { await vi.advanceTimersByTimeAsync(260); });
+    await publish([{ _id: 'u1', role: 'user', content: 'Keep me' }, { _id: 'a1', role: 'assistant', content: 'Reply' }]);
+  }
+
+  it('restarts an empty chat at once, without asking', async () => {
+    await mount(undefined, 'overlay');
+    await act(async () => { await vi.advanceTimersByTimeAsync(260); });
+    const before = createCalls();
+    await act(async () => restartButton().click());
+    expect(document.querySelector('[data-testid="chat-restart-confirm"]')).toBeNull();
+    expect(createCalls()).toBe(before + 1);
+  });
+
+  it('Keep chatting retains the transcript and draft and returns focus to Restart', async () => {
+    await openOverlayWithTranscript();
+    await act(async () => chat.setInput('half-typed'));
+    const before = createCalls();
+    await act(async () => restartButton().click());
+    const dialog = document.querySelector('[data-testid="chat-restart-confirm"]')!;
+    expect(dialog.getAttribute('role')).toBe('alertdialog');
+    expect(restartButton().getAttribute('aria-expanded')).toBe('true');
+    expect(document.activeElement).toBe(panelButton('restartKeep'));
+    await act(async () => panelButton('restartKeep').click());
+    expect(document.querySelector('[data-testid="chat-restart-confirm"]')).toBeNull();
+    expect(document.activeElement).toBe(restartButton());
+    expect(chat.messages.map(message => message.content)).toEqual(['Keep me', 'Reply']);
+    expect(chat.input).toBe('half-typed');
+    expect(createCalls()).toBe(before);
+  });
+
+  it('Escape cancels the question without closing the overlay', async () => {
+    await openOverlayWithTranscript();
+    await act(async () => restartButton().click());
+    await act(async () => { document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); });
+    expect(document.querySelector('[data-testid="chat-restart-confirm"]')).toBeNull();
+    expect(chat.open).toBe(true);
+    expect(document.activeElement).toBe(restartButton());
+  });
+
+  it('confirming restarts exactly once, even while a reply is pending', async () => {
+    await openOverlayWithTranscript();
+    const pendingSend = deferred<unknown>(); mocks.mutation.mockReturnValueOnce(pendingSend.promise);
+    let send: Promise<void>; await act(async () => { send = chat.sendMessage('Still waiting'); });
+    expect(chat.hasConversation).toBe(true);
+    const before = createCalls();
+    mocks.mutation.mockResolvedValueOnce({ sessionId: 'session-two', guestToken: 'token-two' });
+    await act(async () => restartButton().click());
+    await act(async () => panelButton('restartConfirm').click());
+    expect(createCalls()).toBe(before + 1);
+    await act(async () => pendingSend.resolve({ eventId: 'late' })); await send!;
+    await publish([]);
+    expect(chat.messages).toEqual([]);
+    expect(chat.input).toBe('');
+    expect(getStoredSessionId()).toBe('session-two');
+    expect(document.activeElement).toBe(restartButton());
+  });
+});
+
+describe('G24 per-app contact drafts', () => {
+  const handleInput = () => document.querySelector<HTMLInputElement>('input[aria-label="contactHandle"]')!;
+  async function type(input: HTMLInputElement, value: string) {
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  }
+  // Radix Select's onValueChange only patches preferredApp; reproduce that update directly.
+  const choose = (app: 'whatsapp' | 'line') => act(async () => chat.setContactForm(current => ({ ...current, preferredApp: app })));
+  const identifyCalls = () => mocks.mutation.mock.calls.filter(([ref]) => getFunctionName(ref) === 'messaging/chat:identifyVisitor').map(([, args]) => args);
+
+  it('WhatsApp → LINE → WhatsApp restores each app draft and submits only the selected handle', async () => {
+    await mount();
+    await type(handleInput(), '+66 81 234 5678');
+    await choose('line');
+    expect(handleInput().value).toBe('');
+    await type(handleInput(), 'auralis-guest');
+    await choose('whatsapp');
+    expect(handleInput().value).toBe('+66 81 234 5678');
+    await act(async () => { handleInput().form!.requestSubmit(); });
+    expect(identifyCalls().at(-1)).toMatchObject({ contactApp: 'whatsapp', phone: '+66 81 234 5678', contactHandle: '+66 81 234 5678' });
+    await choose('line');
+    expect(handleInput().value).toBe('auralis-guest');
+    await act(async () => { handleInput().form!.requestSubmit(); });
+    expect(identifyCalls().at(-1)).toMatchObject({ contactApp: 'line', phone: undefined, contactHandle: 'auralis-guest' });
+  });
+
+  it('a failed save keeps the submitted draft, and editing clears the stale status', async () => {
+    await mount();
+    await type(handleInput(), 'line-id-1');
+    await choose('line');
+    await type(handleInput(), 'line-id-2');
+    mocks.mutation.mockImplementation(async (ref: FunctionReference<'mutation'>) => {
+      if (getFunctionName(ref) === 'messaging/chat:identifyVisitor') throw new Error('offline');
+      return getFunctionName(ref) === 'messaging/chat:createSession' ? { sessionId: 'session-one', guestToken: 'token-one' } : { eventId: 'event' };
+    });
+    await act(async () => { handleInput().form!.requestSubmit(); });
+    expect(chat.contactStatus).toBe('error');
+    expect(handleInput().value).toBe('line-id-2');
+    await choose('whatsapp');
+    expect(handleInput().value).toBe('line-id-1');
+    await type(handleInput(), 'line-id-1 edited');
+    expect(chat.contactStatus).toBe('idle');
+  });
 });

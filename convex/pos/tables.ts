@@ -66,10 +66,11 @@ export const posTables = {
     v.object({
       ...orderApprovalFields,
       kind: checkoutApprovalKind,
+      orderNumberAtRequest: v.optional(v.number()),
       payload: storedApprovalPayload,
     }),
     v.object({ ...orderApprovalFields, kind: v.literal('returnItems'), payload: returnItemsApprovalPayload, status: storedApprovalStatus,
-      commerceRevision: v.optional(v.number()) }),
+      commerceRevision: v.optional(v.number()), payoutSummary: v.optional(v.array(v.object({ label: v.string(), amount: v.number(), destinationMask: v.optional(v.string()) }))) }),
     v.object({
       ...approvalFields,
       kind: v.literal('adjustment'),
@@ -189,6 +190,7 @@ export const posTables = {
 
 		.index('by_hasItems_and_status_and_updatedAt', ['hasItems', 'status', 'updatedAt'])
 		.index('by_orderNumber', ['orderNumber'])
+		.index('by_receiptNumber', ['receiptNumber'])
 		.index('by_bookingId_and_status', ['bookingId', 'status'])
 		.index('by_appointmentId_and_status', ['appointmentId', 'status'])
 		.index('by_customerId_and_updatedAt', ['customerId', 'updatedAt'])

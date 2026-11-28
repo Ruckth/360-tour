@@ -53,13 +53,13 @@ export default function TargetApprovalItem({ row, detail, onSelect }: { row: Tar
     ? copy.t("approvals.returnItems", { amount: copy.money(request.amount ?? 0) })
     : copy.t("approvals.edit", { what: copy.t(`approvals.what.${request.adjustmentKind ?? "editCatalogue"}`), target: request.targetLabel ?? targetName ?? "" });
   const soon = request.expiresAt - now <= 2 * 60_000;
-  const expiry = now >= request.expiresAt ? "Expiring now" : `Expires in ${minutesLeft(request.expiresAt, now)} min`;
+  const expiry = now >= request.expiresAt ? "Expired" : `Expires in ${minutesLeft(request.expiresAt, now)} min`;
   if (onSelect) {
     return (
       <li data-testid="approval-request" data-approval-scope="target" data-approval-selected="false">
         <button type="button" onClick={onSelect} className="grid w-full gap-0.5 rounded-xl border border-border bg-card px-4 py-3 text-left transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <span className="text-[15px] font-semibold text-balance [overflow-wrap:anywhere]">{personName(request.requesterEmail)} {ask}</span>
-          <span className="text-xs text-muted-foreground">{expiry}</span>
+          <span className="text-xs text-muted-foreground">{row.actionable !== false && now < row.expiresAt ? "Action required · " : "Unavailable · "}{expiry}</span>
         </button>
       </li>
     );

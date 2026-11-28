@@ -32,6 +32,8 @@ import {
 } from "@/lib/staff-bookings";
 import { staffDate, staffTime } from "@/lib/staff-time";
 import { cn } from "@/lib/utils";
+import Link from "@/platform/link";
+import { staffCalendarHref } from "@/lib/staff-links";
 
 const PRESETS = ["Leave", "Sick", "Training"] as const;
 type TimeOffResults = FunctionReturnType<typeof api.services.commands.addTimeOff.addTimeOff>;
@@ -128,6 +130,31 @@ export function conflictText(conflicts: TimeOffResults[number]["conflicts"]) {
   return `${count} in the way: ${times.join(", ")}${more}. Reassign or cancel them first.`;
 }
 
+/** Every returned conflict opens its appointment in the calendar; past the first three the rest stay under a disclosure. */
+export function TimeOffConflictLinks({ staffId, conflicts, onOpen }: { staffId: Id<"staff">; conflicts: TimeOffResults[number]["conflicts"]; onOpen?: () => void }) {
+  const link = (c: TimeOffResults[number]["conflicts"][number]) => (
+    <li key={c.appointmentId}>
+      <Link className="underline underline-offset-2" onClick={(event) => {
+        if (!event.defaultPrevented && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) onOpen?.();
+      }} href={staffCalendarHref({ date: resortIsoDate(c.start), staffId, appointmentId: c.appointmentId })}>
+        {staffDate(c.start, { weekday: true })} {staffTime(c.start)}
+      </Link>
+    </li>
+  );
+  return (
+    <div className="grid gap-1 text-xs">
+      <p className="text-destructive">{conflicts.length === 1 ? "1 booked appointment" : `${conflicts.length} booked appointments`} in the way. Reassign or cancel them first:</p>
+      <ul className="flex flex-wrap gap-x-3 gap-y-1">{conflicts.slice(0, 3).map(link)}</ul>
+      {conflicts.length > 3 ? (
+        <details>
+          <summary className="cursor-pointer text-muted-foreground">Show {conflicts.length - 3} more</summary>
+          <ul className="mt-1 flex flex-wrap gap-x-3 gap-y-1">{conflicts.slice(3).map(link)}</ul>
+        </details>
+      ) : null}
+    </div>
+  );
+}
+
 /** Same time off for several people at once; anyone with bookings in the way is skipped and listed. */
 export function BulkTimeOffDialog({ staff, onClose }: { staff: Doc<"staff">[]; onClose: () => void }) {
   const addTimeOff = useMutation(api.services.commands.addTimeOff.addTimeOff);
@@ -191,9 +218,11 @@ export function BulkTimeOffDialog({ staff, onClose }: { staff: Doc<"staff">[]; o
                     {person ? <StaffAvatar staff={person} className="size-7" /> : null}
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium">{result.name}</p>
-                      <p className={cn("text-xs", result.timeOffId ? "text-muted-foreground" : "text-destructive")}>
-                        {result.timeOffId ? "Time off saved." : conflictText(result.conflicts)}
-                      </p>
+                      {result.timeOffId ? (
+                        <p className="text-xs text-muted-foreground">Time off saved.</p>
+                      ) : (
+                        <TimeOffConflictLinks staffId={result.staffId} conflicts={result.conflicts} onOpen={onClose} />
+                      )}
                     </div>
                     {result.timeOffId ? (
                       <CircleCheck aria-label="Saved" className={cn("size-4 shrink-0", TONES.success.text)} />

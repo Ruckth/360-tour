@@ -21,7 +21,7 @@ export function checkoutBalance(booking: Booking) {
 }
 
 /** Pending or confirmed stays may pay their remaining, unwaived balance online. */
-function isPayable(booking: Booking) {
+export function isPayable(booking: Booking) {
   return (booking.status === 'pending' || booking.status === 'confirmed') &&
     (booking.paymentStatus === 'pending' || booking.paymentStatus === 'paid' || isDocumentedLiveRefund(booking)) && checkoutBalance(booking) > 0;
 }

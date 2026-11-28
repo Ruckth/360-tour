@@ -207,7 +207,7 @@ test("another till's payment locks the order and shows who is taking it", async 
     await desk.runFixtureMutation("pos/commands/armPaymentLeg:armPaymentLeg", { attemptId: started.attempt.attemptId, ownerRevision: 0, ...own, legKey: "card-1" });
   }, orderId);
   const panel = page.getByRole("complementary", { name: "Order", exact: true });
-  await expect(panel.getByTestId("payment-elsewhere")).toContainText(/Payment in progress on Till [A-Z0-9]{6}/);
+  await expect(panel.getByTestId("payment-elsewhere")).toContainText(/Payment in progress on Till [A-Z0-9]{8}/);
   await expect(panel.getByRole("button", { name: "Card", exact: true })).toHaveCount(0);
   for (const w of Object.keys(WIDTHS) as Width[]) {
     await page.setViewportSize(WIDTHS[w]);
@@ -408,7 +408,7 @@ test("a duplicated tab sees the payment as another tab's, and only the first tab
   await second.addInitScript((entries) => { if (!sessionStorage.length) for (const [k, v] of Object.entries(entries)) sessionStorage.setItem(k, v); }, copied);
   await open(second, "landscape", "mode=attempts");
   const other = second.getByRole("complementary", { name: "Order", exact: true });
-  await expect(other.getByTestId("payment-elsewhere")).toContainText(/Payment in progress on Till [A-Z0-9]{6}/);
+  await expect(other.getByTestId("payment-elsewhere")).toContainText(/Payment in progress on Till [A-Z0-9]{8}/);
   await expect(other.getByText(/on the terminal/)).toHaveCount(0);
   await expect(other.getByTestId("check-previous")).toHaveCount(0);
   expect(await second.evaluate(() => sessionStorage.getItem("checkout.tabKey"))).not.toBe(copied["checkout.tabKey"]);
@@ -676,13 +676,13 @@ const otherTill = (page: Page) => page.evaluate(async () => {
   if (revision === undefined) throw new Error("This till never acknowledged the new panel");
   const deviceKey = "other-till-device-key-0001";
   const { tillId } = await desk.runFixtureMutation("commerce/paymentCutover:acknowledge", { deviceKey, loadedMode: "attempts", loadedRevision: revision }) as unknown as { tillId: string };
-  return { tillId, label: `Till ${tillId.slice(-6).toUpperCase()}`, deviceKey, load: { tillId, deviceKey, loadedMode: "attempts", loadedRevision: revision } } satisfies OtherTill;
+  return { tillId, label: `Till ${tillId.slice(-8).toUpperCase()}`, deviceKey, load: { tillId, deviceKey, loadedMode: "attempts", loadedRevision: revision } } satisfies OtherTill;
 });
 
 /** The collecting attempt on this page's order, as stored. */
 const liveAttempt = (page: Page) => page.evaluate(async () => {
   const orderId = sessionStorage.getItem("pay-desk-fixture-order");
-  const rows = await (window as unknown as { payDesk: Desk }).payDesk.fixtureRows("paymentAttempts") as { _id: string; orderId: string; status: string; ownerRevision: number; notifyGuest?: boolean }[];
+  const rows = await (window as unknown as { payDesk: Desk }).payDesk.fixtureRows("paymentAttempts") as { _id: string; orderId: string; status: string; ownerRevision: number; tillId: string; notifyGuest?: boolean }[];
   return rows.find((row) => row.orderId === orderId && row.status === "collecting") ?? null;
 });
 
@@ -717,11 +717,17 @@ for (const width of Object.keys(WIDTHS) as Width[]) test.describe(`PR 93 round 3
     await taps.tap(panel.getByRole("button", { name: "Card", exact: true }), "Card");
     await expect(panel.getByText("Charge ฿1,200 on the terminal")).toBeVisible();
     const tillB = await otherTill(page);
+    const tillA = await page.evaluate(() => localStorage.getItem("checkout.tillId"));
+    const attempt = (await liveAttempt(page))!;
     await taps.tap(panel.getByRole("button", { name: "Hand over", exact: true }), "Hand over");
     await taps.tap(panel.getByRole("button", { name: `Hand over to ${tillB.label}` }), "Hand over to B");
-    await expect(panel.getByText(`Handed over to ${tillB.label}`)).toBeVisible();
+    await expect(panel.getByText(`Handed over to ${tillB.label}`, { exact: true })).toBeVisible();
+    await expect.poll(() => liveAttempt(page)).toMatchObject({ _id: attempt._id, tillId: tillB.tillId, ownerRevision: attempt.ownerRevision + 1 });
     await handBack(page, tillB);
-    await expect(panel.getByText("Handed over to this till")).toBeVisible();
+    await expect.poll(() => liveAttempt(page)).toMatchObject({ _id: attempt._id, tillId: tillA, ownerRevision: attempt.ownerRevision + 3 });
+    const receiving = panel.getByTestId("payment-handed-here");
+    await expect(receiving.getByText("Handed over to this till", { exact: true })).toBeVisible();
+    await expect(receiving.getByText(`Till ${tillA!.slice(-8).toUpperCase()}`, { exact: true })).toBeVisible();
     await taps.tap(panel.getByRole("button", { name: "Accept the payment" }), "Accept the payment");
     await expect(panel.getByTestId("check-previous")).toContainText(/Card ฿1,200 · \d\d:\d\d/);
     await expect(panel.getByText("on the terminal")).toHaveCount(0);
@@ -776,7 +782,10 @@ for (const width of Object.keys(WIDTHS) as Width[]) test.describe(`PR 93 round 3
     await page.reload();
     await page.locator("[data-fixture-ready]").waitFor();
     const onB = await order(page, taps);
-    await expect(onB.getByText("Handed over to this till")).toBeVisible();
+    const receiving = onB.getByTestId("payment-handed-here");
+    await expect(receiving.getByText("Handed over to this till", { exact: true })).toBeVisible();
+    await expect(receiving.getByText(tillB.label, { exact: true })).toBeVisible();
+    await expect.poll(() => liveAttempt(page)).toMatchObject({ tillId: tillB.tillId, notifyGuest: true });
     await taps.tap(onB.getByRole("button", { name: "Accept the payment" }), "Accept the payment");
     await expect(onB.getByTestId("check-previous")).toBeVisible();
     await expect(onB.getByRole("checkbox", { name: "Send booking payment confirmation email" })).toBeChecked();

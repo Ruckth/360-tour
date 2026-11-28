@@ -2,13 +2,12 @@ import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
 import type { StaffActor } from '../../auth/model';
 import { readBranch } from '../../branches/model';
+import { MAX_TRANSFER_LINES } from '../../shared/commerce/caps';
 import { sha256 } from '../../shared/displayTokens';
 import { requireStockAccess } from './stockAccess';
 import { allocationCounts, expansionError, stockText, stockUnits, type Allocation } from './stockAvailability';
 import { readLotMovement } from './stockExpansionLedger';
 import { writeStockMovement } from './stockLedger';
-
-const maxTransferLines = 12;
 
 type TransferId = Id<'stockTransfers'>;
 type TransferLineId = Id<'stockTransferLines'>;
@@ -23,7 +22,7 @@ export async function loadTransfer(ctx: QueryCtx, transferId: TransferId) {
 }
 
 export function transferLines(ctx: QueryCtx, transferId: TransferId) {
-  return ctx.db.query('stockTransferLines').withIndex('by_transferId', q => q.eq('transferId', transferId)).take(maxTransferLines);
+  return ctx.db.query('stockTransferLines').withIndex('by_transferId', q => q.eq('transferId', transferId)).take(MAX_TRANSFER_LINES);
 }
 
 export async function createTransferDraft(ctx: MutationCtx, actor: StaffActor, args: {
@@ -34,7 +33,7 @@ export async function createTransferDraft(ctx: MutationCtx, actor: StaffActor, a
   if (args.originId === args.destinationId || access.branch.state !== 'active' || destination?.state !== 'active') {
     expansionError('INVALID_TRANSFER_BRANCHES', 'Choose two different active branches.');
   }
-  if (!args.lines.length || args.lines.length > maxTransferLines ||
+  if (!args.lines.length || args.lines.length > MAX_TRANSFER_LINES ||
       new Set(args.lines.map(line => line.variantId)).size !== args.lines.length) {
     expansionError('INVALID_TRANSFER_LINES', 'Choose 1–12 distinct items to transfer.');
   }
@@ -122,7 +121,7 @@ export async function receiveStockTransfer(ctx: MutationCtx, actor: StaffActor, 
   const transfer = await loadTransfer(ctx, id);
   const { branch } = await requireStockAccess(ctx, actor, transfer.destinationId, 'receiver');
   if (branch.state !== 'active') expansionError('INVALID_TRANSFER_BRANCHES', 'The destination must be active to receive stock.');
-  if (!inputs.length || inputs.length > maxTransferLines || new Set(inputs.map(line => line.lineId)).size !== inputs.length) {
+  if (!inputs.length || inputs.length > MAX_TRANSFER_LINES || new Set(inputs.map(line => line.lineId)).size !== inputs.length) {
     expansionError('INVALID_TRANSFER_LINES', 'Choose 1–12 distinct transfer lines to receive.');
   }
   const payload = inputs.map(line => [

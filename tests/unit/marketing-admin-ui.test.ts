@@ -8,8 +8,9 @@ import { evaluateOffer, type QuoteLine } from "convex/shared/offers";
 import { ConfirmProvider } from "@/components/admin/ConfirmDialog";
 import { historyChanges } from "@/components/admin/RecordHistoryPanel";
 import { CampaignsView } from "@/components/admin/marketing/CampaignsView";
+import { TestQuotePanel } from "@/components/admin/marketing/TestQuotePanel";
 import { CouponEditor } from "@/components/admin/marketing/CouponEditor";
-import { LinksView } from "@/components/admin/marketing/LinksView";
+import { LinksView, readLinkFilters, writeLinkFilters } from "@/components/admin/marketing/LinksView";
 import { EMPTY_COUPON_FORM, couponFormErrors, couponFormFrom, couponFormKey, couponRulesFrom, type CouponForm } from "@/components/admin/marketing/coupon-form";
 import { countLabel, directOfferApplied, marketingErrorText, qrDirectPercent } from "@/components/admin/marketing/marketing-format";
 import type { CampaignRow, CouponDetail, LinkRow } from "@/components/admin/marketing/types";
@@ -334,4 +335,45 @@ describe("change history in the marketing editors", () => {
       { field: "medium", label: "Medium", before: "social", after: "paid_social" },
     ]);
   });
+});
+
+describe("marketing link URL filters", () => {
+  it("round-trips all filters and defaults invalid or old URLs", () => {
+    const params = new URLSearchParams({ status: "draft", q: "Spa & QR", campaign: "j".repeat(32), offerIssues: "1" });
+    const filters = readLinkFilters(params);
+    expect(filters).toEqual({ tab: "draft", query: "Spa & QR", campaignFilter: "j".repeat(32), offerIssuesOnly: true });
+    expect(readLinkFilters(writeLinkFilters(filters))).toEqual(filters);
+    expect(readLinkFilters(new URLSearchParams("status=unknown&campaign=bad&offerIssues=true")))
+      .toEqual(readLinkFilters(new URLSearchParams()));
+  });
+});
+
+it("quotes a selected catalog service by identity and blocks an unavailable selection", async () => {
+  const testQuote = vi.fn().mockRejectedValue(new Error("Quote service unavailable"));
+  const loadMore = vi.fn();
+  const more = { id: "later-page" as Id<"services">, name: "Canonical massage", category: "Spa", durationMin: 60 };
+  const choice = { id: "first-page" as Id<"services">, name: "First service", category: "Spa", durationMin: 30 };
+  const props = {
+    testQuote, code: "SPA-10", dirty: false, today: "2026-11-08",
+    properties: [{ _id: "villa" as Id<"properties">, slug: "villa", name: "Villa", status: "active" as const, pricePerNight: 50000, currency: "THB", maxGuests: 2, directDiscountPercent: 0 }],
+  };
+  await render(createElement(TestQuotePanel, { ...props, serviceCatalog: { choices: [choice], loadMore } }));
+  await click(button("Load more services"));
+  expect(loadMore).toHaveBeenCalledOnce();
+  await render(createElement(TestQuotePanel, { ...props, serviceCatalog: { choices: [choice, more] } }));
+  await click(button("Add a service"));
+  await click(button("Run quote"));
+  expect(testQuote).not.toHaveBeenCalled();
+  const picker = document.querySelector<HTMLSelectElement>('select[aria-label="Service 1"]')!;
+  await act(async () => {
+    picker.value = more.id;
+    picker.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  await type(document.querySelector('input[aria-label="Price of service 1"]'), "340");
+  await click(button("Run quote"));
+  expect(testQuote).toHaveBeenCalledWith(expect.objectContaining({ services: [{ serviceId: more.id, amount: 34000 }] }));
+  await render(createElement(TestQuotePanel, { ...props, serviceCatalog: { choices: [choice] } }));
+  await click(button("Run quote"));
+  expect(testQuote).toHaveBeenCalledOnce();
+  expect(document.body.textContent).toContain("This service is unavailable");
 });

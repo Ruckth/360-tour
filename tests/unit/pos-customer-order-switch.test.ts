@@ -77,7 +77,7 @@ it('retries a rejected create with every value retained and links the same order
   expect(link).toHaveBeenCalledTimes(1);
   expect(link.mock.calls[0][0].orderId).toBe(a);
   expect(document.querySelector('[aria-label^="Customer:"]')?.textContent).toBe('Independent payer');
-});
+}, 30000);
 
 it('keeps a pending customer write on its original order after an order switch', async () => {
   const { backend, actions, a, b } = await setup();

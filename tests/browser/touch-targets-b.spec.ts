@@ -86,7 +86,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1180, height: 820 
       await page.goto('/tests/browser/chats.html?path=/admin/chats');
       await page.locator('[data-fixture-ready]').waitFor();
       await scrollTargets(page);
-      if (viewport.width === 390) await page.getByRole('button', { name: /Anna Müller/ }).first().click();
+      await page.getByRole('complementary', { name: 'Chat list' }).getByRole('button', { name: /^Website · Anna Müller/ }).click();
       await scrollTargets(page);
     });
     test('missing information and searchable resolve', async ({ page }) => {

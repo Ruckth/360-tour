@@ -11,6 +11,8 @@ import { Label } from "@/components/ui/label";
 import { breakText, type BreakBlock } from "@/lib/schedule-changes";
 import { appointmentGuestLabel, WEEKDAYS_LONG, resortMidnight } from "@/lib/staff-bookings";
 import { staffDate, staffTime } from "@/lib/staff-time";
+import { staffRosterHref } from "@/lib/staff-links";
+import Link from "@/platform/link";
 
 type Scope = "day" | "weekly";
 
@@ -116,7 +118,13 @@ export function BreakEditDialog({
           </label>
         ))}
         {shown.override ? (
-          <p className="text-xs text-muted-foreground">This date has its own roster plan, so the weekly default doesn&apos;t apply here.</p>
+          <p className="text-xs text-muted-foreground">
+            This date has its own roster plan, so the weekly default doesn&apos;t apply here.{" "}
+            <Link className="font-medium text-foreground underline underline-offset-2" href={staffRosterHref({ date: shown.date, staffId: shown.staffId })}>
+              Open {staffName}&apos;s {weekday} in Roster
+            </Link>{" "}
+            to reset this day or change every {weekday}.
+          </p>
         ) : null}
       </fieldset>
       <div>

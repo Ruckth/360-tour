@@ -207,7 +207,9 @@ describe("from the first pause on", () => {
     sessionStorage.clear();
     resetTabKey();
     const { onPaid } = await mount(desk, orderId, "transfer");
-    expect(document.querySelector('[data-testid="payment-elsewhere"]')?.textContent).toMatch(/Payment in progress on Till [A-Z0-9]{6} · \d\d:\d\d/);
+    const elsewhere = document.querySelector('[data-testid="payment-elsewhere"]');
+    expect(elsewhere?.textContent).toMatch(/Payment in progress on Till [A-Z0-9]{8}/);
+    expect(elsewhere?.textContent).toMatch(/Opened at \d\d:\d\d/);
     expect(text()).not.toContain("Charge");
     expect(button("Take over")?.disabled).toBe(true);
     await act(async () => document.querySelector<HTMLInputElement>('[data-testid="payment-elsewhere"] input[type="checkbox"]')!.click());

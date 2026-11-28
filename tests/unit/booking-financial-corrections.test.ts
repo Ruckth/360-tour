@@ -28,6 +28,7 @@ const mutations = vi.hoisted(() => ({
   reopenBooking: vi.fn(),
   editBooking: vi.fn(),
   openStayCheckout: vi.fn(),
+  recordStayStatus: vi.fn(),
 }));
 const queries = vi.hoisted(() => ({ bookingFinancials: vi.fn(), getForAdmin: vi.fn(), quoteBookingEdit: vi.fn() }));
 const pages = vi.hoisted(() => ({ read: vi.fn(), loadMore: vi.fn() }));
@@ -60,7 +61,7 @@ const money = { total: 1700000, currency: "THB", gross: 2550000, refunded: 0, ne
 const booking = {
   _id: "b1", propertyId: "p1", guestName: "Mia", guestPhone: "+66 81", guestEmail: "mia@example.com", checkIn: "2026-10-20", checkOut: "2026-10-22",
   guests: 2, nights: 2, total: 1700000, currency: "THB", status: "completed", paymentStatus: "paid", paymentMethod: "admin", amountPaid: 2550000,
-  source: "admin", createdAt: 0, revision: 7, propertyName: "Pool Villa", propertyStatus: "active", subtotal: 2000000, discountAmount: 300000,
+  source: "admin", createdAt: 0, revision: 7, propertyName: "Pool Villa", propertyStatus: "active", reopenVillaBlocker: null, canOpenVilla: true, subtotal: 2000000, discountAmount: 300000,
   priceOverride: null, hasStripePayment: false, checkoutLive: false, money, historical: true, guestEmailsOff: false, notifyByDefault: false,
   confirmationEmailed: true,
 } as unknown as BookingDetail;
@@ -336,6 +337,26 @@ describe("cancel and reopen", () => {
     expect(document.body.textContent).toContain("Loading refundable payments");
     expect(button("Cancel & record refund")?.disabled).toBe(true);
 
+  });
+
+  it("F05: the cancellation confirmation names the villa, stay range and nights released", async () => {
+    await render(createElement(CancelStayDialog, { booking, onClose: vi.fn() }));
+    const summary = document.querySelector("dl")!.textContent!;
+    expect(summary).toContain("Pool Villa");
+    expect(summary).toMatch(/20.*→.*22/);
+    expect(summary).toContain("Nights released");
+    expect(summary).toContain("2 nights");
+  });
+
+  it("F06: a future stay on an archived villa shows the blocker and a villa link instead of reason fields", async () => {
+    const cancelled = { ...booking, status: "cancelled", propertyStatus: "archived", reopenVillaBlocker: "archived", checkIn: "2099-01-10", checkOut: "2099-01-12", money: { ...money, net: 0, gross: 0, credit: 0, refundable: 0 } } as BookingDetail;
+    await render(createElement(ReopenBookingDialog, { booking: cancelled, onClose: vi.fn() }));
+    expect(document.querySelector('[role="alert"]')?.textContent).toContain("Archived villas can only record stays that started in the past");
+    expect(document.querySelector<HTMLAnchorElement>('a[href="/admin/properties/p1"]')?.textContent).toBe("Open Pool Villa");
+    expect(document.getElementById("reopen-reason")).toBeNull();
+    expect(document.getElementById("reopen-villa")).toBeNull();
+    expect(button("Reopen booking")?.disabled).toBe(true);
+    expect(mutations.reopenBooking).not.toHaveBeenCalled();
   });
 
   it("reopens with a required reason and an archived-villa reason", async () => {
@@ -675,4 +696,17 @@ it.each([false, true])("closes an untouched stay price draft without treating sa
   expect(onClose).toHaveBeenCalledOnce();
   expect(document.querySelector('[role="alertdialog"]')).toBeNull();
   expect(mutations.editBooking).not.toHaveBeenCalled();
+});
+
+it("renders attendance controls only when the booking detail enables writes", async () => {
+  const sheet = createElement(BookingSheet, { bookingId: booking._id, properties: [], onClose: vi.fn() });
+  queries.getForAdmin.mockReturnValue({ ...booking, status: "confirmed", stayAttendanceEnabled: false });
+  await render(sheet);
+  expect(document.body.textContent).toContain("attendance unrecorded");
+  expect(button("Record check-in")).toBeUndefined();
+  expect(button("Record check-out")).toBeUndefined();
+  queries.getForAdmin.mockReturnValue({ ...booking, status: "confirmed", stayAttendanceEnabled: true });
+  await render(createElement(BookingSheet, { ...sheet.props }));
+  expect(button("Record check-in")).toBeDefined();
+  expect(button("Record check-out")).toBeDefined();
 });

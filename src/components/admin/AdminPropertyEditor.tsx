@@ -8,7 +8,7 @@ import type { Doc } from "convex/_generated/dataModel";
 import { ChevronLeft, ExternalLink, Lock } from "lucide-react";
 import Link from "@/platform/link";
 import { useRouter } from "@/platform/navigation";
-import { useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type RefObject } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -16,6 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { errorText } from "@/lib/staff-bookings";
 import { parseMoneyInput } from "@/lib/money-input";
 import { cn } from "@/lib/utils";
+import { ADMIN_PROPERTY_TABS, adminPropertyTabPath, type AdminPropertyTab } from "./admin-routes";
 import { useConfirm } from "./ConfirmDialog";
 import { IcalSourcesPanel } from "./IcalSourcesDialog";
 import { OtaRatesPanel } from "./OtaRatesDialog";
@@ -28,27 +29,46 @@ import { Field, PROPERTY_STATUS, SaveBar, Section, useSaver, type PropertyStatus
 
 type Property = Doc<"properties">;
 
-const TABS = [
-  ["details", "Details"],
-  ["photos", "Photos"],
-  ["tourScenes", "360 rooms"],
-  ["pricing", "Pricing & OTA"],
-  ["reviews", "Reviews"],
-  ["calendar", "Calendar sync"],
-] as const;
-type Tab = (typeof TABS)[number][0];
+const TABS = ADMIN_PROPERTY_TABS;
+type Tab = AdminPropertyTab;
 
-export function AdminPropertyEditor({ propertyId }: { propertyId: string }) {
+export function AdminPropertyEditor({ propertyId, tab = "details" }: { propertyId: string; tab?: Tab }) {
+  const router = useRouter();
   const data = useQuery(api.catalog.adminProperties.get, { propertyId });
-  const [tab, setTab] = useState<Tab>("details");
-  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const focusDirectPriceRef = useRef(false);
+  const tabRefs = useRef<Array<HTMLAnchorElement | null>>([]);
+  const priceInputRef = useRef<HTMLInputElement>(null);
+  const [visitedPricing, setVisitedPricing] = useState(tab === "pricing");
+  // Keep the OTA draft mounted while staff compare it with the direct price.
+  if (tab === "pricing" && !visitedPricing) setVisitedPricing(true);
 
-  function onTabKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number) {
+  useEffect(() => {
+    if (!focusDirectPriceRef.current || tab !== "details") return;
+    focusDirectPriceRef.current = false;
+    priceInputRef.current?.focus();
+    priceInputRef.current?.scrollIntoView?.({ block: "center", behavior: "smooth" });
+  }, [tab]);
+
+  function selectTab(next: Tab) {
+    router.push(adminPropertyTabPath(propertyId, next), { scroll: false });
+  }
+
+  function jumpToDirectPrice() {
+    focusDirectPriceRef.current = true;
+    selectTab("details");
+  }
+
+  function onTabKeyDown(event: KeyboardEvent<HTMLAnchorElement>, index: number) {
     const moves: Record<string, number> = { ArrowRight: index + 1, ArrowLeft: index - 1, Home: 0, End: TABS.length - 1 };
+    if (event.key === " ") {
+      event.preventDefault();
+      selectTab(TABS[index][0]);
+      return;
+    }
     if (!(event.key in moves)) return;
     event.preventDefault();
     const next = (moves[event.key] + TABS.length) % TABS.length;
-    setTab(TABS[next][0]);
+    selectTab(TABS[next][0]);
     tabRefs.current[next]?.focus();
   }
 
@@ -73,18 +93,22 @@ export function AdminPropertyEditor({ propertyId }: { propertyId: string }) {
           <PropertyHeader property={data.property} deleteBlocker={data.deleteBlocker} />
           <div role="tablist" aria-label="Villa sections" className="flex gap-6 overflow-x-auto border-b border-border">
             {TABS.map(([key, label], index) => (
-              <button
+              <Link
                 key={key}
                 ref={(el) => {
                   tabRefs.current[index] = el;
                 }}
                 id={`villa-tab-${key}`}
-                type="button"
+                href={adminPropertyTabPath(propertyId, key)}
                 role="tab"
                 aria-selected={tab === key}
                 aria-controls="villa-tabpanel"
                 tabIndex={tab === key ? 0 : -1}
-                onClick={() => setTab(key)}
+                onClick={(event) => {
+                  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+                  event.preventDefault();
+                  selectTab(key);
+                }}
                 onKeyDown={(event) => onTabKeyDown(event, index)}
                 className={cn(
                   "-mb-px shrink-0 border-b-2 px-1 pb-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -92,25 +116,41 @@ export function AdminPropertyEditor({ propertyId }: { propertyId: string }) {
                 )}
               >
                 {label}
-              </button>
+              </Link>
             ))}
           </div>
           <div role="tabpanel" id="villa-tabpanel" aria-labelledby={`villa-tab-${tab}`} className="grid gap-4">
             <div key={data.property._id} hidden={tab !== "details"} className="grid gap-4">
-              <DetailsForm property={data.property} />
+              <DetailsForm property={data.property} priceInputRef={priceInputRef} />
               <SlugForm property={data.property} locked={data.slugLocked} />
             </div>
+            {visitedPricing ? (
+              <div hidden={tab !== "pricing"}>
+                <Section
+                  title="OTA rates"
+                  description="Nightly prices on Booking.com, Agoda, Airbnb and Expedia, shown to guests next to the direct price."
+                  actions={
+                    <Link
+                      href={adminPropertyTabPath(data.property._id, "details")}
+                      onClick={(event) => {
+                        if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+                        event.preventDefault();
+                        jumpToDirectPrice();
+                      }}
+                      className="inline-flex min-h-9 items-center rounded-md px-2 text-sm font-medium text-foreground underline underline-offset-4 hover:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      Edit direct price and discount
+                    </Link>
+                  }
+                >
+                  <OtaRatesPanel propertyId={data.property._id} />
+                </Section>
+              </div>
+            ) : null}
             {tab === "photos" ? (
               <PropertyPhotosEditor property={data.property} />
             ) : tab === "tourScenes" ? (
               <PropertyRoomsEditor propertyId={data.property._id} rooms={data.rooms} />
-            ) : tab === "pricing" ? (
-              <Section
-                title="OTA rates"
-                description="Nightly prices on Booking.com, Agoda, Airbnb and Expedia, shown to guests next to the direct price. The direct price and discount are under Details."
-              >
-                <OtaRatesPanel propertyId={data.property._id} />
-              </Section>
             ) : tab === "reviews" ? (
               <PropertyReviewsEditor propertyId={data.property._id} />
             ) : tab === "calendar" ? (
@@ -263,7 +303,7 @@ function useVillaFormSaver() {
   };
 }
 
-function DetailsForm({ property }: { property: Property }) {
+function DetailsForm({ property, priceInputRef }: { property: Property; priceInputRef: RefObject<HTMLInputElement | null> }) {
   const update = useMutation(api.catalog.properties.update);
   const save = useVillaFormSaver();
 
@@ -306,7 +346,7 @@ function DetailsForm({ property }: { property: Property }) {
         </Field>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <Field label="Price per night" htmlFor="pr-price">
-            <Input id="pr-price" name="pricePerNight" type="number" step="0.01" min={0} defaultValue={satangToBaht(property.pricePerNight)} required />
+            <Input ref={priceInputRef} id="pr-price" name="pricePerNight" type="number" step="0.01" min={0} defaultValue={satangToBaht(property.pricePerNight)} required />
           </Field>
           <Field label="Currency" htmlFor="pr-currency">
             <Input id="pr-currency" name="currency" maxLength={3} defaultValue={property.currency} required />

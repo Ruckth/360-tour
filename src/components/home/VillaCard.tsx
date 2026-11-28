@@ -1,12 +1,15 @@
 "use client";
 
 import { satangToBaht } from 'convex/shared/money';
+import { calculateDirectQuote } from 'convex/shared/pricing';
 
 import dynamic from "@/platform/dynamic";
 import Link from "@/platform/link";
+import { useHydrated } from "@/platform/hydration";
 import { ChevronLeft, ChevronRight, Globe2, Users } from "lucide-react";
 import { useLocale, useTranslations } from "@/platform/intl";
 import { useState } from "react";
+import { useTourOpener } from "@/lib/interaction/use-modal-focus";
 import { PropertyImage } from "@/components/property/PropertyImage";
 import { StarRating } from "@/components/social/StarRating";
 import { Badge } from "@/components/ui/badge";
@@ -35,16 +38,29 @@ export function VillaCard({
   property: PublicVilla;
   storyTagline?: string;
 }) {
+  const hydrated = useHydrated();
   const t = useTranslations("Villa");
+  const pricingT = useTranslations("Pricing");
   const a11y = useTranslations("A11y");
   const activeLocale = useLocale();
   const locale = isLocale(activeLocale) ? activeLocale : defaultLocale;
   const [index, setIndex] = useState(0);
   const [dragStart, setDragStart] = useState<SwipePoint | null>(null);
   const [showTour, setShowTour] = useState(false);
+  const rememberTourOpener = useTourOpener(showTour);
   const { begin, cancel, finish } = useTourOpenTiming(false);
   const images = property.images.length ? property.images : [resort.heroImage];
   const hasMultiple = images.length > 1;
+  const directQuote = calculateDirectQuote(
+    {
+      pricePerNight: property.pricePerNight,
+      directDiscountPercent: property.directDiscountPercent,
+      currency: property.currency,
+    },
+    1,
+  );
+  const hasDirectDiscount =
+    property.directDiscountPercent > 0 && directQuote.directTotal < property.pricePerNight;
 
   function goTo(next: number) {
     setIndex(clampIndex(next, images.length));
@@ -84,11 +100,22 @@ export function VillaCard({
           ))}
         </div>
         <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/55 via-black/15 to-transparent" />
-        <div className="absolute bottom-3 right-3 rounded-full bg-navy/90 px-3 py-1 text-xs font-semibold text-white backdrop-blur-sm md:text-sm">
-          {currencyPrefix(property.currency)}
-          {satangToBaht(property.pricePerNight).toLocaleString()}
-          <span className="text-[10px] font-normal text-white/60 md:text-xs">
-            {t("perNight")}
+        <div
+          data-testid="villa-card-rate"
+          className="absolute inset-x-3 bottom-3 ml-auto flex w-fit max-w-[calc(100%-1.5rem)] flex-wrap items-baseline justify-end gap-x-2 gap-y-0.5 rounded-lg bg-navy/90 px-3 py-1 text-xs font-semibold text-white backdrop-blur-sm md:text-sm"
+        >
+          {hasDirectDiscount ? (
+            <span className="flex flex-wrap gap-x-1 text-[10px] font-normal text-white/75 md:text-xs">
+              <span>{pricingT("standardRate")}</span>
+              <s>{currencyPrefix(property.currency)}{satangToBaht(property.pricePerNight).toLocaleString(locale)}</s>
+            </span>
+          ) : null}
+          <span className="flex flex-wrap items-baseline gap-x-1">
+            {hasDirectDiscount ? (
+              <span className="text-[10px] font-medium text-gold-light">{t("directRate")}</span>
+            ) : null}
+            {currencyPrefix(property.currency)}{satangToBaht(directQuote.directTotal).toLocaleString(locale)}
+            <span className="text-[10px] font-normal text-white/75 md:text-xs">{t("perNight")}</span>
           </span>
         </div>
 
@@ -181,7 +208,13 @@ export function VillaCard({
           </ButtonLink>
           <Button
             type="button"
-            onClick={() => { begin(); setShowTour(true); }}
+            disabled={!hydrated}
+            aria-haspopup="dialog"
+            onClick={(event) => {
+              rememberTourOpener(event.currentTarget);
+              begin();
+              setShowTour(true);
+            }}
             onFocus={preloadTourViewer}
             onPointerEnter={preloadTourViewer}
             onTouchStart={preloadTourViewer}

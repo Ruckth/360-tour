@@ -114,7 +114,7 @@ for (const [size, viewport] of Object.entries(DESK_VIEWPORTS)) {
       await expect(ken).toBeVisible();
       await expect(anna).toHaveCount(0);
       await search.fill("Absent guest");
-      const noMatches = page.getByRole("status").filter({ hasText: "No matching appointments in this date range" });
+      const noMatches = page.getByRole("status").filter({ hasText: "No matching appointments in" });
       await expect(noMatches).toBeVisible();
       await expect(page.getByText("No appointments.", { exact: true })).toBeHidden();
       for (const view of ["Day", "Week", "List"]) {
@@ -346,9 +346,12 @@ for (const [size, viewport] of Object.entries(DESK_VIEWPORTS)) {
         expect(actionBox.x).toBeGreaterThanOrEqual(moneyBox.x);
         expect(actionBox.x + actionBox.width).toBeLessThanOrEqual(moneyBox.x + moneyBox.width);
       }
-      // The money block is the first thing under the title.
-      const top = await money.boundingBox();
-      expect(top!.y).toBeLessThan(160);
+      // Attendance is shown before the money block, which stays above History.
+      const attendance = await sheet.getByRole("region", { name: "Guest stay status" }).boundingBox();
+      const moneyBox = await money.boundingBox();
+      const history = await sheet.locator("summary", { hasText: "History" }).boundingBox();
+      expect(moneyBox!.y).toBeGreaterThanOrEqual(attendance!.y + attendance!.height);
+      expect(moneyBox!.y + moneyBox!.height).toBeLessThanOrEqual(history!.y);
       await expectAtMostSentences(sheet, 1);
       // Price, payments and changes share one closed History.
       await expect(sheet.locator("summary")).toHaveText(["History"]);
@@ -562,4 +565,20 @@ test.describe("phone agenda touch scrolling", () => {
     await openDesk(page, "?view=staff");
     await expect(page.locator('[data-slot="event-calendar-event"]').first()).toHaveCSS("touch-action", "pan-y");
   });
+});
+
+
+test("a phone opens a linked resort stay with a secondary working branch, and denies it without resort access", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(() => {
+    sessionStorage.setItem("admin:branch:ploy@auraliscove.co", "phuket");
+    localStorage.setItem("admin.hotel.villa:resort", "fxvilla000002");
+  });
+  const link = "/tests/browser/booking-desk.html?path=/admin/hotel&directResortLink=1&booking=fxbkg000000000000000000000000001";
+  await page.goto(link);
+  await expect(page.getByRole("dialog", { name: "Anna Schmidt", exact: true })).toBeVisible({ timeout: 15_000 });
+  await page.goto(link + "&denyResort=1");
+  await expect(page.getByRole("status")).toHaveText("You don’t have access to this resort desk.");
+  await expect(page.getByRole("dialog", { name: "Anna Schmidt" })).toHaveCount(0);
+  expect(await page.evaluate(() => window.desk.stayReads())).toBe(0);
 });

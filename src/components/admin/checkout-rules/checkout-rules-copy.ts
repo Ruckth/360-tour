@@ -8,6 +8,13 @@ import commerceEn from "../../../../messages/commerce/en.json";
  * `t("switches.managers")`, `t("rules.days", { count: 7 })`.
  */
 export const t = createTranslator({ locale: "en", messages: commerceEn, namespace: "Commerce" }) as unknown as (key: string, values?: Record<string, string | number>) => string;
+export const reconciliationOutcomes = {
+  title: "Resolve open direct payment",
+  recorded: "Close the payment panel using the existing receipt.",
+  recordedUnavailable: "Unavailable until an unused receipt on this order accounts for this payment.",
+  nothingTaken: "Close the payment panel after confirming that no money was received.",
+  unrecorded: "Close the payment panel and record a reason for money received without a receipt.",
+};
 export const when = (at: number) => staffDateTime(at);
 
 /** The server's refusal code and its fields, or null for a lost answer or any other error. */

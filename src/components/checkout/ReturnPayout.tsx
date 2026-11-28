@@ -192,19 +192,25 @@ export function ReturnPayout({ view, record, tillId, fresh, onFresh, autoArm, co
     const { claim } = step;
     // Sent on an earlier business day: the verified time dates the refund on the right day's report.
     const earlier = claim.instructedAt !== null && claim.instructedAt !== undefined && resortTodayIso(claim.instructedAt) !== resortTodayIso(now);
-    const typed = earlier ? fromLocalInput(givenAt || localInput(claim.instructedAt!)) : undefined;
+    const firstMinute = Math.ceil((claim.instructedAt ?? 0) / 60_000) * 60_000;
+    const typed = earlier ? fromLocalInput(givenAt) : undefined;
     // Minutes only on the field: never before the instruction itself, never in the future.
-    const at = typed === undefined || typed === null ? typed : Math.min(now, Math.max(claim.instructedAt!, typed));
+    const at = typed === undefined || typed === null || (typed >= firstMinute && typed <= now) ? typed : null;
     panel = (
       <div className="grid gap-2 rounded-xl border border-amber-300 bg-amber-50/70 p-3 dark:border-amber-400/40 dark:bg-amber-400/10" data-return-check={claim.key}>
         <p className="text-base font-semibold">{t("returns.checkPreviousRefund")}</p>
         <p className="text-sm">{t("returns.checkPreviousBody", { method: methodName(claim.method), amount: money(claim.amount), time: claim.instructedAt ? when(claim.instructedAt) : "—" })}</p>
         <p className="text-xs text-muted-foreground" data-return-due="">{t("returns.refundDueBy", { date: date(claim.dueAt) })}</p>
+        {here ? <div className="grid gap-1.5">
+          <Label htmlFor={`${id}-recovery-reference`} className="text-xs text-muted-foreground">{t("returns.reference")}</Label>
+          <Input id={`${id}-recovery-reference`} value={reference} maxLength={128} disabled={sending} autoComplete="off" onChange={(event) => setReference(event.target.value)} />
+        </div> : null}
         {earlier && here ? (
           <div className="grid gap-1.5">
             <Label htmlFor={`${id}-given-at`} className="text-xs text-muted-foreground">{t("returns.givenAt")}</Label>
-            <Input id={`${id}-given-at`} type="datetime-local" className="h-11" value={givenAt || localInput(claim.instructedAt!)} disabled={sending}
-              min={localInput(claim.instructedAt!)} max={localInput(now)} onChange={(event) => setGivenAt(event.target.value)} />
+            <Input id={`${id}-given-at`} type="datetime-local" className="h-11" value={givenAt} aria-invalid={Boolean(givenAt) && at === null} disabled={sending}
+              min={localInput(firstMinute)} max={localInput(now)} onChange={(event) => setGivenAt(event.target.value)} />
+            <p className={cn("text-xs", givenAt && at === null ? "text-destructive" : "text-muted-foreground")}>{when(firstMinute)} – {when(now)} (Bangkok time)</p>
           </div>
         ) : null}
       </div>

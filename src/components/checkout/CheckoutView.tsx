@@ -46,6 +46,7 @@ type CheckoutViewProps = {
   /** The customer display button; only the admin page has one. */
   displayControl?: ReactNode;
   retail?: boolean;
+  ordersFilterScope?: string;
   preferredRetailBranchId?: Id<"branches">;
 };
 
@@ -63,6 +64,7 @@ function CheckoutContent({
   displayControl,
   retailLabels,
   preferredRetailBranchId,
+  ordersFilterScope,
 }: CheckoutViewProps & { retailLabels?: { products: string; loading: string } }) {
   const { confirmDiscard } = useCheckoutDraft();
   const { discountNotice, setDiscountNotice } = useCheckoutDiscountNotice();
@@ -237,11 +239,11 @@ function CheckoutContent({
     <div inert={sheetOpen && keepHeader} className={cn("relative isolate flex min-h-0 flex-1 flex-col overflow-y-auto bg-background", TOUCH_TARGETS)}>
       {discountNotice && discountNotice.orderId !== orderId ? <DiscountNoticeTarget orderId={discountNotice.orderId} /> : null}
       <Backdrop src={catalog?.rooms.find((room) => room.imageUrl)?.imageUrl} />
-      <OrderStrip view={missing ? null : view} title={title} run={run} onOrderChange={changeOrder} canStartNew={orderId !== null || Boolean(notice)} displayControl={displayControl} />
+      <OrderStrip key={ordersFilterScope} ordersFilterScope={ordersFilterScope} view={missing ? null : view} title={title} run={run} onOrderChange={changeOrder} canStartNew={orderId !== null || Boolean(notice)} displayControl={displayControl} />
       {message ? alert(message) : null}
       {narrow && !sheetOpen ? discountAlert : null}
       <div className="flex min-h-0 flex-1">
-        {view?.order.state === "discarded" ? <div className="min-w-0 flex-1 p-6"><h2 className="font-serif text-2xl">Discarded order</h2><p className="mt-3 text-sm text-muted-foreground">This order is read only. Open Orders → Discarded to review and restore it. Start a new order to continue selling.</p></div> : <CatalogPane catalog={catalog} lines={lines} onAdd={add} customNeedsManager={customNeedsManager} products={retailLabels && commerceAccess?.canSell.products && commerceAccess.paymentsMode === "attempts" && !commerceAccess.paused ? { label: retailLabels.products, content: <Suspense fallback={<p role="status" className="text-sm text-muted-foreground">{retailLabels.loading}</p>}><CheckoutProducts preferredBranchId={preferredRetailBranchId} orderBranchId={view?.order.stockBranchId} busy={busy || paymentSubmitting || Boolean(orderId && !view)} run={run} /></Suspense> } : undefined} className="min-w-0 flex-1" />}
+        {view?.order.state === "discarded" ? narrow && !sheetOpen ? panel() : <div className="min-w-0 flex-1 p-6"><h2 className="font-serif text-2xl">Discarded order</h2><p className="mt-3 text-sm text-muted-foreground">This order is read only. Review its items in the order panel before restoring it.</p></div> : <CatalogPane catalog={catalog} lines={lines} onAdd={add} customNeedsManager={customNeedsManager} products={retailLabels && commerceAccess?.canSell.products && commerceAccess.paymentsMode === "attempts" && !commerceAccess.paused ? { label: retailLabels.products, content: <Suspense fallback={<p role="status" className="text-sm text-muted-foreground">{retailLabels.loading}</p>}><CheckoutProducts preferredBranchId={preferredRetailBranchId} orderBranchId={view?.order.stockBranchId} busy={busy || paymentSubmitting || Boolean(orderId && !view)} run={run} /></Suspense> } : undefined} className="min-w-0 flex-1" />}
         {/* An inset glass panel, wider on bigger screens; the catalog's columns adapt to what is left.
             Without backdrop-filter it stays nearly opaque, so the photo behind never thins the text. */}
         {!narrow && !sheetOpen ? <aside

@@ -15,6 +15,7 @@ import { assertMoney } from '../../shared/money';
 import { APPROVAL_TTL_MS } from '../../shared/staffTypes';
 import { resortMidnight, resortTodayIso } from '../../shared/time';
 import { openOrderReturn, readOrderProjection, voucherCodeMask } from './orderLifecycle';
+import { readAttemptByKey } from './paymentAttempt';
 import {
   destinationShares, finishReturnEffects, replacementSlips, returnAudit, reverseReturnEffects, takeReturnBenefits, writeReturnMirrors,
 } from './returnEffects';
@@ -225,6 +226,41 @@ async function prepare(ctx: ReadCtx, order: Order, args: ReturnInput, now: numbe
   return { parts, stock, money, review, amount, previouslyReturned, confirmedParts };
 }
 
+async function pendingPayoutSummary(ctx: ReadCtx, order: Order, money: Awaited<ReturnType<typeof planReturnMoney>>) {
+  const payouts: NonNullable<Approval['payoutSummary']> = [];
+  if (money.external) {
+    const { method, amount } = money.external;
+    let destinationMask: string | undefined;
+    // A corrected tender or multiple card legs cannot identify a single original card.
+    if (method === 'card' && order.amendedTenders === undefined) {
+      const cards = money.payments.filter(payment => payment.method === 'card');
+      if (cards.length === 1) {
+        const [card] = cards;
+        const attempt = await readAttemptByKey(ctx, card.idempotencyKey);
+        if (attempt?.orderId === order._id && attempt.status === 'settled') {
+          const legs = attempt.legs.filter(leg => leg.method === 'card' && leg.state === 'taken');
+          if (legs.length === 1 && legs[0].amount === card.amount) {
+            const lastFour = /^(?:[*•xX]{4,}[ -]?|ending in )([0-9]{4})$/i.exec(legs[0].reference?.trim() ?? '')?.[1];
+            if (lastFour) destinationMask = `•••• ${lastFour}`;
+          }
+        }
+      }
+    }
+    payouts.push({ label: method, amount, ...(destinationMask ? { destinationMask } : {}) });
+  }
+  for (const credit of money.credits) {
+    const mask = await voucherCodeMask(ctx, money.funding.get(credit.voucherId)!);
+    const destinationMask = mask && /^GV-••••-[A-Z0-9]{4}$/.test(mask) ? mask : undefined;
+    const existing = destinationMask ? { destinationMask } : {};
+    if (credit.paid) payouts.push({
+      label: credit.destination?.kind === 'newVoucher' ? 'Replacement voucher' : 'Voucher',
+      amount: credit.paid, ...existing,
+    });
+    if (credit.goodwill) payouts.push({ label: 'Goodwill voucher', amount: credit.goodwill, ...existing });
+  }
+  return payouts;
+}
+
 export async function previewReturn(ctx: ReadCtx, actor: StaffActor, input: ReturnInput) {
   const args = validateInput(input);
   const order = await returnOrder(ctx, args.orderId, actor);
@@ -407,10 +443,11 @@ export async function askReturnApproval(ctx: MutationCtx, actor: StaffActor, inp
     prepare(ctx, order, args, now, actor), readOrderProjection(ctx, () => cashierRules(ctx)), requesterFingerprint(ctx, actor.tokenIdentifier),
   ]);
   if (requester.role !== 'cashier') returnError('RETURN_CASHIER_REQUIRED', 'Cashier access changed.');
+  const payoutSummary = await pendingPayoutSummary(ctx, order, prepared.money);
   const expiresAt = now + APPROVAL_TTL_MS;
   reserveWrites(ctx, 2);
   const requestId = await ctx.db.insert('staffApprovalRequests', {
-    kind: 'returnItems', orderId: order._id, stockBranchId: order.stockBranchId, ...prepared.review,
+    kind: 'returnItems', orderId: order._id, stockBranchId: order.stockBranchId, ...prepared.review, payoutSummary,
     requesterEmail: actor.email, requesterTokenIdentifier: actor.tokenIdentifier, requesterAccessFingerprint: requester.fingerprint,
     rulesRevision: rules.revision, rulesFingerprint: rulesFingerprint(rules), reason: args.reason, status: 'pending', createdAt: now, expiresAt,
     amount: prepared.amount, totalBefore: order.total, totalAfter: order.total - prepared.amount,

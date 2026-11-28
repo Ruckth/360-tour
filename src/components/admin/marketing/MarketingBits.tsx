@@ -236,10 +236,24 @@ export function useEditorSheet<T extends object>() {
 }
 
 /** The right-hand sheet the link and campaign editors open in. `header` holds its title and description. */
-export function EditorSheet({ open, onClose, wide = false, header, children }: { open: boolean; onClose: () => void; wide?: boolean; header: ReactNode; children: ReactNode }) {
+export function EditorSheet({
+  open,
+  onClose,
+  wide = false,
+  header,
+  children,
+  onOpenAutoFocus,
+}: {
+  open: boolean;
+  onClose: () => void;
+  wide?: boolean;
+  header: ReactNode;
+  children: ReactNode;
+  onOpenAutoFocus?: (event: Event) => void;
+}) {
   return (
     <Sheet open={open} onOpenChange={(next) => !next && onClose()}>
-      <SheetContent side="right" className={wide ? "w-full max-w-none gap-0 p-0 pt-0 pb-0 sm:max-w-2xl" : "w-full max-w-none gap-0 p-0 pt-0 pb-0 sm:max-w-xl"}>
+      <SheetContent side="right" onOpenAutoFocus={onOpenAutoFocus} className={wide ? "w-full max-w-none gap-0 p-0 pt-0 pb-0 sm:max-w-2xl" : "w-full max-w-none gap-0 p-0 pt-0 pb-0 sm:max-w-xl"}>
         <SheetHeader className="border-b border-border px-5 pb-4 pt-[max(1rem,env(safe-area-inset-top))] sm:px-6">{header}</SheetHeader>
         {children}
       </SheetContent>

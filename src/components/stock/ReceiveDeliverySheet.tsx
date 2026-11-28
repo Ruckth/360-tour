@@ -35,7 +35,7 @@ import {
 } from "./ReceiveDeliverySections";
 import { useStockDirtyGuard } from "./StockFormGuard";
 import type { StockLineFieldErrors } from "./StockLineEditor";
-import { StockVariantPickerDialog } from "./StockVariantPicker";
+import { StockVariantPickerDialog, type BalancePickerRow } from "./StockVariantPicker";
 
 type OrderListPage = FunctionReturnType<typeof api.commerce.purchasing.orders>;
 type ReceiveOrderArgs = FunctionArgs<typeof api.commerce.purchasing.receivePurchaseOrder>;
@@ -99,9 +99,13 @@ export function ReceiveDeliverySheet({
   });
   const [selectedOrderId, setSelectedOrderId] = useState<Id<"purchaseOrders"> | null>(initialOrderId ?? null);
 
+  const [orderSearch, setOrderSearch] = useState("");
+  const search = orderSearch.trim();
   const { results: openOrders, status: openOrdersStatus, loadMore: loadMoreOrders } = usePaginatedQuery(
     api.commerce.purchasing.orders,
-    !initialOrderId && mode === "po" ? { branchId, view: { kind: "phase", phase: "open" } } : "skip",
+    !initialOrderId && mode === "po"
+      ? { branchId, view: search ? { kind: "openSearch", search } : { kind: "phase", phase: "open" } }
+      : "skip",
     { initialNumItems: STOCK_PAGE_SIZE },
   );
 
@@ -706,6 +710,7 @@ export function ReceiveDeliverySheet({
   }
 
   function switchToMatchedOrder(orderId: Id<"purchaseOrders">) {
+    if (mode === "po" && selectedOrderId === orderId) return;
     setMode("po");
     setSelectedOrderId(orderId);
     setReviewedOrder(null);
@@ -725,6 +730,26 @@ export function ReceiveDeliverySheet({
       ? (orderDetail?.lines ?? []).reduce((sum, line) => sum + (Number(acceptedByLine[line._id] ?? 0) || 0), 0)
       : directLines.reduce((sum, line) => sum + (Number(line.quantityText) || 0), 0);
   const totalHeld = heldLines.reduce((sum, h) => sum + (Number(h.quantityText) || 0), 0);
+
+  function addDirectItems(items: BalancePickerRow[]) {
+    setDirectLines((current) => [
+      ...current,
+      ...items.map((item) => ({
+        variantId: item.variantId,
+        productName: item.productName,
+        variantLabel: item.label,
+        sku: item.sku,
+        onHand: item.onHand,
+        onOrder: item.onOrder,
+        lotTracked: item.lotTracked,
+        quantityText: followUp ? String(followUp.quantity) : "",
+        unitCostText: "",
+      })),
+    ]);
+    setServerOpenOrderMatches(null);
+    setConfirmBypassOpenOrders(false);
+    setOpKey(createOperationKey("recv"));
+  }
 
   const matchedOrderIdSet = useMemo(
     () => new Set(proactiveOpenOrderMatches.map((m) => m.orderId)),
@@ -798,6 +823,8 @@ export function ReceiveDeliverySheet({
               branchName={branchName}
               initialOrderId={initialOrderId}
               allowDirectReceipt={allowDirectReceipt}
+              orderSearch={orderSearch}
+              onOrderSearchChange={setOrderSearch}
               orderedOpenOrders={orderedOpenOrders}
               openOrdersStatus={openOrdersStatus}
               onLoadMoreOrders={() => loadMoreOrders(STOCK_PAGE_SIZE)}
@@ -929,26 +956,10 @@ export function ReceiveDeliverySheet({
         onOpenChange={setDirectPickerOpen}
         branchId={branchId}
         selectedIds={directLines.map((l) => l.variantId)}
-        title="Add item to direct receipt"
-        onSelect={(item) => {
-          setDirectLines((curr) => [
-            ...curr,
-            {
-              variantId: item.variantId,
-              productName: item.productName,
-              variantLabel: item.label,
-              sku: item.sku,
-              onHand: item.onHand,
-              onOrder: item.onOrder,
-              lotTracked: item.lotTracked,
-              quantityText: followUp ? String(followUp.quantity) : "",
-              unitCostText: "",
-            },
-          ]);
-          setServerOpenOrderMatches(null);
-          setConfirmBypassOpenOrders(false);
-          setOpKey(createOperationKey("recv"));
-        }}
+        title={followUp ? "Select the actual item received" : "Add items to direct receipt"}
+        {...(followUp
+          ? { onSelect: (item: BalancePickerRow) => addDirectItems([item]) }
+          : { onSelectMany: addDirectItems })}
       />
 
       <StockVariantPickerDialog

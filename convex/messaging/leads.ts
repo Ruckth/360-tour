@@ -1,7 +1,8 @@
 import { leadsSaveResult } from './validators';
 import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
-import { adminMutation, adminQuery, publicMutation } from '../auth/model';
+import type { Doc } from '../_generated/dataModel';
+import { adminMutation, adminQuery, publicMutation, type QueryCtx } from '../auth/model';
 import { assertValidEmail, normalizeEmail } from '../shared/validation';
 import { recordLead } from './leadWriter';
 import { enforceRateLimit } from './rateLimit';
@@ -42,27 +43,35 @@ export const save = publicMutation({
 	}
 });
 
-export const list = adminQuery({
-	args: { paginationOpts: paginationOptsValidator, source: v.optional(leadSource) },
-	handler: async (ctx, args) => {
-		const { source } = args;
-		const leads = source
-			? ctx.db.query('leads').withIndex('by_source', (q) => q.eq('source', source))
-			: ctx.db.query('leads');
-		return await leads.order('desc').paginate(args.paginationOpts);
+/**
+ * The one lead dataset for the list and its CSV. Leads are company data: villas (their only link)
+ * carry no branch, so operations access (owner or manager) sees every lead, linked or not, in any
+ * branch. Filters: source, and an exact normalized email (index-bounded to that address's rows).
+ */
+type LeadFilters = { source?: Doc<'leads'>['source']; email?: string };
+function leadsMatching(ctx: QueryCtx, { source, email }: LeadFilters) {
+	const address = email?.trim() ? normalizeEmail(email) : undefined;
+	if (address !== undefined) {
+		const rows = ctx.db.query('leads').withIndex('by_email', (q) => q.eq('email', address));
+		return source ? rows.filter((q) => q.eq(q.field('source'), source)) : rows;
 	}
+	return source
+		? ctx.db.query('leads').withIndex('by_source', (q) => q.eq('source', source))
+		: ctx.db.query('leads');
+}
+const leadFilterArgs = { source: v.optional(leadSource), email: v.optional(v.string()) };
+
+export const list = adminQuery({
+	args: { paginationOpts: paginationOptsValidator, ...leadFilterArgs },
+	handler: async (ctx, args) => await leadsMatching(ctx, args).order('desc').paginate(args.paginationOpts)
 });
 
-/** Every lead for the source filter (newest first, capped) for the CSV export. */
+/** Every lead for the same filters (newest first, capped) for the CSV export. */
 export const exportRows = adminQuery({
-	args: { source: v.optional(leadSource) },
+	args: leadFilterArgs,
 	handler: async (ctx, args) => {
-		const { source } = args;
-		const leads = source
-			? ctx.db.query('leads').withIndex('by_source', (q) => q.eq('source', source))
-			: ctx.db.query('leads');
-		const rows = await leads.order('desc').take(EXPORT_LIMIT + 1);
-		return { rows: rows.slice(0, EXPORT_LIMIT), truncated: rows.length > EXPORT_LIMIT };
+		const rows = await leadsMatching(ctx, args).order('desc').take(EXPORT_LIMIT + 1);
+		return { rows: rows.slice(0, EXPORT_LIMIT), truncated: rows.length > EXPORT_LIMIT, limit: EXPORT_LIMIT };
 	}
 });
 

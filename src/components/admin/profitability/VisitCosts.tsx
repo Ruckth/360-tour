@@ -53,6 +53,7 @@ export function VisitCosts({
       }}
     >
       <h3 className="font-semibold">Actual costs for {reference}</h3>
+      <p className="text-sm text-muted-foreground">Enter all three amounts. Use 0 for a component with no cost.</p>
       <div className="grid gap-3 sm:grid-cols-3">
         {(['staff', 'materials', 'tools'] as const).map((k) => (
           <AmountField key={k} name={k} label={k[0].toUpperCase() + k.slice(1)} amount={entry.costs?.[k]} />

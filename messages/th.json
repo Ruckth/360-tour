@@ -6,7 +6,8 @@
     "reviews": "รีวิว",
     "contact": "ติดต่อ",
     "book": "จอง",
-    "language": "ภาษา"
+    "language": "ภาษา",
+    "services": "บริการ"
   },
   "Home": {
     "welcome": "ยินดีต้อนรับ",
@@ -26,7 +27,9 @@
     "readyTitle": "พร้อมสัมผัส {resortName} แล้วหรือยัง?",
     "readyCopy": "จองตรงประหยัด 15% เมื่อเทียบกับแพลตฟอร์มออนไลน์ พร้อมบริการรับส่งสนามบินและของต้อนรับ",
     "contactUs": "ติดต่อเรา",
-    "viewVillas": "ดูวิลล่า"
+    "viewVillas": "ดูวิลล่า",
+    "openInMaps": "เปิดใน Google Maps",
+    "showInteractiveMap": "แสดงแผนที่แบบโต้ตอบ"
   },
   "Experiences": {
     "eyebrow": "ประสบการณ์",
@@ -126,7 +129,14 @@
     "directBenefits": "สิทธิประโยชน์จองตรง",
     "verifiedVillas": "วิลล่าที่ตรวจสอบแล้ว",
     "secureCheckout": "ชำระเงินตัวอย่างอย่างปลอดภัย",
-    "hostSupport": "ติดต่อเจ้าของที่พักโดยตรง"
+    "hostSupport": "ติดต่อเจ้าของที่พักโดยตรง",
+    "unavailableTitle": "ยังโหลดข้อมูลวิลล่าไม่ได้ชั่วคราว",
+    "unavailableDetail": "ไม่สามารถเชื่อมต่อรายการวิลล่าได้ในขณะนี้ กรุณาลองอีกครั้งในอีกสักครู่",
+    "loadErrorTitle": "เกิดข้อผิดพลาด",
+    "loadErrorDetail": "ไม่สามารถโหลดข้อมูลวิลล่านี้ได้ในขณะนี้ กรุณาลองอีกครั้ง",
+    "tryAgain": "ลองอีกครั้ง",
+    "pageUnavailableTitle": "หน้านี้ไม่พร้อมใช้งานชั่วคราว",
+    "pageUnavailableDetail": "กรุณาลองอีกครั้ง"
   },
   "Booking": {
     "confirmAndPay": "ยืนยันและชำระเงิน",
@@ -184,7 +194,7 @@
     "emailExample": "maya@example.com",
     "emailError": "กรอกอีเมลให้ถูกต้อง",
     "phoneExample": "+66 81 234 5678",
-    "phoneError": "กรอกเบอร์โทรหรือ WhatsApp อย่างน้อย 6 หลัก",
+    "phoneError": "กรอกหมายเลขโทรศัพท์หรือ WhatsApp ที่ถูกต้องของประเทศที่เลือก หรือใส่ + และรหัสประเทศ",
     "reviewPay": "ตรวจสอบและชำระเงิน",
     "livePaymentNote": "ระบบจะตรวจสอบการจองอีกครั้งก่อนชำระเงิน",
     "demoPaymentNote": "การชำระเงินตัวอย่างจะไม่สร้างการจองจริง",
@@ -233,7 +243,29 @@
     "notConfirmedCopy": "เราไม่สามารถตรวจสอบการจองที่ชำระเงินแล้วจากลิงก์นี้ได้",
     "reference": "อ้างอิง: {reference}",
     "returnHome": "กลับหน้าแรก",
-    "exploreMoreVillas": "ดูวิลล่าเพิ่มเติม"
+    "exploreMoreVillas": "ดูวิลล่าเพิ่มเติม",
+    "stepCompleted": "เสร็จแล้ว:",
+    "minStayHint": "เข้าพักขั้นต่ำ {count} คืน",
+    "calendarKey": "คำอธิบายปฏิทิน",
+    "legendAvailable": "ว่าง",
+    "legendBooked": "ไม่ว่าง",
+    "legendNotSelectable": "วันที่ผ่านมาแล้วหรือไม่ตรงเงื่อนไขการเข้าพัก",
+    "editGuestDetails": "แก้ไขข้อมูลผู้เข้าพัก",
+    "phoneHint": "เลือกประเทศ หรือเริ่มด้วย + ตามด้วยรหัสประเทศ",
+    "staySummary": "การเข้าพักของคุณ",
+    "villaFallback": "วิลล่าของคุณ",
+    "verifyingCopy": "กำลังรอการยืนยันการชำระเงิน…",
+    "paymentPendingTitle": "การชำระเงินยังอยู่ระหว่างดำเนินการ",
+    "paymentPendingCopy": "เรายังไม่ได้รับการยืนยันการชำระเงิน การตรวจสอบอีกครั้งจะไม่เรียกเก็บเงินซ้ำ",
+    "checkAgain": "ตรวจสอบอีกครั้ง",
+    "paySettled": "การจองนี้ชำระเงินแล้ว ไม่ต้องชำระเพิ่ม",
+    "payHoldExpired": "การกันวันที่สำหรับการจองนี้สิ้นสุดแล้ว กรุณาทำการจองใหม่",
+    "payClosed": "การจองนี้ไม่สามารถชำระเงินออนไลน์ได้อีก หากต้องการความช่วยเหลือโปรดติดต่อเรา",
+    "viewConfirmation": "ดูการยืนยัน",
+    "amountDueNow": "ยอดที่ต้องชำระตอนนี้: {amount}",
+    "proposalHoldExpired": "การกันวันที่สำหรับการจองนี้สิ้นสุดแล้ว ขอสรุปใหม่ได้ในแชท",
+    "proposalSettled": "การจองนี้ชำระเงินแล้ว ไม่ต้องชำระเพิ่ม",
+    "proposalUnavailable": "ลิงก์ชำระเงินนี้ใช้ไม่ได้ โปรดเปิดลิงก์ล่าสุดที่คุณได้รับ หรือเริ่มการจองใหม่"
   },
   "Coupon": {
     "haveCode": "มีโค้ดส่วนลดไหม?",
@@ -369,10 +401,16 @@
     "suggestionCancellation": "ยกเลิกการจองได้อย่างไร?",
     "suggestionAirport": "ช่วยจัดรถรับจากสนามบินได้ไหม?",
     "suggestionAmenitiesIncluded": "ในวิลล่ามีอะไรให้บ้าง?",
-    "suggestionLocation": "ใกล้ชายหาดและร้านอาหารแค่ไหน?"
+    "suggestionLocation": "ใกล้ชายหาดและร้านอาหารแค่ไหน?",
+    "restartConfirmTitle": "เริ่มบทสนทนาใหม่ไหม?",
+    "restartConfirmBody": "ข้อความและข้อความที่ยังไม่ได้ส่งจะถูกล้าง",
+    "restartKeep": "คุยต่อ",
+    "restartConfirm": "เริ่มแชตใหม่"
   },
   "Footer": {
-    "bookDirect": "จองตรง"
+    "bookDirect": "จองตรง",
+    "enquirySubject": "สอบถามการเข้าพัก — {resortName}",
+    "enquiryBody": "สวัสดีครับ/ค่ะ ต้องการสอบถามรายละเอียดการเข้าพักที่ {resortName}"
   },
   "DemoDisclaimer": {
     "title": "เว็บไซต์ตัวอย่างเท่านั้น",
@@ -405,7 +443,15 @@
     "close": "ปิด",
     "closeTour": "ปิดทัวร์",
     "toggleTheme": "สลับธีม",
-    "toggleMenu": "เปิด/ปิดเมนู"
+    "toggleMenu": "เปิด/ปิดเมนู",
+    "appearance": "รูปแบบการแสดงผล",
+    "themeSystem": "ตามระบบ",
+    "themeLight": "สว่าง",
+    "themeDark": "มืด",
+    "pauseHero": "หยุดแอนิเมชันชั่วคราว",
+    "playHero": "เล่นแอนิเมชันต่อ",
+    "ratingOutOfFive": "{rating} จาก 5 ดาว",
+    "galleryThumbnails": "รูปภาพห้องพัก"
   },
   "Resort": {
     "tagline": "ที่ที่ทะเลพบความสงบ",
@@ -531,7 +577,10 @@
     "leadEmailPlaceholder": "you@example.com",
     "invalidEmail": "กรอกอีเมลให้ถูกต้อง",
     "saveError": "ยังบันทึกอีเมลนี้ไม่ได้",
-    "save": "บันทึก"
+    "save": "บันทึก",
+    "viewerLabel": "ทัวร์ 360 องศาของ {propertyName}",
+    "emailLabel": "อีเมล",
+    "saving": "กำลังบันทึก..."
   },
   "TourConclusions": {
     "pool-villa": {
@@ -710,11 +759,13 @@
     "ask": "สอบถามบริการนี้",
     "minutes": "นาที",
     "fromPrice": "เริ่มต้น {price}",
+    "defaultDuration": "ค่าเริ่มต้น: {duration}",
     "chooseDuration": "เลือกระยะเวลา",
     "next": "บริการถัดไป",
     "first": "กลับหน้าแรก",
     "moreCategories": "หมวดหมู่อื่น",
-    "draft": "สนใจบริการ {name} กรุณาช่วยเลือกวันและเวลา"
+    "draft": "สนใจบริการ {name} กรุณาช่วยเลือกวันและเวลา",
+    "showAll": "แสดงบริการทั้งหมด"
   },
   "Consent": {
     "label": "ตัวเลือกการวัดผล",

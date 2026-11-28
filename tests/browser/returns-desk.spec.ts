@@ -134,6 +134,23 @@ test.describe("Return items", () => {
     expect(await page.evaluate(() => window.returnsFixture.returns())).toHaveLength(0);
   });
 
+  test("a cashier's reopened pending return still shows the session restoration destination", async ({ page }) => {
+    await open(page, "?variant=covered&role=cashier");
+    const returnItems = page.getByRole("button", { name: "Return items · Thai massage" });
+    await returnItems.click();
+    const panel = sheet(page);
+    await panel.getByRole("button", { name: "Changed mind" }).click();
+    const quoteLabel = panel.locator("[data-return-destinations] li").filter({ hasText: "Restore session" });
+    await expect(quoteLabel).toHaveText("Restore session");
+    await panel.getByRole("button", { name: "Ask a manager" }).click();
+    await expect(panel.locator("[data-return-waiting]")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(panel).toHaveCount(0);
+    await returnItems.click();
+    const destinations = panel.getByRole("list", { name: "Where it goes" });
+    await expect(destinations.getByRole("listitem")).toHaveText(["Restore session", "No money to give back"]);
+  });
+
   test("after a reload the till shows Check previous refund and never a second payout", async ({ page }) => {
     await open(page);
     await page.getByRole("button", { name: "Return items · Gold Wellness" }).click();
@@ -394,7 +411,7 @@ test.describe("audit round 1", () => {
     const more = panel.getByRole("button", { name: "One more" });
     await more.click();
     await more.click();
-    await expect(panel.getByRole("group", { name: "Units of Thai massage 60 sessions" }).locator("output")).toHaveText("3");
+    await expect(panel.getByRole("group", { name: "Units of Thai massage 60 sessions" }).getByRole("spinbutton")).toHaveValue("3");
     await expect(more).toBeDisabled();
     // The whole cancellation, then the receipt row has nothing left to return.
     await panel.getByRole("checkbox", { name: "Thai massage 60 sessions" }).uncheck();
@@ -594,6 +611,18 @@ for (const [width, height] of ROUND2) {
       await panel.getByRole("button", { name: "Changed mind" }).click();
       await panel.getByRole("button", { name: "Ask a manager" }).click();
       await expect(panel.locator("[data-return-waiting]")).toHaveText("Waiting for a manager");
+
+      const summary = panel.getByRole("region", { name: "Requested return" });
+      const expectMasks = async () => {
+        await expect(summary).toContainText("Replacement voucher · GV-••••-Q9XD · ฿250");
+        await expect(summary).toContainText("Replacement voucher · GV-••••-R8TB · ฿250");
+        await expect(summary).not.toContainText(/GV-(7KQ2|3HW5)-/);
+      };
+      await expectMasks();
+      await page.keyboard.press("Escape");
+      await expect(panel).toHaveCount(0);
+      await page.getByRole("button", { name: "Return items · Thai massage" }).click();
+      await expectMasks();
 
       const session = await page.evaluate(() => window.returnsFixture.session);
       const managerContext = await browser.newContext({ viewport: { width, height } });

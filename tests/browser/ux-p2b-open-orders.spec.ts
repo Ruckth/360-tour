@@ -37,7 +37,10 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
       await expect(list.getByRole("listitem").first()).toContainText("Order #1043");
       await expect(list.getByRole("listitem").first().getByText("Current", { exact: true })).toBeVisible();
       const earlier = list.getByRole("button", { name: /^Order #1042/ });
-      await expect(earlier).toContainText("Somchai Prasert · 3 items");
+      await expect(earlier.getByText("Somchai Prasert", { exact: true })).toBeVisible();
+      await expect(earlier.getByText("3 items", { exact: true })).toBeVisible();
+      await expect(earlier.getByText(/^Updated /)).toBeVisible();
+      await expect(earlier).toHaveAccessibleName(/^Order #1042, Somchai Prasert, updated .+, 3 items, ฿780 due$/);
       await expect(earlier).toContainText("฿780");
       await expectAtMostSentences(dialog, 2);
       await count.tap(earlier, "Order #1042 row");
@@ -51,7 +54,7 @@ for (const size of Object.keys(UX_VIEWPORTS) as UxViewport[]) {
       const count = new TaskCounter();
       await count.tap(page.getByRole("button", { name: "Orders", exact: true }), "Orders");
       const dialog = page.getByRole("dialog", { name: "Orders" });
-      await count.type(dialog.getByRole("textbox", { name: "Order number" }), "1042", "order number");
+      await count.type(dialog.getByRole("textbox", { name: "Order or receipt number" }), "1042", "order number");
       await count.tap(dialog.getByRole("button", { name: "Go", exact: true }), "Go");
       await expect(orderTitle(page, size)).toHaveText("Order #1042");
       expect({ taps: count.taps, typed: count.typed }, count.log.join("\n")).toEqual({ taps: 2, typed: 1 });

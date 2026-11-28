@@ -38,7 +38,7 @@ export function BusinessFactsView() {
 
   return (
     <div className="mx-auto grid w-full max-w-6xl gap-4 px-4 py-4 sm:px-6">
-      {mode === "missing" ? <header><h2 className="font-serif text-2xl font-semibold">Missing information</h2><p className="mt-1 text-sm text-muted-foreground">Help the concierge answer guest questions.</p></header> : null}
+      {/* The shell names the page (Business facts); the tab and its panel name Missing information. */}
       <SegmentedTabs
         id="knowledge"
         label="Knowledge sections"

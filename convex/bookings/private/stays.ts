@@ -203,7 +203,8 @@ export function toAdminBooking(booking: Doc<'bookings'>) {
 		confirmationCode: booking.confirmationCode,
 		createdAt: booking.createdAt,
 		/** Send it back with a correction so a change made meanwhile is not overwritten. */
-		revision: bookingRevision(booking)
+		revision: bookingRevision(booking),
+		...(booking.stayStatus ? { stayStatus: booking.stayStatus } : {})
 	};
 }
 
@@ -257,10 +258,17 @@ export async function confirmStay(ctx: MutationCtx, booking: Doc<'bookings'>, ac
  * An archived villa is accepted only to record a stay that started in the past, with a reason
  * that is logged. Returns the cleaned reason, or undefined for an active villa.
  */
+export function archivedVillaBlocker(property: Pick<Doc<'properties'>, 'status'> | null, checkIn: string) {
+	if (property?.status === 'active') return null;
+	if (property?.status !== 'archived') return 'unavailable';
+	return checkIn >= resortTodayIso() ? 'archived' : null;
+}
+
 export function archivedVillaPolicy(property: Doc<'properties'>, checkIn: string, archivedVillaReason: string | undefined, requireReason = true) {
 	if (property.status === 'active') return undefined;
-	if (property.status !== 'archived') throw new Error(PROPERTY_UNAVAILABLE);
-	if (checkIn >= resortTodayIso()) throw new Error('Archived villas can only be used to record stays that started in the past.');
+	const blocker = archivedVillaBlocker(property, checkIn);
+	if (blocker === 'unavailable') throw new Error(PROPERTY_UNAVAILABLE);
+	if (blocker === 'archived') throw new Error('Archived villas can only be used to record stays that started in the past.');
 	const reason = cleanReason(archivedVillaReason, 'Reason for using an archived villa', false);
 	if (!reason && requireReason) throw new Error('This villa is archived. Give a reason to record a past stay in it.');
 	assertBookableProperty(property, { allowArchivedProperty: true });
@@ -339,6 +347,7 @@ export function assertReviewedPrice(expected: { total: number; currency: string 
 
 /** Why a booking can't be deleted, or null. Anything that involved money must be cancelled instead. */
 export function deleteBlocker(booking: Doc<'bookings'>, now: number): string | null {
+	if (booking.stayStatus) return 'This stay has an operational history.';
 	const touchedMoney =
 		booking.paymentStatus === 'paid' ||
 		booking.paymentStatus === 'refunded' ||
@@ -446,4 +455,22 @@ export async function validateDateBlock(
 	if (rowsCheckedOnWrite) await assertNoBookingOverlap(ctx, args.propertyId, args.start, args.end);
 	else await assertStayFree(ctx, args.propertyId, args.start, args.end);
 	return reason;
+}
+
+/** Deployment-local operations approval gate for desk attendance writes. */
+export function stayAttendanceEnabled(): boolean {
+	return process.env.HOTEL_STAY_ATTENDANCE_ENABLED === 'true';
+}
+
+/**
+ * Why an appointment on `appointmentDate` (resort date) can't be attached to this stay, or null. An attached
+ * appointment shares the stay's checkout order; attaching never charges anything by itself.
+ */
+export function stayAttachProblem(booking: Doc<'bookings'> | null, appointmentDate: string): string | null {
+	if (!booking) return 'That stay no longer exists. Choose another stay or book without one.';
+	if (booking.status === 'cancelled') return 'That stay is cancelled. Choose another stay or book without one.';
+	if (appointmentDate < booking.checkIn || appointmentDate > booking.checkOut) {
+		return `That stay runs ${booking.checkIn} to ${booking.checkOut}; the appointment must fall within it.`;
+	}
+	return null;
 }

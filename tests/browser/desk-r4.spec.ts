@@ -11,10 +11,10 @@ for (const width of [390, 1180]) {
     await page.locator("[data-fixture-ready]").waitFor();
     await expect(page.getByRole("heading", { name: "Anna Müller", exact: true })).toBeVisible();
     // The queue can also say Needs you. Scope this assertion to the thread header.
-    const header = page.getByRole("heading", { name: "Anna Müller", exact: true }).locator("../../..");
+    const header = page.getByTestId("chat-header");
     await expect(header.getByText("Needs you", { exact: true }).locator("visible=true")).toHaveCount(1);
     await expect(header.getByText("Waiting for staff", { exact: true })).toHaveCount(0);
-    await expect(header.getByText("AI on", { exact: true })).toHaveCount(0);
+    await expect(header.getByText("AI on", { exact: true }).locator("visible=true")).toHaveCount(1);
     const input = page.getByRole("textbox", { name: "Type an admin reply" });
     const send = page.getByRole("button", { name: "Send", exact: true });
     const inputBox = (await input.boundingBox())!;
@@ -30,14 +30,14 @@ for (const width of [390, 1180]) {
     await page.locator("[data-fixture-ready]").waitFor();
     const row = page.locator("tbody tr").filter({ hasText: "Is breakfast included?" });
     const otherRow = page.locator("tbody tr").filter({ hasText: "Do you have a baby cot?" });
-    if (width === 390) await expect(page.getByRole("combobox", { name: "Report status" })).toContainText("Status: New");
+    if (width === 390) await expect(page.getByRole("tablist", { name: "Report status" }).getByRole("tab", { name: "New" })).toHaveAttribute("aria-selected", "true");
     await row.getByRole("combobox").click();
-    await page.getByRole("option", { name: "Breakfast is included", exact: true }).click();
+    await page.getByRole("option", { name: /^Breakfast is included/ }).click();
     await expect(row.getByRole("alert")).toContainText("Couldn’t resolve this question. Try again.");
     await expect(otherRow.getByRole("alert")).toHaveCount(0);
     await expect(row.getByRole("combobox")).toBeEnabled();
     await row.getByRole("combobox").click();
-    await page.getByRole("option", { name: "Breakfast is included", exact: true }).click();
+    await page.getByRole("option", { name: /^Breakfast is included/ }).click();
     await expect(row).toHaveCount(0);
     await expect(page.getByTestId("toast")).toContainText("Resolved 2 reports");
   });
@@ -62,7 +62,7 @@ test("phone booking footer reaches the bottom and Block stays beside the date ta
 test("phone hotel list states Paid once and explains whose balance is due", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openDesk(page);
-  await expect(page.getByRole("button", { name: /^Balance due/ })).toContainText("From today’s guests");
+  await expect(page.getByRole("button", { name: /^Balance due/ })).toContainText("Today’s guests · all villas");
   const lena = page.locator('[data-slot="event-calendar-event"]').filter({ hasText: "Lena Fischer" });
   await expect(lena.first()).toBeVisible();
   for (const row of await lena.all()) await expect(row.getByText("Paid", { exact: true })).toHaveCount(1);

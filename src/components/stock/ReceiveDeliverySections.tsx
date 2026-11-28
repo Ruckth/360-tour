@@ -58,6 +58,8 @@ export function ReceivePurchaseOrderSection({
   branchName,
   initialOrderId,
   allowDirectReceipt,
+  orderSearch,
+  onOrderSearchChange,
   orderedOpenOrders,
   openOrdersStatus,
   onLoadMoreOrders,
@@ -88,6 +90,8 @@ export function ReceivePurchaseOrderSection({
   branchName: string;
   initialOrderId?: Id<"purchaseOrders">;
   allowDirectReceipt: boolean;
+  orderSearch: string;
+  onOrderSearchChange: (search: string) => void;
   orderedOpenOrders: readonly ReceiveOrderRow[];
   openOrdersStatus: PaginationStatus;
   onLoadMoreOrders: () => void;
@@ -126,12 +130,25 @@ export function ReceivePurchaseOrderSection({
     <div className="grid gap-4">
       {!initialOrderId ? (
         <div className="grid gap-2">
-          <Label>Select an open purchase order</Label>
+          <p className="text-sm font-medium">Select an open purchase order</p>
+          <Label className="grid gap-1.5">
+            Search open orders
+            <Input
+              type="search"
+              placeholder="Order reference or supplier"
+              maxLength={120}
+              value={orderSearch}
+              onChange={(event) => {
+                setOrdersBeforeKeyboardLoad(null);
+                onOrderSearchChange(event.target.value);
+              }}
+            />
+          </Label>
           {openOrdersStatus === "LoadingFirstPage" ? (
             <SkeletonRows label="Loading open purchase orders" rows={2} />
           ) : openOrdersStatus === "Exhausted" && orderedOpenOrders.length === 0 ? (
             <Callout tone="info">
-              No open purchase orders at {branchName}.
+              {orderSearch.trim() ? "No open purchase orders match this search." : `No open purchase orders at ${branchName}.`}
               {allowDirectReceipt ? " You can switch to Receive without PO above." : ""}
             </Callout>
           ) : (
@@ -275,18 +292,18 @@ export function ReceivePurchaseOrderSection({
                       />
                       <FieldError id={`po-rej-${line._id}-err`}>{lineErr?.rejected}</FieldError>
                     </div>
-                    <div className="grid gap-1.5">
-                      <Label htmlFor={`po-rej-reason-${line._id}`}>Rejection reason</Label>
+                    {Number(rejectedByLine[line._id]) > 0 && <div className="grid gap-1.5">
+                      <Label htmlFor={`po-rej-reason-${line._id}`}>Rejection reason (required)</Label>
                       <Input
                         id={`po-rej-reason-${line._id}`}
                         value={rejectReasonByLine[line._id] ?? ""}
-                        placeholder="Required if rejected > 0"
+                        aria-required="true"
                         aria-invalid={lineErr?.rejectReason ? true : undefined}
                         aria-describedby={lineErr?.rejectReason ? `po-rej-reason-${line._id}-err` : undefined}
                         onChange={(event) => onRejectReasonChange(line._id, event.target.value)}
                       />
                       <FieldError id={`po-rej-reason-${line._id}-err`}>{lineErr?.rejectReason}</FieldError>
-                    </div>
+                    </div>}
                   </div>
 
                   {eligibleHolds.length > 0 ? (

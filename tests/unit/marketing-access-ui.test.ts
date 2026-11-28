@@ -117,9 +117,18 @@ const partnerLink: LinkRow = { _id: "partner-link" as Id<"marketingLinks">, _cre
 it("routes canonical partner links to Affiliates and retains copy and QR actions", async () => {
   const saveLink = vi.fn<MarketingActions["saveLink"]>();
   await render(createElement(LinksView, { links: [partnerLink], campaigns: [campaign], coupons: [], properties: [], origin: "https://example.com", brand: "Resort", today: "2026-11-09", campaignsHref: "/c", actions: { saveLink, setLinkStatus: vi.fn(), checkSlug: vi.fn() } }), "manager");
-  expect(document.querySelector('a[href="/admin/marketing/affiliates"]')?.textContent).toBe("Manage partner");
+  expect(document.querySelector('a[href="/admin/marketing/affiliates?partner=anna"]')?.textContent).toBe("Manage partner");
   expect(document.querySelector('[aria-label="QR offer card for /r/anna"]')).not.toBeNull();
-  await click(button("Anna")); expect(mocked.routerPush).toHaveBeenCalledWith("/admin/marketing/affiliates"); expect(document.querySelector('[role="dialog"]')).toBeNull(); expect(saveLink).not.toHaveBeenCalled();
+  await click(button("Anna")); expect(mocked.routerPush).toHaveBeenCalledWith("/admin/marketing/affiliates?partner=anna"); expect(document.querySelector('[role="dialog"]')).toBeNull(); expect(saveLink).not.toHaveBeenCalled();
+});
+it("shows matching links when a saved campaign filter no longer exists", async () => {
+  await render(createElement(LinksView, {
+    links: [partnerLink], campaigns: [campaign], coupons: [], properties: [], today: "2026-11-09",
+    origin: "https://example.com", brand: "Resort", campaignsHref: "/c",
+    filters: { tab: "active", query: "Anna", campaignFilter: "j".repeat(32), offerIssuesOnly: false },
+    actions: { saveLink: vi.fn(), setLinkStatus: vi.fn(), checkSlug: vi.fn() },
+  }));
+  expect(document.querySelector('a[href="/admin/marketing/affiliates?partner=anna"]')).not.toBeNull();
 });
 it("preserves an affiliate alias association when a manager saves details", async () => {
   const alias: LinkRow = { ...partnerLink, slug: "anna-extra", shortUrlPath: "/anna-extra", status: "draft" };

@@ -35,6 +35,8 @@ const browser = vi.hoisted(() => {
   return { state, router, url, reset(entries: string[]) { state.entries = entries; state.index = entries.length - 1; } };
 });
 
+vi.mock("@clerk/tanstack-react-start", () => ({ useAuth: () => ({ sessionId: "session-a", userId: "user-a" }) }));
+
 vi.mock("@/platform/navigation", () => ({
   useRouter: () => browser.router,
   useSearchParams: () => new URLSearchParams(browser.url().split("?")[1] ?? ""),

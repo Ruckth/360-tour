@@ -115,6 +115,8 @@ export type AdminSession = {
   inboxSendError?: string;
   inboxHandoff?: boolean;
   staffTask?: string;
+  staffTaskDueAt?: number;
+  staffTaskRevision?: number;
   keepWithStaff?: boolean;
   resolutionSource?: 'ai' | 'staff' | 'manual';
   latestMessage?: AdminMessage;
@@ -140,6 +142,7 @@ export type ChannelReplyWindow =
 export type SessionDetailResult = {
   session: AdminSession;
   replyWindow: ChannelReplyWindow;
+  linkedStay?: { bookingId: Id<"bookings">; propertyName: string; checkIn: string; checkOut: string } | null;
   lineEvents?: AdminLineEvent[];
   facebookEvents?: AdminFacebookEvent[];
   whatsappEvents?: AdminWhatsAppEvent[];

@@ -101,12 +101,12 @@ export function PurchaseOrderDetailView({ orderId }: { orderId: string }) {
   const amendOrder = useMutation(api.commerce.purchasing.amendPurchaseOrder);
   const closeRemainder = useMutation(api.commerce.purchasing.closePurchaseOrderRemainder);
 
-  const [editOpen, setEditOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<"draft" | Id<"productVariants"> | null>(null);
   const [receiveOpen, setReceiveOpen] = useState(false);
   const [amendOpen, setAmendOpen] = useState(false);
   const [closeOpen, setCloseOpen] = useState(false);
   const [allocationShortfalls, setAllocationShortfalls] = useState<
-    { requestLineId?: string; available?: number }[] | null
+    { orderLineId: Id<"purchaseOrderLines">; available: number }[] | null
   >(null);
   const [busy, setBusy] = useState(false);
 
@@ -159,7 +159,7 @@ export function PurchaseOrderDetailView({ orderId }: { orderId: string }) {
       if (cause && typeof cause === "object" && "data" in cause) {
         const data = (cause as { data?: Record<string, unknown> }).data;
         if (data?.code === "ALLOCATION_CHANGED" && Array.isArray(data.lines)) {
-          setAllocationShortfalls(data.lines as { requestLineId?: string; available?: number }[]);
+          setAllocationShortfalls(data.lines as { orderLineId: Id<"purchaseOrderLines">; available: number }[]);
         }
       }
     } finally {
@@ -242,7 +242,7 @@ export function PurchaseOrderDetailView({ orderId }: { orderId: string }) {
                 <Send aria-hidden className="size-4" />
                 Issue order
               </Button>
-              <Button type="button" variant="outline" disabled={busy} onClick={() => setEditOpen(true)}>
+              <Button type="button" variant="outline" disabled={busy} onClick={() => setEditTarget("draft")}>
                 <Pencil aria-hidden className="size-4" />
                 Edit draft
               </Button>
@@ -299,15 +299,30 @@ export function PurchaseOrderDetailView({ orderId }: { orderId: string }) {
         </div>
       </div>
 
-      {allocationShortfalls && allocationShortfalls.length > 0 ? (
+      {isDraft && permissions.buyer && allocationShortfalls?.length ? (
         <Callout tone="warning" title="Approved quantity changed on the source request">
-          <p>Another order used part of the approved amount. Edit this draft to fit what is still available:</p>
-          <ul className="mt-1 list-disc pl-5 text-xs">
-            {allocationShortfalls.map((s, idx) => (
-              <li key={idx}>
-                Line {s.requestLineId ?? idx + 1}: <strong>{s.available ?? 0}</strong> still available
-              </li>
-            ))}
+          <p>Adjust the draft quantities to fit the remaining approval.</p>
+          <ul className="mt-2 grid gap-2 text-xs">
+            {allocationShortfalls.map(({ orderLineId, available }) => {
+              const line = lines.find((row) => row._id === orderLineId);
+              if (!line) return null;
+              const label = [line.item.productName, line.item.variantLabel, line.item.sku].filter(Boolean).join(" · ");
+              return (
+                <li key={orderLineId} className="grid gap-1">
+                  <strong>{label}</strong>
+                  <span>Requested on this order {line.ordered} · Still available {available}</span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="justify-self-start"
+                    onClick={() => setEditTarget(line.variantId)}
+                  >
+                    Edit quantity for {label}
+                  </Button>
+                </li>
+              );
+            })}
           </ul>
         </Callout>
       ) : null}
@@ -520,12 +535,13 @@ export function PurchaseOrderDetailView({ orderId }: { orderId: string }) {
         </div>
       )}
 
-      {editOpen ? (
+      {editTarget && isDraft && permissions.buyer ? (
         <OrderEditorSheet
           branchId={branch.id}
           branchName={branch.name}
           canAddSupplier={permissions.buyer}
           liveRevision={order.revision}
+          focusQuantityVariantId={editTarget === "draft" ? undefined : editTarget}
           existing={{
             orderId: order._id,
             revision: order.revision,
@@ -545,9 +561,10 @@ export function PurchaseOrderDetailView({ orderId }: { orderId: string }) {
               unitCostText: line.unitCost !== undefined ? (line.unitCost / 100).toString() : "",
             })),
           }}
-          onClose={() => setEditOpen(false)}
+          onClose={() => setEditTarget(null)}
           onSaved={() => {
-            setEditOpen(false);
+            setEditTarget(null);
+            setAllocationShortfalls(null);
             show("Order draft updated.", "success");
           }}
         />

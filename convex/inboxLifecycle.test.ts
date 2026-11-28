@@ -1,4 +1,7 @@
-import { asTestOwner } from './testing/staff.test-support';
+import { asTestOwner, seedTestBranch } from './testing/staff.test-support';
+import { insertFixture } from "./testing/completeFixture.test-support";
+import { resortDateTime } from "./shared/time";
+
 import { recordTestGuest, commitTestAssistant } from './testing/messages.test-support';
 // @vitest-environment edge-runtime
 
@@ -551,4 +554,134 @@ it("preserves pending extra reply failures against stale Reopen", async () => {
   expect(await s.detail()).toMatchObject({ inboxReason: 'send_failed', inboxSendError: 'Channel failed', needsReply: true });
   await s.admin.mutation(api.messaging.adminChat.setSessionStatus, { sessionId: s.sessionId, status: 'open' });
   expect(await s.detail()).toMatchObject({ inboxState: 'processing', staffTask: 'Review conversation' });
+});
+
+describe("chat desk controls", () => {
+  const chat = api.messaging.adminChat;
+
+  async function desk() {
+    const s = await setup();
+    await s.t.run(async ctx => {
+      const primary = await seedTestBranch(ctx);
+      const other = await seedTestBranch(ctx, "other");
+      for (const [email, tokenIdentifier, branchId] of [
+        ["desk@example.com", "desk", primary],
+        ["other@example.com", "other", other],
+      ] as const) {
+        await ctx.db.insert("staffGrants", {
+          email, tokenIdentifier, branchIds: [branchId], role: "manager",
+          createdAt: 1, updatedAt: 1, updatedByEmail: "admin@example.com",
+        });
+      }
+    });
+    const manager = s.t.withIdentity({ email: "desk@example.com", tokenIdentifier: "desk", emailVerified: true });
+    const outsider = s.t.withIdentity({ email: "other@example.com", tokenIdentifier: "other", emailVerified: true });
+    return { ...s, manager, outsider };
+  }
+
+  it("allows eligible assignments, rejects stale writes and denies cross-branch access", async () => {
+    const { admin, manager, outsider, sessionId, guestId, detail } = await desk();
+    const args = { sessionId, email: "desk@example.com", expectedEmail: null };
+    await expect(outsider.mutation(chat.assignSession, args)).rejects.toThrow("Chat desk access required");
+    await expect(admin.mutation(chat.assignSession, { ...args, email: "other@example.com" })).rejects.toThrow("does not have access");
+    await manager.mutation(chat.assignSession, args);
+    await expect(admin.mutation(chat.assignSession, args)).rejects.toThrow("Assignment changed");
+    expect(await detail()).toMatchObject({ assignedAdminEmail: "desk@example.com" });
+    await expect(admin.mutation(chat.settleGuestMessage, {
+      sessionId, messageId: guestId, expectedAssignedEmail: null,
+    })).rejects.toThrow("Assignment changed");
+    await expect(outsider.query(chat.getSessionDetail, { sessionId })).rejects.toThrow("Chat desk access required");
+    expect(await outsider.query(chat.queueCounts, {})).toBeNull();
+    await expect(outsider.query(chat.listSessions, { searchQuery: "guest" })).rejects.toThrow("Chat desk access required");
+  });
+
+  it("caps queue totals independently of list pagination and excludes empty chats", async () => {
+    const { t, admin } = await setup();
+    await t.run(async ctx => {
+      for (let i = 0; i < 101; i++) {
+        await ctx.db.insert("conversations", {
+          channel: "web", createdAt: i, latestMessageAt: i, inboxProjectionVersion: 1, inboxState: "needs_staff",
+        });
+      }
+      await ctx.db.insert("conversations", {
+        channel: "web", createdAt: 1, inboxProjectionVersion: 1, inboxState: "processing",
+      });
+      await ctx.db.insert("conversations", {
+        channel: "web", createdAt: 1, latestMessageAt: 1, inboxProjectionVersion: 1,
+      });
+      await ctx.db.insert("conversations", {
+        channel: "web", createdAt: 1, latestMessageAt: 1, inboxProjectionVersion: 1,
+        adminStatus: "resolved", inboxState: "processing",
+      });
+    });
+    expect(await admin.query(chat.queueCounts, {})).toEqual({ waiting: 100, inProgress: 2 });
+    await admin.query(chat.listSessions, { adminStatus: "archived" });
+    expect(await admin.query(chat.queueCounts, {})).toEqual({ waiting: 100, inProgress: 2 });
+  });
+
+  it("rejects stale settlement and AI changes while preserving current state", async () => {
+    const { t, admin, sessionId, guestId, detail } = await setup();
+    const newer = await recordTestGuest(t, { sessionId, content: "Another question" });
+    await expect(admin.mutation(chat.settleGuestMessage, { sessionId, messageId: guestId })).rejects.toThrow("The chat changed");
+    expect((await detail()).settledGuestMessageId).toBeUndefined();
+    await admin.mutation(chat.setAiPaused, { sessionId, paused: true, expectedPaused: false });
+    await expect(admin.mutation(chat.setAiPaused, { sessionId, paused: true, expectedPaused: false })).rejects.toThrow("AI state changed");
+    await admin.mutation(chat.settleGuestMessage, { sessionId, messageId: newer });
+    expect(await detail()).toMatchObject({ settledGuestMessageId: newer, inboxState: "done" });
+  });
+
+  it("keeps an in-flight reply and queue state when a stale list action settles it", async () => {
+    const { admin, sessionId, guestId, detail } = await setup();
+    await admin.mutation(api.messaging.adminReply.claim, { sessionId, requestId: "pending-settle", content: "Yes" });
+    await expect(admin.mutation(chat.settleGuestMessage, { sessionId, messageId: guestId })).rejects.toThrow("reply is pending");
+    expect(await detail()).toMatchObject({ inboxState: "processing", inboxReason: "sending" });
+    expect((await detail()).settledGuestMessageId).toBeUndefined();
+  });
+
+  it("stores Bangkok due times and rejects completion after a concurrent edit", async () => {
+    const { admin, sessionId, detail } = await setup();
+    const dueAt = resortDateTime("2026-12-02", "00:15");
+    expect(new Date(dueAt).toISOString()).toBe("2026-12-01T17:15:00.000Z");
+    await admin.mutation(chat.setStaffTask, { sessionId, task: "Review", dueAt, expectedRevision: 0 });
+    await admin.mutation(chat.setStaffTask, { sessionId, task: "Check again", dueAt, expectedRevision: 1 });
+    await expect(admin.mutation(chat.setStaffTask, { sessionId, task: null, expectedRevision: 1 })).rejects.toThrow("follow-up changed");
+    expect(await detail()).toMatchObject({ staffTask: "Check again", staffTaskDueAt: dueAt, staffTaskRevision: 2 });
+    await admin.mutation(chat.setStaffTask, { sessionId, task: null, expectedRevision: 2 });
+    expect((await detail()).staffTaskDueAt).toBeUndefined();
+  });
+
+  it("returns an explicit stay association and withholds contact matches and booking tokens", async () => {
+    const { t, admin, outsider, sessionId } = await desk();
+    const bookingId = await t.run(async ctx => {
+      const propertyId = await ctx.db.insert("properties", {
+        name: "Hill Villa", slug: "hill", tagline: "Private stay", description: "Test villa",
+        pricePerNight: 100000, currency: "THB", maxGuests: 4, bedrooms: 2, bathrooms: 2,
+        area: 100, images: [], amenities: [], tourRoomIds: [], directDiscountPercent: 0, status: "active",
+      });
+      const common = {
+        propertyId, guestName: "Guest", guestPhone: "+66800000000", guestEmail: "guest@example.com",
+        checkIn: "2026-12-02", checkOut: "2026-12-05", guests: 2, nights: 3, subtotal: 300000,
+        discountAmount: 0, total: 300000, currency: "THB", paymentStatus: "pending", status: "confirmed", createdAt: 1,
+      } as const;
+      await ctx.db.patch(sessionId, { visitorEmail: common.guestEmail });
+      const id = await insertFixture(ctx, "bookings", { ...common, chatSessionId: sessionId, accessToken: "private-token" });
+      await insertFixture(ctx, "bookings", common);
+      return id;
+    });
+    expect((await admin.query(chat.getSessionDetail, { sessionId }))?.linkedStay).toEqual({
+      bookingId, propertyName: "Hill Villa", checkIn: "2026-12-02", checkOut: "2026-12-05",
+    });
+    expect(await outsider.query(api.bookings.admin.getForAdmin, { bookingId })).toBeNull();
+    expect(await admin.query(api.bookings.admin.getForAdmin, { bookingId: "bad-deep-link" })).toBeNull();
+    await t.run(ctx => ctx.db.patch(bookingId, { chatSessionId: undefined }));
+    expect((await admin.query(chat.getSessionDetail, { sessionId }))?.linkedStay).toBeNull();
+  });
+
+  it("rejects over-limit staff replies and accepts the exact limit", async () => {
+    const { admin, sessionId } = await setup();
+    const args = { sessionId, requestId: "length-check" };
+    const claim = api.messaging.adminReply.claim;
+    await expect(admin.mutation(claim, { ...args, content: "a".repeat(1001) })).rejects.toThrow("1 and 1000");
+    await expect(admin.mutation(claim, { ...args, content: "a".repeat(1000) })).resolves.toMatchObject({ state: "new" });
+  });
 });

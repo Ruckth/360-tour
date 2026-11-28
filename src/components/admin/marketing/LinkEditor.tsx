@@ -79,14 +79,14 @@ type SlugState = { status: "idle" } | { status: "checking"; slug: string } | { s
 type SlugAnswer = Extract<SlugState, { status: "done" | "error" }>;
 
 /** Live slug check: debounced, and an answer for an older value never overwrites a newer one. */
-function useSlugCheck(slug: string, linkId: Id<"marketingLinks"> | undefined, skip: boolean, checkSlug: MarketingActions["checkSlug"]): SlugState {
+function useSlugCheck(slug: string, linkId: Id<"marketingLinks"> | undefined, skip: boolean, checkSlug: MarketingActions["checkSlug"], attempt: number): SlugState {
   // Keep checkSlug stable between renders; callers memoize the backend methods.
   const [answer, setAnswer] = useState<SlugAnswer | null>(null);
 
   // Any input change starts a fresh check, so drop the previous answer.
-  const [checked, setChecked] = useState({ slug, linkId, skip, checkSlug });
-  if (checked.slug !== slug || checked.linkId !== linkId || checked.skip !== skip || checked.checkSlug !== checkSlug) {
-    setChecked({ slug, linkId, skip, checkSlug });
+  const [checked, setChecked] = useState({ slug, linkId, skip, checkSlug, attempt });
+  if (checked.slug !== slug || checked.linkId !== linkId || checked.skip !== skip || checked.checkSlug !== checkSlug || checked.attempt !== attempt) {
+    setChecked({ slug, linkId, skip, checkSlug, attempt });
     setAnswer(null);
   }
 
@@ -104,7 +104,7 @@ function useSlugCheck(slug: string, linkId: Id<"marketingLinks"> | undefined, sk
       );
     }, 350);
     return () => { active = false; window.clearTimeout(timer); };
-  }, [slug, linkId, skip, checkSlug]);
+  }, [slug, linkId, skip, checkSlug, attempt]);
 
   if (skip) return { status: "idle" };
   if (!slug) return { status: "done", check: { ok: false, slug, reason: "empty" } };
@@ -155,7 +155,8 @@ export function LinkEditor({
   // Once a link is live its address is printed and shared, so it can't change.
   const slugLocked = link !== undefined && link.status !== "draft";
   const unchangedSlug = link !== undefined && form.slug === link.slug;
-  const slugState = useSlugCheck(form.slug, link?._id, !canEdit || slugLocked || unchangedSlug, actions.checkSlug);
+  const [slugAttempt, setSlugAttempt] = useState(0);
+  const slugState = useSlugCheck(form.slug, link?._id, !canEdit || slugLocked || unchangedSlug, actions.checkSlug, slugAttempt);
   const slugOk = slugLocked || unchangedSlug || (slugState.status === "done" && slugState.check.ok);
   const takenBy = (slug: string) => links.find((other) => other.slug === slug && other._id !== link?._id)?.name;
   const slugMessage =
@@ -273,7 +274,10 @@ export function LinkEditor({
                 {url.display} is free
               </span>
             ) : slugMessage && (form.slug || submitted) ? (
-              <span className="font-medium text-destructive">{slugMessage}</span>
+              <>
+                <span className="font-medium text-destructive">{slugMessage}</span>
+                {slugState.status === "error" && <Button type="button" size="sm" variant="ghost" onClick={() => setSlugAttempt((attempt) => attempt + 1)}>Retry availability check</Button>}
+              </>
             ) : (
               <span className="text-muted-foreground">Short and easy to type, like f2 or spa-week. It can’t change after publishing.</span>
             )}

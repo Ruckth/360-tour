@@ -60,17 +60,6 @@ async function fresh() {
     viewerRenders(property.id);
     return h("div", { "data-testid": "viewer" }, `360:${property.id}`);
   }
-  /** Stands in for the room route's error boundary. */
-  class Boundary extends React.Component<{ children?: ReactNode }, { error?: Error }> {
-    state: { error?: Error } = {};
-    static getDerivedStateFromError(error: Error) {
-      return { error };
-    }
-    render() {
-      return this.state.error ? h("p", { "data-testid": "boundary" }, this.state.error.message) : this.props.children;
-    }
-  }
-
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
@@ -83,8 +72,7 @@ async function fresh() {
   mounted.push(async () => React.act(async () => root.unmount()));
   const viewer = () => h(RoomTourViewer, props);
   const strict = () => h(React.StrictMode, null, viewer());
-  const guarded = (key: string) => h(Boundary, { key }, viewer());
-  return { React, renderToString, RoomTourViewer, MockTourViewer, LockingTourViewer, OtherLock, container, root, render, viewer, strict, guarded };
+  return { React, renderToString, RoomTourViewer, MockTourViewer, LockingTourViewer, OtherLock, container, root, render, viewer, strict };
 }
 
 const mounted: (() => Promise<void>)[] = [];
@@ -184,19 +172,37 @@ describe("RoomTourViewer", () => {
     expect(errors).not.toHaveBeenCalled();
   });
 
-  it("throws a rejected import to the error boundary, and the next mount retries it", async () => {
-    const { MockTourViewer, container, render, guarded } = await fresh();
-    vi.spyOn(console, "error").mockImplementation(() => {});
+  it("keeps a failed import in a named recovery dialog and retries on the next open", async () => {
+    const { React, RoomTourViewer, MockTourViewer, container, render, viewer } = await fresh();
+    const rects = document.createElement("button").getClientRects();
+    vi.spyOn(HTMLElement.prototype, "getClientRects").mockReturnValue({ ...rects, length: 1 });
+    const onClose = vi.fn();
     mockLoadTourViewer.mockRejectedValueOnce(new Error("chunk failed"));
 
-    await render(guarded("first"));
-    expect(container.querySelector('[data-testid="boundary"]')?.textContent).toBe("chunk failed");
-    expect(container.querySelector('[data-testid="viewer"]')).toBeNull();
+    await render(React.createElement(RoomTourViewer, { ...props, onClose }));
+    const dialog = container.querySelector('[role="dialog"]');
+    expect(dialog?.getAttribute("aria-label")).toBe("Tour.viewerLabel");
+    expect(dialog?.getAttribute("aria-modal")).toBe("true");
+    expect(dialog?.getAttribute("aria-busy")).toBe("false");
+    expect(dialog?.querySelector('[role="alert"]')?.textContent).toBe("Tour.loadFailed");
+    expect(document.body.style.overflow).toBe("hidden");
+    const [retry, close] = [...(dialog?.querySelectorAll("button") ?? [])];
+    expect(retry?.textContent).toBe("Tour.retry");
+    expect(close?.textContent).toBe("A11y.close");
+    expect(document.activeElement).toBe(retry);
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, cancelable: true }));
+    expect(document.activeElement).toBe(close);
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", cancelable: true }));
+    expect(document.activeElement).toBe(retry);
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    expect(onClose).toHaveBeenCalledOnce();
 
+    await render(null);
+    expect(document.body.style.overflow).toBe("");
     mockLoadTourViewer.mockResolvedValueOnce(MockTourViewer);
-    await render(guarded("retry"));
+    await render(viewer());
     expect(mockLoadTourViewer).toHaveBeenCalledTimes(2);
-    expect(container.querySelector('[data-testid="boundary"]')).toBeNull();
+    expect(container.querySelector('[role="alert"]')).toBeNull();
     expect(container.querySelector('[data-testid="viewer"]')?.textContent).toBe("360:pool-villa");
   });
 
@@ -251,13 +257,15 @@ describe("RoomTourViewer", () => {
       expect(document.body.style.overflow).toBe("");
     });
 
-    it("releases its lock when the import fails into the error boundary", async () => {
-      const { render, guarded } = await fresh();
-      vi.spyOn(console, "error").mockImplementation(() => {});
+    it("keeps the scroll lock until a failed import’s recovery dialog closes", async () => {
+      const { render, viewer } = await fresh();
+      document.body.style.overflow = "scroll";
       mockLoadTourViewer.mockRejectedValueOnce(new Error("chunk failed"));
-      await render(guarded("failed"));
-      expect(document.querySelector('[data-testid="boundary"]')).not.toBeNull();
-      expect(document.body.style.overflow).toBe("");
+      await render(viewer());
+      expect(document.querySelector('[role="alert"]')?.textContent).toBe("Tour.loadFailed");
+      expect(document.body.style.overflow).toBe("hidden");
+      await render(null);
+      expect(document.body.style.overflow).toBe("scroll");
     });
   });
 });

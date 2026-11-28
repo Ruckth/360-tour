@@ -354,12 +354,13 @@ export const listOrders = staffQuery({
 /** The order with this number, for "go to order #". */
 export const findOrderByNumber = staffQuery({
   capability: 'checkout',
-	args: { orderNumber: v.number() },
+	args: { orderNumber: v.number(), receipt: v.optional(v.boolean()) },
 	handler: async (ctx, args) => {
 		const actor = ctx.staff;
 		if (!Number.isSafeInteger(args.orderNumber) || args.orderNumber < 1) return null;
-		const order = await readOrderProjection(ctx, () => ctx.db.query('orders')
-      .withIndex('by_orderNumber', q => q.eq('orderNumber', args.orderNumber)).first());
+		const order = await readOrderProjection(ctx, () => args.receipt
+      ? ctx.db.query('orders').withIndex('by_receiptNumber', q => q.eq('receiptNumber', args.orderNumber)).first()
+      : ctx.db.query('orders').withIndex('by_orderNumber', q => q.eq('orderNumber', args.orderNumber)).first());
     if (!order || !canAccessCheckoutOrderBranch(actor, order)) return null;
     if (canReadCheckoutOrder(actor, order)) return order._id;
     const active = order.status === 'paid' ? await openOrderReturn(ctx, order._id) : null;
@@ -476,6 +477,7 @@ export const restoreCheck = staffQuery({
 	handler: async (ctx, args) => {
 		const order = await ctx.db.get(args.orderId);
 		if (!order || !canAccessCheckoutOrderBranch(ctx.staff, order)) return null;
+		if (!ctx.staff.capabilities.orders) return null;
 		if (order.status !== 'discarded') return { discarded: null, revision: order.revision, conflicts: [], blocking: 0, rowsLeft: 0 };
 		const lines = await orderLines(ctx, order._id);
 		const conflicts = await restoreConflicts(ctx, order, lines, ctx.staff);
@@ -513,6 +515,8 @@ export const appointmentFees = staffQuery({
 async function orderListRow(ctx: QueryCtx, order: Doc<"orders">) {
 		const sources = await orderSourceRefs(ctx, order, await sourceRows(ctx, order._id));
 			const refundAmounts: { refundedAmountSatang?: number } = { refundedAmountSatang: order.returnedTotal ?? await orderRefundTotal(ctx, order._id) };
+		const paidAt = order.paymentEffectiveAt ?? order.paidAt;
+		const paymentTime: { paidAt?: number } = paidAt === undefined ? {} : { paidAt };
 			return {
 				_id: order._id,
 				orderNumber: order.orderNumber,
@@ -524,6 +528,7 @@ async function orderListRow(ctx: QueryCtx, order: Doc<"orders">) {
 				due: await remaining(ctx, order),
 				currency: order.currency,
 				updatedAt: order.updatedAt,
+				...paymentTime,
 				receiptNumber: order.receiptNumber,
 				customerName: await customerName(ctx, order),
 				/** The order's booking, as in its header (see orderSourceRefs). */

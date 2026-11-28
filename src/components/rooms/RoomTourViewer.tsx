@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useState, type ComponentProps } from "react";
+import { useEffect, useRef, useState, type ComponentProps } from "react";
+import { Button } from "@/components/ui/button";
 import { TourIntro } from "@/components/tour/TourIntro";
 import { useBodyScrollLock } from "@/lib/interaction/use-body-scroll-lock";
+import { useModalFocusTrap } from "@/lib/interaction/use-modal-focus";
 import { useTranslations } from "@/platform/intl";
 import { loadTourViewer } from "@/lib/tour/preload";
 import type { TourRenderer } from "@/lib/tour/renderer";
@@ -42,13 +44,23 @@ export function RoomTourViewer({ closeHref, renderer = "three", ...props }: Comp
 }) {
   const tourT = useTranslations("Tour");
   const a11y = useTranslations("A11y");
+  const loadingDialogRef = useRef<HTMLDivElement>(null);
   const [state, setState] = useState<{ viewer: Viewer } | { error: unknown } | null>(() => {
     const viewer = loaded.get(renderer);
     return viewer ? { viewer } : null;
   });
   const { onClose } = props;
-  // The pending intro holds its own reference-counted lock; the viewer takes its own once mounted.
-  useBodyScrollLock(!state);
+  // The fallback holds its own reference-counted lock until the viewer mounts.
+  const failed = state !== null && "error" in state;
+  const showingFallback = !state || failed;
+  useBodyScrollLock(showingFallback);
+  useModalFocusTrap(loadingDialogRef, showingFallback, failed ? "failed" : "loading");
+  useEffect(() => {
+    if (!showingFallback) return;
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [onClose, showingFallback]);
   useEffect(() => {
     if (state) return;
     let active = true;
@@ -60,35 +72,44 @@ export function RoomTourViewer({ closeHref, renderer = "three", ...props }: Comp
       (viewer) => { if (active) setState({ viewer }); },
       (error: unknown) => { if (active) setState({ error }); },
     );
-    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
-    window.addEventListener("keydown", closeOnEscape);
-    return () => {
-      active = false;
-      window.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [state, onClose, renderer]);
-  if (!state) {
+    return () => { active = false; };
+  }, [state, renderer]);
+  if (!state || "error" in state) {
     return (
       <div
+        ref={loadingDialogRef}
+        tabIndex={-1}
         data-testid="tour-viewer-loading"
         role="dialog"
-        aria-label={props.property.name}
-        aria-busy
-        className="fixed inset-0 z-[70] bg-black"
+        aria-modal="true"
+        aria-label={tourT("viewerLabel", { propertyName: props.property.name })}
+        aria-busy={!failed}
+        className="fixed inset-0 z-[70] bg-black focus:outline-none"
         // Before hydration no lock exists yet: the covering surface refuses page pans itself.
         style={{ touchAction: "none" }}
       >
-        <TourIntro
-          name={props.property.name}
-          closeLabel={a11y("close")}
-          loadingLabel={tourT("loading")}
-          onClose={onClose}
-          closeHref={closeHref}
-        />
+        {failed ? (
+          <div className="flex h-full flex-col items-center justify-center gap-4 px-6 text-center text-white">
+            <p role="alert">{tourT("loadFailed")}</p>
+            <Button type="button" variant="gold" onClick={() => window.location.reload()}>
+              {tourT("retry")}
+            </Button>
+            <Button type="button" variant="ghost" onClick={onClose}>
+              {a11y("close")}
+            </Button>
+          </div>
+        ) : (
+          <TourIntro
+            name={props.property.name}
+            closeLabel={a11y("close")}
+            loadingLabel={tourT("loading")}
+            onClose={onClose}
+            closeHref={closeHref}
+          />
+        )}
       </div>
     );
   }
-  if ("error" in state) throw state.error;
   const Loaded = state.viewer;
   return <Loaded {...props} />;
 }

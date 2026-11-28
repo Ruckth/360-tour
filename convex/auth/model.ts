@@ -9,7 +9,7 @@ import { maintenancePaused } from '../lib/maintenance';
 import { requireMarketingPermission } from './private/marketingAccess';
 import { requireGuestToken } from '../messaging/model';
 import { type MarketingPermission } from '../shared/marketingAccess';
-import { requireAdmin } from './private/adminAuth';
+import { requireOperationsContext } from './private/adminAuth';
 import { requireStaff, type StaffCapability } from './private/staffAccess';
 
 
@@ -48,7 +48,7 @@ export const authenticatedAction = customAction(rawAction, authenticatedAccess);
 const adminAccess = customCtx(async (ctx: IdentityCtx) => {
   operational();
   // Authoritative operations policy, including managers. Actions use its internal access query.
-  return { admin: await requireAdmin(ctx) };
+  return await requireOperationsContext(ctx);
 });
 export const adminQuery = customQuery(rawQuery, adminAccess);
 export const adminMutation = customMutation(rawMutation, adminAccess);
@@ -102,7 +102,7 @@ export const httpAction: HttpActionBuilder = handler => rawHttpAction((ctx, requ
 );
 // Auth-owned plain ctx implementations. Registrations stay in users.ts/staffAccess.ts.
 export { requireAdmin, requireOwner } from './private/adminAuth';
-export { accessForIdentity, assertCashierDiscount, canAccessCheckoutOrderBranch, canReadCheckoutOrder, findStaffGrantByEmail, requireCashierAction, requireStaff, staffAccess, staffCapabilities, staffInvitationExpiry, type StaffAccess, type StaffActor, type StaffCapability, type StaffRole } from './private/staffAccess';
+export { accessForIdentity, canAccessResortDesk, assertCashierDiscount, canAccessCheckoutOrderBranch, canReadCheckoutOrder, findStaffGrantByEmail, requireCashierAction, requireStaff, staffAccess, staffCapabilities, staffInvitationExpiry, validStaffEmail, type StaffAccess, type StaffActor, type StaffCapability, type StaffRole } from './private/staffAccess';
 
 export { manualReduction } from '../shared/staffDiscount';
 

@@ -65,6 +65,8 @@ export const bookingsTables = {
 		affiliateSnapshot: v.optional(affiliateSnapshot),
 		/** Bumped on every staff/system write that goes through lib/bookingMoney; absent = 0. */
 		revision: v.optional(v.number()),
+		stayStatusTransition: v.optional(v.object({ revision: v.number(), actor: v.string(), reason: v.optional(v.string()) })),
+		stayStatus: v.optional(v.union(v.literal("checked_in"), v.literal("checked_out"))),
 
 		createdBy: v.optional(v.string()),
 		/** Set for historical entries created without guest notification; lifecycle emails then skip it. */
@@ -121,9 +123,12 @@ export const bookingsTables = {
 		createdAt: v.number()
 	})
 		.index('by_property', ['propertyId'])
+		.index('by_property_stayStatus_checkOut', ['propertyId', 'stayStatus', 'checkOut'])
+		.index('by_property_stayStatus_checkIn', ['propertyId', 'stayStatus', 'checkIn'])
 		.index('by_property_checkIn', ['propertyId', 'checkIn'])
 		.index('by_property_checkOut', ['propertyId', 'checkOut'])
 		.index('by_checkIn', ['checkIn'])
+		.index('by_checkOut', ['checkOut'])
 		.index('by_status', ['status'])
 		.index('by_status_createdAt', ['status', 'createdAt'])
 		.index('by_createdAt', ['createdAt'])

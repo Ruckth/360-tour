@@ -4,8 +4,10 @@ import { asTestOwner } from './testing/staff.test-support';
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from './_generated/api';
-import type { Id } from './_generated/dataModel';
+import type { Doc, Id } from './_generated/dataModel';
+import type { WithoutSystemFields } from 'convex/server';
 import { createAppointmentRecord, localDateTimeUtc, validateService } from './services/model';
+import { addDays } from './shared/dates';
 import schema from './schema';
 
 const modules = import.meta.glob('./**/*.ts');
@@ -386,6 +388,112 @@ describe('admin services', () => {
 		})).rejects.toThrow('STALE_ADJUSTMENT_REVISION');
 	});
 
+	it('D14/D21: finds appointments beyond the loaded dates and the next one after an empty range, bounded', async () => {
+		const { admin, booking } = await setup();
+		const day = (offset: number, time = '10:00') => localDateTimeUtc(addDays(date, offset), time);
+		const later = await admin.mutation(api.services.commands.createAppointment.createAppointment, { ...booking, guestName: 'Lena Park', start: day(20) });
+		await admin.mutation(api.services.commands.createAppointment.createAppointment, { ...booking, guestName: 'Ben Ito', start: day(3) });
+		const found = await admin.query(api.services.admin.searchAppointments, { query: 'lena' });
+		expect(found.results.map((r) => r._id)).toEqual([later.appointmentId]);
+		expect(found.results[0]).toMatchObject({ start: day(20), guestName: 'Lena Park' });
+		expect((await admin.query(api.services.admin.searchAppointments, { query: 'l' })).results).toEqual([]);
+		expect(await admin.query(api.services.admin.nextAppointment, { from: day(0, '00:00') })).toMatchObject({ appointment: { start: day(3) } });
+		expect(await admin.query(api.services.admin.nextAppointment, { from: day(4, '00:00') })).toMatchObject({ appointment: { start: day(20) } });
+		expect((await admin.query(api.services.admin.nextAppointment, { from: day(21, '00:00') })).appointment).toBeNull();
+	});
+
+	it('D21: the next appointment respects the calendar filters, so a hidden earlier one never wins', async () => {
+		const { t, admin, booking, staffId } = await setup();
+		const day = (offset: number, time = '10:00') => localDateTimeUtc(addDays(date, offset), time);
+		const otherStaff = await admin.mutation(api.services.commands.createStaff.createStaff, {
+			name: 'Ploy', role: 'Therapist', color: '#def', workingHours: [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({ weekday, start: '09:00', end: '18:00' })), breaks: []
+		});
+		await t.run(async (ctx) => {
+			const service = (await ctx.db.get(booking.serviceId))!;
+			await ctx.db.patch(booking.serviceId, { staffIds: [...service.staffIds, otherStaff] });
+		});
+		const hidden = await admin.mutation(api.services.commands.createAppointment.createAppointment, { ...booking, staffId: otherStaff, guestName: 'Hidden', start: day(2) });
+		const visible = await admin.mutation(api.services.commands.createAppointment.createAppointment, { ...booking, staffId, guestName: 'Shown', start: day(5) });
+		const from = day(1, '00:00');
+		expect((await admin.query(api.services.admin.nextAppointment, { from }))?.appointment?._id).toBe(hidden.appointmentId);
+		expect((await admin.query(api.services.admin.nextAppointment, { from, hiddenStaffIds: [otherStaff] }))?.appointment?._id).toBe(visible.appointmentId);
+		expect((await admin.query(api.services.admin.nextAppointment, { from, hiddenStatuses: ['booked'] }))?.appointment).toBeNull();
+		expect((await admin.query(api.services.admin.nextAppointment, { from, hiddenServiceIds: [booking.serviceId] }))).toMatchObject({ appointment: null, until: from + 30 * 86_400_000 });
+		vi.setSystemTime(day(10));
+		const verify = { appointmentId: visible.appointmentId, start: day(5) };
+		const check = (hiddenStaffIds = [otherStaff]) => admin.query(api.services.admin.nextAppointment, { from, hiddenStaffIds, verify });
+		expect((await admin.query(api.services.admin.nextAppointment, { from, hiddenStaffIds: [otherStaff] })).appointment?._id).toBe(visible.appointmentId);
+		expect((await check()).appointment?._id).toBe(visible.appointmentId);
+		expect((await check([staffId])).appointment).toBeNull();
+		await t.run(ctx => ctx.db.patch(visible.appointmentId, { start: day(6) }));
+		expect((await check()).appointment).toBeNull();
+		await t.run(ctx => ctx.db.delete(visible.appointmentId));
+		expect((await check()).appointment).toBeNull();
+	});
+
+	it('D14: an in-window match behind many older name matches is still found, and a capped candidate read is reported', async () => {
+		const { t, admin, booking } = await setup();
+		const current = await admin.mutation(api.services.commands.createAppointment.createAppointment, { ...booking, guestName: 'Lena Park', start: localDateTimeUtc(addDays(date, 2), '10:00') });
+		const copyOld = (count: number, offset: number) => t.run(async (ctx) => {
+			const row = Object.fromEntries(Object.entries((await ctx.db.get(current.appointmentId))!).filter(([key]) => !key.startsWith('_'))) as WithoutSystemFields<Doc<'appointments'>>;
+			const old = row.start - 3 * 365 * 86_400_000;
+			for (let i = 0; i < count; i++) {
+				await ctx.db.insert('appointments', { ...row, start: old - (offset + i) * 86_400_000, end: old - (offset + i) * 86_400_000 + 3_600_000, blockedUntil: old - (offset + i) * 86_400_000 + 3_600_000, confirmationCode: `SPA-OLD-${offset + i}` });
+			}
+		});
+		await copyOld(120, 0);
+		const found = await admin.query(api.services.admin.searchAppointments, { query: 'lena' });
+		expect(found).toMatchObject({ sampled: false, results: [{ _id: current.appointmentId }] });
+		await copyOld(140, 120);
+		expect((await admin.query(api.services.admin.searchAppointments, { query: 'lena' })).sampled).toBe(true);
+		// Seed the in-window match last because convex-test paginates search results in insertion order.
+		const inWindow = await t.run(async (ctx) => {
+			const row = Object.fromEntries(Object.entries((await ctx.db.get(current.appointmentId))!).filter(([key]) => !key.startsWith('_'))) as WithoutSystemFields<Doc<'appointments'>>;
+			await ctx.db.delete(current.appointmentId);
+			return ctx.db.insert('appointments', { ...row, guestName: 'Lenara Park' });
+		});
+		const lookup = (cursor: string | null) => admin.query(api.services.admin.searchAppointments, { query: 'lena', cursor });
+		let page = await lookup(null);
+		let pages = 1;
+		while (page.continueCursor && pages < 15) {
+			expect(page.results).toEqual([]);
+			page = await lookup(page.continueCursor);
+			pages++;
+		}
+		expect(pages).toBe(14);
+		expect(page.results.map(row => row._id)).toEqual([inWindow]);
+		expect(page.continueCursor).toBeNull();
+		expect((await admin.query(api.services.admin.searchAppointments, { query: current.confirmationCode.toLowerCase(), cursor: null })).results.map(row => row._id)).toEqual([inWindow]);
+	});
+
+	it('excludes an orphan appointment from search when its calendar link cannot resolve', async () => {
+		const { t, admin, booking } = await setup();
+		const { appointmentId, staffId, confirmationCode } = await admin.mutation(api.services.commands.createAppointment.createAppointment, {
+			...booking, guestName: 'Unlinked Fixture', start: at('10:00'),
+		});
+		const search = (query: string) => admin.query(api.services.admin.searchAppointments, { query });
+		expect((await search(confirmationCode)).results.map(row => row._id)).toEqual([appointmentId]);
+
+		await t.run(async (ctx) => { await ctx.db.delete(staffId); });
+		expect(await admin.query(api.services.admin.resolveCalendarAppointment, { appointmentId })).toBeNull();
+		expect((await search(confirmationCode)).results).toEqual([]);
+		expect((await search('Unlinked Fixture')).results).toEqual([]);
+	});
+
+	it('D20: finds the next open time across later dates for the same choices, within a bounded window', async () => {
+		const { t, admin, serviceId, staffId } = await setup();
+		const day = (offset: number, time: string) => localDateTimeUtc(addDays(date, offset), time);
+		// Off for the next two days; the first later opening is the morning after.
+		await admin.mutation(api.services.commands.addTimeOff.addTimeOff, { staffId, start: day(1, '00:00'), end: day(3, '00:00'), label: 'Leave' });
+		expect(await admin.query(api.services.admin.findNextOpenSlot, { serviceId, afterDate: date, staffId })).toEqual({
+			slot: { date: addDays(date, 3), start: day(3, '09:00') }, from: addDays(date, 1), through: addDays(date, 14),
+		});
+		// No match in the window: the searched range is returned, nothing invented.
+		await t.run(async (ctx) => { await ctx.db.patch(serviceId, { status: 'archived' }); });
+		expect(await admin.query(api.services.admin.findNextOpenSlot, { serviceId, afterDate: date })).toEqual({ slot: null, from: addDays(date, 1), through: addDays(date, 14) });
+		await expect(t.query(api.services.admin.findNextOpenSlot, { serviceId, afterDate: date })).rejects.toThrow('Not authenticated');
+	});
+
 	it('warns how many upcoming appointments stay booked when a service is archived', async () => {
 		const { admin, booking, serviceId, staffId } = await setup();
 		const kept = await admin.mutation(api.services.commands.createAppointment.createAppointment, { ...booking, start: at('09:00') });
@@ -393,6 +501,8 @@ describe('admin services', () => {
 		await admin.mutation(api.services.commands.cancelAppointment.cancelAppointment, { appointmentId: cancelled.appointmentId, expectedRevision: 0 });
 		expect(await admin.query(api.services.admin.countUpcomingAppointments, { serviceId })).toBe(1);
 		expect(await admin.query(api.services.admin.countUpcomingAppointments, { staffId })).toBe(1);
+		// D23: the archive guard's Open calendar lands on the earliest still-blocking appointment (cancelled ones excluded).
+		expect(await admin.query(api.services.admin.firstUpcomingAppointment, { staffId })).toEqual({ appointmentId: kept.appointmentId, start: at('09:00') });
 		expect(await admin.mutation(api.services.commands.archiveService.archiveService, { serviceId })).toEqual({ upcomingAppointments: 1 });
 		const schedule = await admin.query(api.services.admin.listSchedule, { from: at('00:00'), to: at('23:00') });
 		expect(schedule.appointments.find((a) => a._id === kept.appointmentId)).toMatchObject({ status: 'booked' });
@@ -479,6 +589,9 @@ describe('admin services', () => {
 		await expect(t.mutation(api.services.commands.refundAppointment.refundAppointment, { appointmentId })).rejects.toThrow('Not authenticated');
 		await expect(t.query(api.services.admin.listTimeOffPage, { staffId, range: 'upcoming', paginationOpts: { numItems: 100, cursor: null } })).rejects.toThrow('Not authenticated');
 		await expect(t.query(api.services.admin.countUpcomingAppointments, { staffId })).rejects.toThrow('Not authenticated');
+		await expect(t.query(api.services.admin.firstUpcomingAppointment, { staffId })).rejects.toThrow('Not authenticated');
+		await expect(t.query(api.services.admin.searchAppointments, { query: 'guest' })).rejects.toThrow('Not authenticated');
+		await expect(t.query(api.services.admin.nextAppointment, { from: at('00:00') })).rejects.toThrow('Not authenticated');
 	});
 
 	it('adds time off for several staff, skipping those with booked appointments in the way', async () => {

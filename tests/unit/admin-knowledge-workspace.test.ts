@@ -46,9 +46,10 @@ function fact(id: string, title: string, propertyId?: Id<"properties">): AdminBu
     status: "approved", revision: 1, createdAt: 1, updatedAt: 1, createdByAdminEmail: "a@x", updatedByAdminEmail: "a@x",
   };
 }
-function group(propertyId?: Id<"properties">): AdminUnknownGroup {
+function group(propertyId?: Id<"properties">, newByProperty: AdminUnknownGroup["newByProperty"] = [{ propertyId, count: 1 }]): AdminUnknownGroup {
+  const count = newByProperty.reduce((sum, entry) => sum + entry.count, 0);
   return {
-    normalizedQuestion: "is breakfast included", count: 1, counts: { new: 1, resolved: 0, ignored: 0 }, latestAt: 1, channels: ["web"],
+    normalizedQuestion: "is breakfast included", count, counts: { new: count, resolved: 0, ignored: 0 }, latestAt: 1, channels: ["web"], newByProperty,
     latest: {
       _id: "unknown_1" as Id<"chatUnknownQuestions">, propertyId, userQuestion: QUESTION, normalizedQuestion: "is breakfast included",
       status: "new", adminNotified: false, createdAt: 1, updatedAt: 1,
@@ -68,7 +69,9 @@ async function press(el: Element) {
 async function openResolvePicker() {
   await press(document.querySelector(`[aria-label='Resolve "${QUESTION}" with a fact or source']`)!);
 }
-const options = () => [...document.querySelectorAll('[role="option"]')].map((option) => option.textContent);
+/** Option titles; a fact option also carries a scope/answer detail line. */
+const options = () => [...document.querySelectorAll('[role="option"]')].map((option) => option.querySelector("span > span")?.textContent ?? option.textContent);
+const details = () => [...document.querySelectorAll('[role="option"] span > span + span')].map((detail) => detail.textContent);
 const STRUCTURED = ["From Business settings", "From Property details", "From Services", "From Pricing & availability"];
 
 beforeEach(() => {
@@ -89,7 +92,7 @@ afterEach(async () => {
 });
 
 describe("knowledge workspace tabs", () => {
-  const tabs = () => [...document.querySelectorAll('[role="tab"]')];
+  const tabs = () => [...document.querySelectorAll('[role="tablist"][aria-label="Knowledge sections"] [role="tab"]')];
 
   it("opens on Missing information, followed by Business facts, with no Legacy tab", async () => {
     await render(createElement(BusinessFactsView));
@@ -97,6 +100,9 @@ describe("knowledge workspace tabs", () => {
     expect(tabs()[0].getAttribute("aria-selected")).toBe("true");
     expect(document.querySelector('[data-panel="facts"]')).toBeNull();
     expect(document.body.textContent).toContain("No new missing-information reports.");
+    // D42: the shell names the page; no heading repeats the selected tab.
+    expect([...document.querySelectorAll("h1,h2,h3")].map((heading) => heading.textContent)).not.toContain("Missing information");
+    expect(document.querySelector('[role="tabpanel"]')?.getAttribute("aria-labelledby")).toBe("knowledge-tab-missing");
   });
 
   it.each(["legacy", "nonsense"])("sends an old ?tab=%s link to Missing information", async (tab) => {
@@ -156,8 +162,43 @@ describe("missing-information resolve picker", () => {
     mocks.groups = [group(villa)];
     await render(createElement(MissingInformationPanel, { properties: [] }));
     await openResolvePicker();
-    await press([...document.querySelectorAll('[role="option"]')].find((option) => option.textContent === "Villa One breakfast")!);
+    await press([...document.querySelectorAll('[role="option"]')].find((option) => option.textContent?.startsWith("Villa One breakfast"))!);
     expect(mocks.resolve).toHaveBeenCalledWith({ normalizedQuestions: ["is breakfast included"], factId: "f_villa" });
+  });
+
+  it("labels same-title facts with their scope and an answer preview (F15)", async () => {
+    mocks.facts = [{ ...fact("f_a", "Breakfast policy"), body: "Served 7–10am at the main house." }, { ...fact("f_b", "Breakfast policy", villa), body: "Villa One: in-villa breakfast on request." }];
+    mocks.groups = [group(villa)];
+    const properties = [{ _id: villa, name: "Villa One", slug: "villa-one", status: "active" }];
+    await render(createElement(MissingInformationPanel, { properties }));
+    await openResolvePicker();
+    expect(options().slice(0, 2)).toEqual(["Breakfast policy", "Breakfast policy"]);
+    expect(details()).toEqual(["All properties — Served 7–10am at the main house.", "Villa One — Villa One: in-villa breakfast on request."]);
+  });
+
+  it("offers a property fact for a mixed group and says it resolves only part of it", async () => {
+    mocks.groups = [group(otherVilla, [{ propertyId: otherVilla, count: 1 }, { propertyId: villa, count: 2 }])];
+    const properties = [{ _id: villa, name: "Villa One", slug: "villa-one", status: "active" }, { _id: otherVilla, name: "Villa Two", slug: "villa-two", status: "active" }];
+    await render(createElement(MissingInformationPanel, { properties }));
+    await openResolvePicker();
+    expect(options()).toEqual(["Breakfast policy", "Villa One breakfast", "Villa Two breakfast", ...STRUCTURED]);
+    expect(details()).toEqual([
+      "All properties — Breakfast policy",
+      "Villa One · Resolves 2 of 3 new reports — Villa One breakfast",
+      "Villa Two · Resolves 1 of 3 new reports — Villa Two breakfast",
+    ]);
+  });
+});
+
+describe("missing-information status filter (D43)", () => {
+  it("shows every status as a visible tab and switches the query in one activation", async () => {
+    await render(createElement(MissingInformationPanel, { properties: [] }));
+    const statusTabs = [...document.querySelectorAll('[role="tablist"][aria-label="Report status"] [role="tab"]')];
+    expect(statusTabs.map((tab) => tab.textContent)).toEqual(["New", "Resolved", "Ignored", "All"]);
+    expect(statusTabs[0].getAttribute("aria-selected")).toBe("true");
+    await press(statusTabs[1]);
+    expect(document.querySelector('[role="tablist"][aria-label="Report status"] [aria-selected="true"]')?.textContent).toBe("Resolved");
+    expect(statusTabs[1].getAttribute("aria-controls")).toBe("missing-reports");
   });
 });
 

@@ -34,5 +34,7 @@ export type AdminUnknownGroup = {
   counts: Record<UnknownQuestionStatus, number>;
   latestAt: number;
   channels: Exclude<SessionChannelFilter, "all">[];
+  /** New reports in the loaded group by property (no propertyId = reported without a villa). */
+  newByProperty: { propertyId?: Id<"properties">; count: number }[];
   latest: AdminUnknownQuestion;
 };

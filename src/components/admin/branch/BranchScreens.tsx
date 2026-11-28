@@ -97,6 +97,25 @@ export function BranchRevokedBanner() {
   );
 }
 
+/** After a switch closed a record: one action switches back and reopens it. */
+export function BranchReturnBanner() {
+  const { returnTo, returnToPrevious, dismissReturn, revoked } = useAdminBranch();
+  if (!returnTo || revoked) return null;
+  return (
+    <div role="status" className="mx-auto w-full max-w-7xl px-3 pt-4 sm:px-6">
+      <div className="flex w-full flex-wrap items-center gap-3 rounded-lg border border-border bg-muted/40 px-4 py-2 text-sm text-foreground">
+        <p className="min-w-0 flex-1 basis-60 wrap-anywhere">Switching branch closed the record you had open in {returnTo.name}.</p>
+        <Button type="button" variant="outline" size="sm" onClick={() => void returnToPrevious()}>
+          Back to {returnTo.name}
+        </Button>
+        <Button type="button" variant="ghost" size="sm" onClick={dismissReturn}>
+          Dismiss
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 /**
  * A record from a branch this person isn't assigned to. Fixed copy only: never the server's
  * message, the guest, an amount or a name.

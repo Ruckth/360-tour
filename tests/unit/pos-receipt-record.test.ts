@@ -94,7 +94,7 @@ it("puts Print · New sale and ⋯ above the receipt, outside what prints", asyn
   const onNewSale = vi.fn();
   await receipt(backend, orderId, onNewSale);
   const toolbar = document.querySelector<HTMLElement>('[role="toolbar"][aria-label="Receipt actions"]')!;
-  expect([...toolbar.querySelectorAll("button")].map(b => b.textContent?.trim() || b.getAttribute("aria-label"))).toEqual(["Print", "New sale", "More receipt actions"]);
+  expect([...toolbar.querySelectorAll("button")].map(b => b.textContent?.trim() || b.getAttribute("aria-label"))).toEqual([expect.stringMatching(/^Print · (58|80) mm$/), "New sale", "More receipt actions"]);
   for (const control of toolbar.querySelectorAll("button")) {
     // Before the receipt in reading and tab order, so it is reached without scrolling past it.
     expect(paper().compareDocumentPosition(control) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
@@ -246,9 +246,11 @@ it("records a one-line refund with no typing, and a retry after a lost answer re
   const refund = vi.spyOn(actions, "refundLine").mockRejectedValueOnce(new Error("Connection lost"));
   await receipt(backend, orderId);
   await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Refund Tea"]')!.click());
-  expect(button("All")?.getAttribute("aria-checked")).toBe("true");
-  expect(button("Pick a reason")?.disabled).toBe(true);
+  expect(button("All")?.getAttribute("aria-checked")).toBe("false");
   await click("Wrong charge");
+  expect(button("Choose an amount")?.disabled).toBe(true);
+  expect(refund).not.toHaveBeenCalled();
+  await click("All");
   await click("Record refund ฿100"); await tick();
   expect(document.querySelector('[role="alert"]')?.textContent).toContain("Connection lost");
   const form = document.querySelector('[data-refund-form]')!;
@@ -271,7 +273,8 @@ it("Half refunds half of what is left; a new form is a new key", async () => {
   await click("Complaint");
   await click("Record refund ฿50"); await tick();
   await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Refund Tea"]')!.click());
-  expect(button("All")?.getAttribute("aria-checked")).toBe("true");
+  expect(button("All")?.getAttribute("aria-checked")).toBe("false");
+  await click("All");
   await click("Cut short");
   await click("Record refund ฿50"); await tick();
   expect(refund.mock.calls.map(c => c[0].amount)).toEqual([5_000, 5_000]);

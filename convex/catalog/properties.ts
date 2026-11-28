@@ -88,30 +88,40 @@ export const listOtaRates = adminQuery({
 });
 
 export const upsertOtaRate = adminMutation({
-	args: { propertyId: v.id('properties'), platform: otaPlatform, nightlyRate: v.number(), url: v.optional(v.string()) },
+	args: {
+		propertyId: v.id('properties'), platform: otaPlatform, nightlyRate: v.number(), url: v.optional(v.string()),
+		urlChange: v.optional(v.union(
+			v.object({ kind: v.literal('preserve') }),
+			v.object({ kind: v.literal('set'), url: v.string() }),
+			v.object({ kind: v.literal('clear') })
+		))
+	},
 	handler: async (ctx, args) => {
 		const admin = ctx.admin;
 		if (!(await ctx.db.get(args.propertyId))) throw new Error('Property not found');
 		if (!Number.isSafeInteger(args.nightlyRate) || args.nightlyRate <= 0 || args.nightlyRate > MAX_NIGHTLY_RATE) {
 			throw new Error('Nightly rate must be a positive amount');
 		}
-		const fields = {
-			nightlyRate: args.nightlyRate,
-			url: args.url?.trim() ? publicHttpsUrl(args.url.trim()) : undefined,
-			updatedAt: Date.now()
-		};
+		if (args.urlChange && args.url !== undefined) throw new Error('Provide either urlChange or url, but not both.');
+		const nextUrl = args.urlChange?.kind === 'set' ? args.urlChange.url : args.url?.trim();
 		const existing = await ctx.db
 			.query('otaRates')
 			.withIndex('by_property_platform', (q) => q.eq('propertyId', args.propertyId).eq('platform', args.platform))
 			.unique();
+		const fields = {
+			nightlyRate: args.nightlyRate,
+			updatedAt: Date.now()
+		};
+		const preserve = args.urlChange?.kind === 'preserve';
+		const url = preserve ? existing?.url : nextUrl || args.urlChange?.kind === 'set' ? publicHttpsUrl(nextUrl ?? '') : undefined;
 		await appendRecordHistory(ctx, { entityType: 'property', entityId: args.propertyId, actor: admin.email, kind: 'ota_rate_updated',
 		 before: existing ? { platform: existing.platform, nightlyRate: existing.nightlyRate, url: existing.url ?? null } : null,
-		 after: { platform: args.platform, nightlyRate: fields.nightlyRate, url: fields.url ?? null } });
+		 after: { platform: args.platform, nightlyRate: fields.nightlyRate, url: url ?? null } });
 		if (existing) {
-			await ctx.db.patch(existing._id, fields);
+			await ctx.db.patch(existing._id, preserve ? fields : { ...fields, url });
 			return existing._id;
 		}
-		return await ctx.db.insert('otaRates', { propertyId: args.propertyId, platform: args.platform, ...fields });
+		return await ctx.db.insert('otaRates', { propertyId: args.propertyId, platform: args.platform, ...fields, url });
 	}
 });
 

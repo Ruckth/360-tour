@@ -10,7 +10,7 @@ import { NewAppointmentDialog } from '@/components/admin/NewAppointmentDialog';
 const mocks = vi.hoisted(() => ({ create: vi.fn(), query: vi.fn() }));
 vi.mock('convex/react', () => ({
   useMutation: () => mocks.create,
-  useQuery: (ref: Parameters<typeof getFunctionName>[0], args: unknown) => mocks.query(getFunctionName(ref), args),
+  useQuery: (ref: Parameters<typeof getFunctionName>[0], args: unknown) => (args === 'skip' ? undefined : mocks.query(getFunctionName(ref), args)),
 }));
 const now = Date.parse('2026-11-01T12:00:00+07:00');
 const staff = { _id: 'staff1', name: 'Mali', status: 'active', color: '#abc' } as Doc<'staff'>;
@@ -21,7 +21,7 @@ beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(now);
   mocks.create.mockReset().mockResolvedValue({ appointmentId: 'created1' });
-  mocks.query.mockReset().mockImplementation((name: string) => name.endsWith(':listServices') ? [service] : name.endsWith(':listStaff') ? [staff] : name.endsWith(':findOpenSlots') ? [] : { warnings: [], needsReason: false, problem: null });
+  mocks.query.mockReset().mockImplementation((name: string) => name.endsWith(':listServices') ? [service] : name.endsWith(':listStaff') ? [staff] : name.endsWith(':findOpenSlots') ? [] : name.endsWith(':findNextOpenSlot') ? undefined : { warnings: [], needsReason: false, problem: null });
   root = createRoot(document.body.appendChild(document.createElement('div')));
 });
 afterEach(async () => { await act(async () => root.unmount()); document.body.innerHTML = ''; vi.unstubAllGlobals(); vi.useRealTimers(); });
@@ -56,7 +56,7 @@ it("shows a directly operable staff selector and preserves explicit calendar ass
 
 it("requires an actual person for historical work and keeps archived people marked", async () => {
   const archived = { ...staff, _id: 'staff2', name: 'Nok', status: 'archived' } as Doc<'staff'>;
-  mocks.query.mockImplementation((name: string) => name.endsWith(':listServices') ? [service] : name.endsWith(':listStaff') ? [staff, archived] : name.endsWith(':findOpenSlots') ? [] : { warnings: [], needsReason: false, problem: null });
+  mocks.query.mockImplementation((name: string) => name.endsWith(':listServices') ? [service] : name.endsWith(':listStaff') ? [staff, archived] : name.endsWith(':findOpenSlots') ? [] : name.endsWith(':findNextOpenSlot') ? undefined : { warnings: [], needsReason: false, problem: null });
   await act(async () => root.render(createElement(IntlProvider, intl, createElement(NewAppointmentDialog, { draft: { date: '2020-01-02' }, services: [service], staff: [staff, archived], onClose: vi.fn(), onCreated: vi.fn() }))));
   const trigger = document.getElementById('na-staff');
   expect(trigger?.textContent).toContain('Choose who did the work');
@@ -213,4 +213,50 @@ it("names the selected staff member when switching staff makes the retained time
   expect(document.querySelector('[role=status]:not([aria-label])')?.textContent).toBe("Nok isn't available at 14:00. Pick another time.");
   expect(timeButton('15:00')?.getAttribute('aria-pressed')).toBe('false');
   expect(timeButton('Book appointment')?.disabled).toBe(true);
+});
+
+it('shows the selected stay’s linked appointment before a service is picked', async () => {
+  const stay = { bookingId: 'booking1' as Id<'bookings'>, guestName: 'Mia', guestPhone: '+66812345678', villaName: 'Pool Villa' };
+  mocks.query.mockImplementation((name: string, args: unknown) => {
+    if (name.endsWith(':stayAppointments') && JSON.stringify(args) === JSON.stringify({ bookingId: stay.bookingId })) {
+      return { appointments: [{ _id: 'appointment1', serviceName: 'Herbal compress', start: now, status: 'booked' }], complete: true };
+    }
+    return undefined;
+  });
+  await act(async () => root.render(createElement(IntlProvider, intl, createElement(NewAppointmentDialog, {
+    draft: { date: '2026-11-01', stay }, services: [service], staff: [staff], onClose: vi.fn(), onCreated: vi.fn(),
+  }))));
+  const linked = document.querySelector('[aria-label="Linked spa appointments"]');
+  expect(linked?.textContent).toMatch(/Herbal compress.*booked/);
+  expect(mocks.create).not.toHaveBeenCalled();
+});
+
+it("D20 keeps the choices after a submit-time slot conflict and lets staff choose another time", async () => {
+  withSlots('15:00', '16:30');
+  mocks.create.mockImplementationOnce(async () => {
+    withSlots('16:30');
+    throw new Error('That time was just taken. Please choose another time.');
+  });
+  const onCreated = vi.fn();
+  await act(async () => root.render(createElement(IntlProvider, intl, createElement(NewAppointmentDialog, {
+    draft: { date: '2026-11-01', staffId: staff._id },
+    services: [service], staff: [staff], onClose: vi.fn(), onCreated,
+  }))));
+  const form = document.querySelector('form')!;
+  const guest = document.querySelector<HTMLInputElement>('#na-name')!;
+  guest.value = 'Mia';
+  await act(async () => form.requestSubmit());
+  expect(document.body.textContent).toContain('That time was just taken');
+  expect(document.body.textContent).toContain('15:00 is no longer open');
+  expect(document.getElementById('na-staff')?.textContent).toContain('Mali');
+  expect(guest.value).toBe('Mia');
+  expect(form.querySelector<HTMLButtonElement>('button[type=submit]')?.disabled).toBe(true);
+  expect(onCreated).not.toHaveBeenCalled();
+
+  await act(async () => timeButton('16:30')!.click());
+  await act(async () => form.requestSubmit());
+  expect(mocks.create).toHaveBeenLastCalledWith(expect.objectContaining({
+    start: slotAt('16:30').start, staffId: staff._id, serviceId: service._id, guestName: 'Mia',
+  }));
+  expect(onCreated).toHaveBeenCalledOnce();
 });

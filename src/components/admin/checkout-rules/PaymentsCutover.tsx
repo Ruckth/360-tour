@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import { cn } from "@/lib/utils";
-import { refusal, refusalText, t, when } from "./checkout-rules-copy";
+import { reconciliationOutcomes, refusal, refusalText, t, when } from "./checkout-rules-copy";
 import { ReasonDialog } from "./ReasonDialog";
 import { useRulesCommands, type DirectPanelRow, type RulesView } from "./use-checkout-rules";
 
@@ -108,6 +108,29 @@ function OpenDirectPanels({ panels, onSaved }: { panels: DirectPanelRow[]; onSav
                 <input id={checkbox} type="checkbox" className="size-5" checked={confirmed} onChange={(event) => confirmStopped(panel, event.target.checked)} />
                 {t("pay.operatorStopped", { staff })}
               </label>
+              <details open className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs">
+                <summary className="cursor-pointer font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  {reconciliationOutcomes.title}
+                </summary>
+                <dl className="mt-2 grid gap-1.5 text-muted-foreground sm:grid-cols-3">
+                  <div className="grid gap-0.5">
+                    <dt className="font-semibold text-foreground">{t("payments.reconcileRecorded")}</dt>
+                    <dd>
+                      {panel.canRecord
+                        ? reconciliationOutcomes.recorded
+                        : reconciliationOutcomes.recordedUnavailable}
+                    </dd>
+                  </div>
+                  <div className="grid gap-0.5">
+                    <dt className="font-semibold text-foreground">{t("payments.reconcileNothingTaken")}</dt>
+                    <dd>{reconciliationOutcomes.nothingTaken}</dd>
+                  </div>
+                  <div className="grid gap-0.5">
+                    <dt className="font-semibold text-foreground">{t("payments.reconcileUnrecorded")}</dt>
+                    <dd>{reconciliationOutcomes.unrecorded}</dd>
+                  </div>
+                </dl>
+              </details>
               <div className="flex flex-wrap gap-2">
                 <Button type="button" size="sm" className="h-11" disabled={!panel.canRecord || !idle} onClick={() => void reconcile(panel, "recorded")}>
                   {t("payments.reconcileRecorded")}

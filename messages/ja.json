@@ -6,7 +6,8 @@
     "reviews": "レビュー",
     "contact": "お問い合わせ",
     "book": "予約",
-    "language": "言語"
+    "language": "言語",
+    "services": "サービス"
   },
   "Home": {
     "welcome": "ようこそ",
@@ -26,7 +27,9 @@
     "readyTitle": "{resortName} を体験する準備はできましたか？",
     "readyCopy": "直接予約ならオンライン旅行会社より 15% お得です。無料空港送迎とウェルカムアメニティ付き。",
     "contactUs": "お問い合わせ",
-    "viewVillas": "ヴィラを見る"
+    "viewVillas": "ヴィラを見る",
+    "openInMaps": "Google マップで開く",
+    "showInteractiveMap": "インタラクティブ地図を表示"
   },
   "Experiences": {
     "eyebrow": "体験",
@@ -126,7 +129,14 @@
     "directBenefits": "直接予約の特典",
     "verifiedVillas": "確認済みヴィラ",
     "secureCheckout": "安全なデモ決済",
-    "hostSupport": "ホスト直接サポート"
+    "hostSupport": "ホスト直接サポート",
+    "unavailableTitle": "ヴィラの詳細を一時的に読み込めません",
+    "unavailableDetail": "現在ヴィラカタログに接続できません。しばらくしてからもう一度お試しください。",
+    "loadErrorTitle": "エラーが発生しました",
+    "loadErrorDetail": "現在このヴィラを読み込めません。もう一度お試しください。",
+    "tryAgain": "もう一度試す",
+    "pageUnavailableTitle": "ページを一時的に表示できません",
+    "pageUnavailableDetail": "もう一度お試しください。"
   },
   "Booking": {
     "confirmAndPay": "確定して支払う",
@@ -184,7 +194,7 @@
     "emailExample": "maya@example.com",
     "emailError": "有効なメールアドレスを入力してください。",
     "phoneExample": "+66 81 234 5678",
-    "phoneError": "6桁以上の電話番号またはWhatsApp番号を入力してください。",
+    "phoneError": "選択した国の有効な電話番号またはWhatsApp番号を入力するか、+と国番号を付けてください。",
     "reviewPay": "確認して支払い",
     "livePaymentNote": "支払い前に予約内容をもう一度確認します。",
     "demoPaymentNote": "デモ決済では実際の予約は作成されません。",
@@ -233,7 +243,29 @@
     "notConfirmedCopy": "このリンクから支払い済み予約を確認できませんでした。",
     "reference": "参照: {reference}",
     "returnHome": "ホームへ戻る",
-    "exploreMoreVillas": "他のヴィラを見る"
+    "exploreMoreVillas": "他のヴィラを見る",
+    "stepCompleted": "完了：",
+    "minStayHint": "最低宿泊数：{count}泊",
+    "calendarKey": "カレンダーの凡例",
+    "legendAvailable": "空室あり",
+    "legendBooked": "予約済み",
+    "legendNotSelectable": "過去の日付または宿泊条件外",
+    "editGuestDetails": "ゲスト情報を編集",
+    "phoneHint": "国を選ぶか、+と国番号から入力してください。",
+    "staySummary": "ご滞在内容",
+    "villaFallback": "ご予約のヴィラ",
+    "verifyingCopy": "お支払いの確認を待っています…",
+    "paymentPendingTitle": "お支払いを処理中です",
+    "paymentPendingCopy": "お支払いの確認がまだ届いていません。再確認しても再度請求されることはありません。",
+    "checkAgain": "もう一度確認",
+    "paySettled": "このご予約はお支払い済みです。追加のお支払いは不要です。",
+    "payHoldExpired": "この日程の仮押さえは終了しました。新しくご予約ください。",
+    "payClosed": "このご予約はオンラインでお支払いいただけなくなりました。お困りの際はお問い合わせください。",
+    "viewConfirmation": "確認内容を見る",
+    "amountDueNow": "現在のお支払い額: {amount}",
+    "proposalHoldExpired": "この日程の仮押さえは終了しました。チャットで新しい見積もりをご依頼ください。",
+    "proposalSettled": "このご予約はお支払い済みです。追加のお支払いは不要です。",
+    "proposalUnavailable": "この支払いリンクはご利用いただけません。最新のリンクを開くか、新しくご予約ください。"
   },
   "Coupon": {
     "haveCode": "コードをお持ちですか？",
@@ -369,10 +401,16 @@
     "suggestionCancellation": "キャンセルポリシーは？",
     "suggestionAirport": "空港送迎はお願いできますか？",
     "suggestionAmenitiesIncluded": "ヴィラには何が含まれますか？",
-    "suggestionLocation": "ビーチやレストランまで近いですか？"
+    "suggestionLocation": "ビーチやレストランまで近いですか？",
+    "restartConfirmTitle": "この会話を最初からやり直しますか？",
+    "restartConfirmBody": "メッセージと未送信のテキストは消去されます。",
+    "restartKeep": "会話を続ける",
+    "restartConfirm": "新しいチャットを始める"
   },
   "Footer": {
-    "bookDirect": "直接予約"
+    "bookDirect": "直接予約",
+    "enquirySubject": "ご宿泊に関するお問い合わせ — {resortName}",
+    "enquiryBody": "こんにちは。{resortName} でのご宿泊について質問があります。"
   },
   "DemoDisclaimer": {
     "title": "デモサイトです",
@@ -405,7 +443,15 @@
     "close": "閉じる",
     "closeTour": "ツアーを閉じる",
     "toggleTheme": "テーマを切り替え",
-    "toggleMenu": "メニューを切り替え"
+    "toggleMenu": "メニューを切り替え",
+    "appearance": "外観",
+    "themeSystem": "システム",
+    "themeLight": "ライト",
+    "themeDark": "ダーク",
+    "pauseHero": "アニメーションを一時停止",
+    "playHero": "アニメーションを再生",
+    "ratingOutOfFive": "5つ星中 {rating}",
+    "galleryThumbnails": "客室の写真"
   },
   "Resort": {
     "tagline": "海と静けさが出会う場所",
@@ -531,7 +577,10 @@
     "leadEmailPlaceholder": "you@example.com",
     "invalidEmail": "有効なメールアドレスを入力してください。",
     "saveError": "このメールを保存できません。",
-    "save": "保存"
+    "save": "保存",
+    "viewerLabel": "{propertyName} 360° ツアー",
+    "emailLabel": "メールアドレス",
+    "saving": "保存中..."
   },
   "TourConclusions": {
     "pool-villa": {
@@ -710,11 +759,13 @@
     "ask": "このサービスを相談",
     "minutes": "分",
     "fromPrice": "{price}から",
+    "defaultDuration": "標準：{duration}",
     "chooseDuration": "時間を選択",
     "next": "次のサービス",
     "first": "最初のページへ",
     "moreCategories": "他のカテゴリー",
-    "draft": "{name}に興味があります。日時を相談したいです。"
+    "draft": "{name}に興味があります。日時を相談したいです。",
+    "showAll": "すべてのサービスを表示"
   },
   "Consent": {
     "label": "計測の選択",

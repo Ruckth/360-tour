@@ -47,6 +47,8 @@ type Approvals = typeof api.pos.staffApprovals;
 /** A manager-approval request, as staffApprovals.forOrder and staffApprovals.pending return it. */
 export type ApprovalRequest = FunctionReturnType<Approvals["forOrder"]>[number];
 /** One compact row of the manager queue (staffApprovals.pendingPage): no order or detail reads behind it. */
+export type ApprovalQueueStatus = FunctionReturnType<Approvals['queueStatus']>;
+export type ExpiredApprovalQueueRow = FunctionReturnType<Approvals["recentExpired"]>[number];
 export type ApprovalQueueRow = FunctionReturnType<Approvals["pendingPage"]>["page"][number];
 /** The one request a manager has open in Approvals (staffApprovals.detail); null when it's gone or not theirs. */
 export type ApprovalDetail = NonNullable<FunctionReturnType<Approvals["detail"]>>;
@@ -110,10 +112,12 @@ export type CheckoutBackend = {
   useOrderApprovals(orderId: OrderId | null): ApprovalRequest[] | undefined;
   /** Requests waiting for a manager, newest first, 20 per cursor page (staffApprovals.pendingPage); only owners and managers load it. */
   usePendingApprovals(): CustomerPage<ApprovalQueueRow>;
+  useApprovalQueueStates?(rows: ApprovalQueueRow[]): Record<string, ApprovalQueueStatus | Error | undefined>;
+  useExpiredApprovals?(open: boolean): ExpiredApprovalQueueRow[] | undefined;
   /** The selected request's detail (staffApprovals.detail); the panel reads one at a time. */
   useApprovalDetail(requestId: ApprovalId | null): ApprovalDetail | null | undefined;
   /** An order by its number (pos.findOrderByNumber): null when there is none or this role can't open it. */
-  useFindOrder(orderNumber: number | null): OrderId | null | undefined;
+  useFindOrder(orderNumber: number | null, receipt?: boolean): OrderId | null | undefined;
   useActions(): CheckoutActions;
   /** Products, vouchers, packages, attempts, returns and edits. Absent: every sale switch is Off (useCommerce). */
   commerce?: CommerceBackend;

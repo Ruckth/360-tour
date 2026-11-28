@@ -61,6 +61,7 @@ const SCOPED_START_ROUTES: Record<string, string> = {
   "__root.tsx": "document shell (Next src/app/layout.tsx and [locale]/layout.tsx)",
   "admin.tsx": "admin layout (Next src/app/admin/layout.tsx)",
   "admin.index.tsx": "/admin redirect to the first permitted section",
+  "admin.today.tsx": "Operational overview for authorized hotel, chat and spa desks",
   "admin.$.tsx": "legacy and unknown /admin sections",
   "admin.marketing.tsx": "marketing layout (Next src/app/admin/marketing/layout.tsx)",
   "admin.marketing.profitability.index.tsx": "Service profitability overview",

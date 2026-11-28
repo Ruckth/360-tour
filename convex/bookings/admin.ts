@@ -5,8 +5,8 @@ import { paginationOptsValidator } from 'convex/server';
 import { v } from 'convex/values';
 import { parsePhoneNumberFromString } from 'libphonenumber-js/min';
 import type { Doc, Id } from '../_generated/dataModel';
-import { adminQuery } from '../auth/model';
-import { isHistoricalStay, resolveNotify } from '../shared/bookingMoney';
+import { canAccessResortDesk, adminQuery } from '../auth/model';
+import { assertBookingRevision, isHistoricalStay, resolveNotify } from '../shared/bookingMoney';
 import { stayMoney } from '../shared/stayMoney';
 import { assertCapacity, assertStayDates, assertStayFree } from './private/bookingWrites';
 import { nightsBetween } from '../shared/dates';
@@ -14,7 +14,7 @@ import { readBudget } from '../lib/readBudget';
 import { stayFinancials } from './private/stayCorrections';
 import { MAX_ROWS_PER_NIGHT, scanOverlappingBookings, scanOverlappingDateBlocks } from './private/stayOverlap';
 import { assertValidIsoDate } from '../shared/validation';
-import { archivedVillaPolicy, assertBookingEditable, CLEANUP_SCAN_LIMIT, DAY_MS, deleteBlocker, GuestSuggestion, loadBooking, MAX_CALENDAR_DAYS, MAX_CALENDAR_VILLAS, MAX_GUEST_SUGGESTIONS, planBookingEditPricing, SEARCH_SCAN_LIMIT, toAdminBooking } from './private/stays';
+import { archivedVillaBlocker, archivedVillaPolicy, assertBookingEditable, CLEANUP_SCAN_LIMIT, DAY_MS, deleteBlocker, GuestSuggestion, loadBooking, MAX_CALENDAR_DAYS, MAX_CALENDAR_VILLAS, MAX_GUEST_SUGGESTIONS, planBookingEditPricing, stayAttendanceEnabled, SEARCH_SCAN_LIMIT, toAdminBooking, stayAttachProblem } from './private/stays';
 
 function calendarProperty(property: Doc<'properties'>) {
 	return {
@@ -51,9 +51,12 @@ export const listCalendarProperties = adminQuery({
 export const listForAdmin = adminQuery({
 	args: {
 		from: v.string(), to: v.string(), propertyId: v.optional(v.id('properties')),
-		bookingsOnly: v.optional(v.boolean())
+		bookingsOnly: v.optional(v.boolean()), includeRecordedStays: v.optional(v.boolean())
 	},
 	handler: async (ctx, args) => {
+		if (!(await canAccessResortDesk(ctx, 'bookings'))) {
+			return { properties: [], bookings: [], blocks: [], dateBlocks: [], complete: true };
+		}
 		assertValidIsoDate(args.from, 'From date');
 		assertValidIsoDate(args.to, 'To date');
 		if (args.to <= args.from) throw new Error('To date must be after from date');
@@ -84,7 +87,29 @@ export const listForAdmin = adminQuery({
 			const overlap = await scanOverlappingBookings(ctx, property._id, args.from, args.to);
 			bookings.push(...overlap.bookings);
 			complete &&= overlap.complete;
-			if (args.bookingsOnly) continue;
+			if (args.bookingsOnly) {
+				if (!args.includeRecordedStays) continue;
+				// Include recorded in-house guests outside the scheduled date window.
+				const overdue = ctx.db.query('bookings').withIndex('by_property_stayStatus_checkOut',
+					q => q.eq('propertyId', property._id).eq('stayStatus', 'checked_in').lte('checkOut', args.from));
+				const early = ctx.db.query('bookings').withIndex('by_property_stayStatus_checkIn',
+					q => q.eq('propertyId', property._id).eq('stayStatus', 'checked_in').gte('checkIn', args.to));
+				for (const range of [overdue, early]) {
+					if (!budget.range()) {
+						complete = false;
+						break;
+					}
+					let count = 0;
+					for await (const booking of range) {
+						if (++count > MAX_ROWS_PER_NIGHT || !budget.document(booking)) {
+							complete = false;
+							break;
+						}
+						bookings.push(booking);
+					}
+				}
+				continue;
+			}
 
 			// Host blocks come from both their start and end indexes, so a long block whose nights
 			// were never mirrored still shows.
@@ -122,20 +147,27 @@ export const listForAdmin = adminQuery({
 
 /** Full booking detail for the admin sheet, including the private pay-link token while unpaid. */
 export const getForAdmin = adminQuery({
-	args: { bookingId: v.id('bookings') },
+	args: { bookingId: v.string() },
 	handler: async (ctx, args) => {
-		const booking = await ctx.db.get(args.bookingId);
+		if (!(await canAccessResortDesk(ctx, 'bookings'))) return null;
+		const bookingId = ctx.db.normalizeId('bookings', args.bookingId);
+		if (!bookingId) return null;
+		const booking = await ctx.db.get(bookingId);
 		if (!booking) return null;
 		const property = await ctx.db.get(booking.propertyId);
 		const payable = booking.paymentStatus === 'pending' && booking.status !== 'cancelled';
 		const redemption = booking.promotion ? await ctx.db.get(booking.promotion.redemptionId) : null;
 		return {
 			...toAdminBooking(booking),
+			stayAttendanceEnabled: stayAttendanceEnabled(),
 			redemption: redemption ? { state: redemption.state, overLimit: redemption.overLimit ?? false } : null,
 			/** Release 3a: which marketing link brought the booking (frozen at creation); null when none. */
 			marketingAttribution: booking.marketingAttribution ?? null,
 			propertyName: property?.name ?? 'Unknown villa',
 			propertyStatus: property?.status ?? 'archived',
+			reopenVillaBlocker: archivedVillaBlocker(property, booking.checkIn),
+			// The booking detail and property editor both require operations admin access.
+			canOpenVilla: property !== null,
 			subtotal: booking.subtotal,
 			discountAmount: booking.discountAmount,
 			priceOverride: booking.priceOverride ?? null,
@@ -169,9 +201,10 @@ export const getForAdmin = adminQuery({
 export const searchBookings = adminQuery({
 	args: { query: v.string() },
 	handler: async (ctx, args) => {
+		if (!(await canAccessResortDesk(ctx, 'bookings'))) return [];
 		const raw = args.query.trim();
 		const text = raw.toLowerCase();
-		if (text.length < 2) return [];
+		if (text.length < 2 || text.length > 100) return [];
 		const digits = text.replace(/\D/g, '');
 		const [byPhone, byEmail, byCode, byName, recent] = await Promise.all([
 			digits.length >= 3
@@ -197,6 +230,53 @@ export const searchBookings = adminQuery({
 		for (const b of [...byPhone, ...byEmail, ...byCode].sort(newestFirst)) merged.set(b._id, b);
 		for (const b of [...byName, ...substring].sort(newestFirst)) merged.set(b._id, b);
 		return [...merged.values()].slice(0, 20).map(toAdminBooking);
+	}
+});
+
+/** Search a bounded date-indexed range for stays that can receive a Spa appointment. */
+export const searchAttachableStays = adminQuery({
+	args: { query: v.string(), date: v.string() },
+	handler: async (ctx, { query, date }) => {
+		const text = query.trim().toLowerCase();
+		if (text.length < 2 || text.length > 100 || !(await canAccessResortDesk(ctx, 'bookings'))) {
+			return { stays: [], limited: false };
+		}
+		assertValidIsoDate(date, 'Appointment date');
+		const digits = text.replace(/\D/g, '');
+		const project = async (booking: Doc<'bookings'>) => ({
+			_id: booking._id,
+			guestName: booking.guestName,
+			villaName: (await ctx.db.get(booking.propertyId))?.name ?? 'Villa unavailable',
+			checkIn: booking.checkIn,
+			checkOut: booking.checkOut,
+			status: booking.stayStatus ?? booking.status,
+			confirmationCode: booking.confirmationCode,
+		});
+		const exact = (await ctx.db.query('bookings')
+			.withIndex('by_confirmationCode', (q) => q.eq('confirmationCode', text.toUpperCase()))
+			.take(5)).filter((booking) => !stayAttachProblem(booking, date));
+		if (exact.length) return { stays: await Promise.all(exact.map(project)), limited: false };
+		const matches: Doc<'bookings'>[] = [];
+		let scanned = 0;
+		let limited = false;
+		for await (const booking of ctx.db.query('bookings').withIndex('by_checkOut', (q) => q.gte('checkOut', date))) {
+			if (++scanned > 512) {
+				limited = true;
+				break;
+			}
+			if (stayAttachProblem(booking, date)) continue;
+			if (!booking.guestName.toLowerCase().includes(text) &&
+				!booking.guestEmail?.toLowerCase().includes(text) &&
+				!booking.confirmationCode?.toLowerCase().includes(text) &&
+				!(digits.length >= 3 && booking.guestPhone.replace(/\D/g, '').includes(digits))) continue;
+			if (matches.length === 20) {
+				limited = true;
+				break;
+			}
+			matches.push(booking);
+		}
+		const stays = await Promise.all(matches.map(project));
+		return { stays, limited };
 	}
 });
 
@@ -267,11 +347,14 @@ export const findGuests = adminQuery({
 export const quoteBookingEdit = adminQuery({
 	args: {
 		bookingId: v.id('bookings'), propertySlug: v.string(), checkIn: v.string(), checkOut: v.string(), guests: v.number(),
-		clearPriceOverride: v.optional(v.boolean())
+		clearPriceOverride: v.optional(v.boolean()), revision: v.optional(v.number()),
+		// A fresh subscription when the desk explicitly requests a new quote.
+		refreshKey: v.optional(v.string())
 	},
 	handler: async (ctx, args) => {
 		const admin = ctx.admin;
 		const booking = await loadBooking(ctx, args.bookingId);
+		assertBookingRevision(booking, args.revision, false);
 		assertBookingEditable(booking);
 		const property = await ctx.db.query('properties').withIndex('by_slug', q => q.eq('slug', args.propertySlug)).first();
 		if (!property) throw new Error('Property not found');
@@ -297,9 +380,9 @@ export const quoteBookingEdit = adminQuery({
  * entered by hand in admin or created more than `olderThanDays` ago. Newest first.
  */
 export const listCleanupCandidates = adminQuery({
-	args: { olderThanDays: v.number() },
+	args: { olderThanDays: v.number(), refreshToken: v.optional(v.string()) },
 	handler: async (ctx, args) => {
-		if (!Number.isFinite(args.olderThanDays) || args.olderThanDays < 0) throw new Error('Enter a number of days.');
+		if (!Number.isSafeInteger(args.olderThanDays) || args.olderThanDays < 0) throw new Error('Enter a number of days.');
 		const now = Date.now();
 		const cutoff = now - args.olderThanDays * DAY_MS;
 		const byStatus = (status: 'pending' | 'cancelled') =>
@@ -346,6 +429,7 @@ export const bookingHistory = adminQuery({
 export const stayAppointments = adminQuery({
 	args: { bookingId: v.id('bookings') },
 	handler: async (ctx, { bookingId }) => {
+		await loadBooking(ctx, bookingId);
 		const rows = await readStayAppointments(ctx, bookingId);
 		const appointments = await Promise.all(rows.slice(0, MAX_STAY_APPOINTMENTS).map(async (appointment) => {
 			const order = await activeOrderFor(ctx, { appointmentId: appointment._id });

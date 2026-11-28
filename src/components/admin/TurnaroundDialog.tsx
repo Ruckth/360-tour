@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "convex/_generated/api";
 import type { Doc } from "convex/_generated/dataModel";
 import {
@@ -16,6 +16,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { appointmentGuestLabel } from "@/lib/staff-bookings";
 import { endTime, timeRange } from "@/lib/schedule-changes";
+import { staffTime } from "@/lib/staff-time";
+
+const BLOCKER_LABELS = { appointment: "another appointment", time_off: "time off", off_shift: "a break or the end of the shift" } as const;
 
 /** This appointment's cleanup/travel time after the service; it stays attached to the service end. */
 export function TurnaroundDialog({
@@ -37,6 +40,15 @@ export function TurnaroundDialog({
   const minutes = Number(value);
   const problem = value.trim() === "" ? "Enter the turnaround in minutes." : turnaroundProblem(minutes, (original.end - original.start) / 60_000);
   const after = withTurnaround(original, problem ? current : minutes);
+  // Only a longer turnaround can conflict; preview just the added interval before any write.
+  const preview = useQuery(
+    api.services.admin.previewAppointmentTurnaround,
+    problem === null && minutes > current ? { appointmentId: original._id, turnaroundMin: minutes } : "skip",
+  );
+  const blocked = preview?.problem ?? (preview?.blocker
+    ? `Blocked from ${staffTime(preview.blocker.start)} by ${BLOCKER_LABELS[preview.blocker.kind]}.${preview.maxMin !== null && preview.maxMin > current ? ` Up to ${preview.maxMin} min fits.` : " No longer turnaround fits."}`
+    : null);
+  const checking = problem === null && minutes > current && preview === undefined;
 
   return (
     <ChangeConfirmDialog
@@ -54,7 +66,7 @@ export function TurnaroundDialog({
         </p>
       }
       confirmLabel="Save turnaround"
-      confirmDisabled={problem !== null || minutes === current}
+      confirmDisabled={problem !== null || minutes === current || checking || blocked !== null}
       onConfirm={async () => {
         await update({ appointmentId: original._id, expectedRevision: appointmentRevision(original), turnaroundMin: minutes });
       }}
@@ -70,10 +82,12 @@ export function TurnaroundDialog({
           step={TURNAROUND_STEP_MIN}
           value={value}
           onChange={(event) => setValue(event.target.value)}
-          aria-describedby={problem ? "ta-problem" : undefined}
+          aria-describedby={problem || blocked ? "ta-problem" : undefined}
           className="max-w-32"
         />
         {problem ? <p id="ta-problem" className="text-sm text-destructive">{problem}</p> : null}
+        {!problem && blocked ? <p id="ta-problem" role="alert" className="text-sm text-destructive">{blocked}</p> : null}
+        {checking ? <p role="status" className="text-sm text-muted-foreground">Checking the added time…</p> : null}
       </div>
     </ChangeConfirmDialog>
   );

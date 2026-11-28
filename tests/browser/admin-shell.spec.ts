@@ -35,7 +35,8 @@ test("long account and branch names fit the compact access screens", async ({ pa
     { gate: "none", heading: "No access", action: "Sign out" },
     { gate: "choose", heading: "Choose a branch to start", action: /PhuketReservationOffice/ },
   ]) {
-    await page.goto(`/tests/browser/admin-shell.html?path=/admin/chats&gate=${gate}`);
+    const path = gate === "choose" ? "/admin/stock/balances" : "/admin/chats";
+    await page.goto(`/tests/browser/admin-shell.html?path=${path}&gate=${gate}`);
     await expect(page.getByRole("heading", { name: heading, exact: true })).toBeVisible();
     await expect(page.getByText(email, { exact: false })).toBeVisible();
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
@@ -99,6 +100,17 @@ test.describe("manager on a phone", () => {
     await open(page, "?role=manager&path=/admin/chats&pending=0");
     const tabBar = sections(page);
     await expect(tabBar.locator("a, button")).toHaveText(["Chats", "Hotel (Hotel bookings)", "Spa (Staff bookings)", "Checkout", "Menu"]);
+    const count = tapper();
+    await count.tap(tabBar.getByRole("link", { name: "Checkout" }));
+    await expect(page).toHaveURL(/\/admin\/checkout$/);
+    expect(count.taps).toBe(1);
+  });
+
+  test("a manager outside the resort keeps one-tap Checkout without resort desk links", async ({ page }) => {
+    await open(page, "?role=manager&scope=other&path=/admin/staff/calendar&pending=0");
+    const tabBar = sections(page);
+    await expect(tabBar.locator("a, button")).toHaveText(["Spa (Staff bookings)", "Checkout", "Menu"]);
+    await expect(tabBar.getByRole("link", { name: /Chats|Hotel/ })).toHaveCount(0);
     const count = tapper();
     await count.tap(tabBar.getByRole("link", { name: "Checkout" }));
     await expect(page).toHaveURL(/\/admin\/checkout$/);

@@ -45,11 +45,11 @@ describe("admin routes", () => {
   );
 
   it.each([
-    ["/admin", "/admin/chats"],
+    ["/admin", "/admin/today"],
     ["/admin/chat", "/admin/chats"],
     ["/admin/unknown", "/admin/chats"],
     ["/admin/staff", "/admin/staff/calendar"],
-    ["/admin/staff/unknown", "/admin/chats"],
+    ["/admin/staff/unknown", null],
     ["/admin/chats", null],
     ["/admin/hotel", null],
     ["/admin/staff/services", null],
@@ -61,7 +61,7 @@ describe("admin routes", () => {
     ["/admin/receipt", "/admin/chats"],
     ["/admin/marketing", "/admin/marketing/dashboard"],
     ["/admin/marketing/", "/admin/marketing/dashboard"],
-    ["/admin/marketing/unknown", "/admin/chats"],
+    ["/admin/marketing/unknown", null],
     ["/admin/marketing/dashboard", null],
     ["/admin/marketing/campaigns", null],
     ["/admin/marketing/links", null],
@@ -136,7 +136,9 @@ describe("admin routes", () => {
     });
 
     it("puts named pages ahead of earlier keyword and partial-label matches", () => {
-      expect(shown("team")).toEqual([["Settings", ["Team"]], ["Staff bookings", ["Staff"]]]);
+      // D25: Team means account access; therapist profiles are found as Therapists or by "staff".
+      expect(shown("team")).toEqual([["Settings", ["Team"]]]);
+      expect(shown("therapist")).toEqual([["Staff bookings", ["Therapists"]]]);
       expect(shown("business")[0]).toEqual(["Settings", ["Business"]]);
     });
 

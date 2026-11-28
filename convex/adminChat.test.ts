@@ -879,7 +879,7 @@ describe("admin chat unanswered warning", () => {
 
     await expect(
       admin.mutation(api.messaging.adminChat.settleGuestMessage, { sessionId, messageId: firstGuestMessageId }),
-    ).resolves.toBeNull();
+    ).rejects.toThrow("The chat changed. Review the latest message.");
     expect(await needsReply()).toBe(true);
 
     await admin.mutation(api.messaging.adminChat.settleGuestMessage, { sessionId, messageId: secondGuestMessageId });
