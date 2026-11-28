@@ -9,6 +9,7 @@ import { InfoTip } from "@/components/ui/info-tip";
 import { Spinner } from "@/components/ui/spinner";
 import { useNow } from "@/lib/staff-bookings";
 import { orderTitle } from "convex/shared/orderMath";
+import { orderTime } from "./checkout-ui";
 import { ApprovalDecisionButtons, useApprovalDecision } from "./ApprovalRequest";
 import { useCheckoutBackend, useCommerce, useReturnsDesk, type ApprovalDetail, type ApprovalId, type ApprovalQueueRow, type ApprovalQueueStatus, type ApprovalRequest } from "./backend";
 import { approvalAsk, minutesLeft, personName, queueAsk } from "./staff-approvals";
@@ -123,7 +124,7 @@ function UnavailableQueueRow({ row, status }: { row: ApprovalQueueRow; status: s
   const title = isTarget(row) ? row.kind === "returnItems" ? "Return items" : "Adjustment" : queueAsk(row);
   return <li className="grid gap-0.5 rounded-xl border border-border px-4 py-3 text-sm">
     <span className="font-medium">{personName(row.requesterEmail)} · {title}</span>
-    <span className="text-xs text-muted-foreground">{status}</span>
+    <span className="text-xs text-muted-foreground">{status} · {status === "Expired" ? "Expired at" : "Expires"} {orderTime(row.expiresAt)}</span>
     {"orderTitle" in row && row.orderTitle ? <span className="text-xs">{row.orderTitle}</span> : null}
   </li>;
 }
